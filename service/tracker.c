@@ -293,6 +293,11 @@ static void helper_connect(void)
     if (strcmp(path, "none") == 0) return;
     int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
+    if (strlen(path) >= sizeof sa.sun_path) {
+        fprintf(stderr, "wpsd: helper socket path too long: %s\n", path);
+        if (fd >= 0) close(fd);
+        return;
+    }
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
     if (fd < 0 || connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0) {
         if (fd >= 0) close(fd);

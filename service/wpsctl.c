@@ -67,6 +67,11 @@ static int connect_socket(void)
     else snprintf(path, sizeof path, "/tmp/wps-%u/wps.sock", (unsigned)getuid());
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
+    if (strlen(path) >= sizeof sa.sun_path) {
+        fprintf(stderr, "wpsctl: socket path too long: %s\n", path);
+        if (fd >= 0) close(fd);
+        return -1;
+    }
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
     if (fd < 0 || connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0) {
         fprintf(stderr, "wpsctl: cannot connect to %s: %s\n", path, strerror(errno));

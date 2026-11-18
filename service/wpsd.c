@@ -1592,6 +1592,13 @@ int main(void)
     else snprintf(sock_path, sizeof sock_path, "%s/wps.sock", env.runtime_dir);
     int ls = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
+    /* A socket address holds 107 bytes; a longer path must not be cut
+     * short (the stale-socket cleanup below would miss the real name). */
+    if (strlen(sock_path) >= sizeof sa.sun_path) {
+        log_msg("%s: socket path longer than %zu bytes; set WPS_RUNTIME_DIR or WPS_SOCKET to a shorter one",
+                sock_path, sizeof sa.sun_path - 1);
+        return 1;
+    }
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", sock_path);
     unlink(sock_path);   /* we hold the lock, so any old socket is stale */
     mode_t old = umask(0077);

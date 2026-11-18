@@ -491,6 +491,10 @@ int main(int argc, char **argv)
 
     int ls = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
+    if (strlen(sock) >= sizeof sa.sun_path) {
+        fprintf(stderr, "wps-watchd: socket path too long: %s\n", sock);
+        return 1;
+    }
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", sock);
     unlink(sock);
     if (ls < 0 || bind(ls, (struct sockaddr *)&sa, sizeof sa) < 0 || listen(ls, 64) < 0) {

@@ -6,6 +6,7 @@
 #   make m2       M2 scenarios with real services on loopback filesystems (sudo)
 #   make m3       M3 change-tracking scenarios, inotify and wps-watchd modes (sudo)
 #   make m0       build the M0 prototypes (see proto/m0)
+#   make g0       build the G0 GUI prototypes (see proto/g0; optimised, no sanitizers)
 #   make clean
 
 CC      ?= cc
@@ -156,7 +157,32 @@ m3: all
 m0:
 	$(MAKE) -C proto/m0 all
 
+# G0: GUI prototypes. Optimised and without sanitizers, since they measure
+# frame and sound timing. Needs cairo, harfbuzz, freetype, fontconfig,
+# wayland, xkbcommon and pipewire development packages.
+G0      := $(B)/g0
+G0FLAGS := -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation
+XDGXML  := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/stable/xdg-shell/xdg-shell.xml
+
+$(G0)/xdg-shell-client-protocol.h: $(XDGXML)
+	@mkdir -p $(G0)
+	wayland-scanner client-header $< $@
+
+$(G0)/xdg-shell-protocol.c: $(XDGXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+
+$(G0)/folderview: proto/g0/folderview.c service/cbor.c $(G0)/xdg-shell-client-protocol.h $(G0)/xdg-shell-protocol.c
+	$(CC) $(G0FLAGS) -Iservice -I$(G0) -o $@ proto/g0/folderview.c service/cbor.c $(G0)/xdg-shell-protocol.c \
+	    $$(pkg-config --cflags --libs cairo harfbuzz freetype2 fontconfig wayland-client xkbcommon) -lpthread -lm
+
+$(G0)/soundlat: proto/g0/soundlat.c
+	@mkdir -p $(G0)
+	$(CC) $(G0FLAGS) -o $@ $< $$(pkg-config --cflags --libs libpipewire-0.3) -lm
+
+g0: $(G0)/folderview $(G0)/soundlat
+
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test check m0 m2 m3 clean
+.PHONY: all plugins test check m0 m2 m3 g0 clean
