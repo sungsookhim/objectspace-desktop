@@ -11,7 +11,7 @@ PYTHON  ?= python3
 B       := build
 GEN     := $(B)/gen
 CFLAGS  ?= -O1 -g
-CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-unused-parameter
+CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation
 # AddressSanitizer and UBSan when their runtimes are installed (Fedora:
 # libasan, libubsan); otherwise a plain build. Override with SAN=.
 SAN     ?= $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=address,undefined -x c - \
@@ -26,7 +26,7 @@ CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GE
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
 TV      := $(B)/tests
 
-all: $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor plugins
+all: $(B)/wpsd $(B)/wpsctl $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor plugins
 
 $(GEN)/.stamp: $(WPI) tools/wpoc.py
 	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
@@ -59,6 +59,16 @@ $(TV)/test_db: tests/test_db.c service/db.c service/db.h service/attrs.c
 $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_cbor.c service/cbor.c
+
+SERVICE := service/wpsd.c service/objects.c service/db.c service/env.c service/volumes.c service/cbor.c
+
+$(B)/wpsd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
+	@mkdir -p $(B)
+	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ $(SERVICE) $(RUNTIME) $(CLASSES) -lsqlite3 -ldl -lpthread
+
+$(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h
+	@mkdir -p $(B)
+	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/wpsctl.c service/cbor.c
 
 PLUGINS := $(TV)/plugins/tchild_v10.so $(TV)/plugins/tchild_v12.so $(TV)/plugins/tchild_v20.so \
            $(TV)/plugins/myfolder.so

@@ -19,7 +19,7 @@
 #include "env.h"
 
 typedef struct {
-    char uuid[64];
+    char uuid[WPS_VOLID_MAX];
     char mnt[PATH_MAX];
     char fstype[32];
     char source[PATH_MAX];

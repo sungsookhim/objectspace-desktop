@@ -96,9 +96,9 @@ int wps_volumes_scan(wps_volumes *out, const wps_env *env)
         char *dash = strstr(line, " - ");
         if (!dash || sscanf(dash + 3, "%63s %4095s", fstype, source) != 2) continue;
         if (strncmp(source, "/dev/", 5) != 0) continue;   /* block devices only */
-        if (strcmp(root, "/") != 0) continue;             /* skip bind mounts of subdirectories */
         unescape(mnt);
         unescape(source);
+        unescape(root);
         if (out->n == cap) {
             cap = cap ? cap * 2 : 16;
             wps_volume *nv = realloc(out->v, cap * sizeof *nv);
@@ -115,6 +115,13 @@ int wps_volumes_scan(wps_volumes *out, const wps_env *env)
         char *o = opts;
         v->ro = strncmp(o, "ro,", 3) == 0 || strcmp(o, "ro") == 0;
         uuid_of(source, maj, min, v->uuid, sizeof v->uuid);
+        /* A mount of part of a filesystem (a btrfs subvolume such as /home,
+         * or a bind mount) is its own volume: "<UUID>:<root within the fs>".
+         * Stable across reboots, and paths stay relative to what is mounted. */
+        if (strcmp(root, "/") != 0) {
+            size_t l = strlen(v->uuid);
+            snprintf(v->uuid + l, sizeof v->uuid - l, ":%s", root);
+        }
         v->portable = (sysfs_portable(maj, min) || listed(env, "portable", v->uuid)) &&
                       !listed(env, "not-portable", v->uuid);
     }

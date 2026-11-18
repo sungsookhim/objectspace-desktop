@@ -53,6 +53,12 @@ int wps_db_delete(wps_db *db, const char *vol, const char *key);
  * property names). Returns the number found, or -1. */
 int wps_db_get_class(wps_db *db, const char *vol, const char *locator, const char *cls, wps_props *out);
 
+/* All live properties of <locator> on vol, for every class: calls fn once
+ * per property. Returns the number found, or -1. */
+typedef void (*wps_db_prop_fn)(const char *cls, const char *prop, char type,
+                               const void *val, uint32_t len, void *user);
+int wps_db_get_locator(wps_db *db, const char *vol, const char *locator, wps_db_prop_fn fn, void *user);
+
 /* Portable volumes. attach opens (creating if writable) the volume's
  * database and synchronises; detach forgets it. A read-only volume is
  * pulled from but not pushed to; its changes wait until it is writable. */

@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "db.h"
+#include "env.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -14,7 +15,7 @@
 #define MAX_VOLS 32
 
 struct attached {
-    char vol[64];
+    char vol[WPS_VOLID_MAX];
     sqlite3 *h;
     bool writable;
 };
@@ -442,6 +443,37 @@ int wps_db_get_class(wps_db *db, const char *vol, const char *locator, const cha
             const char *key = (const char *)sqlite3_column_text(s, 0) + pl;
             const char *type = (const char *)sqlite3_column_text(s, 1);
             wps_props_set(out, key, type[0], sqlite3_column_blob(s, 2), (uint32_t)sqlite3_column_bytes(s, 2));
+            n++;
+        }
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return n;
+}
+
+int wps_db_get_locator(wps_db *db, const char *vol, const char *locator, wps_db_prop_fn fn, void *user)
+{
+    char prefix[512];
+    snprintf(prefix, sizeof prefix, "%s%c", locator, WPS_KEY_SEP);
+    size_t pl = strlen(prefix);
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int n = -1;
+    if (sqlite3_prepare_v2(db->h, "SELECT key,type,value FROM state WHERE vol=? AND deleted=0"
+                                  " AND substr(key,1,?)=?", -1, &s, NULL) == SQLITE_OK) {
+        n = 0;
+        sqlite3_bind_text(s, 1, vol, -1, SQLITE_STATIC);
+        sqlite3_bind_int(s, 2, (int)pl);
+        sqlite3_bind_text(s, 3, prefix, -1, SQLITE_STATIC);
+        while (sqlite3_step(s) == SQLITE_ROW) {
+            char cls[128];
+            const char *rest = (const char *)sqlite3_column_text(s, 0) + pl;
+            const char *sep = strchr(rest, WPS_KEY_SEP);
+            if (!sep || (size_t)(sep - rest) >= sizeof cls) continue;
+            memcpy(cls, rest, (size_t)(sep - rest));
+            cls[sep - rest] = 0;
+            const char *type = (const char *)sqlite3_column_text(s, 1);
+            fn(cls, sep + 1, type[0], sqlite3_column_blob(s, 2), (uint32_t)sqlite3_column_bytes(s, 2), user);
             n++;
         }
         sqlite3_finalize(s);

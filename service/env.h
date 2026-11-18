@@ -16,6 +16,10 @@
 #define WPS_ENV_H
 
 #include <limits.h>
+#include <stddef.h>
+
+/* A volume ID: filesystem UUID, plus ":<root>" for a subvolume or bind mount. */
+#define WPS_VOLID_MAX (64 + PATH_MAX)
 
 typedef struct {
     char identity[40];
