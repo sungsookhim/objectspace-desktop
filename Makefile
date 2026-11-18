@@ -143,11 +143,13 @@ endif
 
 # M2 scenarios against the loopback test bed (needs sudo; see proto/m0/testbed.sh).
 m2: all
+	proto/m0/testbed.sh down
 	proto/m0/testbed.sh up
 	tests/m2/m2.py; rc=$$?; proto/m0/testbed.sh down; exit $$rc
 
 # M3 scenarios in both tracking modes (inotify, and wps-watchd as root).
 m3: all
+	proto/m0/testbed.sh down
 	proto/m0/testbed.sh up
 	tests/m3/m3.py; rc=$$?; proto/m0/testbed.sh down; exit $$rc
 

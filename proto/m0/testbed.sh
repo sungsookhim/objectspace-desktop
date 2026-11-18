@@ -16,6 +16,13 @@ MYGID=$(id -g)
 GROUP_SHARED=60000
 
 up() {
+    # Never reformat an image that is in use (mkfs -F would corrupt it).
+    for fs in ext4 btrfs fat big; do
+        if mountpoint -q "$WORK/mnt/$fs" 2>/dev/null; then
+            echo "ERROR: testbed already up ($WORK/mnt/$fs is mounted); run '$0 down' first" >&2
+            exit 1
+        fi
+    done
     mkdir -p "$WORK/img" "$WORK/mnt/ext4" "$WORK/mnt/btrfs" "$WORK/mnt/fat"
     truncate -s 512M "$WORK/img/ext4.img"
     truncate -s 512M "$WORK/img/btrfs.img"

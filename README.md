@@ -2,13 +2,13 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: M0–M4 done: kernel prototypes, object runtime, persistence and the service, change tracking, scale (shadows, object files, streaming listings, jobs). Next: M5 (service API and plug-in host).
+Status: object core done (M0–M5): kernel prototypes, object runtime, persistence and the service, change tracking, scale (shadows, object files, streaming listings, jobs), the service API (events, menus and settings as data, programs, templates) and sandboxed plug-in hosts. Next: the GUI design.
 
 ## Documents
 
 | Document | What it holds |
 |---|---|
-| [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.4: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
+| [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.13: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
 
@@ -21,7 +21,7 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 3. M2: persistence, identity, concurrency, `wpsd` and `wpsctl`, state that travels with removable volumes. Done.
 4. M3: change tracking with `wps-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
 5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
-6. M5: subscriptions and events, menus and settings as data, the plug-in host.
+6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
 7. Then design the GUI on top of the object core.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
@@ -32,7 +32,7 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 |---|---|
 | `runtime/` | `libwpo`: the object runtime (`wpo.h`, `wpo.c`: C11, C library only), the main loop (`wpo_loop.h`, POSIX implementation) and plug-in loading |
 | `tools/wpoc.py` | Generates C headers and registration code from `.wpi` class files |
-| `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), `wps-watchd` (the optional root helper), change tracker, attribute store, database and volume sync, CBOR protocol |
+| `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), `wps-watchd` (the optional root helper), `wps-plughost` (runs one plug-in package, sandboxed), change tracker, attribute store, database and volume sync, CBOR protocol |
 | `classes/` | The core classes: `WPObject`, `WPFileSystem`, `WPDataFile`, `WPFolder`, `WPAbstract`, `WPProgram`, `WPShadow` |
 | `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
 | `proto/m0/` | M0 kernel and filtering prototypes |
@@ -46,6 +46,7 @@ make check    # unit tests + strict C11 core check + ThreadSanitizer run of the 
 make m2       # M2 scenarios: real services on loopback ext4/btrfs/FAT, several users (uses sudo)
 make m3       # M3 change-tracking scenarios, with inotify and with wps-watchd (uses sudo)
 tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB sparse volume)
+tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-in hosts
 ```
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.

@@ -1638,6 +1638,8 @@ int main(void)
     /* Running jobs pause and are journaled; they resume at the next start
      * (design: logout). */
     wps_jobs_shutdown(true);
+    /* The jobs' last progress events (no subscribers remain to hear them). */
+    wpo_loop_run_until_idle(loop, 1000);
     wps_plugins_shutdown();
     wps_tracker_shutdown();
     wps_listing_shutdown();

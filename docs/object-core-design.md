@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.12 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.13 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -714,13 +714,23 @@ The core takes about 3.5–4 months of focused work for one developer. Durations
     - **Static calls are now checked** in test builds (`WPO_CHECKED`): calling a `WPFileSystem` method on a shadow (which is a `WPAbstract`) was caught that way.
     - Shadow records live in the folder's `WPFolder` attribute as `shadow:<name>` keys rather than a separate `user.wps.shadows` attribute, so they merge like any folder setting.
     - Not yet: progress as events (polled through `job` until M5's subscriptions), sorted listings, and expected-event suppression for jobs (the tracker's normal rules already follow job moves).
-6. **M5: API, programs and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system object folders, root sessions, MIME classes, templates. Scenarios 17–20, 37 and 41 pass; all 41 now pass. GUI design starts from here.
+6. **M5: API, programs and plug-in host (2–3 weeks). Done (2026-11-18).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system programs, root sessions, file types, templates. Scenarios 17–20, 37 and 41 pass, with M5's own (events E1–E3, menus and settings S1–S2, programs P2, templates P3, file types P4, sandbox SB); M2–M4 still pass. GUI design starts from here.
+    - **Events** (`subscribe`): object changed, content added and removed, object moved, job progress, volumes. Job progress now arrives as events rather than by polling.
+    - **Menus and settings are data**: classes return them as small text tables (`id, label, parent, flags`; `page`/`field` rows) that the service turns into structured replies, so a GUI draws them without knowing the classes.
+    - **Opening a program** runs its `Exec` line as the user who opens it, in a new session, with field codes dropped. A `.desktop` file owned by another user (not root) first returns its command and owner for confirmation (scenario 37).
+    - **System programs** in `/usr/share/applications` are `WPProgram` objects; retitling one is stored in the user's overlay and leaves the file untouched.
+    - **Templates**: `from_template` copies a template's contents and settings under a new name, never overwriting, without its ID or template mark.
+    - **File types** come from shared-mime-info's glob table (longest match, then weight). Mapping types to classes waits for plug-ins that want it.
+    - **Root sessions** log a warning and never watch or scan `/home` or `/var/home` on their own; explicitly opened files still work (scenario 41).
+    - **Plug-in hosts**: one `wps-plughost` per plug-in package, over a `SOCK_SEQPACKET` socketpair with CBOR messages. The host sets `no_new_privs`, enters an empty network namespace (Landlock TCP rules where that is unavailable), and restricts files with Landlock: system libraries and the plug-in's folder read-only, its data folder (`<state>/plugins/<name>`) writable. wpsd registers a proxy per plug-in class, which behaves like its parent inside wpsd, and applies the plug-in's class replacements. API calls to methods the plug-in introduces or overrides, and its menus, go to the host with the object's settings; the reply carries the settings the method changed, which wpsd saves. Deadline 2 s; a miss or a crash gives the parent's behaviour, and a crash or three misses in a row restarts the host. A plug-in built against a newer class version than installed is refused and reported in `stats` (scenario 18).
+    - Measured: while a plug-in hung for 60 s, other requests' 99th percentile stayed at 0.06 ms (63,000 pings); killing the host mid-call gave the parent's menu in 0.5 s and a restarted host 1 s later.
+    - Not yet: calls between objects inside a plug-in that need other objects (a host sees only the object it was called for), plug-in classes for abstract objects, and grouping several packages in one host.
 
 ## Deferred: decided in principle, details later
 
 These follow from the principles above but need not be designed in full before M0–M2. Each is revisited at the milestone named.
 
-- [ ] **Plug-in host protocol and lifecycle** (M5): how hosts are grouped, how objects are proxied, the security boundary for untrusted plug-ins.
+- [x] **Plug-in host protocol and lifecycle** (M5): one host per package; objects are passed by value with their settings, and changes come back with the reply; the sandbox is the security boundary. Grouping packages and object references inside hosts are left for when a real plug-in needs them.
 - [ ] **Helper registration at scale** (M3): M0 used one descriptor per folder and linear lookups. For many thousands of folders the helper needs a hash table by handle, and possibly subtree registration with access checks per event.
 - [ ] **Other editors** (M3): full vim and gedit are now tested (M0 scenarios 22–25); Kate and VS Code are not.
 - [x] **Events for moves into directories a user did not register**: decided and validated in M0; the invisible side is reported as `<hidden>`.
@@ -750,6 +760,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.13 | 2026-11-18 | M5 done: events, menus and settings as data, opening programs, system programs, templates, file types, root sessions, sandboxed plug-in hosts; findings listed under M5 |
 | 0.12 | 2026-11-18 | Decided: plug-ins never run in-process; plug-in hosts are sandboxed |
 | 0.11 | 2026-11-18 | M4 done: shadows, trash, abstract objects as files, streaming listings, selections and jobs; findings listed under M4 |
 | 0.10 | 2026-11-18 | Decided: trashed objects keep their ID and settings until the trash is emptied; shadows follow them |
