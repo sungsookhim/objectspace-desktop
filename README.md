@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: M0–M3 done: kernel prototypes, object runtime, persistence and the service, change tracking. Next: M4 (scale, shadows, object files, jobs).
+Status: M0–M4 done: kernel prototypes, object runtime, persistence and the service, change tracking, scale (shadows, object files, streaming listings, jobs). Next: M5 (service API and plug-in host).
 
 ## Documents
 
@@ -20,8 +20,9 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 2. M1: object runtime, main loop, class generator, core classes. Done.
 3. M2: persistence, identity, concurrency, `wpsd` and `wpsctl`, state that travels with removable volumes. Done.
 4. M3: change tracking with `wps-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
-5. M4–M5: scale, shadows, object files and jobs; API and plug-in host.
-6. Then design the GUI on top of the object core.
+5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
+6. M5: subscriptions and events, menus and settings as data, the plug-in host.
+7. Then design the GUI on top of the object core.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 
@@ -44,6 +45,7 @@ make test     # unit tests
 make check    # unit tests + strict C11 core check + ThreadSanitizer run of the loop
 make m2       # M2 scenarios: real services on loopback ext4/btrfs/FAT, several users (uses sudo)
 make m3       # M3 change-tracking scenarios, with inotify and with wps-watchd (uses sudo)
+tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB sparse volume)
 ```
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.

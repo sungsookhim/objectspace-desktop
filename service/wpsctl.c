@@ -9,6 +9,10 @@
  *   wpsctl shadow TARGET FOLDER
  *   wpsctl create FOLDER CLASS TITLE [COMMAND]
  *   wpsctl list FOLDER [OFFSET [COUNT [details]]]
+ *   wpsctl select FOLDER all [EXCEPT...] | select FOLDER ITEM...
+ *   wpsctl move|copy SELECTION DEST
+ *   wpsctl job ID | jobs | job_cancel ID | job_pause ID | job_resume ID
+ *   wpsctl job_decide ID skip|rename [all]
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -37,7 +41,11 @@ static int usage(void)
             "       wpsctl describe CLASS\n"
             "       wpsctl shadow TARGET FOLDER\n"
             "       wpsctl create FOLDER CLASS TITLE [COMMAND]\n"
-            "       wpsctl list FOLDER [OFFSET [COUNT [details]]]\n");
+            "       wpsctl list FOLDER [OFFSET [COUNT [details]]]\n"
+            "       wpsctl select FOLDER all [EXCEPT...] | select FOLDER ITEM...\n"
+            "       wpsctl move|copy SELECTION DEST\n"
+            "       wpsctl job ID | jobs | job_cancel|job_pause|job_resume ID\n"
+            "       wpsctl job_decide ID skip|rename [all]\n");
     return 2;
 }
 
@@ -106,6 +114,45 @@ int main(int argc, char **argv)
         cb_text(&b, "id"); cb_int(&b, 1);
         cb_text(&b, "op"); cb_text(&b, op);
         cb_text(&b, op[0] == 'r' ? "target" : "class"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "select")) {
+        /* select FOLDER all [EXCEPT...] | select FOLDER ITEM... */
+        if (argc < 4) return usage();
+        bool all = !strcmp(argv[3], "all");
+        int first = all ? 4 : 3;
+        cb_map(&b, 5);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "select");
+        cb_text(&b, "folder"); cb_text(&b, argv[2]);
+        cb_text(&b, "all"); cb_bool(&b, all);
+        cb_text(&b, all ? "except" : "items");
+        cb_array(&b, (size_t)(argc - first));
+        for (int k = first; k < argc; k++) cb_text(&b, argv[k]);
+    } else if (!strcmp(op, "move") || !strcmp(op, "copy")) {
+        if (argc != 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "selection"); cb_int(&b, atoll(argv[2]));
+        cb_text(&b, "dest"); cb_text(&b, argv[3]);
+    } else if (!strcmp(op, "job") || !strcmp(op, "job_cancel") || !strcmp(op, "job_pause") ||
+               !strcmp(op, "job_resume")) {
+        if (argc != 3) return usage();
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "job"); cb_int(&b, atoll(argv[2]));
+    } else if (!strcmp(op, "jobs")) {
+        cb_map(&b, 2);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "jobs");
+    } else if (!strcmp(op, "job_decide")) {
+        if (argc < 4) return usage();
+        cb_map(&b, 5);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "job_decide");
+        cb_text(&b, "job"); cb_int(&b, atoll(argv[2]));
+        cb_text(&b, "decision"); cb_text(&b, argv[3]);
+        cb_text(&b, "all"); cb_bool(&b, argc > 4 && !strcmp(argv[4], "all"));
     } else if (!strcmp(op, "list")) {
         if (argc < 3 || argc > 6) return usage();
         bool details = argc == 6 && !strcmp(argv[5], "details");

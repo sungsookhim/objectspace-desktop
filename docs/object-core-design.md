@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.10 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.11 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -704,7 +704,15 @@ The core takes about 3.5–4 months of focused work for one developer. Durations
     - **Moves out of the watched folders** (inotify sees only one side; the helper hides the other user's side) are followed by searching for the object's ID: near where it was first, then the whole volume.
     - **A save that met a locked file** goes to the overlay and is retried into the shared attribute with backoff, then the overlay copy is removed.
     - **Not yet:** the btrfs `find-new` shortcut for the catch-up scan needs root, so it belongs in the helper; the scan walks the tree for now, and only when an object is missing.
-5. **M4: Scale, shadows, object files and jobs (3–4 weeks).** Streaming folder listing, selections, the job manager with journal and logout handling, managed symlinks with folder records, `.wpobj` files, no-replace operations, unavailable volumes. Scenarios 3, 6, 12, 28–32, 34, 35, 38, 39 and 40 pass.
+5. **M4: Scale, shadows, object files and jobs — done.** `service/shadows.c`, `listing.c` and `jobs.c`, plus programs and `.wpobj` files in the object layer. 18 scenarios (`tests/m4/m4.py`): 3, 4 and 7 for shadows, 12, 28–32, 34, 35, 38, 40, the trash (T1, T2) and abstract objects as files (A1–A3). All pass in inotify mode, and the 12 that are not scale tests also with `wps-watchd`; no sanitizer reports. Findings and choices:
+    - **Moving a million separate items takes about a minute** on ext4 (about 16,000 renames per second, kernel-bound); the service's part is constant-time and the loop stays responsive (99th percentile 0.08 ms). Moving a folder that contains a million files is a single rename.
+    - **The first page of a folder is records only**, as designed: 8 ms for a million-entry folder from a cold cache. Details for those rows are disk-bound (about 0.6 s for 50 cold inodes on the loopback test disk) and are read in parallel slices.
+    - **Temporary names include the user's identity**, because two users' jobs can write into one shared folder; without that, scenario 34 found them colliding.
+    - **Jobs run on their own detached threads** (at most two), journal at most four times a second and every 256 items, pause at logout and resume at the next start; a crashed job is reported as interrupted and resumes, skipping complete items.
+    - **The helper must not hold descriptors on watched volumes** (it kept them from unmounting), and `open_by_handle_at` refuses an `O_PATH` mount descriptor; both fixed.
+    - **Static calls are now checked** in test builds (`WPO_CHECKED`): calling a `WPFileSystem` method on a shadow (which is a `WPAbstract`) was caught that way.
+    - Shadow records live in the folder's `WPFolder` attribute as `shadow:<name>` keys rather than a separate `user.wps.shadows` attribute, so they merge like any folder setting.
+    - Not yet: progress as events (polled through `job` until M5's subscriptions), sorted listings, and expected-event suppression for jobs (the tracker's normal rules already follow job moves).
 6. **M5: API, programs and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system object folders, root sessions, MIME classes, templates. Scenarios 17–20, 37 and 41 pass; all 41 now pass. GUI design starts from here.
 
 ## Deferred: decided in principle, details later
@@ -740,6 +748,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.11 | 2026-11-18 | M4 done: shadows, trash, abstract objects as files, streaming listings, selections and jobs; findings listed under M4 |
 | 0.10 | 2026-11-18 | Decided: trashed objects keep their ID and settings until the trash is emptied; shadows follow them |
 | 0.9 | 2026-11-18 | M3 done: tracker and helper; per-folder marks on btrfs subvolumes; settled-duplicate rule; ID search for objects that leave view |
 | 0.8 | 2026-11-18 | Decided: backup-name rule as an option, off by default; `wps-watchd` optional; duplicate IDs shared until either file changes (no timer) |

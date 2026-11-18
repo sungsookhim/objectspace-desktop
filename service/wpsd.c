@@ -12,6 +12,10 @@
  *   {op:"scan"}        run the catch-up scan now
  *   {op:"shadow", target, folder}   create a shadow (managed symlink)
  *   {op:"list", target, offset, count, details}   a page of a folder (streamed)
+ *   {op:"select", folder, all, except|items}   a selection; returns its ID
+ *   {op:"move"|"copy", selection, dest}        a job; returns its ID
+ *   {op:"job", job} {op:"jobs"} {op:"job_cancel"|"job_pause"|"job_resume", job}
+ *   {op:"job_decide", job, decision:"skip"|"rename", all}
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"stats"}
@@ -43,6 +47,7 @@
 #include "db.h"
 #include "env.h"
 #include "objects.h"
+#include "jobs.h"
 #include "listing.h"
 #include "shadows.h"
 #include "WPShadow.h"
@@ -524,6 +529,85 @@ static void on_mounts(int fd, short rev, void *arg)
 
 static void scanned(void *arg, const char *report) { reply_simple_ok(arg, report); }
 
+/* ---- selections and jobs */
+
+static void reply_value_cbor(struct client *c, int64_t id, cbuf *val)
+{
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 3);
+    cb_text(&b, "id"); cb_int(&b, id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    if (val->n) {
+        unsigned char *n = realloc(b.d, b.n + val->n);
+        if (n) { b.d = n; memcpy(b.d + b.n, val->d, val->n); b.n += val->n; b.cap = b.n; }
+    } else {
+        cb_null(&b);
+    }
+    send_frame(c, &b);
+    cb_free(&b);
+}
+
+static void reply_int(struct client *c, int64_t id, int64_t v)
+{
+    cbuf val;
+    cb_init(&val);
+    cb_int(&val, v);
+    reply_value_cbor(c, id, &val);
+    cb_free(&val);
+}
+
+static bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
+{
+    int64_t job = -1;
+    cv_int(msg, "job", &job);
+    if (!strcmp(op, "select")) {
+        const char *folder = cv_text(msg, "folder");
+        const cv *items = cv_get(msg, "items"), *all = cv_get(msg, "all"), *except = cv_get(msg, "except");
+        bool is_all = all && all->k == CV_BOOL && all->b;
+        const cv *list = is_all ? except : items;
+        size_t n = list && list->k == CV_ARRAY ? list->n : 0;
+        const char **names = calloc(n + 1, sizeof *names);
+        size_t k = 0;
+        for (size_t i = 0; i < n; i++)
+            if (list->items[i].k == CV_TEXT) names[k++] = list->items[i].s;
+        int64_t sid = folder ? wps_select(folder, is_all, names, k) : -1;
+        free(names);
+        if (sid < 0) reply_error(c, id, "bad request", "select needs a folder, and all or items");
+        else reply_int(c, id, sid);
+    } else if (!strcmp(op, "move") || !strcmp(op, "copy")) {
+        int64_t sel = -1;
+        const char *dest = cv_text(msg, "dest");
+        char err[128] = "";
+        int64_t jid = cv_int(msg, "selection", &sel) && dest ? wps_job_start(op, sel, dest, err, sizeof err) : -1;
+        if (jid < 0) reply_error(c, id, "bad request", err[0] ? err : "move/copy needs a selection and a dest");
+        else reply_int(c, id, jid);
+    } else if (!strcmp(op, "job") || !strcmp(op, "jobs")) {
+        cbuf val;
+        cb_init(&val);
+        if (wps_job_status(op[3] == 's' ? -1 : job, &val)) reply_value_cbor(c, id, &val);
+        else reply_error(c, id, "not found", "no such job");
+        cb_free(&val);
+    } else if (!strcmp(op, "job_cancel") || !strcmp(op, "job_pause") || !strcmp(op, "job_resume") ||
+               !strcmp(op, "job_decide")) {
+        bool ok;
+        if (op[4] == 'c') ok = wps_job_cancel(job);
+        else if (op[4] == 'p') ok = wps_job_pause(job);
+        else if (op[4] == 'r') ok = wps_job_resume(job);
+        else {
+            const cv *all = cv_get(msg, "all");
+            const char *d = cv_text(msg, "decision");
+            ok = d && wps_job_decide(job, d, all && all->k == CV_BOOL && all->b);
+        }
+        if (ok) reply_int(c, id, job);
+        else reply_error(c, id, "bad request", "no such job, or not in a state for that");
+    } else {
+        return false;
+    }
+    return true;
+}
+
 /* ---- list: a page of a folder's entries */
 
 struct list_req { struct client *c; int64_t id; };
@@ -674,6 +758,8 @@ static void handle(struct client *c, cv *msg)
         if (op[0] == 'f') wps_objects_flush(flushed, s);
         else if (op[1] == 'h') wps_objects_flush(shutdown_flushed, s);
         else start_volume_job(s);
+    } else if (handle_jobs(c, id, op, msg)) {
+        /* selections and jobs */
     } else if (strcmp(op, "list") == 0) {
         const char *folder = cv_text(msg, "target");
         int64_t off = 0, cnt = 100;
@@ -838,7 +924,7 @@ int main(void)
     if (!db) { log_msg("%s", err); return 1; }
     if (wpo_init() != WPO_OK || wps_classes_register() != WPO_OK) { log_msg("class registration failed"); return 1; }
 
-    loop = wpo_loop_new(4);
+    loop = wpo_loop_new(8);   /* workers wait on the disk; more of them keep it busy */
     wpo_loop_set_watchdog(loop, 50.0, on_watchdog, NULL);
     const char *delay = getenv("WPS_SAVE_DELAY_MS");
     wps_objects_init(&env, db, loop, delay ? atoi(delay) : 2000);
@@ -877,6 +963,7 @@ int main(void)
     start_volume_job(NULL);
     wps_shadows_init(loop, db);
     wps_listing_init(loop);
+    wps_jobs_init(loop, db, env.identity);
     wps_tracker_init(loop, &env, db);
     wps_tracker_stats ts;
     wps_tracker_get_stats(&ts);
@@ -886,6 +973,9 @@ int main(void)
 
     wpo_loop_run_until_idle(loop, 10000);
     while (clients) client_close(clients);
+    /* Running jobs pause and are journaled; they resume at the next start
+     * (design: logout). */
+    wps_jobs_shutdown(true);
     wps_tracker_shutdown();
     wps_listing_shutdown();
     unlink(sock_path);

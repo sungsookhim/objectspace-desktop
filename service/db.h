@@ -93,4 +93,12 @@ int wps_db_shadows_for(wps_db *db, const char *target_id, wps_db_shadow_fn fn, v
 /* Shadows whose target lies under <rel_prefix>/ on target_vol (a folder moved). */
 int wps_db_shadows_under(wps_db *db, const char *target_vol, const char *rel_prefix, wps_db_shadow_fn fn, void *user);
 
+/* The job journal (design: Bulk jobs). `sel` is the selection, encoded by
+ * the job manager. */
+int wps_db_job_put(wps_db *db, int64_t id, const char *kind, const char *src, const char *sel, const char *dest,
+                   const char *state, int64_t items_done, int64_t bytes_done);
+typedef void (*wps_db_job_fn)(int64_t id, const char *kind, const char *src, const char *sel, const char *dest,
+                              const char *state, int64_t items_done, int64_t bytes_done, void *user);
+int wps_db_jobs_list(wps_db *db, wps_db_job_fn fn, void *user);
+
 #endif

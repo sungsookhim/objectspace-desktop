@@ -51,6 +51,9 @@ def fs_uuid(fs):
     return run(["sudo", "blkid", "-s", "UUID", "-o", "value", src]).stdout.strip()
 
 
+LIVE = []   # services started by the running scenario, stopped after it
+
+
 class Service:
     """One wpsd: a user (None = current user), a computer (host), dirs."""
 
@@ -94,6 +97,7 @@ class Service:
             self.proc = subprocess.Popen(full, stderr=logf, stdout=logf)
         else:
             self.proc = subprocess.Popen(cmd, stderr=logf, stdout=logf, env={**os.environ, **self.env})
+        LIVE.append(self)
         for _ in range(100):
             if self.ctl("ping").get("ok"):
                 return self
@@ -164,6 +168,11 @@ def remount(fs, opts):
 
 def prepare():
     """Check the test bed, copy binaries where test users can run them."""
+    # Services left over from an interrupted run: matched by executable path
+    # (pkill -f would also match any command line that mentions the path).
+    run(["sudo", "sh", "-c", f'for p in /proc/[0-9]*; do [ "$(readlink $p/exe 2>/dev/null)" = "{BIN / "wpsd"}" ] '
+                             f'&& kill ${{p#/proc/}}; done; true'])
+    time.sleep(0.3)
     for fs, m in MNT.items():
         if not os.path.ismount(m):
             sys.exit(f"{m} is not mounted; run proto/m0/testbed.sh up first")
@@ -188,6 +197,12 @@ def run_scenarios(want, prefix=""):
             verdict = "PASS" if ok else "FAIL"
         except Exception as ex:
             verdict, detail = "ERROR", [repr(ex)]
+        for svc in LIVE:   # a failed scenario must not leave services running
+            try:
+                svc.stop()
+            except Exception:
+                pass
+        LIVE.clear()
         results.append({"num": prefix + num, "title": title, "verdict": verdict, "detail": detail})
         print(f"[{verdict:5}] {prefix + num:>6}. {title}")
         for line in detail:

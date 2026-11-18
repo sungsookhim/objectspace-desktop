@@ -61,17 +61,25 @@ static void clear(struct listing *l)
 
 /* ------------------------------------------------------------- details */
 
+/* Details for a page are read in parallel slices (one per worker), so a
+ * cold disk serves several reads at once; the reply goes when all are in. */
+#define SLICES 8
+
 struct detail_job {
     char folder[PATH_MAX];
     wps_page page;
     wps_page_fn reply;
     void *arg;
+    int pending;            /* slices not yet done (loop thread only) */
 };
+
+struct detail_slice { struct detail_job *j; size_t from, to; };
 
 static void detail_work(void *arg)
 {
-    struct detail_job *j = arg;
-    for (size_t i = 0; i < j->page.n; i++) {
+    struct detail_slice *sl = arg;
+    struct detail_job *j = sl->j;
+    for (size_t i = sl->from; i < sl->to; i++) {
         wps_entry *e = &j->page.items[i];
         char p[PATH_MAX + NAME_MAX + 2];
         snprintf(p, sizeof p, "%s/%s", j->folder, e->name);
@@ -94,7 +102,10 @@ static void detail_work(void *arg)
 
 static void detail_done(void *arg)
 {
-    struct detail_job *j = arg;
+    struct detail_slice *sl = arg;
+    struct detail_job *j = sl->j;
+    free(sl);
+    if (--j->pending) return;
     j->reply(j->arg, &j->page);
     free(j->page.items);
     free(j);
@@ -118,7 +129,16 @@ static void answer(struct listing *l, struct waiter *w)
         j->page = pg;
         j->reply = w->reply;
         j->arg = w->arg;
-        wpo_defer(loop, "listing details", detail_work, detail_done, j);
+        size_t slices = pg.n < SLICES ? pg.n : SLICES, per = (pg.n + slices - 1) / slices;
+        j->pending = 0;
+        for (size_t from = 0; from < pg.n; from += per) j->pending++;
+        for (size_t from = 0; from < pg.n; from += per) {
+            struct detail_slice *sl = calloc(1, sizeof *sl);
+            sl->j = j;
+            sl->from = from;
+            sl->to = from + per < pg.n ? from + per : pg.n;
+            wpo_defer(loop, "listing details", detail_work, detail_done, sl);
+        }
     } else {
         w->reply(w->arg, &pg);
         free(pg.items);
@@ -187,6 +207,9 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
 {
     struct read_job *j = arg;
     DIR *d = opendir(j->path);
+    /* Small chunks first, so the first page is ready after a few directory
+     * blocks even when the disk cache is cold; then larger ones. */
+    size_t size = 64;
     struct chunk *c = calloc(1, sizeof *c);
     c->l = j->l;
     c->gen = j->gen;
@@ -203,7 +226,8 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
         c->names[c->n] = strdup(de->d_name);
         c->types[c->n] = de->d_type;
-        if (++c->n == CHUNK) {
+        if (++c->n == size) {
+            if (size < CHUNK) size *= 4;
             wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
             c = calloc(1, sizeof *c);
             c->l = j->l;

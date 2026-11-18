@@ -47,7 +47,10 @@ static const char *MAIN_SCHEMA =
     "CREATE TABLE IF NOT EXISTS shadows ("
     " link_vol TEXT NOT NULL, link_rel TEXT NOT NULL, target_id TEXT NOT NULL, target_vol TEXT, target_rel TEXT,"
     " PRIMARY KEY (link_vol, link_rel));"
-    "CREATE INDEX IF NOT EXISTS shadows_target ON shadows(target_id);";
+    "CREATE INDEX IF NOT EXISTS shadows_target ON shadows(target_id);"
+    "CREATE TABLE IF NOT EXISTS jobs ("
+    " id INTEGER PRIMARY KEY, kind TEXT, src TEXT, sel TEXT, dest TEXT, state TEXT,"
+    " items_done INTEGER, bytes_done INTEGER, updated INTEGER DEFAULT (strftime('%s','now')));";
 
 static int exec(sqlite3 *h, const char *sql)
 {
@@ -669,4 +672,60 @@ int wps_db_shadows_under(wps_db *db, const char *target_vol, const char *rel_pre
     char like[4200];
     snprintf(like, sizeof like, "%s/%%", rel_prefix);
     return shadow_query(db, "SELECT * FROM shadows WHERE target_vol=? AND target_rel LIKE ?", target_vol, like, fn, user);
+}
+
+/* ------------------------------------------------------------------- jobs */
+
+int wps_db_job_put(wps_db *db, int64_t id, const char *kind, const char *src, const char *sel, const char *dest,
+                   const char *state, int64_t items_done, int64_t bytes_done)
+{
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int rc = -1;
+    if (sqlite3_prepare_v2(db->h, "INSERT OR REPLACE INTO jobs(id,kind,src,sel,dest,state,items_done,bytes_done)"
+                                  " VALUES(?,?,?,?,?,?,?,?)", -1, &s, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(s, 1, id);
+        sqlite3_bind_text(s, 2, kind, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 3, src, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 4, sel, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 5, dest, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 6, state, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(s, 7, items_done);
+        sqlite3_bind_int64(s, 8, bytes_done);
+        rc = sqlite3_step(s) == SQLITE_DONE ? 0 : -1;
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return rc;
+}
+
+int wps_db_jobs_list(wps_db *db, wps_db_job_fn fn, void *user)
+{
+    struct jrow { int64_t id, items, bytes; char *kind, *src, *sel, *dest, *state; } *rows = NULL;
+    size_t n = 0, cap = 0;
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    if (sqlite3_prepare_v2(db->h, "SELECT id,kind,src,sel,dest,state,items_done,bytes_done FROM jobs ORDER BY id",
+                           -1, &s, NULL) == SQLITE_OK) {
+        while (sqlite3_step(s) == SQLITE_ROW) {
+            if (n == cap) { cap = cap ? cap * 2 : 8; rows = realloc(rows, cap * sizeof *rows); }
+            struct jrow *r = &rows[n++];
+            r->id = sqlite3_column_int64(s, 0);
+            r->kind = strdup((const char *)sqlite3_column_text(s, 1));
+            r->src = strdup((const char *)sqlite3_column_text(s, 2));
+            r->sel = strdup(sqlite3_column_text(s, 3) ? (const char *)sqlite3_column_text(s, 3) : "");
+            r->dest = strdup((const char *)sqlite3_column_text(s, 4));
+            r->state = strdup((const char *)sqlite3_column_text(s, 5));
+            r->items = sqlite3_column_int64(s, 6);
+            r->bytes = sqlite3_column_int64(s, 7);
+        }
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    for (size_t i = 0; i < n; i++) {
+        fn(rows[i].id, rows[i].kind, rows[i].src, rows[i].sel, rows[i].dest, rows[i].state, rows[i].items, rows[i].bytes, user);
+        free(rows[i].kind); free(rows[i].src); free(rows[i].sel); free(rows[i].dest); free(rows[i].state);
+    }
+    free(rows);
+    return (int)n;
 }
