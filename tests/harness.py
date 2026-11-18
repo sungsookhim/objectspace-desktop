@@ -28,7 +28,7 @@ def scenario(num, title):
 
 
 def run(cmd, user=None, check=False, env=None):
-    if user:
+    if user is not None:
         cmd = ["sudo", "setpriv", f"--reuid={user}", "--regid=60000", "--groups=60000", "--", "env"] + \
               [f"{k}={v}" for k, v in (env or {}).items()] + cmd
         env = None
@@ -71,7 +71,11 @@ class Service:
         }
         self.proc = None
         self.log = OUT / f"wpsd-{name}.log"
-        if user:
+        # The services' parent folder is shared by every test user, like /tmp.
+        if not (WORK / "svc").exists():
+            run(["sudo", "mkdir", "-p", str(WORK / "svc")], check=True)
+            run(["sudo", "chmod", "1777", str(WORK / "svc")], check=True)
+        if user is not None:
             run(["sudo", "mkdir", "-p", str(self.base)], check=True)
             run(["sudo", "chown", f"{user}:60000", str(self.base)], check=True)
         else:
@@ -82,7 +86,7 @@ class Service:
 
     def config_file(self, name, text):
         d = self.base / "config"
-        if self.user:
+        if self.user is not None:
             run(["sh", "-c", f"mkdir -p {d} && printf '%s' '{text}' > {d}/{name}"], user=self.user, check=True)
         else:
             d.mkdir(parents=True, exist_ok=True)
@@ -91,7 +95,7 @@ class Service:
     def start(self):
         cmd = [str(BIN / "wpsd")]
         logf = open(self.log, "a")
-        if self.user:
+        if self.user is not None:
             full = ["sudo", "setpriv", f"--reuid={self.user}", "--regid=60000", "--groups=60000", "--", "env"] + \
                    [f"{k}={v}" for k, v in self.env.items()] + cmd
             self.proc = subprocess.Popen(full, stderr=logf, stdout=logf)

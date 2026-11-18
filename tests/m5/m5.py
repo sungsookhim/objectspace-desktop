@@ -132,6 +132,109 @@ def ss2():
                 f"a write based on an old view is refused: {'conflict' in stale}"]
 
 
+# ------------------------------------------------- programs, templates, types
+
+@scenario(37, "A program in a shared folder: another user is asked first, and it runs as whoever opens it")
+def s37():
+    a = Service("A", user=60001).start()
+    b = Service("B", user=60002).start()
+    d = fresh("ext4", "s37", user=60001)
+    out = d / "who-ran-it"
+    run(["sh", "-c", f"touch {out} && chmod 666 {out}"], user=60001, check=True)
+    p = Path(a.ctl("create", d, "WPProgram", "Who am I", f'sh -c "id -u >> {out}"').get("result", {}).get("path", ""))
+    a.ctl("flush")
+    asked = b.ctl("open", p).get("result", {})
+    time.sleep(0.5)
+    before = out.read_text().split()
+    b.ctl("open", p, "confirm")
+    a.ctl("open", p)                                   # its owner is not asked
+    time.sleep(1.0)
+    ran = out.read_text().split()
+    a.stop(); b.stop()
+    ok = asked.get("needs_confirmation") is True and "id -u" in asked.get("command", "") and before == [] and \
+        sorted(ran) == ["60001", "60002"]
+    return ok, [f"B is asked first: {asked.get('needs_confirmation')}, shown command {asked.get('command')!r}",
+                f"nothing ran before confirming: {before == []}",
+                f"after B confirms and A opens it: ran as UIDs {sorted(ran)}"]
+
+
+@scenario("P2", "A system program: retitled for this user only; the system file is untouched")
+def sp2():
+    apps = sorted(Path("/usr/share/applications").glob("*.desktop"))
+    target = next(p for p in apps if ini(p, "Type") == "Application" and ini(p, "Exec") and ini(p, "Name"))
+    st0 = target.stat()
+    a = Service("me").start()
+    b = Service("B", user=60002).start()
+    before = obj(a, target)
+    r = a.call(target, "wpSetTitle", "My favourite tool")
+    a.ctl("flush")
+    mine, theirs = obj(a, target), obj(b, target)
+    a.stop(); b.stop()
+    st1 = target.stat()
+    ok = before.get("class") == "WPProgram" and r.get("ok") and mine.get("title") == "My favourite tool" and \
+        theirs.get("title") == ini(target, "Name") and st0.st_mtime == st1.st_mtime
+    return ok, [f"{target.name}: {before.get('class')} {before.get('title')!r}",
+                f"after retitling: mine {mine.get('title')!r}, another user's {theirs.get('title')!r}",
+                f"system file unchanged: {st0.st_mtime == st1.st_mtime}"]
+
+
+@scenario("P3", "Templates: a new object copies the settings, not the identity or the template mark")
+def sp3():
+    me = Service("me").start()
+    d = fresh("ext4", "p3")
+    (d / "letter.odt").write_text("Dear ...\n")
+    me.call(d / "letter.odt", "wpSetTitle", "Letter")
+    me.call(d / "letter.odt", "wpSetTemplate", "true")
+    me.ctl("flush")
+    tid = obj(me, d / "letter.odt")["id"]
+    r = me.ctl("from_template", d / "letter.odt", d, "Letter to the bank")
+    me.ctl("flush")
+    n = r.get("result", {})
+    newp = Path(n.get("path", ""))
+    nobj = obj(me, newp)
+    tpl = me.call(newp, "wpQueryTemplate").get("result")
+    refused = me.ctl("from_template", newp, d, "x")
+    me.stop()
+    ok = r.get("ok") and newp.name == "Letter to the bank.odt" and newp.read_text() == "Dear ...\n" and \
+        nobj.get("title") == "Letter to the bank" and nobj.get("id") and nobj.get("id") != tid and tpl is False and \
+        not refused.get("ok")
+    return ok, [f"new object {newp.name!r} with the template's contents", f"own ID: {nobj.get('id') != tid}, not a template: {tpl is False}",
+                f"an ordinary object cannot be used as a template: {not refused.get('ok')}"]
+
+
+@scenario("P4", "File types come from shared-mime-info")
+def sp4():
+    me = Service("me").start()
+    d = fresh("ext4", "p4")
+    want = {"photo.png": "image/png", "report.odt": "application/vnd.oasis.opendocument.text",
+            "main.rs": "text/rust", "backup.tar.gz": "application/x-compressed-tar"}
+    got = {}
+    for name in want:
+        (d / name).write_text("x")
+        got[name] = me.call(d / name, "wpQueryMimeType").get("result")
+    me.stop()
+    return got == want, [f"{k}: {v}" for k, v in got.items()]
+
+
+@scenario(41, "A root session warns, and does not follow other users' homes on its own")
+def s41():
+    r = Service("root", user=0).start()
+    d = fresh("ext4", "s41")
+    (d / "x.txt").write_text("x")
+    obj(r, d / "x.txt")
+    w0 = r.ctl("stats").get("result", {}).get("watched")
+    home = Path(os.environ.get("HOME", "/home"))
+    probe = next((p for p in home.iterdir() if p.is_file()), None)
+    seen = obj(r, probe) if probe else {}
+    w1 = r.ctl("stats").get("result", {}).get("watched")
+    r.stop()
+    log = r.log.read_text()
+    ok = "running as root" in log and bool(seen) and w1 == w0
+    return ok, [f"warning in the log: {'running as root' in log}",
+                f"root can still open a file in a home explicitly: {bool(seen)}",
+                f"but its folder is not watched: watched {w0} before, {w1} after"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

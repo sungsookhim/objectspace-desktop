@@ -21,6 +21,9 @@
  *   {op:"unsubscribe", sub}
  *   {op:"menu"|"settings", target}            menus and settings pages as data
  *   {op:"menu_select", target, item}  {op:"settings_set", target, values:{key:value}, expect}
+ *   {op:"open", target, confirm}   start a program (as this user) or open a file;
+ *                      a program owned by another user (not root) needs confirm
+ *   {op:"from_template", target, folder, title}
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"stats"}
@@ -47,6 +50,8 @@
 #include <sys/un.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <spawn.h>
+#include <sys/xattr.h>
 
 #include "cbor.h"
 #include "db.h"
@@ -117,6 +122,9 @@ static char *call_text(wpo_object *o, const char *method, const char *arg);
 static const char *apply_settings(wpo_object *o, const cv *values);
 static void put_menu(cbuf *b, const char *text, const char *parent);
 static void put_settings(cbuf *b, const char *text);
+struct req;
+static void do_open(struct req *r, wpo_object *o);
+static void do_from_template(struct req *r, wpo_object *o);
 
 static void client_close(struct client *c)
 {
@@ -394,6 +402,8 @@ static void prepare_done(void *arg)    /* loop */
     else if (strcmp(r->op, "resolve") == 0) reply_ok_object(r, o, NULL);
     else if (!strcmp(r->op, "menu") || !strcmp(r->op, "settings") || !strcmp(r->op, "settings_set") ||
              !strcmp(r->op, "menu_select")) do_menus(r, o);
+    else if (!strcmp(r->op, "open")) do_open(r, o);
+    else if (!strcmp(r->op, "from_template")) do_from_template(r, o);
     else do_call(r, o);
     req_free(r);
 }
@@ -979,6 +989,203 @@ static void list_reply(void *arg, const wps_page *pg)
     free(r);
 }
 
+/* ---- open: start a program (as this user), or open a file */
+
+/* Split a .desktop Exec line into arguments: double quotes and backslash
+ * escapes, field codes (%f %u ...) dropped, %% kept as %. */
+static int split_exec(const char *exec, char *buf, size_t n, char **argv, int max)
+{
+    int argc = 0;
+    size_t o = 0;
+    const char *p = exec;
+    while (*p && argc < max - 1) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+        argv[argc] = buf + o;
+        bool quoted = false, any = false;
+        for (; *p && (quoted || (*p != ' ' && *p != '\t')); p++) {
+            if (*p == '"') { quoted = !quoted; any = true; continue; }
+            if (*p == '\\' && p[1]) { p++; }
+            else if (*p == '%' && p[1]) {
+                p++;
+                if (*p != '%') continue;   /* a field code: no files are passed */
+            }
+            if (o + 1 < n) buf[o++] = *p;
+            any = true;
+        }
+        if (o + 1 < n) buf[o++] = 0;
+        if (any && argv[argc][0]) argc++;
+        else if (any && quoted == false && argv[argc][0] == 0) argc++;
+    }
+    argv[argc] = NULL;
+    return argc;
+}
+
+static pid_t spawn(char **argv)
+{
+    posix_spawnattr_t at;
+    posix_spawn_file_actions_t fa;
+    posix_spawnattr_init(&at);
+    posix_spawnattr_setflags(&at, POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGMASK);
+    sigset_t none;
+    sigemptyset(&none);
+    posix_spawnattr_setsigmask(&at, &none);
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    extern char **environ;
+    pid_t pid = -1;
+    if (posix_spawnp(&pid, argv[0], &fa, &at, argv, environ) != 0) pid = -1;
+    posix_spawn_file_actions_destroy(&fa);
+    posix_spawnattr_destroy(&at);
+    return pid;
+}
+
+static void do_open(struct req *r, wpo_object *o)
+{
+    const cv *cf = cv_get(&r->msg, "confirm");
+    bool confirmed = cf && cf->k == CV_BOOL && cf->b;
+    char buf[4096], *argv[64];
+    const char *what;
+    if (wpo_is_a(o, WPProgramClass)) {
+        const char *cmd = WPProgram_data(o)->command;
+        if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); return; }
+        /* A program another user (not root) owns asks first: nobody can
+         * plant something that runs when another user opens it. */
+        uid_t owner = r->tgt.st.st_uid;
+        if (owner != geteuid() && owner != 0 && !confirmed) {
+            cbuf b;
+            cb_init(&b);
+            cb_map(&b, 3);
+            cb_text(&b, "id"); cb_int(&b, r->id);
+            cb_text(&b, "ok"); cb_bool(&b, true);
+            cb_text(&b, "result");
+            cb_map(&b, 3);
+            cb_text(&b, "needs_confirmation"); cb_bool(&b, true);
+            cb_text(&b, "command"); cb_text(&b, cmd);
+            cb_text(&b, "owner_uid"); cb_int(&b, (int64_t)owner);
+            send_frame(r->c, &b);
+            cb_free(&b);
+            return;
+        }
+        if (split_exec(cmd, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); return; }
+        what = cmd;
+    } else if (wpo_is_a(o, WPDataFileClass)) {
+        argv[0] = "xdg-open";
+        argv[1] = r->tgt.path;
+        argv[2] = NULL;
+        what = "xdg-open";
+    } else {
+        reply_error(r->c, r->id, "bad request", "folders and other objects open in the GUI");
+        return;
+    }
+    pid_t pid = spawn(argv);   /* as this user, in this user's session */
+    if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); return; }
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 3);
+    cb_text(&b, "id"); cb_int(&b, r->id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    cb_map(&b, 2);
+    cb_text(&b, "launched"); cb_int(&b, pid);
+    cb_text(&b, "command"); cb_text(&b, what);
+    send_frame(r->c, &b);
+    cb_free(&b);
+}
+
+/* ---- from_template: a new object copied from a template */
+
+struct tmpl_job {
+    struct client *c;
+    int64_t id;
+    char src[PATH_MAX], folder[PATH_MAX], title[256], path[PATH_MAX + 300];
+    int err;
+    wps_loaded ld;
+};
+
+static void tmpl_work(void *arg)
+{
+    struct tmpl_job *j = arg;
+    const char *base = strrchr(j->src, '/') ? strrchr(j->src, '/') + 1 : j->src;
+    const char *ext = strchr(base, '.') ? strchr(base, '.') : "";
+    int in = open(j->src, O_RDONLY | O_NOFOLLOW | O_CLOEXEC), out = -1;
+    if (in < 0) { j->err = errno; return; }
+    for (int k = 1; k < 100 && out < 0; k++) {
+        if (k == 1) snprintf(j->path, sizeof j->path, "%s/%.200s%s", j->folder, j->title, ext);
+        else snprintf(j->path, sizeof j->path, "%s/%.200s (%d)%s", j->folder, j->title, k, ext);
+        out = open(j->path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);   /* never overwrite */
+        if (out < 0 && errno != EEXIST) break;
+    }
+    if (out < 0) { j->err = errno; close(in); return; }
+    char buf[65536];
+    ssize_t n;
+    while ((n = read(in, buf, sizeof buf)) > 0)
+        if (write(out, buf, (size_t)n) != n) { j->err = EIO; break; }
+    /* Settings come along; identity and the template mark do not. */
+    char names[8192];
+    ssize_t nl = flistxattr(in, names, sizeof names);
+    for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
+        const char *nm = names + o;
+        if (strncmp(nm, "user.wps.", 9) || !strcmp(nm, WPS_ATTR_ID)) continue;
+        unsigned char v[65536];
+        ssize_t vl = fgetxattr(in, nm, v, sizeof v);
+        if (vl < 0) continue;
+        if (!strcmp(nm, "user.wps.WPObject")) {
+            wps_props ps;
+            if (wps_props_decode(v, (size_t)vl, &ps) == 0) {
+                wps_props_remove(&ps, "template");
+                ps.counter = 0;
+                size_t el;
+                unsigned char *enc = wps_props_encode(&ps, &el);
+                if (enc) fsetxattr(out, nm, enc, el, 0);
+                free(enc);
+                wps_props_free(&ps);
+            }
+        } else {
+            fsetxattr(out, nm, v, (size_t)vl, 0);
+        }
+    }
+    close(in);
+    close(out);
+    if (!j->err) wps_load(j->path, false, &j->ld);
+}
+
+static void tmpl_done(void *arg)
+{
+    struct tmpl_job *j = arg;
+    if (!j->c->dead) {
+        wpo_object *o = j->err || j->ld.err ? NULL : wps_object_from_loaded(&j->ld);
+        if (!o) reply_error(j->c, j->id, "failed", strerror(j->err ? j->err : j->ld.err));
+        else {
+            WPObject_wpSetTitle(o, j->title);
+            struct req fake = { .c = j->c, .id = j->id };
+            reply_ok_object(&fake, o, NULL);
+        }
+    }
+    wps_loaded_free(&j->ld);
+    client_unref(j->c);
+    free(j);
+}
+
+static void do_from_template(struct req *r, wpo_object *o)
+{
+    const char *folder = cv_text(&r->msg, "folder"), *title = cv_text(&r->msg, "title");
+    if (!WPObject_data(o)->is_template) { reply_error(r->c, r->id, "bad request", "not a template"); return; }
+    if (!folder) { reply_error(r->c, r->id, "bad request", "from_template needs a folder"); return; }
+    if (!S_ISREG(r->tgt.st.st_mode)) { reply_error(r->c, r->id, "bad request", "only file templates in this version"); return; }
+    char *t = WPObject_wpQueryTitle(o);
+    struct tmpl_job *j = calloc(1, sizeof *j);
+    j->c = r->c; r->c->refs++;
+    j->id = r->id;
+    snprintf(j->src, sizeof j->src, "%s", r->tgt.path);
+    snprintf(j->folder, sizeof j->folder, "%s", folder);
+    snprintf(j->title, sizeof j->title, "%s", title && *title ? title : t ? t : "New");
+    free(t);
+    wpo_defer(loop, "from template", tmpl_work, tmpl_done, j);
+}
+
 /* ---- create: a new object of a class in a folder, never overwriting */
 
 struct create_req {
@@ -1164,7 +1371,8 @@ static void handle(struct client *c, cv *msg)
         if (found) reply_int(c, id, sid);
         else reply_error(c, id, "not found", "no such subscription");
     } else if (strcmp(op, "resolve") == 0 || strcmp(op, "call") == 0 || strcmp(op, "menu") == 0 ||
-               strcmp(op, "menu_select") == 0 || strcmp(op, "settings") == 0 || strcmp(op, "settings_set") == 0) {
+               strcmp(op, "menu_select") == 0 || strcmp(op, "settings") == 0 || strcmp(op, "settings_set") == 0 ||
+               strcmp(op, "open") == 0 || strcmp(op, "from_template") == 0) {
         const char *target = cv_text(msg, "target");
         if (!target) { reply_error(c, id, "bad request", "missing target"); cv_free(msg); return; }
         struct req *r = calloc(1, sizeof *r);
@@ -1279,6 +1487,13 @@ int main(void)
     db = wps_db_open(dbpath, env.writer, err, sizeof err);
     if (!db) { log_msg("%s", err); return 1; }
     if (wpo_init() != WPO_OK || wps_classes_register() != WPO_OK) { log_msg("class registration failed"); return 1; }
+    wps_mime_init(getenv("WPS_MIME_GLOBS"));
+    if (geteuid() == 0) {
+        /* Supported, not recommended: root's service could see every
+         * user's files. It never follows other users' homes on its own. */
+        log_msg("warning: running as root; other users' home folders are not tracked");
+        wps_set_root_session(true);
+    }
 
     loop = wpo_loop_new(8);   /* workers wait on the disk; more of them keep it busy */
     wpo_loop_set_watchdog(loop, 50.0, on_watchdog, NULL);

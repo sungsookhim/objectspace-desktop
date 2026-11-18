@@ -118,6 +118,10 @@ int wps_object_file_create(const char *path, const char *cls, const char *title)
 /* Excluded paths (design: Change tracking): defaults plus <config>/excluded.
  * Files there are never given IDs or state, and are not watched. */
 bool wps_path_excluded(const char *path);
+/* Excluded, or (in a root session) inside another user's home: never
+ * watched or scanned automatically (design: Root sessions). */
+bool wps_path_untracked(const char *path);
+void wps_set_root_session(bool on);
 
 /* Volumes: a snapshot shared with workers. */
 void wps_volumes_replace(wps_volumes *vs);    /* loop; takes ownership */

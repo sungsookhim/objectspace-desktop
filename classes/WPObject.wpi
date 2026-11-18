@@ -7,6 +7,7 @@ data {
     char id[37];        /* object ID; empty until assigned (lazily, by the service) */
     uint32_t dirty;     /* state changed since the last save */
     uint64_t changes;   /* in-memory change counter, for optimistic client writes */
+    bool is_template;
     wps_state *state;   /* stored properties, per class (see wps_state.h) */
 }
 override wpInitData
@@ -28,6 +29,9 @@ method wpObjectChanged() -> void
 # Persistence. The service reads and writes storage on workers; these run on
 # the loop thread and only move values between fields and the state bag.
 method wpAddSettingsPages(string pages) -> string
+# Templates: a template object is copied, settings and all, to make new ones.
+method wpQueryTemplate() -> bool
+method wpSetTemplate(bool on) -> bool
 method wpSaveState() -> bool
 method wpRestoreProperties() -> void
 classmethod wpclsQueryTitle() -> string

@@ -345,6 +345,7 @@ TEST(state_bag)
 int main(int argc, char **argv)
 {
     plugin_dir = argc > 1 ? argv[1] : "build/tests/plugins";
+    wps_mime_init(NULL);   /* shared-mime-info's glob table */
     if (wpo_init() != WPO_OK || wps_classes_register() != WPO_OK || TBase_register() != WPO_OK) {
         fprintf(stderr, "setup failed\n");
         return 1;

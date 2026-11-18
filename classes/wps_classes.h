@@ -11,4 +11,8 @@ wpo_status wps_classes_register(void);
 char *wps_strdup(const char *s);
 char *wps_concat(const char *a, const char *b);   /* a + b, newly allocated */
 
+/* File types from shared-mime-info (call wps_mime_init once at start-up). */
+void wps_mime_init(const char *globs2);
+const char *wps_mime_for_name(const char *name);
+
 #endif

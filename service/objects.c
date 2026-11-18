@@ -142,6 +142,18 @@ static void excluded_load(void)
     if (f) fclose(f);
 }
 
+static bool root_session;
+void wps_set_root_session(bool on) { root_session = on; }
+
+bool wps_path_untracked(const char *path)
+{
+    if (wps_path_excluded(path)) return true;
+    if (!root_session) return false;
+    /* Root never follows other users' homes on its own; it may still open
+     * something there explicitly. */
+    return !strncmp(path, "/home/", 6) || !strcmp(path, "/home") || !strncmp(path, "/var/home/", 10);
+}
+
 /* A pattern with a slash is a path prefix; otherwise it matches any one
  * path component ("node_modules" excludes every node_modules folder). */
 bool wps_path_excluded(const char *path)

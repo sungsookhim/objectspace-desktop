@@ -58,8 +58,8 @@ char *WPObject__wpAddSettingsPages(wpo_object *self, const char *pages)
     char *title = WPObject_wpQueryTitle(self);
     size_t n = strlen(title ? title : "") + 128;
     char *line = malloc(n);
-    snprintf(line, n, "page\tGeneral\nfield\ttitle\ttext\tTitle\t%s\twpSetTitle\n", title ? title : "");
-    (void)d;
+    snprintf(line, n, "page\tGeneral\nfield\ttitle\ttext\tTitle\t%s\twpSetTitle\n"
+                      "field\ttemplate\tcheckbox\tTemplate\t%d\twpSetTemplate\n", title ? title : "", d->is_template);
     char *r = wps_concat(pages, line);
     free(line);
     free(title);
@@ -84,11 +84,23 @@ void WPObject__wpObjectChanged(wpo_object *self)
     if (wps_on_changed) wps_on_changed(self);   /* the service tells subscribers */
 }
 
+bool WPObject__wpQueryTemplate(wpo_object *self) { return WPObject_data(self)->is_template; }
+
+bool WPObject__wpSetTemplate(wpo_object *self, bool on)
+{
+    WPObject_data(self)->is_template = on;
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
 bool WPObject__wpSaveState(wpo_object *self)
 {
     WPObjectData *d = WPObject_data(self);
     if (d->title) wps_state_put_str(self, "WPObject", "title", d->title);
     else wps_state_remove(self, "WPObject", "title");
+    if (d->is_template) wps_state_put_int(self, "WPObject", "template", 1);
+    else wps_state_remove(self, "WPObject", "template");
     return true;
 }
 
@@ -96,8 +108,10 @@ void WPObject__wpRestoreProperties(wpo_object *self)
 {
     WPObjectData *d = WPObject_data(self);
     char *t = NULL;
+    int64_t tpl = 0;
     free(d->title);
     d->title = wps_state_get_str(self, "WPObject", "title", &t) ? t : NULL;
+    d->is_template = wps_state_get_int(self, "WPObject", "template", &tpl) && tpl;
 }
 
 char *WPObject__wpclsQueryTitle(wpo_object *self)

@@ -15,6 +15,7 @@
  *   wpsctl job_decide ID skip|rename [all]
  *   wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET | settings_set TARGET KEY=VALUE...
  *   wpsctl watch [folder PATH]... [object TARGET]... [jobs]
+ *   wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -50,7 +51,8 @@ static int usage(void)
             "       wpsctl job_decide ID skip|rename [all]\n"
             "       wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET\n"
             "       wpsctl settings_set TARGET KEY=VALUE...\n"
-            "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n");
+            "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
+            "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE\n");
     return 2;
 }
 
@@ -159,6 +161,21 @@ int main(int argc, char **argv)
         cb_text(&b, "job"); cb_int(&b, atoll(argv[2]));
         cb_text(&b, "decision"); cb_text(&b, argv[3]);
         cb_text(&b, "all"); cb_bool(&b, argc > 4 && !strcmp(argv[4], "all"));
+    } else if (!strcmp(op, "open")) {
+        if (argc < 3 || argc > 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "open");
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "confirm"); cb_bool(&b, argc == 4 && !strcmp(argv[3], "confirm"));
+    } else if (!strcmp(op, "from_template")) {
+        if (argc != 5) return usage();
+        cb_map(&b, 5);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "folder"); cb_text(&b, argv[3]);
+        cb_text(&b, "title"); cb_text(&b, argv[4]);
     } else if (!strcmp(op, "menu") || !strcmp(op, "settings")) {
         if (argc != 3) return usage();
         cb_map(&b, 3);

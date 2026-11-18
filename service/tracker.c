@@ -326,7 +326,7 @@ static void helper_lost(void)
 
 void wps_tracker_watch(const char *dir)
 {
-    if (!dir[0] || wps_path_excluded(dir) || watch_by_path(dir)) return;
+    if (!dir[0] || wps_path_untracked(dir) || watch_by_path(dir)) return;
     struct watch *w = watch_add(dir);
     if (!w) return;
     if (helper_fd >= 0) helper_register(w);
@@ -425,7 +425,7 @@ static pthread_mutex_t seek_mu = PTHREAD_MUTEX_INITIALIZER;   /* nftw has no use
 static int seek_visit(const char *path, const struct stat *st, int flag, struct FTW *ftw)
 {
     (void)st; (void)ftw;
-    if (wps_path_excluded(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
+    if (wps_path_untracked(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
     char id[WPS_ID_LEN + 1];
     if (flag != FTW_SL && wps_attr_get_id(path, id) && strcmp(id, seek_id) == 0) {
         snprintf(seek_found, sizeof seek_found, "%s", path);
@@ -982,7 +982,7 @@ static struct scan_job *cur_scan;   /* nftw has no user pointer; scans never ove
 static int scan_visit(const char *path, const struct stat *st, int flag, struct FTW *ftw)
 {
     (void)st; (void)ftw;
-    if (wps_path_excluded(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
+    if (wps_path_untracked(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
     if (flag == FTW_SL || flag == FTW_NS || flag == FTW_DNR) return FTW_CONTINUE;
     char id[WPS_ID_LEN + 1];
     if (!wps_attr_get_id(path, id)) return FTW_CONTINUE;
