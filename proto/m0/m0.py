@@ -13,6 +13,7 @@ Writes build/m0/report.json and prints a summary.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -215,13 +216,13 @@ def s_rename_over_other():
     return rename_over("s3tmp")
 
 
-def vi_save(d, mode):
-    f = d / f"{mode}.txt"
+def vi_save(d, mode, binary="vi"):
+    f = d / f"{binary}-{mode}.txt"
     write(f, "line x\n")
     set_id(f, "VIM-" + mode)
     h_before, i_before = handle(f), inode(f)
     EV.drain()
-    cmd = ["vi", "-es", "-N", "-u", "NONE", "-i", "NONE"]
+    cmd = [binary, "-es", "-N", "-u", "NONE", "-i", "NONE"]
     if mode != "default":
         cmd += ["-c", f"set backupcopy={mode}"]
     cmd += ["-c", "%s/x/y/", "-c", "wq", str(f)]
@@ -231,12 +232,11 @@ def vi_save(d, mode):
     return f, same_inode, get_id(f), h_before, evs, p.returncode
 
 
-@scenario(4, "vi (vim-minimal) saving a file that has a WPS ID, three backupcopy modes")
-def s_vim():
-    d = fresh_dir("ext4", "s4")
+def vim_modes(dirname, binary):
+    d = fresh_dir("ext4", dirname)
     detail, verdict = [], "PASS"
     for mode in ("default", "yes", "no"):
-        f, same, idv, hb, evs, rc = vi_save(d, mode)
+        f, same, idv, hb, evs, rc = vi_save(d, mode, binary)
         detail.append(f"backupcopy={mode}: exit {rc}; same inode: {same}; ID after save: {idv}")
         detail += ["    " + l for l in summarize(evs, MNT["ext4"])]
         if not same and idv is None:
@@ -246,8 +246,13 @@ def s_vim():
             if ren_away and not ren_over:
                 verdict = "FINDING"
                 detail.append(f"    -> original renamed AWAY (to a backup name) and a new file created at {f.name}: "
-                              "not covered by the rename-over rule")
+                              "not covered by the rename-over rule; needs the displacement rule")
     return verdict, detail
+
+
+@scenario(4, "vi (vim-minimal) saving a file that has a WPS ID, three backupcopy modes")
+def s_vim():
+    return vim_modes("s4", "vi")
 
 
 @scenario(5, "sed -i on a file that has a WPS ID")
@@ -580,6 +585,8 @@ def editor_save(fs, name, content, argv):
     done = p.stdout.readline().strip()
     evs = EV.collect(quiet=1.0)
     p.wait(timeout=60)
+    if done != "saved":
+        return "ERROR", [f"the file was not saved: {done}"]
     same = inode(f) == i0
     idv = get_id(f)
     pattern = save_pattern(evs, f.name)
@@ -644,6 +651,36 @@ def s_gio():
     return ("PASS" if covered else "FINDING",
             [f"same inode: {inode(f) == i0}; ID after save: {idv}", f"save pattern: {pattern}",
              "events:"] + summarize(evs, MNT["ext4"]))
+
+
+@scenario(22, "Full vim (vim-enhanced, built with +xattr), three backupcopy modes")
+def s_vim_full():
+    if not shutil.which("vim"):
+        return "INFO", ["vim-enhanced is not installed"]
+    return vim_modes("s22", "vim")
+
+
+@scenario(23, "gedit's save code (libgedit-gtksourceview, GtkSource 300)")
+def s_gedit_lib():
+    return editor_save("ext4", "s23", ("notes.txt", "line x\n"),
+                       lambda f: ["python3", str(HERE / "gtksource_save.py"), str(f), "300"])
+
+
+def gui_editor(num, app):
+    if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")) or not shutil.which(app):
+        return "INFO", [f"skipped: needs a desktop session and {app}"]
+    return editor_save("ext4", f"s{num}", ("notes.txt", "line x\n"),
+                       lambda f: ["python3", str(HERE / "gui_save.py"), app, str(f)])
+
+
+@scenario(24, "The real gedit window, edited and saved through the accessibility bus")
+def s_gedit_gui():
+    return gui_editor(24, "gedit")
+
+
+@scenario(25, "The real GNOME Text Editor window, edited and saved through the accessibility bus")
+def s_gte_gui():
+    return gui_editor(25, "gnome-text-editor")
 
 
 # ----------------------------------------------------------------- driver

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Save a file the way GNOME Text Editor does: GtkSourceView 5's FileLoader
-and FileSaver (the same library calls the editor makes), with no window.
+"""Save a file the way GNOME Text Editor or gedit does, through their
+GtkSourceView FileLoader and FileSaver (the same library calls the editors
+make), with no window.
 
-usage: gtksource_save.py PATH
+usage: gtksource_save.py PATH [5|300]
+  5    GtkSourceView 5 on GTK 4, used by GNOME Text Editor (default)
+  300  libgedit-gtksourceview on GTK 3, used by gedit 48 and later
 Waits for a line on stdin after loading, then appends text and saves, so
 the caller can separate load events from save events.
 """
@@ -10,12 +13,15 @@ import sys
 
 import gi
 
-gi.require_version("GtkSource", "5")
-gi.require_version("Gtk", "4.0")
+flavour = sys.argv[2] if len(sys.argv) > 2 else "5"
+gi.require_version("GtkSource", flavour)
+gi.require_version("Gtk", "4.0" if flavour == "5" else "3.0")
 from gi.repository import Gio, GLib, Gtk, GtkSource  # noqa: E402
 
-Gtk.init()
-GtkSource.init()
+if flavour == "5":
+    Gtk.init()
+if hasattr(GtkSource, "init"):
+    GtkSource.init()
 loop = GLib.MainLoop()
 path = sys.argv[1]
 buf = GtkSource.Buffer()

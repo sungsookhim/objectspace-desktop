@@ -2,7 +2,7 @@
 
 Run 2026-11-18 on Fedora, kernel 7.3.3, against loopback ext4, btrfs and FAT filesystems, in two parts:
 
-- **Kernel behaviour** (`m0.py`): 21 scenarios, **16 PASS, 1 FINDING, 4 INFO**.
+- **Kernel behaviour and real programs** (`m0.py`): 25 scenarios, **20 PASS, 1 FINDING, 4 INFO**.
 - **Per-user event filtering** (`filter.py`, prototype helper `watchd.c`): 11 scenarios with two users, **all PASS**.
 
 The design's core assumptions hold. One real gap was found, vim's default way of saving a file, and design v0.4 adds a rule for it. Full output of the last runs is in `build/m0/run.txt` and `build/m0/filter-run.txt` (not committed); rerun with the steps at the end.
@@ -32,6 +32,10 @@ The design's core assumptions hold. One real gap was found, vim's default way of
 | 19 | GNOME Text Editor's save (GtkSourceView 5 FileSaver, run without a window) | PASS | Writes `.goutputstream-XXXXXX`, renames it over the original; rename-over rule applies |
 | 20 | LibreOffice Writer saving an `.odt` (headless, through UNO `store()`) | PASS | Writes `lu*.tmp` in the same folder and renames it over the original; also creates and removes `.~lock.report.odt#` |
 | 21 | `gio save` (GLib file replace, used by most GNOME apps) | PASS | Same pattern as 19 |
+| 22 | Full vim (`vim-enhanced` 9.2, built with `+xattr`), three save modes | PASS | Default and `backupcopy=no` still rename the original away, but vim copies extended attributes to the new file, so the ID survives |
+| 23 | gedit's save code (libgedit-gtksourceview, GtkSource 300) | PASS | Temp file renamed over the original |
+| 24 | The real gedit 51 window, edited and saved through the accessibility bus | PASS | Same as 23 |
+| 25 | The real GNOME Text Editor 51 window, edited and saved through the accessibility bus (its window's `page.save` action) | PASS | Same as 19 |
 
 ### Tools and `user.wps.id` (scenario 6)
 
@@ -81,7 +85,9 @@ This covers vim's default behaviour, and editors that keep no backup. If the use
 
 Also to check: full vim (`vim-enhanced`, not installed here) may copy extended attributes onto the new file. If so, the ID survives the save anyway, but the rule above is still needed for vim-minimal and other editors.
 
-No other editor tested renames the original away: GNOME Text Editor, GLib's `gio save`, LibreOffice and `sed -i` all use rename-over (scenarios 5, 19–21).
+Full vim (scenario 22) renames the original away too, but it is built with `+xattr` and copies the attributes to the new file, so the ID survives without the rule. The rule is needed for vim-minimal (`vi`), for vim builds without `+xattr`, and for any other program that saves this way.
+
+No other editor tested renames the original away. GNOME Text Editor, gedit (both through their save libraries and through their real windows), GLib's `gio save`, LibreOffice and `sed -i` all use rename-over (scenarios 5, 19–21, 23–25).
 
 ## Per-user filtering (`filter.py`)
 
@@ -114,7 +120,7 @@ Two bugs in the prototype were found and fixed on the way. First, events were si
 
 ## Not covered by M0
 
-- Full vim (`vim-enhanced`), gedit, Kate and VS Code are not installed here. GNOME Text Editor was tested through its save library, not by driving its window.
+- Kate and VS Code are not installed here. LibreOffice was driven headless through UNO, not through its window.
 - Registration at scale: the prototype looks up registrations linearly.
 - Network filesystems.
 - Btrfs subvolumes other than the top level.
@@ -124,7 +130,8 @@ Two bugs in the prototype were found and fixed on the way. First, events were si
 ```
 make -C proto/m0 all     # builds build/m0/fanwatch and build/m0/fhtool
 proto/m0/testbed.sh up    # loopback ext4, btrfs, FAT under /var/tmp/wps-m0-$USER (sudo)
-proto/m0/m0.py            # kernel scenarios; or e.g. m0.py 4 7 for a subset
+proto/m0/m0.py            # kernel and program scenarios; or e.g. m0.py 4 7 for a subset
+                          # (24 and 25 open real editor windows; they need a desktop session)
 proto/m0/filter.py        # per-user filtering scenarios
 proto/m0/testbed.sh down
 ```

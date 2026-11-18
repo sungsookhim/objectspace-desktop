@@ -488,7 +488,7 @@ Most outside changes need no special handling: `mv` within a filesystem keeps th
 
 ### Detecting saves
 
-M0 tested how real programs save a file (`proto/m0/RESULTS.md`). GNOME Text Editor (GtkSourceView), GLib's `gio save`, LibreOffice and `sed -i` all write a temporary file and rename it over the original. vim's default renames the original away and creates a new file. Two rules cover both, and neither uses timing:
+M0 tested how real programs save a file (`proto/m0/RESULTS.md`). GNOME Text Editor and gedit (through their save libraries and their real windows), GLib's `gio save`, LibreOffice and `sed -i` all write a temporary file and rename it over the original. vim's default renames the original away and creates a new file; full vim built with `+xattr` copies the attributes across, so the ID survives, but vim-minimal and builds without `+xattr` lose it. Two rules cover both, and neither uses timing:
 
 1. **Rename-over rule.** A rename onto a name that holds an object, where the incoming file has no ID, keeps the object: same ID, settings copied to the new inode. The replaced inode is reported by its own handle (`FAN_DELETE_SELF`), so no name lookup is needed. If the incoming file has its own ID, it is a real replacement instead.
 2. **Displacement rule.** When an object is renamed within its folder, its former name is remembered as displaced. If a file without an ID is then created at that name, the two form a candidate pair. When the displaced object is later deleted while the pair exists, its identity passes to the new file: same ID, settings copied, shadows retargeted. The pair is cancelled if the new file is removed or renamed, or the displaced object is renamed again or modified.
@@ -673,7 +673,7 @@ These follow from the principles above but need not be designed in full before M
 
 - [ ] **Plug-in host protocol and lifecycle** (M5): how hosts are grouped, how objects are proxied, the security boundary for untrusted plug-ins.
 - [ ] **Helper registration at scale** (M3): M0 used one descriptor per folder and linear lookups. For many thousands of folders the helper needs a hash table by handle, and possibly subtree registration with access checks per event.
-- [ ] **Full vim and other editors** (M3): full vim (`vim-enhanced`) may copy extended attributes on save; gedit, Kate and VS Code are untested.
+- [ ] **Other editors** (M3): full vim and gedit are now tested (M0 scenarios 22–25); Kate and VS Code are not.
 - [x] **Events for moves into directories a user did not register**: decided and validated in M0; the invisible side is reported as `<hidden>`.
 - [ ] **Per-folder on-disk index for folders beyond about 1,000,000 entries** (M4), if the capped record cache proves too slow.
 - [ ] **Network filesystems** (after M5): NFS and SMB vary in extended attribute support and report no remote changes through fanotify.
