@@ -43,7 +43,11 @@ static const char *MAIN_SCHEMA =
     " vol TEXT, key TEXT, type TEXT, value BLOB, rev INTEGER, writer TEXT,"
     " lost_to_rev INTEGER, lost_to_writer TEXT, at INTEGER DEFAULT (strftime('%s','now')));"
     "CREATE TABLE IF NOT EXISTS locations ("
-    " id TEXT PRIMARY KEY, vol TEXT, path TEXT, seen INTEGER DEFAULT (strftime('%s','now')));";
+    " id TEXT PRIMARY KEY, vol TEXT, path TEXT, seen INTEGER DEFAULT (strftime('%s','now')));"
+    "CREATE TABLE IF NOT EXISTS shadows ("
+    " link_vol TEXT NOT NULL, link_rel TEXT NOT NULL, target_id TEXT NOT NULL, target_vol TEXT, target_rel TEXT,"
+    " PRIMARY KEY (link_vol, link_rel));"
+    "CREATE INDEX IF NOT EXISTS shadows_target ON shadows(target_id);";
 
 static int exec(sqlite3 *h, const char *sql)
 {
@@ -590,4 +594,79 @@ int wps_db_location_forget(wps_db *db, const char *id)
     }
     pthread_mutex_unlock(&db->mu);
     return rc;
+}
+
+/* ---------------------------------------------------------------- shadows */
+
+int wps_db_shadow_put(wps_db *db, const char *link_vol, const char *link_rel, const char *target_id,
+                      const char *target_vol, const char *target_rel)
+{
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int rc = -1;
+    if (sqlite3_prepare_v2(db->h, "INSERT OR REPLACE INTO shadows VALUES(?,?,?,?,?)", -1, &s, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, link_vol, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 2, link_rel, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 3, target_id, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 4, target_vol, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 5, target_rel, -1, SQLITE_STATIC);
+        rc = sqlite3_step(s) == SQLITE_DONE ? 0 : -1;
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return rc;
+}
+
+int wps_db_shadow_del(wps_db *db, const char *link_vol, const char *link_rel)
+{
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int rc = -1;
+    if (sqlite3_prepare_v2(db->h, "DELETE FROM shadows WHERE link_vol=? AND link_rel=?", -1, &s, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, link_vol, -1, SQLITE_STATIC);
+        sqlite3_bind_text(s, 2, link_rel, -1, SQLITE_STATIC);
+        rc = sqlite3_step(s) == SQLITE_DONE ? 0 : -1;
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return rc;
+}
+
+static int shadow_query(wps_db *db, const char *sql, const char *a, const char *b, wps_db_shadow_fn fn, void *user)
+{
+    /* Collect first: the callback may write to the database. */
+    struct srow { char lv[WPS_VOLID_MAX], lr[4096], id[64], tv[WPS_VOLID_MAX], tr[4096]; } *rows = NULL;
+    size_t n = 0, cap = 0;
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    if (sqlite3_prepare_v2(db->h, sql, -1, &s, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, a, -1, SQLITE_STATIC);
+        if (b) sqlite3_bind_text(s, 2, b, -1, SQLITE_STATIC);
+        while (sqlite3_step(s) == SQLITE_ROW) {
+            if (n == cap) { cap = cap ? cap * 2 : 8; rows = realloc(rows, cap * sizeof *rows); }
+            struct srow *r = &rows[n++];
+            snprintf(r->lv, sizeof r->lv, "%s", sqlite3_column_text(s, 0));
+            snprintf(r->lr, sizeof r->lr, "%s", sqlite3_column_text(s, 1));
+            snprintf(r->id, sizeof r->id, "%s", sqlite3_column_text(s, 2));
+            snprintf(r->tv, sizeof r->tv, "%s", sqlite3_column_text(s, 3) ? (const char *)sqlite3_column_text(s, 3) : "");
+            snprintf(r->tr, sizeof r->tr, "%s", sqlite3_column_text(s, 4) ? (const char *)sqlite3_column_text(s, 4) : "");
+        }
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    for (size_t i = 0; i < n; i++) fn(rows[i].lv, rows[i].lr, rows[i].id, rows[i].tv, rows[i].tr, user);
+    free(rows);
+    return (int)n;
+}
+
+int wps_db_shadows_for(wps_db *db, const char *target_id, wps_db_shadow_fn fn, void *user)
+{
+    return shadow_query(db, "SELECT * FROM shadows WHERE target_id=?", target_id, NULL, fn, user);
+}
+
+int wps_db_shadows_under(wps_db *db, const char *target_vol, const char *rel_prefix, wps_db_shadow_fn fn, void *user)
+{
+    char like[4200];
+    snprintf(like, sizeof like, "%s/%%", rel_prefix);
+    return shadow_query(db, "SELECT * FROM shadows WHERE target_vol=? AND target_rel LIKE ?", target_vol, like, fn, user);
 }

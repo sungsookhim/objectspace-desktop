@@ -6,6 +6,7 @@
  *   wpsctl resolve TARGET
  *   wpsctl call [--expect N] TARGET METHOD [ARG...]
  *   wpsctl describe CLASS
+ *   wpsctl shadow TARGET FOLDER
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -30,7 +31,8 @@ static int usage(void)
             "usage: wpsctl ping|stats|flush|sync|scan|shutdown\n"
             "       wpsctl resolve TARGET\n"
             "       wpsctl call [--expect N] TARGET METHOD [ARG...]\n"
-            "       wpsctl describe CLASS\n");
+            "       wpsctl describe CLASS\n"
+            "       wpsctl shadow TARGET FOLDER\n");
     return 2;
 }
 
@@ -99,6 +101,13 @@ int main(int argc, char **argv)
         cb_text(&b, "id"); cb_int(&b, 1);
         cb_text(&b, "op"); cb_text(&b, op);
         cb_text(&b, op[0] == 'r' ? "target" : "class"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "shadow")) {
+        if (argc != 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "shadow");
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "folder"); cb_text(&b, argv[3]);
     } else if (!strcmp(op, "call")) {
         long long expect = -1;
         if (i + 1 < argc && !strcmp(argv[i], "--expect")) { expect = atoll(argv[i + 1]); i += 2; }

@@ -295,6 +295,20 @@ bool wpo_subclass_of(const wpo_class *cls, const wpo_class *of)
     return false;
 }
 
+#ifdef WPO_CHECKED
+#include <stdio.h>
+#endif
+
+void wpo_bad_call(const wpo_object *obj, const wpo_class *intro, uint32_t k)
+{
+#ifdef WPO_CHECKED
+    fprintf(stderr, "wpo: static call of %s method %u on %s %s\n", intro->name, (unsigned)k,
+            obj ? "an object of class" : "a NULL object", obj ? obj->cls->name : "");
+#endif
+    (void)obj; (void)intro; (void)k;
+    abort();
+}
+
 bool wpo_is_a(const wpo_object *obj, const wpo_class *cls)
 {
     return obj && wpo_subclass_of(obj->cls, cls);

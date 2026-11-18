@@ -17,7 +17,9 @@
 #include "WPFileSystem.h"
 #include "WPFolder.h"
 #include "WPObject.h"
+#include "shadows.h"
 #include "tracker.h"
+#include "WPShadow.h"
 #include "wps_state.h"
 
 #define LOCK_WAIT_MS 200
@@ -230,6 +232,25 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
     snprintf(ld->rel, sizeof ld->rel, "%s", wps_volume_relpath(&v, ld->path));
     ld->owned = ld->st.st_uid == geteuid();
     ld->writable = access(ld->path, W_OK) == 0 && !v.ro;
+    if (S_ISLNK(ld->st.st_mode)) {
+        ssize_t n = readlink(ld->path, ld->link_target, sizeof ld->link_target - 1);
+        ld->link_target[n < 0 ? 0 : n] = 0;
+        /* A managed shadow is recorded on its folder: shadow:<name> = target ID. */
+        char dir[PATH_MAX];
+        snprintf(dir, sizeof dir, "%s", ld->path);
+        char *slash = strrchr(dir, '/');
+        if (slash && slash != dir) {
+            *slash = 0;
+            wps_props fp;
+            char key[NAME_MAX + 16], *tid = NULL;
+            snprintf(key, sizeof key, "shadow:%s", slash + 1);
+            if (wps_attr_read(dir, "WPFolder", &fp) == WPS_A_OK && wps_props_str(&fp, key, &tid) &&
+                strlen(tid) == WPS_ID_LEN)
+                memcpy(ld->shadow_of, tid, WPS_ID_LEN + 1);
+            free(tid);
+            wps_props_free(&fp);
+        }
+    }
 
     /* Does the filesystem take user attributes? Probe the user namespace
      * itself: FAT, for one, lists security labels but refuses user.*. */
@@ -281,11 +302,13 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
 
 /* ------------------------------------------------- objects (loop thread) */
 
-static wpo_class *class_for_mode(mode_t m)
+static wpo_class *class_for(const wps_loaded *ld)
 {
+    mode_t m = ld->st.st_mode;
     if (S_ISDIR(m)) return WPFolderClass;
     if (S_ISREG(m)) return WPDataFileClass;
-    return WPFileSystemClass;
+    if (S_ISLNK(m) && ld->shadow_of[0]) return WPShadowClass;
+    return WPFileSystemClass;   /* user-made symlinks and special files */
 }
 
 static void apply_loaded(sobj *s, wps_loaded *ld)
@@ -310,7 +333,13 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
 {
     if (ld->err) return NULL;
     sobj *s = by_inode(ld->st.st_dev, ld->st.st_ino);
+    if (!s && S_ISLNK(ld->st.st_mode)) {
+        /* A shadow's symlink is replaced when it is rewritten: same object. */
+        s = wps_sobj_by_path(ld->path);
+        if (s) { s->dev = ld->st.st_dev; s->ino = ld->st.st_ino; }
+    }
     if (s) {
+        if (S_ISDIR(ld->st.st_mode)) wps_shadows_folder_loaded(ld->path, ld);
         /* Changed on disk since we read it (another process or user)? Reload,
          * unless we have unsaved changes of our own; our save merges then. */
         bool changed = s->ctime.tv_sec != ld->st.st_ctim.tv_sec || s->ctime.tv_nsec != ld->st.st_ctim.tv_nsec ||
@@ -328,11 +357,11 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     }
     s = calloc(1, sizeof *s);
     if (!s) return NULL;
-    s->o = wpo_new(class_for_mode(ld->st.st_mode));   /* replacements apply */
+    s->o = wpo_new(class_for(ld));   /* replacements apply */
     if (!s->o) { free(s); return NULL; }
     s->dev = ld->st.st_dev;
     s->ino = ld->st.st_ino;
-    WPFileSystem_wpSetPath(s->o, ld->path);
+    if (wpo_is_a(s->o, WPFileSystemClass)) WPFileSystem_wpSetPath(s->o, ld->path);
     apply_loaded(s, ld);
     objs[nobjs++] = s;
     /* Follow it from now on: its folder's entries, and a folder's own. */
@@ -340,7 +369,10 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     snprintf(dir, sizeof dir, "%s", ld->path);
     char *slash = strrchr(dir, '/');
     if (slash && slash != dir) { *slash = 0; wps_tracker_watch(dir); }
-    if (S_ISDIR(ld->st.st_mode)) wps_tracker_watch(ld->path);
+    if (S_ISDIR(ld->st.st_mode)) {
+        wps_tracker_watch(ld->path);
+        wps_shadows_folder_loaded(ld->path, ld);
+    }
     wps_tracker_object_at(ld->path);
     return s->o;
 }
@@ -665,9 +697,10 @@ void wps_sobj_set_path(sobj *s, const char *path)
         snprintf(s->vol, sizeof s->vol, "%s", v.uuid);
         snprintf(s->rel, sizeof s->rel, "%s", wps_volume_relpath(&v, path));
     }
-    WPFileSystem_wpSetPath(s->o, path);
+    if (wpo_is_a(s->o, WPFileSystemClass)) WPFileSystem_wpSetPath(s->o, path);
     WPObject_wpObjectChanged(s->o);
     const char *id = WPObject_data(s->o)->id;
+    wps_shadows_target_moved(id, path);   /* shadows follow, into the trash too */
     if (id[0]) {
         struct loc_job *j = calloc(1, sizeof *j);
         memcpy(j->id, id, sizeof j->id);

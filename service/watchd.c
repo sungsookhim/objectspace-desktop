@@ -49,7 +49,7 @@
 /* How a filesystem is watched: one filesystem-wide mark, or (where the
  * kernel refuses that, e.g. btrfs subvolumes) one mark per registered
  * folder. */
-struct fsmark { __kernel_fsid_t fsid; int fd; bool per_folder; };
+struct fsmark { __kernel_fsid_t fsid; char mnt[PATH_MAX]; bool per_folder; };
 
 struct reg {
     struct reg *hnext;          /* hash chain */
@@ -157,17 +157,39 @@ static bool client_can_open(struct client *c, const char *path, bool isdir)
     return ok;
 }
 
+/* An fd on the filesystem, for open_by_handle_at. Opened only when needed
+ * and closed at once: holding one would keep the volume from unmounting. */
+static int fs_open(struct fsmark *f)
+{
+    /* Not O_PATH: open_by_handle_at refuses an O_PATH mount fd (EBADF). */
+    int fd = open(f->mnt, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    struct statfs sf;
+    if (fstatfs(fd, &sf) < 0 || memcmp(&sf.f_fsid, &f->fsid, sizeof f->fsid)) { close(fd); return -1; }
+    return fd;
+}
+
 static bool reg_path(struct reg *r, char *out, size_t n)
 {
     struct fsmark *f = fs_of(&r->fsid);
     if (!f) return false;
+    int mfd = fs_open(f);
+    if (mfd < 0) {
+        if (getenv("WPS_TRACE")) printf("wps-watchd: fs_open(%s) failed: %s\n", f->mnt, strerror(errno));
+        return false;
+    }
     _Alignas(struct file_handle) unsigned char buf[sizeof(struct file_handle) + HSZ];
     struct file_handle *fh = (struct file_handle *)buf;
     fh->handle_type = r->htype;
     fh->handle_bytes = r->hlen;
     memcpy(buf + offsetof(struct file_handle, f_handle), r->h, r->hlen);
-    int fd = open_by_handle_at(f->fd, fh, O_PATH | O_CLOEXEC);
-    if (fd < 0) return false;
+    int fd = open_by_handle_at(mfd, fh, O_PATH | O_CLOEXEC);
+    int e = errno;
+    close(mfd);
+    if (fd < 0) {
+        if (getenv("WPS_TRACE")) printf("wps-watchd: open_by_handle_at via %s failed: %s\n", f->mnt, strerror(e));
+        return false;
+    }
     char lp[64];
     snprintf(lp, sizeof lp, "/proc/self/fd/%d", fd);
     ssize_t l = readlink(lp, out, n - 1);
@@ -189,8 +211,10 @@ static void reg_unlink(struct reg *r)
 static bool reg_valid(struct reg *r)
 {
     if (r->gen == access_gen) return r->ok;
-    char path[PATH_MAX];
-    bool ok = reg_path(r, path, sizeof path) && client_can_open(r->c, path, r->isdir);
+    char path[PATH_MAX] = "";
+    bool found = reg_path(r, path, sizeof path);
+    bool ok = found && client_can_open(r->c, path, r->isdir);
+    if (getenv("WPS_TRACE")) printf("wps-watchd: recheck reg %d: found=%d path=%s ok=%d\n", r->idx, found, path, ok);
     r->gen = access_gen;
     r->ok = ok;
     if (ok) return true;
@@ -259,8 +283,23 @@ static void do_register(struct client *c, int fd)
         f = &fss[nfs++];
         f->fsid = fsid;
         f->per_folder = per_folder;
-        f->fd = open(path, isdir ? (O_PATH | O_DIRECTORY | O_CLOEXEC) : (O_PATH | O_CLOEXEC));
-        if (f->fd < 0) f->fd = dup(fd);
+        /* Remember the mount point (not an fd: that would pin the volume). */
+        snprintf(f->mnt, sizeof f->mnt, "%s", path);
+        FILE *mi = fopen("/proc/self/mountinfo", "r");
+        char line[8192], mp[PATH_MAX];
+        size_t best = 0;
+        while (mi && fgets(line, sizeof line, mi))
+            if (sscanf(line, "%*u %*u %*u:%*u %*s %4095s", mp) == 1) {
+                size_t l = strlen(mp);
+                if ((l == 1 || (strncmp(path, mp, l) == 0 && (path[l] == '/' || path[l] == 0))) && l >= best) {
+                    struct statfs mf;
+                    if (statfs(mp, &mf) == 0 && !memcmp(&mf.f_fsid, &fsid, sizeof fsid)) {
+                        snprintf(f->mnt, sizeof f->mnt, "%s", mp);
+                        best = l;
+                    }
+                }
+            }
+        if (mi) fclose(mi);
         printf("wps-watchd: watching filesystem of %s %s\n", path, per_folder ? "per folder" : "as a whole");
     }
     if (f->per_folder &&
@@ -411,6 +450,8 @@ static void route(struct fanotify_event_metadata *m)
         access_gen++;
     char ms[160];
     mask_str(m->mask, ms, sizeof ms);
+    if (getenv("WPS_TRACE"))
+        printf("wps-watchd: event %s self=%d dir=%d old=%d new=%d\n", ms, self.present, dir.present, old.present, nw.present);
     for (int s = 0; s < MAX_CLIENTS; s++) {
         struct client *c = clients[s];
         if (!c) continue;

@@ -43,6 +43,10 @@ typedef struct {
     char locator[PATH_MAX + 16];
     struct { char cls[64]; wps_props props; } c[WPS_MAX_CLASSES];
     int nc;
+    /* Symlinks: where it points, and the target's ID if the folder records
+     * it as a managed shadow (design: Links). */
+    char link_target[PATH_MAX];
+    char shadow_of[WPS_ID_LEN + 1];
 } wps_loaded;
 
 void wps_objects_init(const wps_env *env, wps_db *db, wpo_loop *loop, int save_delay_ms);

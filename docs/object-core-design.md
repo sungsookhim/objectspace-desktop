@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.9 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.10 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -500,6 +500,7 @@ Most outside changes need no special handling: `mv` within a filesystem keeps th
 | `cp -a` or a restore from backup | `FAN_CREATE` carrying an existing ID; the original stays | Both share the ID until either is changed (its modification time differs from what the copy preserved, or its WPS settings change): then a copy, and the new file gets a new ID with its settings kept |
 | A tool that drops extended attributes (moving to FAT, some file managers) | `FAN_CREATE` with no ID, `FAN_DELETE` of an object elsewhere | Best effort: pair by name and size, and say so in the object's settings |
 | `cp` without `-a` | `FAN_CREATE`, a new handle with no ID | Nothing is registered until WPS stores something for it |
+| Moved to the trash (`~/.local/share/Trash/files`, `<volume>/.Trash-<uid>/files`) | `FAN_RENAME` into the trash folder | Not a deletion: the object keeps its ID and settings, its shadows follow and are reported as in the trash; a restore is a move back |
 | `rm` | `FAN_DELETE_SELF` once the last link is gone | Remove the object and its managed shadows; keep its row for 7 days so an undo or a restore can reclaim the ID |
 | Hard link split by an atomic save | Rename onto a name whose inode had other links; the surviving inode reports `FAN_ATTRIB` as its link count drops | Keep both; note it in Properties only if the object has user settings |
 | Volume unplugged or unmounted | Unmount, no deletes | Mark its objects unavailable; never delete them |
@@ -730,7 +731,7 @@ These follow from the principles above but need not be designed in full before M
 - [x] Class interface files: decided in M1 — a small custom format (`.wpi`), documented in `tools/wpoc.py`. An IDL subset brought tooling we would not use.
 - [x] State for removable volumes: decided 2026-11-18. A per-user database on the volume, synchronised git-style with a full copy in the user's main database (see Persistence: State that travels with a volume).
 - [x] `wps-watchd`: decided 2026-11-18. Optional. Without it the service uses inotify on the folders it tracks, and says so in its status.
-- [ ] How should objects inside the trash behave: kept with their IDs until emptied, or treated as deleted?
+- [x] Trash: decided 2026-11-18. An object moved to the trash keeps its ID and settings; shadows to it follow it into the trash, are reported as "in the trash", and work again after a restore. Emptying the trash, or deleting permanently, is the real deletion.
 - [x] Backup names: decided 2026-11-18. A setting, off by default (`backup-names` in the configuration folder). When on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save at once.
 - [x] Duplicate IDs: decided 2026-11-18. No timer. A file that appears with another file's ID shares it until either file is changed (content or WPS settings), which makes it a copy with a new ID, or until the original is deleted, which makes it a move.
 - [ ] Should plug-ins ever run in-process, even when trusted, or is the speed gain not worth the risk?
@@ -739,6 +740,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.10 | 2026-11-18 | Decided: trashed objects keep their ID and settings until the trash is emptied; shadows follow them |
 | 0.9 | 2026-11-18 | M3 done: tracker and helper; per-folder marks on btrfs subvolumes; settled-duplicate rule; ID search for objects that leave view |
 | 0.8 | 2026-11-18 | Decided: backup-name rule as an option, off by default; `wps-watchd` optional; duplicate IDs shared until either file changes (no timer) |
 | 0.7 | 2026-11-18 | M2 done: service, client, persistence, overlays, volume sync; simplifications listed under M2 |

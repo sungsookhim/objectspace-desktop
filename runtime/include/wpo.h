@@ -163,7 +163,6 @@ wpo_status wpo_replace_class(const char *original, const char *replacement);
 size_t wpo_class_count(void);
 wpo_class *wpo_class_at(size_t i);
 
-bool wpo_subclass_of(const wpo_class *cls, const wpo_class *of);
 bool wpo_is_a(const wpo_object *obj, const wpo_class *cls);
 
 /* Create through the class method wpclsNew, so replacements apply. */
@@ -179,9 +178,20 @@ static inline void *wpo_data(wpo_object *obj, const wpo_class *cls)
     return (char *)obj + cls->data_offset;
 }
 
-/* Slot of method `k` introduced by class `intro`, as seen by `obj`. */
+/* Reports a static call on an object of the wrong class, then aborts.
+ * Only used when built with WPO_CHECKED (all test builds). */
+void wpo_bad_call(const wpo_object *obj, const wpo_class *intro, uint32_t k);
+bool wpo_subclass_of(const wpo_class *cls, const wpo_class *of);
+
+/* Slot of method `k` introduced by class `intro`, as seen by `obj`. A
+ * static call is only valid on an instance of `intro` (or a subclass); with
+ * WPO_CHECKED, a wrong call stops at once with a message instead of
+ * jumping through another class's slot. */
 static inline wpo_fn wpo_slot(const wpo_object *obj, const wpo_class *intro, uint32_t k)
 {
+#ifdef WPO_CHECKED
+    if (!obj || !wpo_subclass_of(obj->cls, intro)) wpo_bad_call(obj, intro, k);
+#endif
     return obj->cls->mtab[intro->mbase + k];
 }
 

@@ -83,4 +83,14 @@ int wps_db_locations(wps_db *db, wps_db_loc_fn fn, void *user);
  * the ID) but mark it, so the scan stops looking for it. */
 int wps_db_location_forget(wps_db *db, const char *id);
 
+/* Shadows: managed symlinks (link) pointing at objects (target). */
+typedef void (*wps_db_shadow_fn)(const char *link_vol, const char *link_rel, const char *target_id,
+                                 const char *target_vol, const char *target_rel, void *user);
+int wps_db_shadow_put(wps_db *db, const char *link_vol, const char *link_rel, const char *target_id,
+                      const char *target_vol, const char *target_rel);
+int wps_db_shadow_del(wps_db *db, const char *link_vol, const char *link_rel);
+int wps_db_shadows_for(wps_db *db, const char *target_id, wps_db_shadow_fn fn, void *user);
+/* Shadows whose target lies under <rel_prefix>/ on target_vol (a folder moved). */
+int wps_db_shadows_under(wps_db *db, const char *target_vol, const char *rel_prefix, wps_db_shadow_fn fn, void *user);
+
 #endif

@@ -10,6 +10,7 @@
  *   {op:"flush"}       reply once every pending change is written
  *   {op:"sync"}        rescan volumes and synchronise portable ones
  *   {op:"scan"}        run the catch-up scan now
+ *   {op:"shadow", target, folder}   create a shadow (managed symlink)
  *   {op:"stats"}
  *   {op:"shutdown"}
  * Every request carries an "id" that the reply echoes; replies are
@@ -38,6 +39,8 @@
 #include "db.h"
 #include "env.h"
 #include "objects.h"
+#include "shadows.h"
+#include "WPShadow.h"
 #include "tracker.h"
 #include "volumes.h"
 #include "wpo.h"
@@ -149,17 +152,30 @@ static void reply_error(struct client *c, int64_t id, const char *error, const c
 
 /* ------------------------------------------------------------- values */
 
-static void put_object(cbuf *b, wpo_object *o)
+static void put_object_depth(cbuf *b, wpo_object *o, int depth);
+
+static void put_object(cbuf *b, wpo_object *o) { put_object_depth(b, o, 0); }
+
+static void put_object_depth(cbuf *b, wpo_object *o, int depth)
 {
     if (!o) { cb_null(b); return; }
     const char *path = wps_object_path(o);
     char *title = wpo_is_a(o, WPObjectClass) ? WPObject_wpQueryTitle(o) : NULL;
-    cb_map(b, 5);
+    bool shadow = wpo_is_a(o, WPShadowClass);
+    cb_map(b, 6 + (shadow ? 2 : 0));
     cb_text(b, "path"); path ? cb_text(b, path) : cb_null(b);
     cb_text(b, "id"); cb_text(b, wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "");
     cb_text(b, "class"); cb_text(b, o->cls->name);
     cb_text(b, "title"); title ? cb_text(b, title) : cb_null(b);
     cb_text(b, "changes"); cb_uint(b, wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->changes : 0);
+    cb_text(b, "trashed"); cb_bool(b, path && wps_in_trash(path));
+    if (shadow) {
+        wpo_object *t = WPShadow_data(o)->target;
+        cb_text(b, "target");
+        if (t && depth == 0) put_object_depth(b, t, 1);
+        else cb_null(b);
+        cb_text(b, "available"); cb_bool(b, t != NULL);
+    }
     free(title);
 }
 
@@ -190,6 +206,7 @@ struct req {
     const char *op;
     char target[PATH_MAX];
     wps_loaded tgt;
+    wps_loaded shadow_target;    /* a shadow's target, when the target is a shadow */
     int nobj;
     char objpath[MAX_ARGS][PATH_MAX];
     wps_loaded *objs;
@@ -198,6 +215,7 @@ struct req {
 static void req_free(struct req *r)
 {
     wps_loaded_free(&r->tgt);
+    wps_loaded_free(&r->shadow_target);
     for (int i = 0; r->objs && i < r->nobj; i++) wps_loaded_free(&r->objs[i]);
     free(r->objs);
     cv_free(&r->msg);
@@ -209,6 +227,11 @@ static void prepare_work(void *arg)    /* worker */
 {
     struct req *r = arg;
     wps_load(r->target, false, &r->tgt);
+    if (!r->tgt.err && r->tgt.shadow_of[0]) {
+        char t[WPS_ID_LEN + 4];
+        snprintf(t, sizeof t, "id:%s", r->tgt.shadow_of);
+        wps_load(t, false, &r->shadow_target);   /* fails if its volume is not mounted */
+    }
     for (int i = 0; i < r->nobj; i++) wps_load(r->objpath[i], true, &r->objs[i]);
 }
 
@@ -294,6 +317,11 @@ static void prepare_done(void *arg)    /* loop */
         return;
     }
     wpo_object *o = wps_object_from_loaded(&r->tgt);
+    if (o && wpo_is_a(o, WPShadowClass)) {
+        wpo_object *t = r->tgt.shadow_of[0] && !r->shadow_target.err && r->shadow_target.path[0]
+                            ? wps_object_from_loaded(&r->shadow_target) : NULL;
+        WPShadow_wpSetTarget(o, t);   /* NULL: unavailable (volume not mounted, or gone) */
+    }
     if (!o) reply_error(r->c, r->id, "failed", "cannot create the object");
     else if (strcmp(r->op, "resolve") == 0) reply_ok_object(r, o, NULL);
     else do_call(r, o);
@@ -485,6 +513,15 @@ static void on_mounts(int fd, short rev, void *arg)
 
 static void scanned(void *arg, const char *report) { reply_simple_ok(arg, report); }
 
+static void shadow_made(void *arg, const char *link, const char *error)
+{
+    struct simple *s = arg;
+    if (link) { reply_simple_ok(s, link); return; }
+    if (!s->c->dead) reply_error(s->c, s->id, "failed", error);
+    client_unref(s->c);
+    free(s);
+}
+
 static void quit_after_flush(void *arg) { (void)arg; quitting = true; wpo_loop_quit(loop); }
 
 static void shutdown_flushed(void *arg)
@@ -514,6 +551,14 @@ static void handle(struct client *c, cv *msg)
         if (op[0] == 'f') wps_objects_flush(flushed, s);
         else if (op[1] == 'h') wps_objects_flush(shutdown_flushed, s);
         else start_volume_job(s);
+    } else if (strcmp(op, "shadow") == 0) {
+        const char *t = cv_text(msg, "target"), *f = cv_text(msg, "folder");
+        if (!t || !f) { reply_error(c, id, "bad request", "shadow needs target and folder"); cv_free(msg); return; }
+        struct simple *s = calloc(1, sizeof *s);
+        s->c = c; s->id = id; c->refs++;
+        /* An ID of an object we hold: use where it is now. */
+        sobj *known = strncmp(t, "id:", 3) == 0 ? wps_sobj_by_id(t + 3) : NULL;
+        wps_shadow_create(known ? known->path : t, f, shadow_made, s);
     } else if (strcmp(op, "scan") == 0) {
         struct simple *s = calloc(1, sizeof *s);
         s->c = c; s->id = id; c->refs++;
@@ -675,6 +720,7 @@ int main(void)
     wps_volumes vs;
     if (wps_volumes_scan(&vs, &env) == 0) wps_volumes_replace(&vs);
     start_volume_job(NULL);
+    wps_shadows_init(loop, db);
     wps_tracker_init(loop, &env, db);
     wps_tracker_stats ts;
     wps_tracker_get_stats(&ts);
