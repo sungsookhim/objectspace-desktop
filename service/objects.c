@@ -341,6 +341,7 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     char *slash = strrchr(dir, '/');
     if (slash && slash != dir) { *slash = 0; wps_tracker_watch(dir); }
     if (S_ISDIR(ld->st.st_mode)) wps_tracker_watch(ld->path);
+    wps_tracker_object_at(ld->path);
     return s->o;
 }
 

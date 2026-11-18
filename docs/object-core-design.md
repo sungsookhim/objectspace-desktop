@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.8 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.9 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -696,7 +696,13 @@ The core takes about 3.5–4 months of focused work for one developer. Durations
     - An object passed as a method argument is given an ID when passed.
     - A volume is identified by its filesystem UUID, plus `:<root>` for a btrfs subvolume or bind mount (for example `/home`).
     - A disk's `.wps` folder is created by the first user who can write the disk's root; if nobody can, travelling state stays on each computer until it can be created.
-4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26, 27, 33 and 36 pass.
+4. **M3: Change tracking — done.** `service/tracker.c` (events from `wps-watchd` or inotify, the identity rules, catch-up scan) and `service/watchd.c` (the real helper, with a hardened systemd unit). Scenarios 4–9, 11, 13–15, 26, 27, 33 and 36, plus the backup-names case, pass in both modes: 30 runs, no sanitizer reports (`make m3`). Scenarios 3, 4 and 7 check object identity here; their shadow parts move to M4 with shadows. Findings and choices made while building it:
+    - **btrfs subvolumes refuse fanotify filesystem marks** (`EXDEV`, still on kernel 7.3), and Fedora's `/home` is one. The helper then marks each registered folder instead; the service falls back to inotify for any folder the helper refuses.
+    - **Copy tools set the ID after creating the file.** A file created without an ID is checked again when its first attributes arrive.
+    - **A duplicate is settled only when the copy is complete**, recognised by its modification time matching the original's (`mv` and `cp -a` set it last). Changes before that are the copy itself.
+    - **Moves out of the watched folders** (inotify sees only one side; the helper hides the other user's side) are followed by searching for the object's ID: near where it was first, then the whole volume.
+    - **A save that met a locked file** goes to the overlay and is retried into the shared attribute with backoff, then the overlay copy is removed.
+    - **Not yet:** the btrfs `find-new` shortcut for the catch-up scan needs root, so it belongs in the helper; the scan walks the tree for now, and only when an object is missing.
 5. **M4: Scale, shadows, object files and jobs (3–4 weeks).** Streaming folder listing, selections, the job manager with journal and logout handling, managed symlinks with folder records, `.wpobj` files, no-replace operations, unavailable volumes. Scenarios 3, 6, 12, 28–32, 34, 35, 38, 39 and 40 pass.
 6. **M5: API, programs and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system object folders, root sessions, MIME classes, templates. Scenarios 17–20, 37 and 41 pass; all 41 now pass. GUI design starts from here.
 
@@ -733,6 +739,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.9 | 2026-11-18 | M3 done: tracker and helper; per-folder marks on btrfs subvolumes; settled-duplicate rule; ID search for objects that leave view |
 | 0.8 | 2026-11-18 | Decided: backup-name rule as an option, off by default; `wps-watchd` optional; duplicate IDs shared until either file changes (no timer) |
 | 0.7 | 2026-11-18 | M2 done: service, client, persistence, overlays, volume sync; simplifications listed under M2 |
 | 0.6 | 2026-11-18 | Decided: state travels with removable volumes in per-user volume databases, synchronised git-style with the main database; WPS identity per user; four new scenarios (25a–25d) |

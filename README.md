@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: M0 (kernel prototypes), M1 (object runtime) and M2 (persistence, service, multi-user, travelling volumes) done.
+Status: M0–M3 done: kernel prototypes, object runtime, persistence and the service, change tracking. Next: M4 (scale, shadows, object files, jobs).
 
 ## Documents
 
@@ -19,8 +19,9 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 1. M0: kernel-behaviour and per-user filtering prototypes. Done; findings folded into design v0.4.
 2. M1: object runtime, main loop, class generator, core classes. Done.
 3. M2: persistence, identity, concurrency, `wpsd` and `wpsctl`, state that travels with removable volumes. Done.
-4. M3–M5: change tracking, shadows and jobs, API and plug-in host.
-5. Then design the GUI on top of the object core.
+4. M3: change tracking with `wps-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
+5. M4–M5: scale, shadows, object files and jobs; API and plug-in host.
+6. Then design the GUI on top of the object core.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 
@@ -30,7 +31,7 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 |---|---|
 | `runtime/` | `libwpo`: the object runtime (`wpo.h`, `wpo.c`: C11, C library only), the main loop (`wpo_loop.h`, POSIX implementation) and plug-in loading |
 | `tools/wpoc.py` | Generates C headers and registration code from `.wpi` class files |
-| `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), attribute store, database and volume sync, CBOR protocol |
+| `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), `wps-watchd` (the optional root helper), change tracker, attribute store, database and volume sync, CBOR protocol |
 | `classes/` | The core classes: `WPObject`, `WPFileSystem`, `WPDataFile`, `WPFolder`, `WPAbstract`, `WPProgram`, `WPShadow` |
 | `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
 | `proto/m0/` | M0 kernel and filtering prototypes |
@@ -42,6 +43,7 @@ make          # runtime, classes, service, plug-ins, tests (needs gcc, python3, 
 make test     # unit tests
 make check    # unit tests + strict C11 core check + ThreadSanitizer run of the loop
 make m2       # M2 scenarios: real services on loopback ext4/btrfs/FAT, several users (uses sudo)
+make m3       # M3 change-tracking scenarios, with inotify and with wps-watchd (uses sudo)
 ```
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.

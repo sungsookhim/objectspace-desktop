@@ -4,6 +4,7 @@
 #   make test     run the unit tests (with AddressSanitizer and UBSan if installed)
 #   make check    tests + strict C11 core check + ThreadSanitizer loop run
 #   make m2       M2 scenarios with real services on loopback filesystems (sudo)
+#   make m3       M3 change-tracking scenarios, inotify and wps-watchd modes (sudo)
 #   make m0       build the M0 prototypes (see proto/m0)
 #   make clean
 
@@ -121,10 +122,15 @@ m2: all
 	proto/m0/testbed.sh up
 	tests/m2/m2.py; rc=$$?; proto/m0/testbed.sh down; exit $$rc
 
+# M3 scenarios in both tracking modes (inotify, and wps-watchd as root).
+m3: all
+	proto/m0/testbed.sh up
+	tests/m3/m3.py; rc=$$?; proto/m0/testbed.sh down; exit $$rc
+
 m0:
 	$(MAKE) -C proto/m0 all
 
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test check m0 m2 clean
+.PHONY: all plugins test check m0 m2 m3 clean

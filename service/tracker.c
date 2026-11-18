@@ -343,15 +343,35 @@ struct dup {
     char id[WPS_ID_LEN + 1];
     sobj *orig;
     char newpath[PATH_MAX];
-    struct timespec orig_mtime, new_mtime;
+    struct timespec orig_mtime;   /* the original's, when the duplicate appeared */
+    bool settled;                 /* the copy is complete: its mtime equals the original's */
 };
 static struct displaced *disp;
 static size_t ndisp;
 static struct dup *dups;
 static size_t ndups;
 
+/* Files created recently that carry no ID yet: copy tools (mv across
+ * filesystems, cp -a) set the attributes after creating the file, so an
+ * attribute change on one of these is checked for an ID again. */
+#define RECENT 256
+static char recent[RECENT][PATH_MAX];
+static size_t recent_next;
+
+static void recent_add(const char *path) { snprintf(recent[recent_next++ % RECENT], PATH_MAX, "%s", path); }
+
+static bool recent_take(const char *path)
+{
+    for (size_t i = 0; i < RECENT; i++)
+        if (recent[i][0] && strcmp(recent[i], path) == 0) { recent[i][0] = 0; return true; }
+    return false;
+}
+
 static void disp_remove(size_t i) { disp[i] = disp[--ndisp]; }
 static void dup_remove(size_t i) { dups[i] = dups[--ndups]; }
+
+/* An object now exists at `path`: it is no longer an unknown new file. */
+void wps_tracker_object_at(const char *path) { recent_take(path); }
 
 void wps_tracker_forget(sobj *s)
 {
@@ -523,19 +543,25 @@ static void job_done(void *arg)
     if (j->target && !target_alive(j->target)) j->target = NULL;
     switch (j->kind) {
     case J_PROBE_CREATE:
+        if (!j->err && !j->id[0] && S_ISREG(j->st.st_mode)) recent_add(j->path);
         if (!j->err && j->id[0]) {
             /* A file appeared carrying an ID. Someone else's? Then it is a
              * copy or a move in progress: shared until one changes or the
              * original goes away (design decision 2026-11-18). */
             sobj *owner = wps_sobj_by_id(j->id);
-            if (owner && strcmp(owner->path, j->path) != 0) {
+            bool saving = false;   /* the new half of a vim-style save, not a copy */
+            for (size_t i = 0; i < ndisp && !saving; i++)
+                saving = disp[i].obj == owner && disp[i].paired && strcmp(disp[i].newpath, j->path) == 0;
+            if (owner && !saving && strcmp(owner->path, j->path) != 0) {
                 dups = realloc(dups, (ndups + 1) * sizeof *dups);
                 struct dup *d = &dups[ndups++];
                 memcpy(d->id, j->id, sizeof d->id);
                 d->orig = owner;
                 snprintf(d->newpath, sizeof d->newpath, "%s", j->path);
                 d->orig_mtime = owner->mtime;
-                d->new_mtime = j->st.st_mtim;
+                /* mv and cp -a give the copy the original's modification
+                 * time when they finish; until then it is still being copied. */
+                d->settled = j->st.st_mtim.tv_sec == owner->mtime.tv_sec && j->st.st_mtim.tv_nsec == owner->mtime.tv_nsec;
             }
         }
         break;
@@ -586,10 +612,14 @@ static void job_done(void *arg)
         for (size_t i = 0; i < ndups; i++) {
             struct dup *d = &dups[i];
             if (strcmp(d->id, j->dup_id) != 0) continue;
-            bool changed = j->err ||
-                j->st.st_mtim.tv_sec != d->new_mtime.tv_sec || j->st.st_mtim.tv_nsec != d->new_mtime.tv_nsec ||
-                (j->target && (j->st2.st_mtim.tv_sec != d->orig_mtime.tv_sec ||
-                               j->st2.st_mtim.tv_nsec != d->orig_mtime.tv_nsec));
+            if (d->orig && strcmp(d->orig->path, d->newpath) == 0) { dup_remove(i); break; }   /* same place now */
+            bool orig_changed = j->target && (j->st2.st_mtim.tv_sec != d->orig_mtime.tv_sec ||
+                                              j->st2.st_mtim.tv_nsec != d->orig_mtime.tv_nsec);
+            bool same_as_orig = j->st.st_mtim.tv_sec == d->orig_mtime.tv_sec &&
+                                j->st.st_mtim.tv_nsec == d->orig_mtime.tv_nsec;
+            if (!d->settled && same_as_orig) d->settled = true;   /* the copy just finished */
+            /* Either side changed after the copy finished: it is a copy. */
+            bool changed = orig_changed || (d->settled && !same_as_orig);
             if (changed && !j->err) {
                 struct job *n = calloc(1, sizeof *n);
                 n->kind = J_NEWID;
@@ -659,9 +689,16 @@ static void on_saved(sobj *s)
 
 static void scan_soon(void);
 
+static bool trace;
+
 static void apply(const tev *e)
 {
     stats.events++;
+    if (trace) {
+        static const char *k[] = { "CREATE", "DELETE", "MOVE", "ATTRIB", "WRITE", "OVERFLOW" };
+        fprintf(stderr, "wpsd: event %s%s %s%s%s\n", k[e->k], e->isdir ? " (dir)" : "", e->from,
+                e->from[0] ? " -> " : "", e->path);
+    }
     if (e->k == E_OVERFLOW) { stats.overflows++; scan_soon(); return; }
     if ((e->path[0] && wps_path_excluded(e->path)) || (e->from[0] && wps_path_excluded(e->from))) return;
 
@@ -766,6 +803,15 @@ static void apply(const tev *e)
         return;
     }
 
+    /* An attribute arrived on a freshly created file: does it carry an ID
+     * now? Not for the new half of a pending save, which is expected to
+     * carry the object's ID (full vim copies attributes). */
+    if (e->k == E_ATTRIB && !wps_sobj_by_path(e->path) && recent_take(e->path)) {
+        bool known = false;
+        for (size_t i = 0; i < ndups && !known; i++) known = strcmp(dups[i].newpath, e->path) == 0;
+        for (size_t i = 0; i < ndisp && !known; i++) known = disp[i].paired && strcmp(disp[i].newpath, e->path) == 0;
+        if (!known) probe(J_PROBE_CREATE, e->path, NULL);
+    }
     /* E_ATTRIB, E_WRITE: a duplicate may now be a copy; a displaced
      * object that is modified is no longer part of a save. */
     for (size_t i = 0; i < ndups; i++)
@@ -869,6 +915,9 @@ static void scan_work(void *arg)
 }
 
 static bool scan_running, scan_again;
+struct scan_waiter { void (*done)(void *, const char *); void *arg; };
+static struct scan_waiter waiters[32];
+static size_t nwaiters;
 
 static void scan_done(void *arg)
 {
@@ -886,13 +935,19 @@ static void scan_done(void *arg)
     free(s->rows);
     free(s);
     scan_running = false;
-    if (scan_again) { scan_again = false; wps_tracker_scan(NULL, NULL); }
+    if (scan_again) {
+        /* Requests that came during this scan get the next one's result. */
+        scan_again = false;
+        struct scan_waiter w = nwaiters ? waiters[--nwaiters] : (struct scan_waiter){ NULL, NULL };
+        wps_tracker_scan(w.done, w.arg);
+    }
 }
 
 void wps_tracker_scan(void (*done)(void *, const char *), void *arg)
 {
     if (scan_running) {
-        if (done) done(arg, "a scan is already running");
+        if (done && nwaiters < 32) waiters[nwaiters++] = (struct scan_waiter){ done, arg };
+        else if (done) done(arg, "too many scan requests");
         scan_again = true;
         return;
     }
@@ -939,6 +994,7 @@ void wps_tracker_init(wpo_loop *l, const wps_env *e, wps_db *d)
         fclose(f);
     }
     wps_on_saved = on_saved;
+    trace = getenv("WPS_TRACE") && *getenv("WPS_TRACE") == '1';
     helper_connect();
     stats.mode = helper_fd >= 0 ? "wps-watchd" : "inotify";
     scan_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);

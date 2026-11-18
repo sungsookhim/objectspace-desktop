@@ -55,5 +55,7 @@ void wps_tracker_get_stats(wps_tracker_stats *out);
 /* An object record is going away: drop pending pairings that refer to it. */
 struct sobj;
 void wps_tracker_forget(struct sobj *s);
+/* An object record was created for `path`. */
+void wps_tracker_object_at(const char *path);
 
 #endif
