@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.11 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.12 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -103,7 +103,8 @@ OS/2's Presentation Manager delivered all keyboard and mouse input through one s
 - A call that misses its deadline (default 2 s for interactive methods such as menus) gets the parent class's result instead. Repeated misses mark the plug-in as unresponsive, and its host is restarted.
 - If a host crashes, objects of its classes fall back to the nearest built-in parent class (for example `WPDataFile`) until it is back. Files and identity are never affected.
 - Class replacement (`wpo_replace_class`) works across the process boundary: the replacing class's methods run in its host; inherited methods run in `wpsd`.
-- Built-in classes stay in-process for speed. A plug-in can request in-process loading only if the user marks it trusted.
+- Built-in classes stay in-process for speed. No third-party class is ever loaded into `wpsd` (decided 2026-11-18).
+- Hosts are sandboxed (decided 2026-11-18): no network, `no_new_privs`, and a Landlock ruleset allowing only the plug-in's own files and its data folder. Anything else on disk goes through the service, which applies the user's permissions.
 
 ### Requirements carried to the GUI design
 
@@ -742,12 +743,14 @@ These follow from the principles above but need not be designed in full before M
 - [x] Trash: decided 2026-11-18. An object moved to the trash keeps its ID and settings; shadows to it follow it into the trash, are reported as "in the trash", and work again after a restore. Emptying the trash, or deleting permanently, is the real deletion.
 - [x] Backup names: decided 2026-11-18. A setting, off by default (`backup-names` in the configuration folder). When on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save at once.
 - [x] Duplicate IDs: decided 2026-11-18. No timer. A file that appears with another file's ID shares it until either file is changed (content or WPS settings), which makes it a copy with a new ID, or until the original is deleted, which makes it a move.
-- [ ] Should plug-ins ever run in-process, even when trusted, or is the speed gain not worth the risk?
+- [x] Plug-ins in-process: decided 2026-11-18. Never. Every third-party class runs in a plug-in host; only the built-in classes run inside `wpsd`.
+- [x] Plug-in sandbox: decided 2026-11-18. Plug-in hosts run sandboxed: no network, no new privileges, and (Landlock) filesystem access only to the plug-in's own files and data folder. File work goes through the service, which applies the user's permissions.
 
 ## Change log
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.12 | 2026-11-18 | Decided: plug-ins never run in-process; plug-in hosts are sandboxed |
 | 0.11 | 2026-11-18 | M4 done: shadows, trash, abstract objects as files, streaming listings, selections and jobs; findings listed under M4 |
 | 0.10 | 2026-11-18 | Decided: trashed objects keep their ID and settings until the trash is emptied; shadows follow them |
 | 0.9 | 2026-11-18 | M3 done: tracker and helper; per-folder marks on btrfs subvolumes; settled-duplicate rule; ID search for objects that leave view |
