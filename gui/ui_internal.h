@@ -1,0 +1,104 @@
+/* Internal to libwpsui: surface and app structures. */
+#ifndef WPS_UI_INTERNAL_H
+#define WPS_UI_INTERNAL_H
+
+#include <pthread.h>
+#include <wayland-client.h>
+#include <wayland-cursor.h>
+#include <xkbcommon/xkbcommon.h>
+
+#include "ui.h"
+#include "ui_damage.h"
+#include "viewporter-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
+
+#define UI_BUFFERS 3
+
+struct ui_buffer {
+    struct wl_buffer *wb;
+    void *data;
+    size_t size;
+    int w, h;              /* device pixels */
+    bool busy;             /* with the compositor */
+    long frame;            /* frame number drawn into it; -1: contents unknown */
+};
+
+struct ui_surface {
+    ui_app *app;
+    ui_surface *next;
+    const ui_surface_ops *ops;
+    void *data;
+    struct wl_surface *wl;
+    struct xdg_surface *xs;
+    struct xdg_toplevel *top;
+    struct xdg_popup *popup;
+    ui_surface *parent;
+    double w, h;           /* logical */
+    int scale;
+    bool configured, maximized, activated, destroyed;
+    bool needs_draw, frame_pending, continuous;
+    struct wl_callback *frame_cb;   /* destroyed with the surface */
+    struct ui_buffer bufs[UI_BUFFERS];
+    ui_damage_frame hist[UI_DAMAGE_HISTORY];
+    int nhist;
+    ui_damage_frame cur;
+    bool cur_any;
+    long frame_no;
+    char title[256];
+    ui_hit hover;          /* frame part under the pointer */
+    ui_hit pressed;        /* frame button held down */
+    ui_layer *layer;       /* a scroll layer, if any */
+    bool layer_dirty;
+    bool pointer_inside;
+    ui_frame_stat *stats;
+    size_t nstats, capstats;
+    double last_draw_t;
+};
+
+struct post { struct post *next; void (*fn)(void *); void *arg; };
+
+struct ui_app {
+    struct wl_display *dpy;
+    struct wl_registry *reg;
+    struct wl_compositor *comp;
+    int comp_version;
+    struct wl_shm *shm;
+    struct wl_subcompositor *subcomp;
+    struct wp_viewporter *viewporter;
+    struct xdg_wm_base *wm;
+    struct wl_seat *seat;
+    struct wl_pointer *pointer;
+    struct wl_keyboard *keyboard;
+    struct xkb_context *xkb;
+    struct xkb_keymap *keymap;
+    struct xkb_state *kstate;
+    struct wl_cursor_theme *cursor_theme;
+    int cursor_scale;
+    struct wl_surface *cursor_surface;
+    const char *cursor_name;
+    ui_surface *surfaces;
+    ui_surface *ptr_focus, *key_focus;
+    double px, py;
+    uint32_t enter_serial, last_serial;
+    int last_button;
+    double last_click_t, last_click_x, last_click_y;
+    int axis_source;
+    unsigned mods;
+    int repeat_fd;
+    int repeat_rate, repeat_delay;
+    uint32_t repeat_key;
+    int wake_fd;
+    pthread_mutex_t post_mu;
+    struct post *posts, *posts_tail;
+    bool running;
+};
+
+void ui_set_cursor(ui_app *a, const char *name);
+/* Draw the layer's changes; -1 if no buffer is free yet. */
+double ui_layer_render(ui_layer *l);
+/* For ui_surface_verify: paste the slice last shown onto `img` (device
+ * pixels), and draw the same window of content afresh onto `cr`. */
+bool ui_layer_paste_shown(ui_layer *l, unsigned char *img, int stride);
+void ui_layer_draw_fresh(ui_layer *l, cairo_t *cr);
+
+#endif

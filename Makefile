@@ -7,6 +7,7 @@
 #   make m3       M3 change-tracking scenarios, inotify and wps-watchd modes (sudo)
 #   make m0       build the M0 prototypes (see proto/m0)
 #   make g0       build the G0 GUI prototypes (see proto/g0; optimised, no sanitizers)
+#   make gui      build wps-shell (optimised) and wps-shell-asan (sanitizers)
 #   make clean
 
 CC      ?= cc
@@ -31,7 +32,7 @@ CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GE
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
 TV      := $(B)/tests
 
-all: $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor plugins
+all: $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor $(TV)/test_ui_damage plugins
 
 $(GEN)/.stamp: $(WPI) tools/wpoc.py
 	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
@@ -60,6 +61,10 @@ $(TV)/test_attrs: tests/test_attrs.c service/attrs.c service/attrs.h
 $(TV)/test_db: tests/test_db.c service/db.c service/db.h service/attrs.c
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_db.c service/db.c service/attrs.c -lsqlite3 -lpthread
+
+$(TV)/test_ui_damage: tests/test_ui_damage.c gui/ui_damage.c gui/ui_damage.h
+	@mkdir -p $(TV)
+	$(CC) $(CFLAGS) $(SAN) -Igui -Itests -o $@ tests/test_ui_damage.c gui/ui_damage.c
 
 $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
@@ -122,6 +127,7 @@ test: all
 	$(TV)/test_attrs $(TV)/attrs-tmp
 	$(TV)/test_db $(TV)/db-tmp
 	$(TV)/test_cbor
+	$(TV)/test_ui_damage
 
 # Everything that must stay true: the unit tests (with ASan/UBSan when
 # installed), the core building as strict C11 with only the C library, and
@@ -172,6 +178,16 @@ $(G0)/xdg-shell-protocol.c: $(XDGXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
+VPXML   := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/stable/viewporter/viewporter.xml
+
+$(G0)/viewporter-client-protocol.h: $(VPXML)
+	@mkdir -p $(G0)
+	wayland-scanner client-header $< $@
+
+$(G0)/viewporter-protocol.c: $(VPXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+
 $(G0)/folderview: proto/g0/folderview.c service/cbor.c $(G0)/xdg-shell-client-protocol.h $(G0)/xdg-shell-protocol.c
 	$(CC) $(G0FLAGS) -Iservice -I$(G0) -o $@ proto/g0/folderview.c service/cbor.c $(G0)/xdg-shell-protocol.c \
 	    $$(pkg-config --cflags --libs cairo harfbuzz freetype2 fontconfig wayland-client xkbcommon) -lpthread -lm
@@ -182,7 +198,24 @@ $(G0)/soundlat: proto/g0/soundlat.c
 
 g0: $(G0)/folderview $(G0)/soundlat
 
+# The GUI: libwpsui (gui/ui_*.c) and wps-shell. Optimised for timing; the
+# -asan build is for finding memory errors.
+UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c
+SHELLSRC := gui/shell/wps-shell.c gui/shell/svc.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c
+UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon
+UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h
+UIFLAGS = -Igui -Igui/shell -Iservice -Iclasses -I$(G0) $(shell pkg-config --cflags $(UIPKG))
+UILIBS  = $(shell pkg-config --libs $(UIPKG)) -lpthread -lm
+
+$(B)/wps-shell: $(UIDEPS)
+	$(CC) $(G0FLAGS) $(UIFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS)
+
+$(B)/wps-shell-asan: $(UIDEPS)
+	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS)
+
+gui: $(B)/wps-shell $(B)/wps-shell-asan
+
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test check m0 m2 m3 g0 clean
+.PHONY: all plugins test check m0 m2 m3 g0 gui clean

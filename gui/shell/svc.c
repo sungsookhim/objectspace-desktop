@@ -1,0 +1,240 @@
+#define _GNU_SOURCE
+#include "svc.h"
+
+#include <errno.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+struct out { struct out *next; cbuf b; };
+struct pending { struct pending *next; int64_t id; svc_fn fn; void *arg; };
+struct delivery { svc_fn fn; void *arg; cv *reply; };
+
+static ui_app *app;
+static int sock = -1;
+static pthread_t reader, writer;
+static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t out_cv = PTHREAD_COND_INITIALIZER;
+static struct out *outq, *outq_tail;
+static struct pending *pend;
+static int64_t next_id = 1;
+static bool stopping, broken;
+
+static void deliver(void *arg)   /* UI thread */
+{
+    struct delivery *d = arg;
+    d->fn(d->arg, d->reply);
+    if (d->reply) { cv_free(d->reply); free(d->reply); }
+    free(d);
+}
+
+static void post(svc_fn fn, void *arg, cv *reply)
+{
+    struct delivery *d = malloc(sizeof *d);
+    d->fn = fn;
+    d->arg = arg;
+    d->reply = reply;
+    ui_app_post(app, deliver, d);
+}
+
+/* The connection is gone: every waiting request gets NULL. */
+static void fail_all(void)
+{
+    pthread_mutex_lock(&mu);
+    broken = true;
+    struct pending *p = pend;
+    pend = NULL;
+    pthread_mutex_unlock(&mu);
+    while (p) {
+        struct pending *n = p->next;
+        post(p->fn, p->arg, NULL);
+        free(p);
+        p = n;
+    }
+}
+
+static bool io(int fd, void *buf, size_t n, bool wr)
+{
+    unsigned char *b = buf;
+    while (n) {
+        ssize_t r = wr ? send(fd, b, n, MSG_NOSIGNAL) : read(fd, b, n);
+        if (r <= 0) { if (r < 0 && errno == EINTR) continue; return false; }
+        b += r;
+        n -= (size_t)r;
+    }
+    return true;
+}
+
+static void *writer_main(void *x)
+{
+    (void)x;
+    pthread_mutex_lock(&mu);
+    for (;;) {
+        while (!outq && !stopping) pthread_cond_wait(&out_cv, &mu);
+        if (stopping) break;
+        struct out *o = outq;
+        outq = o->next;
+        if (!outq) outq_tail = NULL;
+        pthread_mutex_unlock(&mu);
+        unsigned char h[4] = { (unsigned char)(o->b.n >> 24), (unsigned char)(o->b.n >> 16), (unsigned char)(o->b.n >> 8),
+                               (unsigned char)o->b.n };
+        bool ok = io(sock, h, 4, true) && io(sock, o->b.d, o->b.n, true);
+        cb_free(&o->b);
+        free(o);
+        pthread_mutex_lock(&mu);
+        if (!ok) break;
+    }
+    pthread_mutex_unlock(&mu);
+    return NULL;
+}
+
+static void *reader_main(void *x)
+{
+    (void)x;
+    for (;;) {
+        unsigned char h[4];
+        if (!io(sock, h, 4, false)) break;
+        size_t n = (size_t)h[0] << 24 | (size_t)h[1] << 16 | (size_t)h[2] << 8 | h[3];
+        unsigned char *buf = malloc(n ? n : 1);
+        if (!io(sock, buf, n, false)) { free(buf); break; }
+        cv *m = calloc(1, sizeof *m);
+        int rc = cv_decode(buf, n, m);
+        free(buf);
+        int64_t id;
+        if (rc || !cv_int(m, "id", &id)) { if (!rc) cv_free(m); free(m); continue; }   /* events: later (G2) */
+        pthread_mutex_lock(&mu);
+        struct pending *found = NULL;
+        for (struct pending **pp = &pend; *pp; pp = &(*pp)->next)
+            if ((*pp)->id == id) { found = *pp; *pp = found->next; break; }
+        pthread_mutex_unlock(&mu);
+        if (found) { post(found->fn, found->arg, m); free(found); }
+        else { cv_free(m); free(m); }
+    }
+    fail_all();
+    return NULL;
+}
+
+bool svc_start(ui_app *a, char *err, size_t errlen)
+{
+    app = a;
+    char path[4096];
+    const char *s = getenv("WPS_SOCKET"), *rt = getenv("WPS_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
+    if (s && *s) snprintf(path, sizeof path, "%s", s);
+    else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
+    else if (xr && *xr) snprintf(path, sizeof path, "%s/wps.sock", xr);
+    else snprintf(path, sizeof path, "/tmp/wps-%u/wps.sock", (unsigned)getuid());
+    struct sockaddr_un sa = { .sun_family = AF_UNIX };
+    if (strlen(path) >= sizeof sa.sun_path) { snprintf(err, errlen, "socket path too long: %s", path); return false; }
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
+    sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0 || connect(sock, (struct sockaddr *)&sa, sizeof sa) < 0) {
+        snprintf(err, errlen, "cannot reach wpsd at %s: %s", path, strerror(errno));
+        if (sock >= 0) close(sock);
+        sock = -1;
+        return false;
+    }
+    pthread_create(&writer, NULL, writer_main, NULL);
+    pthread_create(&reader, NULL, reader_main, NULL);
+    return true;
+}
+
+void svc_stop(void)
+{
+    if (sock < 0) return;
+    pthread_mutex_lock(&mu);
+    stopping = true;
+    pthread_cond_signal(&out_cv);
+    pthread_mutex_unlock(&mu);
+    shutdown(sock, SHUT_RDWR);
+    pthread_join(writer, NULL);
+    pthread_join(reader, NULL);
+    close(sock);
+    sock = -1;
+    while (outq) { struct out *o = outq; outq = o->next; cb_free(&o->b); free(o); }
+}
+
+/* Start a request map with `nfields` fields after id and op. */
+static struct out *begin(const char *op, size_t nfields, int64_t *id)
+{
+    struct out *o = calloc(1, sizeof *o);
+    cb_init(&o->b);
+    pthread_mutex_lock(&mu);
+    *id = next_id++;
+    pthread_mutex_unlock(&mu);
+    cb_map(&o->b, 2 + nfields);
+    cb_text(&o->b, "id"); cb_int(&o->b, *id);
+    cb_text(&o->b, "op"); cb_text(&o->b, op);
+    return o;
+}
+
+static void send_req(struct out *o, int64_t id, svc_fn fn, void *arg)
+{
+    pthread_mutex_lock(&mu);
+    if (broken || sock < 0 || o->b.oom) {
+        pthread_mutex_unlock(&mu);
+        cb_free(&o->b);
+        free(o);
+        post(fn, arg, NULL);
+        return;
+    }
+    struct pending *p = malloc(sizeof *p);
+    p->id = id;
+    p->fn = fn;
+    p->arg = arg;
+    p->next = pend;
+    pend = p;
+    if (outq_tail) outq_tail->next = o;
+    else outq = o;
+    outq_tail = o;
+    pthread_cond_signal(&out_cv);
+    pthread_mutex_unlock(&mu);
+}
+
+void svc_list(const char *folder, size_t offset, size_t count, bool details, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("list", 4, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, folder);
+    cb_text(&o->b, "offset"); cb_uint(&o->b, offset);
+    cb_text(&o->b, "count"); cb_uint(&o->b, count);
+    cb_text(&o->b, "details"); cb_bool(&o->b, details);
+    send_req(o, id, fn, arg);
+}
+
+void svc_resolve(const char *target, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("resolve", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    send_req(o, id, fn, arg);
+}
+
+void svc_menu(const char *target, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("menu", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    send_req(o, id, fn, arg);
+}
+
+void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("menu_select", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "item"); cb_int(&o->b, item);
+    send_req(o, id, fn, arg);
+}
+
+void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("open", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
+    send_req(o, id, fn, arg);
+}

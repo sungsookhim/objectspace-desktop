@@ -9,7 +9,7 @@ Status: object core done (M0–M5): kernel prototypes, object runtime, persisten
 | Document | What it holds |
 |---|---|
 | [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.13: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
-| [docs/gui-design.md](docs/gui-design.md) | GUI design v0.3: OS/2 Warp 4–4.52 base, modern features, configurable appearance, action events; coexists with GNOME; own drawing; proposed architecture and milestones |
+| [docs/gui-design.md](docs/gui-design.md) | GUI design v0.4: OS/2 Warp 4–4.52 base, modern features, configurable appearance, action events; coexists with GNOME; own drawing; proposed architecture and milestones |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
 
@@ -23,7 +23,7 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 4. M3: change tracking with `wps-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
 5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
 6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
-7. GUI (docs/gui-design.md): G0 prototypes done (proto/g0/RESULTS.md); next G1, the widget set's frames, containers and menus.
+7. GUI (docs/gui-design.md): G0 prototypes done (proto/g0/RESULTS.md); G1 done: the widget set's frames, icon and details views and menus, and wps-shell folder windows (gui/RESULTS-G1.md). Next G2: desktop, tree view, notebooks, drag and drop, live updates.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 
@@ -37,6 +37,7 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 | `classes/` | The core classes: `WPObject`, `WPFileSystem`, `WPDataFile`, `WPFolder`, `WPAbstract`, `WPProgram`, `WPShadow` |
 | `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
 | `proto/m0/` | M0 kernel and filtering prototypes |
+| `gui/` | `libwpsui` (the widget set: windows, frames, containers, menus, scroll layers) and `gui/shell/wps-shell` |
 | `proto/g0/` | G0 GUI prototypes: a folder window drawn with Cairo and HarfBuzz on Wayland, sound latency through PipeWire |
 
 ## Building
@@ -50,6 +51,7 @@ make m3       # M3 change-tracking scenarios, with inotify and with wps-watchd (
 tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB sparse volume)
 tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-in hosts
 make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, wayland, xkbcommon, pipewire -devel)
+make gui      # wps-shell (optimised) and wps-shell-asan
 ```
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.
@@ -61,5 +63,6 @@ build/wpsd &                                  # socket in $XDG_RUNTIME_DIR/wps.s
 build/wpsctl call ~/notes.txt wpSetTitle "My notes"
 build/wpsctl resolve ~/notes.txt
 getfattr -d -m user.wps ~/notes.txt           # the title travels with the file
+build/wps-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 details)
 build/wpsctl shutdown
 ```

@@ -1,6 +1,6 @@
 # WPS for Linux: GUI Design
 
-Version 0.3 · 2026-11-18 · Direction, session model and toolkit decided; architecture accepted; G0 done.
+Version 0.4 · 2026-11-18 · Direction, session model and toolkit decided; architecture accepted; G0 and G1 done.
 
 The GUI sits on top of the object core ([object-core-design.md](object-core-design.md)). It talks to `wpsd` only through the service API: events, menus and settings as data, streaming listings, jobs. It never makes a synchronous call to `wpsd` from its input or drawing threads (object core: Requirements carried to the GUI design).
 
@@ -128,7 +128,7 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 | Milestone | Contents | Mode |
 | --- | --- | --- |
 | G0 | Prototypes: Cairo + HarfBuzz drawing on a Wayland surface; a folder window over a 1,000,000-entry folder at 60 fps; sound latency through PipeWire. **Done** ([results](../proto/g0/RESULTS.md)) | Stage 1 |
-| G1 | Widget set 1–3: frames, containers, menus; one folder window from `wpsd` | Stage 1 |
+| G1 | Widget set 1–3: frames, containers, menus; one folder window from `wpsd`. **Done** ([results](../gui/RESULTS-G1.md)) | Stage 1 |
 | G2 | Desktop, all three folder views, notebooks, drag and drop, templates, shadows, trash | Stage 1 |
 | G3 | Action events, sound schemes, scheme objects, appearance settings, GNOME settings sync, the GNOME Shell extension | Stage 1 |
 | G4 | Window list, launch bar, minimized window viewer, search, accessibility, input methods | Stage 1 |
@@ -141,6 +141,14 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 - Sound: with the stream kept open, a sound is written within 5 ms of its action. The device's own buffer was not measurable on the test machine (dummy output only); the sound service asks PipeWire for a 256-frame quantum. Measure on real speakers in G3.
 - GNOME does not draw frames for Wayland clients, so in stage 1 every WPS window draws its own frame, which is what the configurable appearance needs anyway.
 
+### G1 findings
+
+- **Scrolling uses a scroll layer, not pixel moves.** Moving the buffer's rows still cost 7–8 ms a frame at 2× full screen (the move alone 6.8 ms). A container's list is now a ring buffer of the visible rows, twice the area's height with every row stored twice so any window is one contiguous slice, shown by one subsurface through `wp_viewporter`. Scrolling draws only the rows that come into view. At 2× full screen: 1.7–2.3 ms a frame (median), 57–60 fps. Compositors without subsurfaces or `wp_viewporter` get the pixel-moving path.
+- **Damage sent to the compositor is what differs from the frame on screen** (after a scroll, the whole scrolled area), kept separate from what we redraw.
+- **Text shaping has its own FreeType face**, separate from Cairo's, or positions depend on which drew last at 2×.
+- **A pixel check** (`WPS_SHELL_VERIFY`) rebuilds what the compositor shows and compares it with a fresh full redraw; it found the last two problems and now passes in every mode.
+- Jumps (a scroll bar drag landing somewhere new) redraw the whole list: at 2× full screen in the icon view that costs about 20 ms, one dropped frame per jump. Acceptable; GPU drawing later would remove it.
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.
@@ -149,6 +157,7 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.4 | 2026-11-18 | G1 done: libwpsui (frames, icon and details views, menus), wps-shell folder windows; scroll layers; findings listed under G1 |
 | 0.3 | 2026-11-18 | Architecture accepted. G0 done: 60 fps over a million entries; damage-based drawing required for 2× full screen; sound written within 5 ms |
 | 0.2 | 2026-11-18 | Decided: both modes in stages (inside GNOME first, then a WPS session), settings shared with GNOME; our own drawing. Proposed: libraries, processes, threads, widget set, drag and drop, milestones G0–G5 |
 | 0.1 | 2026-11-18 | Direction: OS/2 Warp 4–4.52 base with modern features; configurable appearance with a square, explicit default; action events for sounds and animation hooks |

@@ -1,0 +1,754 @@
+/* Containers: icon and details views over a model of any size
+ * (gui-design.md, Widget set 2). Rows are fetched through the source as
+ * they come into view; unloaded rows are placeholders. */
+#define _GNU_SOURCE
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+
+#include "ui_internal.h"
+
+#define ROW_H 20
+#define HEAD_H 20
+#define SB_W 16
+#define CELL_W 100
+#define CELL_H 70
+#define ICON 32
+
+struct ui_container {
+    ui_surface *s;
+    const ui_container_src *src;
+    void *ctx;
+    ui_view view;
+    ui_rect r;
+    double scroll;            /* whole logical pixels */
+    size_t count;
+    uint8_t *sel;             /* selection bitmap */
+    size_t selcap, nsel;
+    size_t cursor, anchor;
+    bool has_cursor, focused;
+    bool thumb_drag;
+    double thumb_off;
+    int arrow_down;           /* -1 up, +1 down, 0 none */
+    bool band;
+    double bx0, by0, bx1, by1;   /* rubber band, content coordinates */
+    bool b2_down;
+    double b2x, b2y;
+    size_t vis_first, vis_last;
+    ui_layer *layer;          /* rows are drawn here; NULL: on the surface */
+};
+
+/* -------------------------------------------------------------- geometry */
+
+static ui_rect head_rect(ui_container *c)
+{
+    return (ui_rect){ c->r.x, c->r.y, c->r.w - SB_W, c->view == UI_VIEW_DETAILS ? HEAD_H : 0 };
+}
+
+static ui_rect list_rect(ui_container *c)
+{
+    ui_rect h = head_rect(c);
+    return (ui_rect){ c->r.x, c->r.y + h.h, c->r.w - SB_W, c->r.h - h.h };
+}
+
+static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SB_W, c->r.y, SB_W, c->r.h }; }
+
+static size_t cols(ui_container *c)
+{
+    if (c->view == UI_VIEW_DETAILS) return 1;
+    size_t n = (size_t)(list_rect(c).w / CELL_W);
+    return n ? n : 1;
+}
+
+static double line_h(ui_container *c) { return c->view == UI_VIEW_DETAILS ? ROW_H : CELL_H; }
+
+static size_t nlines(ui_container *c) { return (c->count + cols(c) - 1) / cols(c); }
+
+static double content_h(ui_container *c) { return (double)nlines(c) * line_h(c) + (c->view == UI_VIEW_ICON ? 8 : 0); }
+
+static double max_scroll(ui_container *c)
+{
+    double m = content_h(c) - list_rect(c).h;
+    return m > 0 ? floor(m) : 0;
+}
+
+/* Item i's rectangle in content coordinates: x as on the surface, y from
+ * the top of the content (independent of scrolling). */
+static ui_rect item_crect(ui_container *c, size_t i)
+{
+    ui_rect l = list_rect(c);
+    if (c->view == UI_VIEW_DETAILS) return (ui_rect){ l.x, (double)i * ROW_H, l.w, ROW_H };
+    size_t k = cols(c), row = i / k, col = i % k;
+    return (ui_rect){ l.x + 4 + (double)col * CELL_W, 4 + (double)row * CELL_H, CELL_W, CELL_H };
+}
+
+/* ... and in surface coordinates (may be off screen). */
+static ui_rect item_rect(ui_container *c, size_t i)
+{
+    ui_rect r = item_crect(c, i);
+    r.y += list_rect(c).y - c->scroll;
+    return r;
+}
+
+/* The visible part of the content, in content coordinates. */
+static ui_rect window_crect(ui_container *c)
+{
+    ui_rect l = list_rect(c);
+    return (ui_rect){ l.x, c->scroll, l.w, l.h };
+}
+
+/* Damage content (content coordinates). */
+static void damage_content(ui_container *c, ui_rect r)
+{
+    if (c->layer) { ui_layer_damage(c->layer, r); return; }
+    ui_rect l = list_rect(c);
+    r.y += l.y - c->scroll;
+    /* Only the list's part: a cell half scrolled out must not damage the
+     * title bar above it. */
+    double x0 = fmax(r.x, l.x), y0 = fmax(r.y, l.y), x1 = fmin(r.x + r.w, l.x + l.w), y1 = fmin(r.y + r.h, l.y + l.h);
+    if (x1 > x0 && y1 > y0) ui_surface_damage(c->s, (ui_rect){ x0, y0, x1 - x0, y1 - y0 });
+}
+
+static size_t item_at(ui_container *c, double x, double y)
+{
+    ui_rect l = list_rect(c);
+    if (!ui_rect_has(l, x, y)) return SIZE_MAX;
+    double cy = y - l.y + c->scroll;
+    if (c->view == UI_VIEW_DETAILS) {
+        size_t i = (size_t)(cy / ROW_H);
+        return i < c->count ? i : SIZE_MAX;
+    }
+    double cx = x - l.x - 4;
+    cy -= 4;
+    if (cx < 0 || cy < 0) return SIZE_MAX;
+    size_t col = (size_t)(cx / CELL_W), row = (size_t)(cy / CELL_H);
+    if (col >= cols(c)) return SIZE_MAX;
+    /* Only the icon and its label count, not the empty part of the cell. */
+    double ox = cx - (double)col * CELL_W, oy = cy - (double)row * CELL_H;
+    if (ox < 8 || ox > CELL_W - 8 || oy > CELL_H - 8) return SIZE_MAX;
+    size_t i = row * cols(c) + col;
+    return i < c->count ? i : SIZE_MAX;
+}
+
+static void visible_range(ui_container *c, size_t *first, size_t *last)
+{
+    ui_rect l = list_rect(c);
+    size_t k = cols(c);
+    size_t r0 = (size_t)(c->scroll / line_h(c)), r1 = (size_t)((c->scroll + l.h) / line_h(c));
+    *first = r0 * k;
+    *last = (r1 + 1) * k;
+    if (*last > c->count) *last = c->count ? c->count - 1 : 0;
+}
+
+static void report_visible(ui_container *c)
+{
+    if (!c->count || !c->src->visible) return;
+    size_t f, l;
+    visible_range(c, &f, &l);
+    if (f == c->vis_first && l == c->vis_last) return;
+    c->vis_first = f;
+    c->vis_last = l;
+    c->src->visible(c->ctx, f, l);
+}
+
+/* ------------------------------------------------------------- selection */
+
+static bool sel_get(ui_container *c, size_t i) { return i / 8 < c->selcap && (c->sel[i / 8] >> (i % 8)) & 1; }
+
+static void sel_set(ui_container *c, size_t i, bool on)
+{
+    if (i / 8 >= c->selcap) {
+        if (!on) return;
+        size_t n = c->selcap ? c->selcap : 1024;
+        while (n <= i / 8) n *= 2;
+        c->sel = realloc(c->sel, n);
+        memset(c->sel + c->selcap, 0, n - c->selcap);
+        c->selcap = n;
+    }
+    bool was = sel_get(c, i);
+    if (was == on) return;
+    if (on) { c->sel[i / 8] |= (uint8_t)(1u << (i % 8)); c->nsel++; }
+    else { c->sel[i / 8] &= (uint8_t)~(1u << (i % 8)); c->nsel--; }
+}
+
+static void damage_item(ui_container *c, size_t i)
+{
+    ui_rect r = item_crect(c, i);
+    if (ui_rect_meets(r, window_crect(c))) damage_content(c, r);
+}
+
+static void damage_list(ui_container *c) { damage_content(c, window_crect(c)); }
+
+static void sel_clear(ui_container *c)
+{
+    if (!c->nsel) return;
+    memset(c->sel, 0, c->selcap);
+    c->nsel = 0;
+    damage_list(c);
+}
+
+static void sel_range(ui_container *c, size_t a, size_t b, bool on)
+{
+    if (a > b) { size_t t = a; a = b; b = t; }
+    for (size_t i = a; i <= b && i < c->count; i++) sel_set(c, i, on);
+    damage_list(c);
+}
+
+size_t ui_container_selected_count(ui_container *c) { return c->nsel; }
+bool ui_container_is_selected(ui_container *c, size_t i) { return sel_get(c, i); }
+
+/* -------------------------------------------------------------- scrolling */
+
+static void damage_sb(ui_container *c) { ui_surface_damage(c->s, sb_rect(c)); }
+
+static void scroll_to(ui_container *c, double y)
+{
+    double m = max_scroll(c);
+    y = floor(y < 0 ? 0 : y > m ? m : y);
+    double d = y - c->scroll;
+    if (d == 0) return;
+    c->scroll = y;
+    if (c->layer) ui_layer_set_offset(c->layer, y);
+    else ui_surface_scroll(c->s, list_rect(c), d);
+    damage_sb(c);
+    report_visible(c);
+}
+
+void ui_container_scroll_by(ui_container *c, double dy) { scroll_to(c, c->scroll + dy); }
+void ui_container_scroll_to_fraction(ui_container *c, double f) { scroll_to(c, f * max_scroll(c)); }
+
+static void ensure_visible(ui_container *c, size_t i)
+{
+    ui_rect r = item_rect(c, i), l = list_rect(c);
+    if (r.y < l.y) scroll_to(c, c->scroll - (l.y - r.y) - (c->view == UI_VIEW_ICON ? 4 : 0));
+    else if (r.y + r.h > l.y + l.h) scroll_to(c, c->scroll + (r.y + r.h - (l.y + l.h)) + (c->view == UI_VIEW_ICON ? 4 : 0));
+}
+
+static void thumb(ui_container *c, double *y, double *h)
+{
+    ui_rect t = sb_rect(c);
+    t.y += SB_W;
+    t.h -= 2 * SB_W;
+    double ch = content_h(c), vh = list_rect(c).h;
+    *h = ch > vh ? fmax(20, t.h * vh / ch) : t.h;
+    if (*h > t.h) *h = t.h;
+    double m = max_scroll(c);
+    *y = t.y + (m > 0 ? (t.h - *h) * c->scroll / m : 0);
+}
+
+/* ------------------------------------------------------------------ icons */
+
+/* Simple vector icons of our own; real icons come with the icon objects. */
+static void draw_icon_paths(cairo_t *cr, ui_kind k, double x, double y, double sz);
+
+/* Rendered once per kind, size and scale, then painted as images. */
+static struct { ui_kind kind; int size, scale; cairo_surface_t *img; } icon_cache[32];
+
+static void draw_icon(cairo_t *cr, ui_kind k, double x, double y, double sz)
+{
+    double sx, sy;
+    cairo_surface_get_device_scale(cairo_get_target(cr), &sx, &sy);
+    int scale = (int)sx, size = (int)sz;
+    cairo_surface_t *img = NULL;
+    for (size_t i = 0; i < sizeof icon_cache / sizeof icon_cache[0] && !img; i++) {
+        if (icon_cache[i].img && icon_cache[i].kind == k && icon_cache[i].size == size && icon_cache[i].scale == scale)
+            img = icon_cache[i].img;
+        else if (!icon_cache[i].img) {
+            img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size * scale, size * scale);
+            cairo_surface_set_device_scale(img, scale, scale);
+            cairo_t *ic = cairo_create(img);
+            draw_icon_paths(ic, k, 0, 0, sz);
+            cairo_destroy(ic);
+            icon_cache[i].kind = k;
+            icon_cache[i].size = size;
+            icon_cache[i].scale = scale;
+            icon_cache[i].img = img;
+        }
+    }
+    if (!img) { draw_icon_paths(cr, k, x, y, sz); return; }
+    cairo_set_source_surface(cr, img, x, y);
+    cairo_paint(cr);
+}
+
+static void draw_icon_paths(cairo_t *cr, ui_kind k, double x, double y, double sz)
+{
+    double u = sz / 32.0;
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_scale(cr, u, u);
+    cairo_set_line_width(cr, 1.2);
+    switch (k) {
+    case UI_KIND_FOLDER:
+        cairo_move_to(cr, 2, 8); cairo_line_to(cr, 12, 8); cairo_line_to(cr, 15, 11); cairo_line_to(cr, 30, 11);
+        cairo_line_to(cr, 30, 27); cairo_line_to(cr, 2, 27); cairo_close_path(cr);
+        cairo_set_source_rgb(cr, 0.93, 0.78, 0.30); cairo_fill_preserve(cr);
+        cairo_set_source_rgb(cr, 0.45, 0.33, 0.05); cairo_stroke(cr);
+        cairo_move_to(cr, 2, 14); cairo_line_to(cr, 30, 14);
+        cairo_stroke(cr);
+        break;
+    case UI_KIND_PROGRAM:
+        cairo_rectangle(cr, 3, 6, 26, 21);
+        cairo_set_source_rgb(cr, 0.95, 0.95, 0.95); cairo_fill_preserve(cr);
+        cairo_set_source_rgb(cr, 0.2, 0.2, 0.2); cairo_stroke(cr);
+        cairo_rectangle(cr, 3, 6, 26, 5);
+        cairo_set_source_rgb(cr, 0.1, 0.2, 0.55); cairo_fill(cr);
+        break;
+    default:
+        cairo_move_to(cr, 7, 3); cairo_line_to(cr, 20, 3); cairo_line_to(cr, 26, 9);
+        cairo_line_to(cr, 26, 29); cairo_line_to(cr, 7, 29); cairo_close_path(cr);
+        cairo_set_source_rgb(cr, 1, 1, 1); cairo_fill_preserve(cr);
+        cairo_set_source_rgb(cr, 0.3, 0.3, 0.3); cairo_stroke(cr);
+        cairo_move_to(cr, 20, 3); cairo_line_to(cr, 20, 9); cairo_line_to(cr, 26, 9);
+        cairo_stroke(cr);
+        for (int l = 0; l < 4; l++) { cairo_move_to(cr, 10, 14 + l * 4); cairo_line_to(cr, 23, 14 + l * 4); }
+        cairo_set_source_rgb(cr, 0.6, 0.6, 0.6); cairo_stroke(cr);
+        if (k == UI_KIND_LINK) {
+            cairo_move_to(cr, 3, 29); cairo_line_to(cr, 3, 21); cairo_line_to(cr, 11, 21); cairo_close_path(cr);
+            cairo_set_source_rgb(cr, 0.1, 0.5, 0.1); cairo_fill(cr);
+        }
+        break;
+    }
+    cairo_restore(cr);
+}
+
+/* ---------------------------------------------------------------- drawing */
+
+static const char *heads[] = { "", "Title", "Name", "Size", "Last write" };
+
+static void columns(ui_container *c, double *x)
+{
+    ui_rect l = list_rect(c);
+    x[0] = l.x + 4;
+    x[1] = l.x + 26;
+    x[4] = l.x + l.w - 130;
+    x[3] = x[4] - 90;
+    x[2] = x[1] + (x[3] - x[1]) * 0.55;
+    x[5] = l.x + l.w;
+}
+
+static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, double *x)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    bool sel = sel_get(c, i);
+    ui_fill(cr, r, sel ? k->selection : (i % 2 ? k->alt_row : k->client_bg));
+    ui_item it = { 0 };
+    c->src->item(c->ctx, i, &it);
+    double base = r.y + (ROW_H + ui_text_ascent()) / 2 - 1;
+    if (!it.loaded) {
+        ui_fill(cr, (ui_rect){ x[1], r.y + 6, 140, 8 }, k->placeholder);
+    } else {
+        draw_icon(cr, it.kind, x[0], r.y + 2, 16);
+        ui_set_color(cr, sel ? k->selection_text : k->text);
+        ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, it.title ? it.title : "", x[2] - x[1] - 6);
+        ui_text_draw(cr, UI_FONT_REGULAR, x[2], base, it.name ? it.name : "", x[3] - x[2] - 6);
+        if (it.detailed) {
+            char sz[32], dt[32];
+            if (it.kind == UI_KIND_FOLDER) sz[0] = 0;
+            else snprintf(sz, sizeof sz, "%lld", (long long)it.size);
+            time_t t = (time_t)it.mtime;
+            struct tm tm;
+            localtime_r(&t, &tm);
+            strftime(dt, sizeof dt, "%Y-%m-%d %H:%M", &tm);
+            double w = ui_text_width(UI_FONT_REGULAR, sz);
+            ui_text_draw(cr, UI_FONT_REGULAR, x[4] - 10 - w, base, sz, 0);   /* sizes align right */
+            ui_text_draw(cr, UI_FONT_REGULAR, x[4], base, dt, x[5] - x[4] - 4);
+        } else {
+            ui_fill(cr, (ui_rect){ x[4] - 60, r.y + 6, 50, 8 }, k->placeholder);
+            ui_fill(cr, (ui_rect){ x[4], r.y + 6, 100, 8 }, k->placeholder);
+        }
+    }
+    if (c->focused && c->has_cursor && c->cursor == i) {
+        ui_set_color(cr, sel ? k->selection_text : k->cursor);
+        cairo_set_line_width(cr, 1);
+        double dash = 1;
+        cairo_set_dash(cr, &dash, 1, 0);
+        cairo_rectangle(cr, r.x + 1.5, r.y + 0.5, r.w - 3, r.h - 1);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, NULL, 0, 0);
+    }
+}
+
+static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_item it = { 0 };
+    c->src->item(c->ctx, i, &it);
+    double ix = r.x + (r.w - ICON) / 2, iy = r.y + 4;
+    if (!it.loaded) {
+        ui_fill(cr, (ui_rect){ ix + 4, iy + 4, ICON - 8, ICON - 8 }, k->placeholder);
+        ui_fill(cr, (ui_rect){ r.x + 20, r.y + ICON + 12, r.w - 40, 8 }, k->placeholder);
+        return;
+    }
+    draw_icon(cr, it.kind, ix, iy, ICON);
+    const char *t = it.title ? it.title : "";
+    double tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.w - 8;
+    if (tw > maxw) tw = maxw;
+    double tx = r.x + (r.w - tw) / 2, ty = r.y + ICON + 8;
+    bool sel = sel_get(c, i);
+    if (sel) ui_fill(cr, (ui_rect){ tx - 2, ty, tw + 4, ROW_H - 2 }, k->selection);
+    ui_set_color(cr, sel ? k->selection_text : k->text);
+    ui_text_draw(cr, UI_FONT_REGULAR, tx, ty + (ROW_H + ui_text_ascent()) / 2 - 2, t, maxw);
+    if (c->focused && c->has_cursor && c->cursor == i) {
+        ui_set_color(cr, sel ? k->selection_text : k->cursor);
+        double dash = 1;
+        cairo_set_dash(cr, &dash, 1, 0);
+        cairo_set_line_width(cr, 1);
+        cairo_rectangle(cr, tx - 2.5, ty + 0.5, tw + 5, ROW_H - 3);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, NULL, 0, 0);
+    }
+}
+
+static void draw_scrollbar(ui_container *c, cairo_t *cr)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_rect sb = sb_rect(c);
+    ui_fill(cr, sb, k->shadow);
+    ui_fill(cr, (ui_rect){ sb.x + 1, sb.y + 1, sb.w - 2, sb.h - 2 }, (ui_color){ k->face.r * 0.85, k->face.g * 0.85, k->face.b * 0.85, 1 });
+    for (int a = 0; a < 2; a++) {
+        ui_rect b = { sb.x, a ? sb.y + sb.h - SB_W : sb.y, SB_W, SB_W };
+        bool down = c->arrow_down == (a ? 1 : -1);
+        ui_fill(cr, b, k->face);
+        ui_bevel(cr, b, !down);
+        ui_set_color(cr, k->text);
+        double cx = b.x + SB_W / 2 + (down ? 1 : 0), cy = b.y + SB_W / 2 + (down ? 1 : 0);
+        if (a) { cairo_move_to(cr, cx - 4, cy - 2); cairo_line_to(cr, cx + 4, cy - 2); cairo_line_to(cr, cx, cy + 2); }
+        else { cairo_move_to(cr, cx - 4, cy + 2); cairo_line_to(cr, cx + 4, cy + 2); cairo_line_to(cr, cx, cy - 2); }
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+    double ty, th;
+    thumb(c, &ty, &th);
+    ui_rect t = { sb.x, ty, SB_W, th };
+    ui_fill(cr, t, k->face);
+    ui_bevel(cr, t, true);
+}
+
+/* Rows, band and cursor that meet `clip`, in content coordinates. */
+static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    double x[6];
+    columns(c, x);
+    ui_fill(cr, clip, k->client_bg);
+    double lh = line_h(c), off = c->view == UI_VIEW_ICON ? 4 : 0;
+    double r0 = floor((clip.y - off) / lh), r1 = floor((clip.y + clip.h - off) / lh);
+    size_t kcols = cols(c);
+    for (double row = r0 < 0 ? 0 : r0; row <= r1; row++) {
+        for (size_t col = 0; col < kcols; col++) {
+            size_t i = (size_t)row * kcols + col;
+            if (i >= c->count) break;
+            ui_rect r = item_crect(c, i);
+            if (!ui_rect_meets(r, clip)) continue;
+            if (c->view == UI_VIEW_DETAILS) draw_details_row(c, cr, i, r, x);
+            else draw_icon_cell(c, cr, i, r);
+        }
+    }
+    if (c->band) {
+        double bx = fmin(c->bx0, c->bx1), by = fmin(c->by0, c->by1);
+        double bw = fabs(c->bx1 - c->bx0), bh = fabs(c->by1 - c->by0);
+        ui_set_color(cr, k->text);
+        double dash = 2;
+        cairo_set_dash(cr, &dash, 1, 0);
+        cairo_set_line_width(cr, 1);
+        cairo_rectangle(cr, floor(bx) + 0.5, floor(by) + 0.5, floor(bw), floor(bh));
+        cairo_stroke(cr);
+        cairo_set_dash(cr, NULL, 0, 0);
+    }
+}
+
+static void layer_draw(void *ctx, cairo_t *cr, ui_rect clip) { draw_content(ctx, cr, clip); }
+
+void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    double x[6];
+    columns(c, x);
+    ui_rect h = head_rect(c);
+    if (h.h && ui_rect_meets(clip, h)) {
+        ui_fill(cr, h, k->face);
+        for (int i = 1; i < 5; i++) {
+            ui_rect cell = { x[i] - 4, h.y, x[i + 1] - x[i], h.h };
+            ui_bevel(cr, cell, true);
+            ui_set_color(cr, k->text);
+            ui_text_draw(cr, UI_FONT_REGULAR, x[i], h.y + (h.h + ui_text_ascent()) / 2 - 1, heads[i], cell.w - 8);
+        }
+    }
+    ui_rect l = list_rect(c);
+    if (!c->layer && ui_rect_meets(clip, l)) {
+        /* No layer (the compositor lacks it): rows drawn on the surface. */
+        cairo_save(cr);
+        cairo_rectangle(cr, l.x, l.y, l.w, l.h);
+        cairo_clip(cr);
+        cairo_translate(cr, 0, l.y - c->scroll);
+        double top = fmax(clip.y, l.y), bot = fmin(clip.y + clip.h, l.y + l.h);
+        draw_content(c, cr, (ui_rect){ l.x, top - l.y + c->scroll, l.w, bot - top });
+        cairo_restore(cr);
+    }
+    if (ui_rect_meets(clip, sb_rect(c))) draw_scrollbar(c, cr);
+}
+
+/* ------------------------------------------------------------------ input */
+
+static void move_cursor(ui_container *c, size_t to, unsigned mods)
+{
+    if (!c->count) return;
+    if (to >= c->count) to = c->count - 1;
+    size_t old = c->cursor;
+    bool had = c->has_cursor;
+    c->cursor = to;
+    c->has_cursor = true;
+    if (mods & UI_MOD_SHIFT) {
+        sel_clear(c);
+        sel_range(c, c->anchor, to, true);
+    } else if (!(mods & UI_MOD_CTRL)) {
+        sel_clear(c);
+        sel_set(c, to, true);
+        c->anchor = to;
+    }
+    if (had) damage_item(c, old);
+    damage_item(c, to);
+    ensure_visible(c, to);
+}
+
+static void band_update(ui_container *c)
+{
+    ui_rect l = list_rect(c);
+    double x0 = fmin(c->bx0, c->bx1) - l.x - 4, x1 = fmax(c->bx0, c->bx1) - l.x - 4;
+    double y0 = fmin(c->by0, c->by1) - 4, y1 = fmax(c->by0, c->by1) - 4;
+    sel_clear(c);
+    size_t k = cols(c);
+    if (x1 < 0 || y1 < 0) { damage_list(c); return; }
+    size_t c0 = (size_t)fmax(0, x0 / CELL_W), c1 = (size_t)(x1 / CELL_W);
+    size_t r0 = (size_t)fmax(0, y0 / CELL_H), r1 = (size_t)(y1 / CELL_H);
+    if (c1 >= k) c1 = k - 1;
+    for (size_t r = r0; r <= r1; r++)
+        for (size_t col = c0; col <= c1; col++) {
+            size_t i = r * k + col;
+            if (i < c->count) sel_set(c, i, true);
+        }
+    damage_list(c);
+}
+
+bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
+{
+    ui_rect sb = sb_rect(c), l = list_rect(c);
+    if (e->kind == UI_WHEEL) {
+        ui_container_scroll_by(c, e->wheel);
+        return true;
+    }
+    if (e->kind == UI_MOTION) {
+        if (c->thumb_drag) {
+            double ty, th;
+            thumb(c, &ty, &th);
+            double range = sb.h - 2 * SB_W - th;
+            if (range > 0) scroll_to(c, (e->y - c->thumb_off - (sb.y + SB_W)) / range * max_scroll(c));
+            return true;
+        }
+        if (c->band) {
+            c->bx1 = e->x;
+            c->by1 = e->y - l.y + c->scroll;
+            band_update(c);
+            return true;
+        }
+        return ui_rect_has(c->r, e->x, e->y);
+    }
+    if (e->kind == UI_RELEASE) {
+        bool was = c->thumb_drag || c->band || c->arrow_down;
+        c->thumb_drag = false;
+        if (c->arrow_down) { c->arrow_down = 0; damage_sb(c); }
+        if (c->band) { c->band = false; damage_list(c); }
+        if (e->button == UI_BTN2 && c->b2_down) {
+            c->b2_down = false;
+            if (fabs(e->x - c->b2x) < 5 && fabs(e->y - c->b2y) < 5 && c->src->menu) {
+                size_t i = item_at(c, e->x, e->y);
+                if (i != SIZE_MAX && !sel_get(c, i)) move_cursor(c, i, 0);
+                c->src->menu(c->ctx, i, e->x, e->y, e->serial);
+            }
+            return true;
+        }
+        return was;
+    }
+    if (e->kind != UI_PRESS || !ui_rect_has(c->r, e->x, e->y)) return false;
+    if (ui_rect_has(sb, e->x, e->y)) {
+        if (e->button != UI_BTN1) return true;
+        double ty, th;
+        thumb(c, &ty, &th);
+        if (e->y < sb.y + SB_W) { c->arrow_down = -1; ui_container_scroll_by(c, -line_h(c)); damage_sb(c); }
+        else if (e->y >= sb.y + sb.h - SB_W) { c->arrow_down = 1; ui_container_scroll_by(c, line_h(c)); damage_sb(c); }
+        else if (e->y < ty) ui_container_scroll_by(c, -l.h);
+        else if (e->y >= ty + th) ui_container_scroll_by(c, l.h);
+        else { c->thumb_drag = true; c->thumb_off = e->y - ty; }
+        return true;
+    }
+    if (!ui_rect_has(l, e->x, e->y)) return true;
+    size_t i = item_at(c, e->x, e->y);
+    if (e->button == UI_BTN2) {
+        c->b2_down = true;
+        c->b2x = e->x;
+        c->b2y = e->y;
+        return true;
+    }
+    if (e->button != UI_BTN1) return true;
+    if (i == SIZE_MAX) {
+        if (!(e->mods & UI_MOD_CTRL)) sel_clear(c);
+        if (c->view == UI_VIEW_ICON) {
+            c->band = true;
+            c->bx0 = c->bx1 = e->x;
+            c->by0 = c->by1 = e->y - l.y + c->scroll;
+        }
+        return true;
+    }
+    if (e->clicks == 2) {
+        move_cursor(c, i, 0);
+        if (c->src->activate) c->src->activate(c->ctx, i);
+        return true;
+    }
+    if (e->mods & UI_MOD_CTRL) {
+        sel_set(c, i, !sel_get(c, i));
+        size_t old = c->cursor;
+        c->cursor = i;
+        c->anchor = i;
+        c->has_cursor = true;
+        damage_item(c, old);
+        damage_item(c, i);
+    } else {
+        move_cursor(c, i, e->mods & UI_MOD_SHIFT);
+    }
+    return true;
+}
+
+bool ui_container_key(ui_container *c, const ui_key_event *e)
+{
+    if (!c->count) return false;
+    size_t cur = c->has_cursor ? c->cursor : 0, k = cols(c);
+    size_t page = (size_t)(list_rect(c).h / line_h(c)) * k;
+    if (page < k) page = k;
+    switch (e->sym) {
+    case XKB_KEY_Down: move_cursor(c, c->has_cursor ? cur + k : 0, e->mods); return true;
+    case XKB_KEY_Up: move_cursor(c, cur >= k ? cur - k : 0, e->mods); return true;
+    case XKB_KEY_Right: if (c->view == UI_VIEW_ICON) { move_cursor(c, cur + 1, e->mods); return true; } return false;
+    case XKB_KEY_Left: if (c->view == UI_VIEW_ICON) { move_cursor(c, cur ? cur - 1 : 0, e->mods); return true; } return false;
+    case XKB_KEY_Page_Down: move_cursor(c, cur + page, e->mods); return true;
+    case XKB_KEY_Page_Up: move_cursor(c, cur >= page ? cur - page : 0, e->mods); return true;
+    case XKB_KEY_Home: move_cursor(c, 0, e->mods); return true;
+    case XKB_KEY_End: move_cursor(c, c->count - 1, e->mods); return true;
+    case XKB_KEY_space:
+        if (c->has_cursor) { sel_set(c, cur, !sel_get(c, cur)); damage_item(c, cur); }
+        return true;
+    case XKB_KEY_Return: case XKB_KEY_KP_Enter:
+        if (c->has_cursor && c->src->activate) c->src->activate(c->ctx, cur);
+        return true;
+    case XKB_KEY_slash: case XKB_KEY_a:   /* Ctrl+/ (OS/2) and Ctrl+A select all */
+        if (!(e->mods & UI_MOD_CTRL)) return false;
+        sel_range(c, 0, c->count - 1, true);
+        return true;
+    case XKB_KEY_backslash:               /* Ctrl+\ deselects all (OS/2) */
+        if (!(e->mods & UI_MOD_CTRL)) return false;
+        sel_clear(c);
+        return true;
+    case XKB_KEY_Menu: case XKB_KEY_F10:
+        if (e->sym == XKB_KEY_F10 && !(e->mods & UI_MOD_SHIFT)) return false;
+        if (c->src->menu) {
+            ui_rect r = c->has_cursor ? item_rect(c, cur) : list_rect(c);
+            c->src->menu(c->ctx, c->has_cursor ? cur : SIZE_MAX, r.x + 20, r.y + r.h / 2, c->s->app->last_serial);
+        }
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* ------------------------------------------------------------------ model */
+
+void ui_container_count_changed(ui_container *c)
+{
+    size_t old = c->count, now = c->src->count(c->ctx);
+    if (now == old) return;
+    c->count = now;
+    if (c->has_cursor && c->cursor >= now) c->has_cursor = false;
+    if (c->scroll > max_scroll(c)) scroll_to(c, max_scroll(c));
+    /* Newly existing items on screen, and the scroll bar. */
+    size_t from = old < now ? old : now;
+    ui_rect r = item_crect(c, from - from % cols(c)), w = window_crect(c);
+    if (r.y < w.y + w.h) {
+        double y0 = fmax(r.y, w.y);
+        damage_content(c, (ui_rect){ w.x, y0, w.w, w.y + w.h - y0 });
+    }
+    damage_sb(c);
+    c->vis_first = c->vis_last = SIZE_MAX;
+    report_visible(c);
+}
+
+void ui_container_changed(ui_container *c, size_t first, size_t last)
+{
+    size_t f, l;
+    visible_range(c, &f, &l);
+    if (last < f || first > l) return;
+    if (first < f) first = f;
+    if (last > l) last = l;
+    if (c->view == UI_VIEW_DETAILS) {
+        ui_rect a = item_crect(c, first), b = item_crect(c, last), w = window_crect(c);
+        double y0 = fmax(a.y, w.y), y1 = fmin(b.y + b.h, w.y + w.h);
+        if (y1 > y0) damage_content(c, (ui_rect){ w.x, y0, w.w, y1 - y0 });
+    } else {
+        for (size_t i = first; i <= last; i++) damage_item(c, i);
+    }
+}
+
+void ui_container_layout(ui_container *c, ui_rect r)
+{
+    r.x = floor(r.x);
+    r.y = floor(r.y);
+    r.w = floor(r.w);
+    r.h = floor(r.h);
+    c->r = r;
+    c->count = c->src->count(c->ctx);
+    if (c->scroll > max_scroll(c)) c->scroll = max_scroll(c);
+    c->vis_first = c->vis_last = SIZE_MAX;
+    ui_surface_damage(c->s, r);
+    if (c->layer) {
+        ui_layer_set_area(c->layer, list_rect(c));
+        ui_layer_set_offset(c->layer, c->scroll);
+        ui_layer_damage_all(c->layer);
+    }
+    report_visible(c);
+}
+
+void ui_container_set_view(ui_container *c, ui_view v)
+{
+    if (v == c->view) return;
+    /* Keep the same items at the top. */
+    size_t top = (size_t)(c->scroll / line_h(c)) * cols(c);
+    c->view = v;
+    c->scroll = 0;
+    c->scroll = fmin(max_scroll(c), floor((double)(top / cols(c)) * line_h(c)));
+    ui_container_layout(c, c->r);
+}
+
+ui_view ui_container_view(ui_container *c) { return c->view; }
+
+ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view)
+{
+    ui_container *c = calloc(1, sizeof *c);
+    c->s = s;
+    c->src = src;
+    c->ctx = ctx;
+    c->view = view;
+    c->focused = true;
+    c->vis_first = c->vis_last = SIZE_MAX;
+    if (!getenv("WPS_UI_NO_LAYER")) c->layer = ui_layer_new(s, layer_draw, c);
+    return c;
+}
+
+void ui_container_free(ui_container *c)
+{
+    if (!c) return;
+    ui_layer_free(c->layer);
+    free(c->sel);
+    free(c);
+}
