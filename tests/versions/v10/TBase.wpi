@@ -1,0 +1,9 @@
+# Test class, version 1.0: what an older plug-in was built against.
+class TBase
+version 1.0
+data {
+    int a;
+}
+method tGetA() -> int
+method tSetA(int v) -> void
+method tDescribe() -> string

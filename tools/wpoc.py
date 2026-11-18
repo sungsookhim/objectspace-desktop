@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""wpoc - generate C bindings from WPS class interface files (.wpi).
+
+A .wpi file describes one class:
+
+    # comment
+    class WPFolder : WPFileSystem       # no parent means WPORoot
+    version 1.2                         # major.minor
+    include "something.h"               # copied into the header (optional)
+    data {                              # this class's instance data (C)
+        int sort_order;
+    }
+    classdata { ... }                   # data of the class object (optional)
+    method wpPopulate() -> pending async
+    method wpSetTitle(string title) -> bool
+    classmethod wpclsQueryTitle() -> string
+    override wpQueryTitle               # an inherited method
+    classoverride wpclsNew              # an inherited class method
+
+Types: void bool int double string object pending. Argument strings are
+borrowed (const char *); returned strings and objects belong to the caller.
+
+For each class, wpoc writes NAME.h (data struct, call wrappers, parent-call
+wrappers for overrides, prototypes of the implementations the class author
+writes as NAME__method) and NAME.reg.c (apply stubs, method tables and
+NAME_register()).
+
+usage: wpoc.py -I DIR [-I DIR ...] -o OUTDIR FILE.wpi [...]
+Parent classes are looked up as PARENT.wpi in the -I directories.
+"""
+import argparse
+import re
+import sys
+from pathlib import Path
+
+TYPES = {  # name: (letter, C argument type, C return type)
+    "void": ("v", None, "void"),
+    "bool": ("b", "bool", "bool"),
+    "int": ("i", "int64_t", "int64_t"),
+    "double": ("d", "double", "double"),
+    "string": ("s", "const char *", "char *"),
+    "object": ("o", "wpo_object *", "wpo_object *"),
+    "pending": ("p", None, "wpo_pending *"),
+}
+UNION = {"b": "b", "i": "i", "d": "d", "s": "s", "o": "o"}
+TO_VALUE = {"v": None, "b": "wpo_v_bool", "i": "wpo_v_int", "d": "wpo_v_double",
+            "s": "wpo_v_string_take", "o": "wpo_v_object_take", "p": "wpo_v_pending_take"}
+
+
+class WpiError(Exception):
+    pass
+
+
+def param(ctype, name):
+    """'const char *name' or 'int64_t name'."""
+    return f"{ctype}{name}" if ctype.endswith("*") else f"{ctype} {name}"
+
+
+class Method:
+    def __init__(self, name, args, ret, is_async=False):
+        self.name, self.args, self.ret, self.is_async = name, args, ret, is_async
+
+    @property
+    def sig(self):
+        return TYPES[self.ret][0] + "(" + "".join(TYPES[t][0] for t, _ in self.args) + ")"
+
+    def c_ret(self):
+        return TYPES[self.ret][2]
+
+    def c_decl(self, fname):
+        """'char *fname' or 'bool fname'."""
+        r = self.c_ret()
+        return f"{r}{fname}" if r.endswith("*") else f"{r} {fname}"
+
+    def c_params(self, self_type="wpo_object *"):
+        return ", ".join([param(self_type, "self")] + [param(TYPES[t][1], n) for t, n in self.args])
+
+    def c_fnptr(self):
+        return f"{self.c_ret()} (*)(" + ", ".join(["wpo_object *"] + [TYPES[t][1] for t, _ in self.args]) + ")"
+
+    def arg_names(self):
+        return ", ".join(["self"] + [n for _, n in self.args])
+
+
+class Cls:
+    def __init__(self, name):
+        self.name = name
+        self.parent = "WPORoot"
+        self.major = self.minor = None
+        self.includes, self.data, self.cdata = [], [], []
+        self.methods, self.cmethods = [], []
+        self.overrides, self.coverrides = [], []
+        self.builtin = False
+
+
+def builtin_classes():
+    root = Cls("WPORoot")
+    root.parent, root.major, root.minor, root.builtin = None, 1, 0, True
+    root.methods = [Method("wpInitData", [], "void"), Method("wpUnInitData", [], "void")]
+    root.cmethods = [Method("wpclsNew", [], "object")]   # introduced by the metaclass WPOClass
+    return {"WPORoot": root}
+
+
+METHOD_RE = re.compile(r"^(method|classmethod)\s+(\w+)\s*\(([^)]*)\)\s*->\s*(\w+)\s*(async)?\s*$")
+
+
+def parse(path):
+    text = Path(path).read_text()
+    c, block, lines = None, None, text.splitlines()
+    for no, raw in enumerate(lines, 1):
+        line = raw.split("#", 1)[0].rstrip() if block is None else raw.rstrip()
+        s = line.strip()
+        if block is not None:
+            if s == "}":
+                block = None
+            else:
+                getattr(c, block).append(raw.rstrip())
+            continue
+        if not s:
+            continue
+        where = f"{path}:{no}"
+        if s.startswith("class "):
+            m = re.match(r"^class\s+(\w+)(?:\s*:\s*(\w+))?$", s)
+            if not m:
+                raise WpiError(f"{where}: bad class line")
+            c = Cls(m.group(1))
+            if m.group(2):
+                c.parent = m.group(2)
+            continue
+        if c is None:
+            raise WpiError(f"{where}: expected 'class'")
+        if s.startswith("version "):
+            m = re.match(r"^version\s+(\d+)\.(\d+)$", s)
+            if not m:
+                raise WpiError(f"{where}: version must be MAJOR.MINOR")
+            c.major, c.minor = int(m.group(1)), int(m.group(2))
+        elif s.startswith("include "):
+            c.includes.append(s[len("include "):].strip())
+        elif s in ("data {", "classdata {"):
+            block = "data" if s.startswith("data") else "cdata"
+        elif s.startswith(("method ", "classmethod ")):
+            m = METHOD_RE.match(s)
+            if not m:
+                raise WpiError(f"{where}: bad method line")
+            args = []
+            for a in filter(None, (x.strip() for x in m.group(3).split(","))):
+                parts = a.split()
+                if len(parts) != 2 or parts[0] not in TYPES or parts[0] in ("void", "pending"):
+                    raise WpiError(f"{where}: bad argument '{a}'")
+                args.append((parts[0], parts[1]))
+            if m.group(4) not in TYPES:
+                raise WpiError(f"{where}: unknown type {m.group(4)}")
+            meth = Method(m.group(2), args, m.group(4), bool(m.group(5)))
+            if meth.is_async and meth.ret != "pending":
+                raise WpiError(f"{where}: async methods return pending")
+            (c.methods if m.group(1) == "method" else c.cmethods).append(meth)
+        elif s.startswith("override "):
+            c.overrides.append(s.split()[1])
+        elif s.startswith("classoverride "):
+            c.coverrides.append(s.split()[1])
+        else:
+            raise WpiError(f"{where}: cannot parse '{s}'")
+    if c is None or c.major is None:
+        raise WpiError(f"{path}: needs a class line and a version line")
+    return c
+
+
+class World:
+    def __init__(self, incdirs):
+        self.incdirs = [Path(d) for d in incdirs]
+        self.classes = builtin_classes()
+
+    def get(self, name):
+        if name not in self.classes:
+            for d in self.incdirs:
+                p = d / f"{name}.wpi"
+                if p.exists():
+                    self.classes[name] = parse(p)
+                    break
+            else:
+                raise WpiError(f"class {name}: no {name}.wpi in the include path")
+        return self.classes[name]
+
+    def chain(self, c):
+        out = []
+        while c:
+            out.append(c)
+            c = self.get(c.parent) if c.parent else None
+        return out
+
+    def find(self, c, name, kind):
+        """(introducing class, index, Method) for an inherited method."""
+        for anc in (self.chain(self.get(c.parent)) if c.parent else []):
+            lst = anc.methods if kind == "method" else anc.cmethods
+            for i, m in enumerate(lst):
+                if m.name == name:
+                    return anc, i, m
+        raise WpiError(f"{c.name}: no inherited {kind} {name} to override")
+
+
+def intro_ptr(cls, meta):
+    if cls.builtin:
+        return "WPOClassClass" if meta else "WPORootClass"
+    return f"M_{cls.name}Class" if meta else f"{cls.name}Class"
+
+
+def intro_index(cls, i, m, meta):
+    if cls.builtin:
+        return ("WPOClass_" if meta else "WPORoot_") + m.name
+    return str(i)
+
+
+def gen_header(w, c):
+    n = c.name
+    o = [f"/* Generated by wpoc from {n}.wpi. Do not edit. */",
+         f"#ifndef {n.upper()}_WPI_H", f"#define {n.upper()}_WPI_H", "", '#include "wpo.h"']
+    if c.parent != "WPORoot":
+        o.append(f'#include "{c.parent}.h"')
+    o += [f"#include {inc}" for inc in c.includes]
+    o += ["", f"#define {n}_MAJOR {c.major}", f"#define {n}_MINOR {c.minor}", "",
+          f"extern wpo_class *{n}Class;", f"extern wpo_class *M_{n}Class;", ""]
+    if c.data:
+        o += ["typedef struct {"] + c.data + [f"}} {n}Data;", "",
+              f"static inline {n}Data *{n}_data(wpo_object *self)",
+              f"{{ return ({n}Data *)wpo_data(self, {n}Class); }}", ""]
+    if c.cdata:
+        o += ["typedef struct {"] + c.cdata + [f"}} M_{n}Data;", "",
+              f"static inline M_{n}Data *{n}_cdata(wpo_class *cls)",
+              f"{{ return (M_{n}Data *)wpo_data(&cls->hdr, M_{n}Class); }}", ""]
+    if c.methods:
+        o.append("/* Calls (dispatch through the object's class). */")
+    for i, m in enumerate(c.methods):
+        ret = "" if m.ret == "void" else "return "
+        o += [f"static inline {m.c_decl(f'{n}_{m.name}')}({m.c_params()})",
+              f"{{ {ret}(({m.c_fnptr()})wpo_slot(self, {n}Class, {i}))({m.arg_names()}); }}"]
+    if c.cmethods:
+        o.append("/* Class method calls: pass the class (or a subclass). */")
+    for i, m in enumerate(c.cmethods):
+        ret = "" if m.ret == "void" else "return "
+        params = ", ".join(["wpo_class *cls"] + [param(TYPES[t][1], a) for t, a in m.args])
+        args = ", ".join(["&cls->hdr"] + [a for _, a in m.args])
+        o += [f"static inline {m.c_decl(f'{n}_{m.name}')}({params})",
+              f"{{ {ret}(({m.c_fnptr()})wpo_slot(&cls->hdr, M_{n}Class, {i}))({args}); }}"]
+    o += ["", "/* Implemented by the class author. For class methods, self is the class. */"]
+    for m in c.methods + c.cmethods:
+        o.append(f"{m.c_decl(f'{n}__{m.name}')}({m.c_params()});")
+    for kind, names in (("method", c.overrides), ("classmethod", c.coverrides)):
+        for name in names:
+            _, _, m = w.find(c, name, kind)
+            o.append(f"{m.c_decl(f'{n}__{name}')}({m.c_params()});")
+    if c.overrides or c.coverrides:
+        o += ["", "/* The parent's version of each overridden method. */"]
+    for kind, names in (("method", c.overrides), ("classmethod", c.coverrides)):
+        meta = kind == "classmethod"
+        for name in names:
+            anc, i, m = w.find(c, name, kind)
+            ret = "" if m.ret == "void" else "return "
+            defining = f"M_{n}Class" if meta else f"{n}Class"
+            o += [f"static inline {m.c_decl(f'{n}_parent_{name}')}({m.c_params()})",
+                  f"{{ {ret}(({m.c_fnptr()})wpo_parent_slot({defining}, {intro_ptr(anc, meta)}, "
+                  f"{intro_index(anc, i, m, meta)}))({m.arg_names()}); }}"]
+    o += ["", f"wpo_status {n}_register(void);", "", "#endif", ""]
+    return "\n".join(o)
+
+
+def apply_stub(n, m):
+    args = ", ".join(["self"] + [f"a[{k}].u.{UNION[TYPES[t][0]]}" for k, (t, _) in enumerate(m.args)])
+    call = f"(({m.c_fnptr()})fn)({args})"
+    conv = TO_VALUE[TYPES[m.ret][0]]
+    body = f"    {call};\n    *ret = wpo_v_void();" if conv is None else f"    *ret = {conv}({call});"
+    return (f"static wpo_status {n}_apply_{m.name}(wpo_fn fn, wpo_object *self, const wpo_value *a, wpo_value *ret)\n"
+            f"{{\n    (void)a;\n{body}\n    return WPO_OK;\n}}\n")
+
+
+def gen_reg(w, c):
+    n = c.name
+    o = [f"/* Generated by wpoc from {n}.wpi. Do not edit. */", f'#include "{n}.h"', "",
+         f"wpo_class *{n}Class;", f"wpo_class *M_{n}Class;", ""]
+    for m in c.methods + c.cmethods:
+        o.append(apply_stub(n, m))
+
+    def table(kind, ms):
+        if not ms:
+            return "NULL", "0"
+        rows = [f'    {{ "{m.name}", "{m.sig}", {"WPO_M_ASYNC" if m.is_async else "0"}, '
+                f"{n}_apply_{m.name}, (wpo_fn){n}__{m.name} }}," for m in ms]
+        o.extend([f"static const wpo_method_def {n}_{kind}[] = {{"] + rows + ["};", ""])
+        return f"{n}_{kind}", str(len(ms))
+
+    def otable(kind, names):
+        if not names:
+            return "NULL", "0"
+        rows = [f'    {{ "{x}", (wpo_fn){n}__{x} }},' for x in names]
+        o.extend([f"static const wpo_override_def {n}_{kind}[] = {{"] + rows + ["};", ""])
+        return f"{n}_{kind}", str(len(names))
+
+    mt, mn = table("methods", c.methods)
+    cmt, cmn = table("cmethods", c.cmethods)
+    ot, on = otable("overrides", c.overrides)
+    cot, con = otable("coverrides", c.coverrides)
+    p = w.get(c.parent)
+    pmaj = f"{p.name}_MAJOR" if not p.builtin else "1"
+    pmin = f"{p.name}_MINOR" if not p.builtin else "0"
+    o += [f"wpo_status {n}_register(void)", "{",
+          "    static const wpo_class_def def = {",
+          f'        .name = "{n}", .parent = "{c.parent}",',
+          f"        .major = {n}_MAJOR, .minor = {n}_MINOR,",
+          f"        .parent_major = {pmaj}, .parent_minor = {pmin},",
+          f"        .data_size = {f'sizeof({n}Data)' if c.data else '0'},",
+          f"        .methods = {mt}, .nmethods = {mn},",
+          f"        .overrides = {ot}, .noverrides = {on},",
+          f"        .cmethods = {cmt}, .ncmethods = {cmn},",
+          f"        .coverrides = {cot}, .ncoverrides = {con},",
+          f"        .cdata_size = {f'sizeof(M_{n}Data)' if c.cdata else '0'},",
+          "    };",
+          f"    wpo_status st = wpo_register_class(&def, &{n}Class);",
+          f"    if (st == WPO_OK) M_{n}Class = {n}Class->hdr.cls;",
+          "    return st;", "}", ""]
+    return "\n".join(o)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="generate C bindings from .wpi class files")
+    ap.add_argument("-I", dest="inc", action="append", default=[])
+    ap.add_argument("-o", dest="out", required=True)
+    ap.add_argument("files", nargs="+")
+    a = ap.parse_args()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        for f in a.files:
+            w = World(a.inc + [str(Path(f).parent)])
+            c = parse(f)
+            w.classes[c.name] = c
+            w.chain(c)   # resolve parents now, for clear errors
+            (out / f"{c.name}.h").write_text(gen_header(w, c))
+            (out / f"{c.name}.reg.c").write_text(gen_reg(w, c))
+    except WpiError as e:
+        sys.exit(f"wpoc: {e}")
+
+
+if __name__ == "__main__":
+    main()

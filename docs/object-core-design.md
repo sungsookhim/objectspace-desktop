@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.4 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.5 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -661,7 +661,7 @@ The core is finished when every scenario below passes from the command line, wit
 The core takes about 3.5–4 months of focused work for one developer. Durations are estimates. Each milestone ends with the named test scenarios passing.
 
 1. **M0: Tracking prototype — done.** `proto/m0`: a fanotify watcher and 21 kernel scenarios (16 pass, 4 observations, 1 finding: vim's save pattern, now covered by the displacement rule), and a per-user filtering prototype of `wps-watchd` with 11 scenarios, all passing. Results in `proto/m0/RESULTS.md`.
-2. **M1: Runtime and main loop (2–3 weeks).** `libwpo`, `wpoc`, the seven classes as shells, deferred results, the three-queue loop, the watchdog and the worker pool. Unit tests pass.
+2. **M1: Runtime and main loop — first version done.** `runtime/` (`libwpo` core in C11 using only eight C library functions, the three-queue loop with watchdog and worker pool, plug-in loading), `tools/wpoc.py` (the `.wpi` generator), and the seven classes in `classes/` as first versions. 128 runtime checks and 19 loop checks pass, including plug-ins built against older, newer and incompatible class versions, class replacement by a plug-in, and interactive latency while workers are busy (0.12 ms worst case). Still to do in M1: run the tests under AddressSanitizer (needs `libasan`, `libubsan`).
 3. **M2: Persistence, identity and concurrency (2–3 weeks).** Extended attributes with locking and merge, overlays, lazy IDs, the database writer, `wpsd`, `wpsctl`. Scenarios 1, 2, 10 and 21–25 pass.
 4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26, 27, 33 and 36 pass.
 5. **M4: Scale, shadows, object files and jobs (3–4 weeks).** Streaming folder listing, selections, the job manager with journal and logout handling, managed symlinks with folder records, `.wpobj` files, no-replace operations, unavailable volumes. Scenarios 3, 6, 12, 28–32, 34, 35, 38, 39 and 40 pass.
@@ -688,7 +688,7 @@ These follow from the principles above but need not be designed in full before M
 
 ## Open questions
 
-- [ ] Should the class interface files (`.wpi`) be a custom format, or a subset of an existing IDL to reuse its tools?
+- [x] Class interface files: decided in M1 — a small custom format (`.wpi`), documented in `tools/wpoc.py`. An IDL subset brought tooling we would not use.
 - [ ] Should per-user overlays and layouts for a removable volume be stored on that volume, so they travel with a USB disk?
 - [ ] Should `wps-watchd` be required, or optional with a clearly weaker mode? Distributions may hesitate to ship a root service.
 - [ ] How should objects inside the trash behave: kept with their IDs until emptied, or treated as deleted?
@@ -700,6 +700,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.5 | 2026-11-18 | M1 first version: runtime, loop, `wpoc`, seven classes, tests; `.wpi` format decided |
 | 0.4 | 2026-11-18 | M0 results folded in: displacement rule for saves that rename the original away (vim); save detection section; replaced inode identified by its handle; per-user filtering rules validated by the prototype (register by descriptor, re-check on folder changes, hidden rename targets, overflow notices for slow services); FAT handles valid within a mount; rsync note; M0 marked done |
 | 0.3 | 2026-11-18 | Added Multiple logged-in users: services of different users never talk to each other; abstract objects are stored as files (`.desktop`, symlinks, `.wpobj`) so other users can see them; shadow records stored on their folder so any user can maintain them; simultaneous-operation rules with no-replace file operations; shared and system programs, always launched as the launching user, with confirmation for programs owned by others; per-user fairness through systemd slices; root sessions. Nine new test scenarios; milestones extended to 3.5–4 months |
 | 0.2 | 2026-11-18 | Folded in the [external review](reviews/2026-11-18-gemini-review.md): lazy ID assignment; replacement decided by incoming identity instead of timing; cross-filesystem moves matched by ID with no time window; all-or-nothing layout storage; hard-link notes only for objects with user settings; excluded paths. Added design principles; responsiveness rules against a single-queue stall (loop budget, deferred results, three queues, plug-in hosts); concurrency and multi-user model (per-user service, change counters, locked merge, overlays, per-user layout, per-user event filtering); scale section (streaming folder listing, selections, jobs with journal, reflink copies); API messages for selections, jobs and viewports; 16 new test scenarios; revised milestones; deferred items |

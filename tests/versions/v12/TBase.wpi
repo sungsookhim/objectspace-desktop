@@ -1,0 +1,13 @@
+# Test class, version 1.2: newer than the installed one.
+class TBase
+version 1.2
+data {
+    int a;
+    int b;
+    char pad[40];
+}
+method tGetA() -> int
+method tSetA(int v) -> void
+method tDescribe() -> string
+method tGetB() -> int
+method tGetNew() -> int

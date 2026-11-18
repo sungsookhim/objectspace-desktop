@@ -1,0 +1,4 @@
+# A third-party folder class that replaces WPFolder.
+class MyFolder : WPFolder
+version 1.0
+override wpModifyPopupMenu

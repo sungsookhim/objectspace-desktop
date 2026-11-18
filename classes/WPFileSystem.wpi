@@ -1,0 +1,11 @@
+# Anything with a directory entry.
+class WPFileSystem : WPObject
+version 1.0
+data {
+    char *path;
+}
+override wpUnInitData
+override wpQueryTitle
+method wpQueryPath() -> string
+method wpSetPath(string path) -> bool
+classoverride wpclsQueryTitle

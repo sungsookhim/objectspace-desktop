@@ -1,0 +1,6 @@
+# A regular file.
+class WPDataFile : WPFileSystem
+version 1.0
+override wpModifyPopupMenu
+method wpQueryMimeType() -> string
+classoverride wpclsQueryTitle

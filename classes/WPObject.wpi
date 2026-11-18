@@ -1,0 +1,21 @@
+# The root of all WPS objects.
+class WPObject
+version 1.0
+data {
+    char *title;        /* NULL: the class decides (see wpQueryTitle) */
+    char id[37];        /* object ID; empty until assigned (lazy) */
+    uint32_t dirty;     /* state changed since the last save */
+}
+override wpInitData
+override wpUnInitData
+method wpQueryTitle() -> string
+method wpSetTitle(string title) -> bool
+method wpQueryHandle() -> string
+# Menus are text in M1: one "id<TAB>label" line per item. M5 turns them
+# into structured data returned asynchronously.
+method wpModifyPopupMenu(string menu) -> string
+method wpMenuItemSelected(int item) -> bool
+method wpSaveDeferred() -> void
+method wpObjectChanged() -> void
+method wpRestoreState() -> pending async
+classmethod wpclsQueryTitle() -> string

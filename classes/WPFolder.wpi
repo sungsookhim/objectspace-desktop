@@ -1,0 +1,9 @@
+# A directory.
+class WPFolder : WPFileSystem
+version 1.0
+data {
+    int sort_order;
+}
+override wpModifyPopupMenu
+method wpQuerySortOrder() -> int
+classoverride wpclsQueryTitle

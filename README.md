@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: design, plus the M0 kernel-behaviour prototype in [proto/m0](proto/m0) ([results](proto/m0/RESULTS.md)).
+Status: M0 (kernel prototypes) done; M1 (object runtime) first version done.
 
 ## Documents
 
@@ -17,7 +17,27 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 ## Plan
 
 1. M0: kernel-behaviour and per-user filtering prototypes. Done; findings folded into design v0.4.
-2. M1–M5: runtime, persistence and identity, change tracking, shadows, API.
-3. Then design the GUI on top of the object core.
+2. M1: object runtime, main loop, class generator, core classes. First version done.
+3. M2–M5: persistence and identity, change tracking, shadows and jobs, API and plug-in host.
+4. Then design the GUI on top of the object core.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `runtime/` | `libwpo`: the object runtime (`wpo.h`, `wpo.c`: C11, C library only), the main loop (`wpo_loop.h`, POSIX implementation) and plug-in loading |
+| `tools/wpoc.py` | Generates C headers and registration code from `.wpi` class files |
+| `classes/` | The core classes: `WPObject`, `WPFileSystem`, `WPDataFile`, `WPFolder`, `WPAbstract`, `WPProgram`, `WPShadow` |
+| `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
+| `proto/m0/` | M0 kernel and filtering prototypes |
+
+## Building
+
+```
+make          # runtime, classes, plug-ins, tests (needs gcc and python3)
+make test     # run the unit tests
+```
+
+The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.

@@ -1,0 +1,10 @@
+# A program to start (a .desktop file in M5).
+class WPProgram : WPAbstract
+version 1.0
+data {
+    char *command;
+}
+override wpUnInitData
+method wpQueryCommand() -> string
+method wpSetCommand(string command) -> bool
+classoverride wpclsQueryTitle

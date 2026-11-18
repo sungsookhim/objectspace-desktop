@@ -1,0 +1,9 @@
+# A plug-in class built against whichever TBase version is on the include path.
+class TChild : TBase
+version 1.0
+data {
+    int c;
+}
+override wpInitData
+override tDescribe
+method tGetC() -> int
