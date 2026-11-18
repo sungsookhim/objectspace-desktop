@@ -1,6 +1,7 @@
 /* Pop-up menus with cascades, as Wayland popups (gui-design.md, Widget
  * set 3). Items come from the service's menu data. */
 #define _GNU_SOURCE
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -30,7 +31,14 @@ struct menu_root {
     size_t n;
     struct menu *top;
     bool closing;
+    int64_t id;            /* the choice, once closing */
+    ui_surface *opener;    /* where it was opened, for "click again closes" */
+    double ox, oy, closed_at;
 };
+
+/* At most one menu tree exists: Wayland requires popups to be destroyed
+ * topmost first, so a new menu may only appear once the old one is gone. */
+static struct menu_root *active;
 
 static ui_menu_item *copy_items(const ui_menu_item *src, size_t n)
 {
@@ -262,36 +270,55 @@ static void close_child(struct menu *m)
     if (m->child) destroy_menu(m->child);
 }
 
-/* Closing happens on the next loop turn: the event that caused it is still
- * being delivered to one of these surfaces. */
-struct done { struct menu_root *r; int64_t id; };
+/* Destroy the popups now (deepest first); safe to call again. */
+static void close_now(struct menu_root *r)
+{
+    if (r->top) {
+        destroy_menu(r->top);
+        r->top = NULL;
+    }
+}
 
+/* Closing completes on the next loop turn: the event that caused it is
+ * still being delivered to one of these surfaces. */
 static void finish_now(void *arg)
 {
-    struct done *d = arg;
-    struct menu_root *r = d->r;
-    if (r->top) destroy_menu(r->top);
-    if (r->fn) r->fn(r->arg, d->id);
+    struct menu_root *r = arg;
+    close_now(r);
+    if (active == r) active = NULL;
+    if (r->fn) r->fn(r->arg, r->id);
     ui_menu_items_free(r->items, r->n);
     free(r);
-    free(d);
 }
 
 static void finish(struct menu_root *r, int64_t id)
 {
     if (r->closing) return;
     r->closing = true;
-    struct done *d = malloc(sizeof *d);
-    d->r = r;
-    d->id = id;
-    ui_app_post(r->top->surf->app, finish_now, d);
+    r->id = id;
+    r->closed_at = ui_now_ms();
+    ui_app_post(r->opener->app, finish_now, r);
 }
 
 void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                    ui_menu_fn fn, void *arg)
 {
     if (!n) { if (fn) fn(arg, -1); return; }
+    if (active) {
+        struct menu_root *old = active;
+        /* The click that dismissed a menu, landing on the button that
+         * opened it, closes it rather than opening it again. */
+        bool same = old->closing && old->opener == parent && fabs(old->ox - x) < 1 && fabs(old->oy - y) < 1 &&
+                    ui_now_ms() - old->closed_at < 300;
+        finish(old, -1);
+        close_now(old);
+        if (same) { if (fn) fn(arg, -1); return; }
+    }
     struct menu_root *r = calloc(1, sizeof *r);
+    active = r;
+    r->opener = parent;
+    r->ox = x;
+    r->oy = y;
     r->fn = fn;
     r->arg = arg;
     r->items = copy_items(items, n);

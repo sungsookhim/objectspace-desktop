@@ -410,9 +410,29 @@ static void win_close(ui_surface *s)
 }
 
 /* Benchmark: a fling, then jumps as if the scroll bar thumb were dragged. */
+/* WPS_SHELL_SELFTEST=menus: open, re-open and toggle menus in quick
+ * succession (the orders that broke Wayland's popup rules), then quit. */
+static void selftest_chosen(void *arg, int64_t id) { (void)arg; (void)id; }
+
+static void selftest(ui_surface *s, double now)
+{
+    static double t0;
+    static int step;
+    if (!t0) t0 = now;
+    double t = now - t0;
+    ui_menu_item items[] = { { 1, "One", true, false, NULL, 0 }, { 2, "Two", true, false, NULL, 0 } };
+    if (step == 0 && t > 200) { ui_frame_system_menu(s, 0); ui_frame_system_menu(s, 0); step++; }
+    else if (step == 1 && t > 500) { ui_frame_system_menu(s, 0); step++; }           /* after a dismissal */
+    else if (step == 2 && t > 520) { ui_frame_system_menu(s, 0); step++; }           /* click again: closes */
+    else if (step == 3 && t > 800) { ui_menu_popup(s, items, 2, 100, 120, 0, selftest_chosen, NULL); step++; }
+    else if (step == 4 && t > 820) { ui_menu_popup(s, items, 2, 300, 200, 0, selftest_chosen, NULL); ui_frame_system_menu(s, 0); step++; }
+    else if (step == 5 && t > 1500) { fprintf(stderr, "selftest: done\n"); ui_app_quit(app); step++; }
+}
+
 static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
+    if (getenv("WPS_SHELL_SELFTEST")) { selftest(s, now); return; }
     if (f->bench_secs <= 0) return;
     if (f->bench_start == 0) {
         if (!f->total) return;
@@ -541,6 +561,7 @@ int main(int argc, char **argv)
     if (!svc_start(app, err, sizeof err)) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
     for (int k = i; k < argc; k++) {
         struct folder *f = open_folder(argv[k], opt_view);
+        if (k == i && getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);
         if (k == i && opt_bench > 0) {
             f->bench_secs = opt_bench;
             f->bench_seed = 12345;

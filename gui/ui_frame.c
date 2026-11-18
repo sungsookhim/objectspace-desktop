@@ -187,6 +187,9 @@ void ui_frame_draw(ui_surface *s, cairo_t *cr, ui_rect clip, const char *title)
     cairo_restore(cr);
 }
 
+static void system_menu_open(ui_surface *s, uint32_t serial);
+#define system_menu system_menu_open
+
 static void system_menu_chosen(void *arg, int64_t id)
 {
     ui_surface *s = arg;
@@ -198,7 +201,9 @@ static void system_menu_chosen(void *arg, int64_t id)
     }
 }
 
-static void system_menu(ui_surface *s, uint32_t serial)
+void ui_frame_system_menu(ui_surface *s, uint32_t serial) { system_menu_open(s, serial); }
+
+static void system_menu_open(ui_surface *s, uint32_t serial)
 {
     ui_menu_item items[] = {
         { 1, s->maximized ? "Restore" : "Maximize", true, false, NULL, 0 },

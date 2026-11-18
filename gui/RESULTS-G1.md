@@ -42,6 +42,10 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 6. **Bugs found by AddressSanitizer:** the damage list overflowed a fixed array when many small cells were damaged and then scrolled (now bounded, with a test that fills it).
 7. Icons are rendered once per kind, size and scale and painted as images; drawing their paths for every row cost several milliseconds at 2×.
 
+## Found by hand (2026-11-18)
+
+- **Clicking the system menu button while its menu was open killed the shell** (`xdg_wm_base error 2: parent not top most surface`). The click dismissed the menu, then reached the button, which opened a new menu while the dismissed one still existed; destroying the old one afterwards broke Wayland's rule that popups go topmost first. Now at most one menu tree exists: opening a menu destroys any other at once, and a click on the button whose menu it just dismissed closes it without reopening. `WPS_SHELL_SELFTEST=menus` replays these orders (the old code fails it with the same error).
+
 ## Not yet (later milestones)
 
 - Interactive use has not been checked by a person: menus, clicks, keyboard, resizing and opening windows were built against the protocol but only the benchmark has driven them. Please try `wps-shell` by hand.

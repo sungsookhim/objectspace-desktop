@@ -187,6 +187,7 @@ ui_hit ui_frame_hit(ui_surface *s, double x, double y);
 /* Standard handling of frame clicks; returns true if it used the event. */
 bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e);
 void ui_frame_damage(ui_surface *s);                 /* title bar, e.g. on focus change */
+void ui_frame_system_menu(ui_surface *s, uint32_t serial);
 
 /* ------------------------------------------------------------------ menus */
 
