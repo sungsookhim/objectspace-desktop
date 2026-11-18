@@ -5,6 +5,7 @@ usage: tests/m4/m4.py [--mode inotify|watchd] [scenario ...]
 Needs the test bed (proto/m0/testbed.sh up); uses sudo.
 """
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -182,6 +183,79 @@ def st2():
     gone = wait_for(lambda: not os.path.lexists(link))
     me.stop()
     return bool(gone), [f"shadow removed after emptying the trash: {bool(gone)}"]
+
+
+# ------------------------------------------------- abstract objects are files
+
+def ini(path, key):
+    for line in Path(path).read_text().splitlines():
+        if line.startswith(key + "="):
+            return line[len(key) + 1:]
+    return None
+
+
+@scenario("A1", "A program object is a .desktop file that other desktops can read; it survives a lost database")
+def sa1():
+    me = Service("me").start()
+    d = fresh("ext4", "a1")
+    r = me.ctl("create", d, "WPProgram", "Text Editor", "gnome-text-editor %U")
+    p = Path(r.get("result", {}).get("path", ""))
+    me.ctl("flush")
+    me.call(p, "wpSetTitle", "Editor")
+    me.call(p, "wpSetCommand", "gedit %U")
+    me.ctl("flush")
+    name, exe = ini(p, "Name"), ini(p, "Exec")
+    v = run(["desktop-file-validate", str(p)]) if shutil.which("desktop-file-validate") else None
+    me.stop()
+    me.wipe_db()
+    me.start()
+    again = obj(me, p)
+    cmd = me.call(p, "wpQueryCommand").get("result")
+    me.stop()
+    ok = r.get("ok") and p.suffix == ".desktop" and name == "Editor" and exe == "gedit %U" and \
+        again.get("class") == "WPProgram" and again.get("title") == "Editor" and cmd == "gedit %U" and \
+        (v is None or v.returncode == 0)
+    return ok, [f"created {p.name!r}; Name={name!r} Exec={exe!r}",
+                f"desktop-file-validate: {'not installed' if v is None else 'ok' if v.returncode == 0 else v.stdout.strip()}",
+                f"after deleting the database: {again.get('class')} {again.get('title')!r}, command {cmd!r}"]
+
+
+@scenario("A2", "Other abstract objects are .wpobj files; a class not installed shows as a plain object")
+def sa2():
+    me = Service("me").start()
+    d = fresh("ext4", "a2")
+    r = me.ctl("create", d, "WPAbstract", "Team notes")
+    p = Path(r.get("result", {}).get("path", ""))
+    me.ctl("flush")
+    content = p.read_text() if p.exists() else ""
+    (d / "printer.wpobj").write_text("[WPS Object]\nVersion=1\nClass=WPPrinter\n")
+    pr = obj(me, d / "printer.wpobj")
+    me.stop()
+    me.start()
+    again = obj(me, p)
+    me.stop()
+    ok = r.get("ok") and p.suffix == ".wpobj" and "Class=WPAbstract" in content and \
+        again.get("title") == "Team notes" and pr.get("class") == "WPAbstract" and pr.get("class_not_installed") == "WPPrinter"
+    return ok, [f"created {p.name!r} containing Class=WPAbstract: {'Class=WPAbstract' in content}",
+                f"after restart: {again.get('class')} {again.get('title')!r}",
+                f"printer.wpobj (WPPrinter not installed): {pr.get('class')}, class_not_installed={pr.get('class_not_installed')!r}"]
+
+
+@scenario("A3", "A shadow of a program object; creating never overwrites")
+def sa3():
+    me = Service("me").start()
+    d = fresh("ext4", "a3")
+    (d / "menu").mkdir()
+    p1 = Path(me.ctl("create", d, "WPProgram", "Terminal", "ptyxis").get("result", {}).get("path", ""))
+    p2 = Path(me.ctl("create", d, "WPProgram", "Terminal", "xterm").get("result", {}).get("path", ""))
+    me.ctl("flush")
+    link = Path(me.ctl("shadow", p1, d / "menu").get("result", ""))
+    sh = obj(me, link)
+    me.stop()
+    ok = p1.name == "Terminal.desktop" and p2.name == "Terminal (2).desktop" and ini(p1, "Exec") == "ptyxis" and \
+        sh.get("class") == "WPShadow" and (sh.get("target") or {}).get("class") == "WPProgram"
+    return ok, [f"first: {p1.name!r}, second: {p2.name!r} (Exec of the first still {ini(p1, 'Exec')!r})",
+                f"shadow in menu/ resolves to a {(sh.get('target') or {}).get('class')}"]
 
 
 # ------------------------------------------------------------------- driver

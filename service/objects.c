@@ -20,6 +20,8 @@
 #include "shadows.h"
 #include "tracker.h"
 #include "WPShadow.h"
+#include "WPAbstract.h"
+#include "WPProgram.h"
 #include "wps_state.h"
 
 #define LOCK_WAIT_MS 200
@@ -208,6 +210,114 @@ void wps_loaded_free(wps_loaded *ld)
     ld->nc = 0;
 }
 
+static bool ends_with(const char *s, const char *suffix)
+{
+    size_t a = strlen(s), b = strlen(suffix);
+    return a >= b && strcmp(s + a - b, suffix) == 0;
+}
+
+/* The first matching "Key=value" line within the given [group]. */
+static bool ini_value(const char *text, const char *group, const char *key, char *out, size_t n)
+{
+    bool in = false;
+    size_t kl = strlen(key);
+    for (const char *line = text; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL) {
+        const char *end = strchr(line, '\n');
+        size_t len = end ? (size_t)(end - line) : strlen(line);
+        if (line[0] == '[') { in = len == strlen(group) && strncmp(line, group, len) == 0; continue; }
+        if (in && len > kl && strncmp(line, key, kl) == 0 && line[kl] == '=') {
+            snprintf(out, n, "%.*s", (int)(len - kl - 1), line + kl + 1);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void read_object_file(wps_loaded *ld)
+{
+    bool desk = ends_with(ld->path, ".desktop"), wpobj = ends_with(ld->path, ".wpobj");
+    if (!desk && !wpobj) return;
+    char buf[8192];
+    int fd = open(ld->path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0) return;
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n < 0) return;
+    buf[n] = 0;
+    if (desk) {
+        char type[64] = "";
+        ini_value(buf, "[Desktop Entry]", "Type", type, sizeof type);
+        if (strcmp(type, "Application") != 0) return;   /* links and directories stay data files */
+        snprintf(ld->obj_class, sizeof ld->obj_class, "WPProgram");
+        ini_value(buf, "[Desktop Entry]", "Name", ld->desk_name, sizeof ld->desk_name);
+        ini_value(buf, "[Desktop Entry]", "Exec", ld->desk_exec, sizeof ld->desk_exec);
+    } else if (!ini_value(buf, "[WPS Object]", "Class", ld->obj_class, sizeof ld->obj_class)) {
+        snprintf(ld->obj_class, sizeof ld->obj_class, "WPAbstract");
+    }
+}
+
+void wps_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len)
+{
+    char safe[NAME_MAX - 16];
+    snprintf(safe, sizeof safe, "%s", title && *title ? title : cls);
+    for (char *p = safe; *p; p++)
+        if (*p == '/' || (unsigned char)*p < 0x20) *p = '-';
+    if (safe[0] == '.') safe[0] = '_';
+    wpo_class *c = wpo_find_class(cls);
+    const char *ext = !c ? "" : wpo_subclass_of(c, WPProgramClass) ? ".desktop" :
+                      wpo_subclass_of(c, WPAbstractClass) ? ".wpobj" : "";
+    if (n <= 1) snprintf(out, len, "%s/%s%s", folder, safe, ext);
+    else snprintf(out, len, "%s/%s (%d)%s", folder, safe, n, ext);
+}
+
+int wps_object_file_create(const char *path, const char *cls, const char *title)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);   /* never overwrite */
+    if (fd < 0) return errno;
+    wpo_class *c = wpo_find_class(cls);
+    if (c && wpo_subclass_of(c, WPProgramClass))
+        dprintf(fd, "[Desktop Entry]\nType=Application\nName=%s\nExec=\n", title ? title : "Program");
+    else if (c && wpo_subclass_of(c, WPAbstractClass))
+        dprintf(fd, "[WPS Object]\nVersion=1\nClass=%s\n", cls);
+    close(fd);
+    return 0;
+}
+
+/* Keep a program's .desktop file in step with its title and command, in
+ * place (same inode, so its attributes stay). */
+static void update_desktop_file(const char *path, const char *name, const char *exec)
+{
+    char buf[16384];
+    int fd = open(path, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return;
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    if (n < 0) { close(fd); return; }
+    buf[n] = 0;
+    char out[sizeof buf + 2048];
+    size_t o = 0;
+    bool in = false, did_name = false, did_exec = false;
+    for (char *line = buf; line && *line;) {
+        char *end = strchr(line, '\n');
+        size_t len = end ? (size_t)(end - line) : strlen(line);
+        if (line[0] == '[') in = strncmp(line, "[Desktop Entry]", len) == 0 && len == 15;
+        if (in && name && !did_name && strncmp(line, "Name=", 5) == 0) {
+            o += (size_t)snprintf(out + o, sizeof out - o, "Name=%s\n", name);
+            did_name = true;
+        } else if (in && exec && !did_exec && strncmp(line, "Exec=", 5) == 0) {
+            o += (size_t)snprintf(out + o, sizeof out - o, "Exec=%s\n", exec);
+            did_exec = true;
+        } else {
+            o += (size_t)snprintf(out + o, sizeof out - o, "%.*s\n", (int)len, line);
+        }
+        if (o >= sizeof out) break;
+        line = end ? end + 1 : NULL;
+    }
+    if (o < sizeof out && lseek(fd, 0, SEEK_SET) == 0 && write(fd, out, o) == (ssize_t)o) {
+        if (ftruncate(fd, (off_t)o) < 0) { /* leave as written */ }
+    }
+    close(fd);
+}
+
 void wps_load(const char *target, bool assign_id, wps_loaded *ld)
 {
     memset(ld, 0, sizeof *ld);
@@ -232,6 +342,7 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
     snprintf(ld->rel, sizeof ld->rel, "%s", wps_volume_relpath(&v, ld->path));
     ld->owned = ld->st.st_uid == geteuid();
     ld->writable = access(ld->path, W_OK) == 0 && !v.ro;
+    if (S_ISREG(ld->st.st_mode)) read_object_file(ld);
     if (S_ISLNK(ld->st.st_mode)) {
         ssize_t n = readlink(ld->path, ld->link_target, sizeof ld->link_target - 1);
         ld->link_target[n < 0 ? 0 : n] = 0;
@@ -306,8 +417,12 @@ static wpo_class *class_for(const wps_loaded *ld)
 {
     mode_t m = ld->st.st_mode;
     if (S_ISDIR(m)) return WPFolderClass;
-    if (S_ISREG(m)) return WPDataFileClass;
     if (S_ISLNK(m) && ld->shadow_of[0]) return WPShadowClass;
+    if (S_ISREG(m) && ld->obj_class[0]) {
+        wpo_class *c = wpo_find_class(ld->obj_class);
+        return c && !c->is_meta && wpo_subclass_of(c, WPAbstractClass) ? c : WPAbstractClass;
+    }
+    if (S_ISREG(m)) return WPDataFileClass;
     return WPFileSystemClass;   /* user-made symlinks and special files */
 }
 
@@ -319,6 +434,12 @@ static void apply_loaded(sobj *s, wps_loaded *ld)
     if (ld->id[0]) memcpy(d->id, ld->id, sizeof d->id);
     for (int i = 0; i < ld->nc; i++) wps_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
     WPObject_wpRestoreProperties(s->o);
+    /* A program's .desktop file is the source of its command and default
+     * title, so other desktops and WPS agree. */
+    if (wpo_is_a(s->o, WPProgramClass)) {
+        if (ld->desk_exec[0] && !WPProgram_data(s->o)->command) WPProgram_data(s->o)->command = strdup(ld->desk_exec);
+        if (ld->desk_name[0] && !d->title) d->title = strdup(ld->desk_name);
+    }
     s->ctime = ld->st.st_ctim;
     snprintf(s->path, sizeof s->path, "%s", ld->path);
     snprintf(s->vol, sizeof s->vol, "%s", ld->vol);
@@ -362,6 +483,8 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     s->dev = ld->st.st_dev;
     s->ino = ld->st.st_ino;
     if (wpo_is_a(s->o, WPFileSystemClass)) WPFileSystem_wpSetPath(s->o, ld->path);
+    if (ld->obj_class[0] && strcmp(s->o->cls->name, ld->obj_class) != 0 && !wpo_find_class(ld->obj_class))
+        snprintf(s->declared_class, sizeof s->declared_class, "%s", ld->obj_class);   /* not installed here */
     apply_loaded(s, ld);
     objs[nobjs++] = s;
     /* Follow it from now on: its folder's entries, and a folder's own. */
@@ -393,6 +516,7 @@ struct save_job {
     char path[PATH_MAX], vol[WPS_VOLID_MAX], rel[PATH_MAX], locator[PATH_MAX + 16];
     bool xattr_ok, writable, owned;
     char id[WPS_ID_LEN + 1];          /* in: current ID; out: assigned ID */
+    char *desk_name, *desk_exec;      /* a program's .desktop file to update, if set */
     struct cls_change *ch;
     size_t nch;
     int failures;
@@ -466,6 +590,7 @@ static void save_work(void *arg)
         }
     }
     if (j->id[0]) wps_db_set_location(db, j->id, j->vol, j->rel);
+    if ((j->desk_name || j->desk_exec) && j->writable) update_desktop_file(j->path, j->desk_name, j->desk_exec);
 }
 
 static void schedule_flush(void);
@@ -492,6 +617,8 @@ static void save_done(void *arg)
     if (j->id[0] && !WPObject_data(s->o)->id[0]) memcpy(WPObject_data(s->o)->id, j->id, WPS_ID_LEN + 1);
     snprintf(s->locator, sizeof s->locator, "%s", j->locator);
     s->saving = false;
+    free(j->desk_name);
+    free(j->desk_exec);
     bool was_retry = j->retry_only, busy = j->busy;
     for (size_t c = 0; c < j->nch; c++) {
         wps_props_free(&j->ch[c].set);
@@ -564,6 +691,11 @@ static void start_save(sobj *s)
             else ch->removed[ch->nremoved++] = strdup(cs->touched[k]);
         }
         wps_state_clear_touched(cs);
+    }
+    if (wpo_is_a(s->o, WPProgramClass) && strlen(s->path) > 8 && !strcmp(s->path + strlen(s->path) - 8, ".desktop")) {
+        const char *t = WPObject_data(s->o)->title, *c = WPProgram_data(s->o)->command;
+        j->desk_name = t ? strdup(t) : NULL;
+        j->desk_exec = c ? strdup(c) : NULL;
     }
     s->saving = true;
     inflight++;

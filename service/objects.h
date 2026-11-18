@@ -47,6 +47,11 @@ typedef struct {
      * it as a managed shadow (design: Links). */
     char link_target[PATH_MAX];
     char shadow_of[WPS_ID_LEN + 1];
+    /* Abstract objects stored as files (design: Abstract objects are files):
+     * a .desktop file is a WPProgram; a .wpobj file names its class. */
+    char obj_class[64];
+    char desk_name[256];
+    char desk_exec[1024];
 } wps_loaded;
 
 void wps_objects_init(const wps_env *env, wps_db *db, wpo_loop *loop, int save_delay_ms);
@@ -81,6 +86,7 @@ typedef struct sobj {
     bool queued, saving;
     bool retry;                  /* some keys went to the overlay because the file was busy */
     bool forgotten;              /* removed while a save was running; freed when it ends */
+    char declared_class[64];     /* a .wpobj's class, if it is not installed here */
     int retry_delay_ms;
 } sobj;
 
@@ -102,6 +108,12 @@ void wps_sobj_snapshot(sobj *s, wps_loaded *out);
 /* Called when an object's WPS settings were saved (the tracker treats a
  * pending duplicate as a copy from then on). */
 extern void (*wps_on_saved)(sobj *s);
+
+/* The file name for a new object of class `cls` titled `title` in `folder`
+ * (".desktop" for programs, ".wpobj" for other abstract classes). */
+void wps_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len);
+/* Write a new abstract object's file (no-replace); 0 or an errno value. */
+int wps_object_file_create(const char *path, const char *cls, const char *title);
 
 /* Excluded paths (design: Change tracking): defaults plus <config>/excluded.
  * Files there are never given IDs or state, and are not watched. */

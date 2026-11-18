@@ -7,6 +7,7 @@
  *   wpsctl call [--expect N] TARGET METHOD [ARG...]
  *   wpsctl describe CLASS
  *   wpsctl shadow TARGET FOLDER
+ *   wpsctl create FOLDER CLASS TITLE [COMMAND]
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -32,7 +33,8 @@ static int usage(void)
             "       wpsctl resolve TARGET\n"
             "       wpsctl call [--expect N] TARGET METHOD [ARG...]\n"
             "       wpsctl describe CLASS\n"
-            "       wpsctl shadow TARGET FOLDER\n");
+            "       wpsctl shadow TARGET FOLDER\n"
+            "       wpsctl create FOLDER CLASS TITLE [COMMAND]\n");
     return 2;
 }
 
@@ -101,6 +103,15 @@ int main(int argc, char **argv)
         cb_text(&b, "id"); cb_int(&b, 1);
         cb_text(&b, "op"); cb_text(&b, op);
         cb_text(&b, op[0] == 'r' ? "target" : "class"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "create")) {
+        if (argc < 5 || argc > 6) return usage();
+        cb_map(&b, argc == 6 ? 6 : 5);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "create");
+        cb_text(&b, "folder"); cb_text(&b, argv[2]);
+        cb_text(&b, "class"); cb_text(&b, argv[3]);
+        cb_text(&b, "title"); cb_text(&b, argv[4]);
+        if (argc == 6) { cb_text(&b, "command"); cb_text(&b, argv[5]); }
     } else if (!strcmp(op, "shadow")) {
         if (argc != 4) return usage();
         cb_map(&b, 4);

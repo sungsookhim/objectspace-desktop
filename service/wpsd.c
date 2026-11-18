@@ -11,6 +11,8 @@
  *   {op:"sync"}        rescan volumes and synchronise portable ones
  *   {op:"scan"}        run the catch-up scan now
  *   {op:"shadow", target, folder}   create a shadow (managed symlink)
+ *   {op:"create", folder, class, title, command}   a new object (file, folder,
+ *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"stats"}
  *   {op:"shutdown"}
  * Every request carries an "id" that the reply echoes; replies are
@@ -41,6 +43,9 @@
 #include "objects.h"
 #include "shadows.h"
 #include "WPShadow.h"
+#include "WPProgram.h"
+#include "WPFolder.h"
+#include "WPDataFile.h"
 #include "tracker.h"
 #include "volumes.h"
 #include "wpo.h"
@@ -162,13 +167,16 @@ static void put_object_depth(cbuf *b, wpo_object *o, int depth)
     const char *path = wps_object_path(o);
     char *title = wpo_is_a(o, WPObjectClass) ? WPObject_wpQueryTitle(o) : NULL;
     bool shadow = wpo_is_a(o, WPShadowClass);
-    cb_map(b, 6 + (shadow ? 2 : 0));
+    sobj *rec = wps_sobj_of(o);
+    bool missing = rec && rec->declared_class[0];
+    cb_map(b, 6 + (shadow ? 2 : 0) + (missing ? 1 : 0));
     cb_text(b, "path"); path ? cb_text(b, path) : cb_null(b);
     cb_text(b, "id"); cb_text(b, wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "");
     cb_text(b, "class"); cb_text(b, o->cls->name);
     cb_text(b, "title"); title ? cb_text(b, title) : cb_null(b);
     cb_text(b, "changes"); cb_uint(b, wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->changes : 0);
     cb_text(b, "trashed"); cb_bool(b, path && wps_in_trash(path));
+    if (missing) { cb_text(b, "class_not_installed"); cb_text(b, rec->declared_class); }
     if (shadow) {
         wpo_object *t = WPShadow_data(o)->target;
         cb_text(b, "target");
@@ -513,10 +521,78 @@ static void on_mounts(int fd, short rev, void *arg)
 
 static void scanned(void *arg, const char *report) { reply_simple_ok(arg, report); }
 
+/* ---- create: a new object of a class in a folder, never overwriting */
+
+struct create_req {
+    struct client *c;
+    int64_t id;
+    char folder[PATH_MAX], cls[64], title[256], command[1024];
+    char path[PATH_MAX + 64];
+    int err;
+    wps_loaded ld;
+};
+
+static void create_work(void *arg)
+{
+    struct create_req *r = arg;
+    wpo_class *c = wpo_find_class(r->cls);   /* the registry is read-only after start-up */
+    for (int n = 1; n < 100; n++) {
+        wps_object_filename(r->folder, r->cls, r->title, n, r->path, sizeof r->path);
+        int e;
+        if (wpo_subclass_of(c, WPFolderClass)) e = mkdir(r->path, 0777) == 0 ? 0 : errno;
+        else if (wpo_subclass_of(c, WPDataFileClass)) {
+            int fd = open(r->path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+            e = fd >= 0 ? 0 : errno;
+            if (fd >= 0) close(fd);
+        } else {
+            e = wps_object_file_create(r->path, r->cls, r->title);
+        }
+        if (e == 0) { wps_load(r->path, false, &r->ld); return; }
+        if (e != EEXIST) { r->err = e; return; }
+    }
+    r->err = EEXIST;
+}
+
+static void create_done(void *arg)
+{
+    struct create_req *r = arg;
+    if (!r->c->dead) {
+        wpo_object *o = r->err || r->ld.err ? NULL : wps_object_from_loaded(&r->ld);
+        if (!o) {
+            reply_error(r->c, r->id, "failed", strerror(r->err ? r->err : r->ld.err));
+        } else {
+            if (r->title[0]) WPObject_wpSetTitle(o, r->title);
+            if (r->command[0] && wpo_is_a(o, WPProgramClass)) WPProgram_wpSetCommand(o, r->command);
+            struct req fake = { .c = r->c, .id = r->id };
+            reply_ok_object(&fake, o, NULL);
+        }
+    }
+    wps_loaded_free(&r->ld);
+    client_unref(r->c);
+    free(r);
+}
+
+struct shadow_reply { struct simple *s; char link[PATH_MAX]; };
+
+static void shadow_recorded(void *arg)
+{
+    struct shadow_reply *r = arg;
+    reply_simple_ok(r->s, r->link);
+    free(r);
+}
+
 static void shadow_made(void *arg, const char *link, const char *error)
 {
     struct simple *s = arg;
-    if (link) { reply_simple_ok(s, link); return; }
+    if (link) {
+        /* Reply once the folder's record is written, so the shadow is a
+         * shadow for everyone from the moment it is reported. */
+        struct shadow_reply *r = calloc(1, sizeof *r);
+        r->s = s;
+        snprintf(r->link, sizeof r->link, "%s", link);
+        wps_objects_flush(shadow_recorded, r);
+        return;
+    }
     if (!s->c->dead) reply_error(s->c, s->id, "failed", error);
     client_unref(s->c);
     free(s);
@@ -551,6 +627,23 @@ static void handle(struct client *c, cv *msg)
         if (op[0] == 'f') wps_objects_flush(flushed, s);
         else if (op[1] == 'h') wps_objects_flush(shutdown_flushed, s);
         else start_volume_job(s);
+    } else if (strcmp(op, "create") == 0) {
+        const char *folder = cv_text(msg, "folder"), *clsname = cv_text(msg, "class");
+        const char *title = cv_text(msg, "title"), *command = cv_text(msg, "command");
+        wpo_class *cls = clsname ? wpo_find_class(clsname) : NULL;
+        if (!folder || !cls || cls->is_meta || !wpo_subclass_of(cls, WPObjectClass) || wpo_subclass_of(cls, WPShadowClass)) {
+            reply_error(c, id, "bad request", "create needs a folder and an object class (shadows: use shadow)");
+            cv_free(msg);
+            return;
+        }
+        struct create_req *r = calloc(1, sizeof *r);
+        r->c = c; c->refs++;
+        r->id = id;
+        snprintf(r->folder, sizeof r->folder, "%s", folder);
+        snprintf(r->cls, sizeof r->cls, "%s", clsname);
+        snprintf(r->title, sizeof r->title, "%s", title ? title : "");
+        snprintf(r->command, sizeof r->command, "%s", command ? command : "");
+        wpo_defer(loop, "create object", create_work, create_done, r);
     } else if (strcmp(op, "shadow") == 0) {
         const char *t = cv_text(msg, "target"), *f = cv_text(msg, "folder");
         if (!t || !f) { reply_error(c, id, "bad request", "shadow needs target and folder"); cv_free(msg); return; }
