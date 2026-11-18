@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: design. No code yet.
+Status: design, plus the M0 kernel-behaviour prototype in [proto/m0](proto/m0) ([results](proto/m0/RESULTS.md)).
 
 ## Documents
 
@@ -16,7 +16,7 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 
 ## Plan
 
-1. M0: a fanotify tracking prototype that confirms the kernel behaviour the design relies on.
+1. M0: a fanotify tracking prototype that confirms the kernel behaviour the design relies on. Done; one finding (vim's save pattern) to fold into the design.
 2. M1–M5: runtime, persistence and identity, change tracking, shadows, API.
 3. Then design the GUI on top of the object core.
 
