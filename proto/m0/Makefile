@@ -1,7 +1,7 @@
 BUILD := ../../build/m0
 CFLAGS := -O2 -Wall -Wextra -std=gnu11
 
-all: $(BUILD)/fanwatch $(BUILD)/fhtool
+all: $(BUILD)/fanwatch $(BUILD)/fhtool $(BUILD)/watchd
 
 $(BUILD)/%: %.c
 	@mkdir -p $(BUILD)
@@ -17,6 +17,6 @@ run: all
 	./m0.py
 
 clean:
-	rm -f $(BUILD)/fanwatch $(BUILD)/fhtool
+	rm -f $(BUILD)/fanwatch $(BUILD)/fhtool $(BUILD)/watchd
 
 .PHONY: all up down run clean

@@ -550,6 +550,102 @@ def s_hardlink():
              "events:"] + summarize(evs, MNT["ext4"]))
 
 
+def save_pattern(evs, name):
+    if any(has(e, "RENAME") and e["new"]["name"] == name for e in evs):
+        return "temp file renamed over the original"
+    if any(has(e, "RENAME") and e["old"]["name"] == name for e in evs):
+        return "original renamed away, new file created"
+    if any(has(e, "CREATE") and e.get("dir", {}).get("name") == name for e in evs):
+        return "original deleted, new file created"
+    return "written in place"
+
+
+def editor_save(fs, name, content, argv):
+    """Run a save script that prints 'loaded', waits for a line, then saves."""
+    d = fresh_dir(fs, name)
+    f = d / content[0]
+    if content[1] is not None:
+        write(f, content[1])
+    set_id(f, name.upper())
+    i0 = inode(f)
+    p = subprocess.Popen(argv(f), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    first = p.stdout.readline().strip()
+    if first != "loaded":
+        p.kill()
+        return "ERROR", [f"save script did not load the file: {first!r}"]
+    EV.drain()
+    p.stdin.write("\n")
+    p.stdin.flush()
+    done = p.stdout.readline().strip()
+    evs = EV.collect(quiet=1.0)
+    p.wait(timeout=60)
+    same = inode(f) == i0
+    idv = get_id(f)
+    pattern = save_pattern(evs, f.name)
+    covered = idv is not None or pattern == "temp file renamed over the original"
+    detail = [f"save: {done}; same inode: {same}; ID after save: {idv}",
+              f"save pattern: {pattern}",
+              "events:"] + summarize(evs, MNT[fs])
+    return ("PASS" if covered else "FINDING"), detail
+
+
+@scenario(19, "GNOME Text Editor's save code (GtkSourceView 5 FileSaver)")
+def s_gtksource():
+    return editor_save("ext4", "s19", ("notes.txt", "line x\n"),
+                       lambda f: ["python3", str(HERE / "gtksource_save.py"), str(f)])
+
+
+@scenario(20, "LibreOffice Writer saving an .odt document")
+def s_libreoffice():
+    profile = WORK / "lo-profile"
+    d = fresh_dir("ext4", "s20")
+    write(d / "report.txt", "Quarterly report\n")
+    run(["soffice", "--headless", f"-env:UserInstallation=file://{profile}",
+         "--convert-to", "odt", "--outdir", str(d), str(d / "report.txt")], check=True)
+    (d / "report.txt").unlink()
+    f = d / "report.odt"
+    set_id(f, "S20")
+    i0 = inode(f)
+    p = subprocess.Popen(["python3", str(HERE / "lo_save.py"), str(f), str(profile)],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    first = p.stdout.readline().strip()
+    if first != "loaded":
+        p.kill()
+        return "ERROR", [f"LibreOffice did not load the document: {first!r}"]
+    EV.drain()
+    p.stdin.write("\n")
+    p.stdin.flush()
+    done = p.stdout.readline().strip()
+    evs = EV.collect(quiet=1.5)
+    p.wait(timeout=90)
+    idv = get_id(f)
+    pattern = save_pattern(evs, f.name)
+    covered = idv is not None or pattern == "temp file renamed over the original"
+    return ("PASS" if covered else "FINDING",
+            [f"save: {done}; same inode: {inode(f) == i0}; ID after save: {idv}",
+             f"save pattern: {pattern}",
+             "events (lock files included):"] + summarize(evs, MNT["ext4"]))
+
+
+@scenario(21, "gio save (GLib's file replace, used by most GNOME apps)")
+def s_gio():
+    d = fresh_dir("ext4", "s21")
+    f = d / "a.txt"
+    write(f, "line x\n")
+    set_id(f, "S21")
+    i0 = inode(f)
+    EV.drain()
+    run(["gio", "save", str(f)], input="replaced\n", check=True)
+    evs = EV.collect()
+    idv = get_id(f)
+    pattern = save_pattern(evs, f.name)
+    covered = idv is not None or pattern == "temp file renamed over the original"
+    return ("PASS" if covered else "FINDING",
+            [f"same inode: {inode(f) == i0}; ID after save: {idv}", f"save pattern: {pattern}",
+             "events:"] + summarize(evs, MNT["ext4"]))
+
+
 # ----------------------------------------------------------------- driver
 
 def main():

@@ -8,7 +8,7 @@ Status: design, plus the M0 kernel-behaviour prototype in [proto/m0](proto/m0) (
 
 | Document | What it holds |
 |---|---|
-| [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.3: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
+| [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.4: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
 
@@ -16,7 +16,7 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 
 ## Plan
 
-1. M0: a fanotify tracking prototype that confirms the kernel behaviour the design relies on. Done; one finding (vim's save pattern) to fold into the design.
+1. M0: kernel-behaviour and per-user filtering prototypes. Done; findings folded into design v0.4.
 2. M1–M5: runtime, persistence and identity, change tracking, shadows, API.
 3. Then design the GUI on top of the object core.
 

@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.3 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.4 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -227,7 +227,7 @@ Resolution runs on a worker; callers get a pending result.
 
 ### Filesystems without handles
 
-FAT, exFAT and some network filesystems either cannot produce file handles or produce ones that do not survive a remount. Objects there are keyed by volume UUID plus path, and moves are tracked only while the service watches (see Change tracking). This is weaker, and the GUI should say so in the object's settings.
+FAT, exFAT and some network filesystems either cannot produce file handles or produce ones that do not survive a remount. M0 found that FAT's handles do stay valid across moves while the volume remains mounted, so moves are tracked by handle during a session; after a remount, objects are matched again by volume UUID plus path. FAT also has no extended attributes, so its object state always lives in the database. This is weaker, and the GUI should say so in the object's settings.
 
 ## Persistence
 
@@ -302,7 +302,7 @@ Other processes can write `user.wps.*` too: another user's `wpsd` on a shared fi
 - **Shared settings follow file permissions.** A file's own settings (title, icon, class) live on the inode and are seen by every user who can see the file. Linux allows `user.*` attributes to be changed only by someone with write permission on the file, so the kernel decides who may change them.
 - **Without write permission, changes stay private.** A user who cannot write a file can still rename its icon title or set its icon, but the change goes to their own overlay. Their view shows overlay values over shared ones; other users never see them.
 - **Layout is per user in folders they do not own.** Two people arranging a shared folder each keep their own arrangement, stored in their own databases. The folder owner's layout lives on the folder.
-- **Events are filtered per user.** One `wps-watchd` serves all users. Each user's service registers the directories it tracks by passing open directory descriptors over its socket. Because the service opened them, the kernel has already checked access. The helper forwards only events under directories that user registered, and performs any handle-to-path lookup with the user's filesystem credentials (`setfsuid` in a worker thread).
+- **Events are filtered per user.** One `wps-watchd` serves all users. Each user's service registers the directories it tracks by passing open directory descriptors over its socket. Because the service opened them, the kernel has already checked access. The helper forwards only events under directories that user registered, and performs any handle-to-path lookup with the user's filesystem credentials (`setfsuid` in a worker thread). The exact rules, validated by the M0 prototype, are in Change tracking.
 - **No user can slow another.** Locks are always taken with a timeout, the helper has a separate queue per user, and an overflowing queue triggers a rescan for that user only.
 
 ## Multiple logged-in users
@@ -427,6 +427,17 @@ Changes made outside WPS are caught in three layers. fanotify watches whole file
 - Events are coalesced per file (several writes become one) and buffered per user. On overflow, whether the kernel's (`FAN_Q_OVERFLOW`) or the helper's, the affected user's service runs a catch-up scan of that filesystem as a background job.
 - The helper keeps no object state and should stay around 800 lines, so it is easy to audit.
 
+### Per-user filtering in the helper
+
+Prototyped in M0 (`proto/m0/watchd.c`) and checked by 11 scenarios with two users; all pass. A filesystem-wide watcher sees every user's file names (M0 scenario 16), so these rules are what keeps one user's activity private from another.
+
+- **Register by descriptor.** A user's service registers a folder or a single file by sending an open descriptor for it (`SCM_RIGHTS`). The helper identifies it by file handle, and also checks access itself under the user's credentials, because a descriptor opened earlier may outlive a permission change.
+- **Forward only what is registered.** An event is forwarded to a user only if its folder, or the file itself, is registered by that user and still accessible. Events in folders nobody registered go nowhere.
+- **Re-check after permission or location changes.** Any change of a folder's permissions or location (`FAN_ATTRIB`, `FAN_RENAME` or `FAN_MOVE_SELF` on a folder) invalidates all cached access checks. Each registration is re-checked before its next event, and a registration that fails is dropped with a `revoked` notice. Re-checks are rare: 11 for about 160,000 events in the M0 run.
+- **Hide the invisible side of a rename.** A file moved from a folder a user can see into one they cannot is reported to that user as a rename to `<hidden>`. Neither the new name nor the folder is revealed.
+- **Never wait for a slow service.** Each user's socket has a 4 MB buffer. When it is full, lines for that user are dropped and counted. As soon as the socket has room, the user receives `{"overflow": N}` and rescans what it registered. In M0, a service stalled for 8 seconds during 60,000 creates received an overflow notice afterwards, while another user's service received all 60,000 events in 2.5 seconds.
+- **Credentials.** The prototype reads supplementary groups from `/proc`; the real helper uses `SO_PEERCRED` and `SO_PEERGROUPS`.
+
 ### Excluded paths
 
 Files under excluded paths are never registered as objects and their events are never forwarded. The defaults are `.git`, `node_modules`, `/nix/store`, `~/.cache`, and common build directories (`build`, `target`, `dist` when they contain build-tool markers). Users can edit the list. A folder under an excluded path can still be opened and browsed; it just does not keep WPS state.
@@ -461,18 +472,28 @@ Most outside changes need no special handling: `mv` within a filesystem keeps th
 | --- | --- | --- |
 | `mv` within one filesystem | `FAN_RENAME`, same handle | Update the cached path; rewrite managed symlinks to it |
 | Atomic save: an editor writes a temp file (in any folder) and renames it over the original | `FAN_RENAME` onto a name with an object; the incoming inode has no ID | Same object, new contents: keep the object ID, copy the settings onto the new inode, update the handle |
+| Save by renaming the original away (vim's default: `file` → `file~`, a new `file`, then `file~` deleted) | `FAN_RENAME` of the object within its folder; `FAN_CREATE` of a file without an ID at the old name; later `FAN_DELETE_SELF` of the object | Displacement rule (below): when the renamed-away object is deleted, its identity passes to the new file |
 | `mv a b` in one folder, where both already have IDs | `FAN_RENAME` onto a name with an object; the incoming inode has its own ID | A real replacement: `b`'s object is deleted; `a`'s object keeps its ID |
 | `mv` across filesystems (copy, then delete) | `FAN_CREATE` of a file carrying an existing `user.wps.id`, later `FAN_DELETE` of the original | Pending duplicate until the original is deleted: then a move, and the ID, settings and shadows carry over. No time window |
 | `cp -a` or a restore from backup | `FAN_CREATE` carrying an existing ID; the original stays | After a 1-hour grace period, or when either copy is changed: a copy, and it gets a new ID with its settings kept |
 | A tool that drops extended attributes (moving to FAT, some file managers) | `FAN_CREATE` with no ID, `FAN_DELETE` of an object elsewhere | Best effort: pair by name and size, and say so in the object's settings |
 | `cp` without `-a` | `FAN_CREATE`, a new handle with no ID | Nothing is registered until WPS stores something for it |
 | `rm` | `FAN_DELETE_SELF` once the last link is gone | Remove the object and its managed shadows; keep its row for 7 days so an undo or a restore can reclaim the ID |
-| Hard link split by an atomic save | Rename onto a name whose inode had more than one link | Keep both; note it in Properties only if the object has user settings |
+| Hard link split by an atomic save | Rename onto a name whose inode had other links; the surviving inode reports `FAN_ATTRIB` as its link count drops | Keep both; note it in Properties only if the object has user settings |
 | Volume unplugged or unmounted | Unmount, no deletes | Mark its objects unavailable; never delete them |
 | Volume changed on another machine | Nothing while away | Catch-up scan when it is mounted again |
 | A filesystem without extended attributes | Setting the attribute fails with `ENOTSUP` | Store state in SQLite by volume UUID and path |
-| Extended attributes stripped (by `tar` without `--xattrs`, rsync without `-X`, some editors) | `FAN_ATTRIB`, or found by the scan | Restore from the database copy if the handle still matches |
+| Extended attributes stripped (by `tar` without `--xattrs`, `rsync -a` without `-X`, plain `cp`) | `FAN_ATTRIB`, or found by the scan | Restore from the database copy if the handle still matches |
 | Two writers change one object at once | Both write under `flock`; or `FAN_ATTRIB` from another user | Keys merged; a conflicting client write is refused with the current values |
+
+### Detecting saves
+
+M0 tested how real programs save a file (`proto/m0/RESULTS.md`). GNOME Text Editor (GtkSourceView), GLib's `gio save`, LibreOffice and `sed -i` all write a temporary file and rename it over the original. vim's default renames the original away and creates a new file. Two rules cover both, and neither uses timing:
+
+1. **Rename-over rule.** A rename onto a name that holds an object, where the incoming file has no ID, keeps the object: same ID, settings copied to the new inode. The replaced inode is reported by its own handle (`FAN_DELETE_SELF`), so no name lookup is needed. If the incoming file has its own ID, it is a real replacement instead.
+2. **Displacement rule.** When an object is renamed within its folder, its former name is remembered as displaced. If a file without an ID is then created at that name, the two form a candidate pair. When the displaced object is later deleted while the pair exists, its identity passes to the new file: same ID, settings copied, shadows retargeted. The pair is cancelled if the new file is removed or renamed, or the displaced object is renamed again or modified.
+
+When the user keeps editor backups (`set backup` in vim), the backup is never deleted, so rule 2 never completes and the object stays with the backup. Whether to also treat a rename to a typical backup name (`~` suffix, `.bak`, `.orig`) as an immediate displacement is an open question.
 
 ## Scale: large folders and bulk operations
 
@@ -571,7 +592,7 @@ The core is finished when every scenario below passes from the command line, wit
 | 2 | Delete the database; restart | Everything except overlays, per-user layouts and internal objects is rebuilt by scanning, including programs and shadows |
 | 3 | Create a shadow; `mv` the target to another folder | The symlink points to the new path; `cat` through it works |
 | 4 | Same, with the service stopped during the move | Fixed by the catch-up scan at the next start |
-| 5 | Edit the target with `vim`, `sed -i`, and an editor that writes its temp file in another folder | Same object ID; settings kept; the shadow still works |
+| 5 | Edit the target with vi (default settings, which rename the original away), `sed -i`, GNOME Text Editor, LibreOffice, and an editor that writes its temp file in another folder | Same object ID; settings kept; the shadow still works |
 | 6 | `mv` a 2 GB target from ext4 to btrfs | The shadow follows; the object ID is kept |
 | 7 | `rm` the target | The managed shadow is removed; a user-made symlink is left |
 | 8 | `cp -a` a file and wait out the grace period | Both exist, with different object IDs |
@@ -639,7 +660,7 @@ The core is finished when every scenario below passes from the command line, wit
 
 The core takes about 3.5–4 months of focused work for one developer. Durations are estimates. Each milestone ends with the named test scenarios passing.
 
-1. **M0: Tracking prototype (3–5 days).** A standalone C program using `FAN_RENAME` and `name_to_handle_at()` that prints old path, new path and handle while `mv`, `vim` and a cross-filesystem `mv` run in another terminal. It also confirms that `mv` across filesystems keeps `user.*` attributes. Validates the kernel behaviour the design relies on before anything is built on it.
+1. **M0: Tracking prototype — done.** `proto/m0`: a fanotify watcher and 21 kernel scenarios (16 pass, 4 observations, 1 finding: vim's save pattern, now covered by the displacement rule), and a per-user filtering prototype of `wps-watchd` with 11 scenarios, all passing. Results in `proto/m0/RESULTS.md`.
 2. **M1: Runtime and main loop (2–3 weeks).** `libwpo`, `wpoc`, the seven classes as shells, deferred results, the three-queue loop, the watchdog and the worker pool. Unit tests pass.
 3. **M2: Persistence, identity and concurrency (2–3 weeks).** Extended attributes with locking and merge, overlays, lazy IDs, the database writer, `wpsd`, `wpsctl`. Scenarios 1, 2, 10 and 21–25 pass.
 4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26, 27, 33 and 36 pass.
@@ -651,8 +672,9 @@ The core takes about 3.5–4 months of focused work for one developer. Durations
 These follow from the principles above but need not be designed in full before M0–M2. Each is revisited at the milestone named.
 
 - [ ] **Plug-in host protocol and lifecycle** (M5): how hosts are grouped, how objects are proxied, the security boundary for untrusted plug-ins.
-- [ ] **Helper registration at scale** (M3): passing a descriptor per registered directory may be too many for very large trees; consider registering subtree roots and checking access per event.
-- [ ] **Events for moves into directories a user did not register** (M3): what a user's service may learn about where its object went.
+- [ ] **Helper registration at scale** (M3): M0 used one descriptor per folder and linear lookups. For many thousands of folders the helper needs a hash table by handle, and possibly subtree registration with access checks per event.
+- [ ] **Full vim and other editors** (M3): full vim (`vim-enhanced`) may copy extended attributes on save; gedit, Kate and VS Code are untested.
+- [x] **Events for moves into directories a user did not register**: decided and validated in M0; the invisible side is reported as `<hidden>`.
 - [ ] **Per-folder on-disk index for folders beyond about 1,000,000 entries** (M4), if the capped record cache proves too slow.
 - [ ] **Network filesystems** (after M5): NFS and SMB vary in extended attribute support and report no remote changes through fanotify.
 - [ ] **Disk full and quota errors during jobs** (M4).
@@ -670,6 +692,7 @@ These follow from the principles above but need not be designed in full before M
 - [ ] Should per-user overlays and layouts for a removable volume be stored on that volume, so they travel with a USB disk?
 - [ ] Should `wps-watchd` be required, or optional with a clearly weaker mode? Distributions may hesitate to ship a root service.
 - [ ] How should objects inside the trash behave: kept with their IDs until emptied, or treated as deleted?
+- [ ] Should a rename to a typical backup name (`~`, `.bak`, `.orig`) count as a save immediately, so the object stays with the edited file when editor backups are kept? It works by guessing from names.
 - [ ] Is 1 hour the right grace period for deciding that a duplicate ID is a copy rather than a move?
 - [ ] Should plug-ins ever run in-process, even when trusted, or is the speed gain not worth the risk?
 
@@ -677,6 +700,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.4 | 2026-11-18 | M0 results folded in: displacement rule for saves that rename the original away (vim); save detection section; replaced inode identified by its handle; per-user filtering rules validated by the prototype (register by descriptor, re-check on folder changes, hidden rename targets, overflow notices for slow services); FAT handles valid within a mount; rsync note; M0 marked done |
 | 0.3 | 2026-11-18 | Added Multiple logged-in users: services of different users never talk to each other; abstract objects are stored as files (`.desktop`, symlinks, `.wpobj`) so other users can see them; shadow records stored on their folder so any user can maintain them; simultaneous-operation rules with no-replace file operations; shared and system programs, always launched as the launching user, with confirmation for programs owned by others; per-user fairness through systemd slices; root sessions. Nine new test scenarios; milestones extended to 3.5–4 months |
 | 0.2 | 2026-11-18 | Folded in the [external review](reviews/2026-11-18-gemini-review.md): lazy ID assignment; replacement decided by incoming identity instead of timing; cross-filesystem moves matched by ID with no time window; all-or-nothing layout storage; hard-link notes only for objects with user settings; excluded paths. Added design principles; responsiveness rules against a single-queue stall (loop budget, deferred results, three queues, plug-in hosts); concurrency and multi-user model (per-user service, change counters, locked merge, overlays, per-user layout, per-user event filtering); scale section (streaming folder listing, selections, jobs with journal, reflink copies); API messages for selections, jobs and viewports; 16 new test scenarios; revised milestones; deferred items |
 | 0.1 | 2026-11-17 | First version |

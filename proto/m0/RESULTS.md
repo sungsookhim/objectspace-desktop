@@ -1,8 +1,11 @@
 # M0 results: kernel behaviour behind the object core design
 
-Run 2026-11-18 on Fedora, kernel 7.3.3, against loopback ext4, btrfs and FAT filesystems. 18 scenarios: **13 PASS, 1 FINDING, 4 INFO**. The full output of the last run is in `build/m0/run.txt` (not committed); rerun with the steps at the end.
+Run 2026-11-18 on Fedora, kernel 7.3.3, against loopback ext4, btrfs and FAT filesystems, in two parts:
 
-The design's core assumptions hold. One real gap was found: vim's default way of saving a file is not covered by the atomic-save rule.
+- **Kernel behaviour** (`m0.py`): 21 scenarios, **16 PASS, 1 FINDING, 4 INFO**.
+- **Per-user event filtering** (`filter.py`, prototype helper `watchd.c`): 11 scenarios with two users, **all PASS**.
+
+The design's core assumptions hold. One real gap was found, vim's default way of saving a file, and design v0.4 adds a rule for it. Full output of the last runs is in `build/m0/run.txt` and `build/m0/filter-run.txt` (not committed); rerun with the steps at the end.
 
 ## Summary
 
@@ -26,6 +29,9 @@ The design's core assumptions hold. One real gap was found: vim's default way of
 | 16 | A filesystem-wide watcher sees other users' private files | INFO | Root saw file names in another user's mode-700 folder. Per-user filtering in the helper is mandatory |
 | 17 | Event flood | INFO | 50,000 creates in 2.2 s produced about 100,000 events with no overflow, with the default queue of 16,384 |
 | 18 | Atomic save through one name of a hard link | INFO | The link splits; the surviving inode reports `FAN_ATTRIB` (link count dropped) and keeps the ID |
+| 19 | GNOME Text Editor's save (GtkSourceView 5 FileSaver, run without a window) | PASS | Writes `.goutputstream-XXXXXX`, renames it over the original; rename-over rule applies |
+| 20 | LibreOffice Writer saving an `.odt` (headless, through UNO `store()`) | PASS | Writes `lu*.tmp` in the same folder and renames it over the original; also creates and removes `.~lock.report.odt#` |
+| 21 | `gio save` (GLib file replace, used by most GNOME apps) | PASS | Same pattern as 19 |
 
 ### Tools and `user.wps.id` (scenario 6)
 
@@ -62,7 +68,7 @@ DELETE  file~                 (the object is deleted)
 
 The design's atomic-save rule only looks at a rename **onto** an existing name. Here the original is renamed **away** and a new file is created. Under the current rules the object would follow `file~` and then be deleted. Its settings and shadows would be lost on every save in vim, the most common editor on Linux.
 
-### Proposed rule (for design v0.4)
+### Rule added in design v0.4
 
 A sequence rule, with no timing:
 
@@ -75,6 +81,28 @@ This covers vim's default behaviour, and editors that keep no backup. If the use
 
 Also to check: full vim (`vim-enhanced`, not installed here) may copy extended attributes onto the new file. If so, the ID survives the save anyway, but the rule above is still needed for vim-minimal and other editors.
 
+No other editor tested renames the original away: GNOME Text Editor, GLib's `gio save`, LibreOffice and `sed -i` all use rename-over (scenarios 5, 19–21).
+
+## Per-user filtering (`filter.py`)
+
+`watchd.c` is a prototype of `wps-watchd`'s filtering. Two clients stand in for two users' services: A (UID 60001) and B (UID 60002), both in group 60000. They register folders by passing open descriptors.
+
+| # | Scenario | Result |
+|---|---|---|
+| F1 | A creates a file in A's private folder | A gets the events; B gets nothing |
+| F2 | B tries to register A's private folder | The kernel refuses B's open; nothing to register |
+| F3 | A moves a file from the shared folder into A's private folder | B sees a rename to `<hidden>`; the new name never reaches B. A sees both sides |
+| F4 | B registered a shared folder; A changes it to mode 0700 | B gets a `revoked` notice and no further events |
+| F5 | B opened the folder before A revoked access, and registers that descriptor afterwards | Refused: the helper checks access itself, as B |
+| F6 | A registration with no descriptor | Refused |
+| F7 | B registers one file in a folder B did not register; A deletes it | B gets the deletion |
+| F8 | Activity in a folder nobody registered | Nobody gets events |
+| F9 | A creates 20,000 files in a private folder | A receives all 20,000 within 1 s; B receives nothing |
+| F11 | A third client stops reading for 8 s while 60,000 files are created | The stalled client receives `{"overflow": 107548}` once it reads again; the healthy client receives all 60,000 events in 2.5 s |
+| F10 | Over the whole run, did any name from A's private folder reach B? | No |
+
+Two bugs in the prototype were found and fixed on the way. First, events were silently dropped for a slow client. Second, the overflow notice only went out with the next event, so it never arrived if the burst had already ended. The helper now polls for room on the client's socket and sends the notice as soon as there is space. Access re-checks stayed rare: 11 checks for about 160,000 events.
+
 ## Other implications for the design
 
 - **The replaced file is reported by its own handle.** In scenarios 2, 3 and 5, the overwritten inode produced `FAN_DELETE_SELF` carrying its (now stale) handle. The service can identify the replaced object directly from the event, without looking up names.
@@ -86,8 +114,8 @@ Also to check: full vim (`vim-enhanced`, not installed here) may copy extended a
 
 ## Not covered by M0
 
-- Per-user event filtering by passing open folder descriptors to the helper (design only so far; part of M3).
-- Full vim, GUI editors (gedit, Kate, VS Code), LibreOffice.
+- Full vim (`vim-enhanced`), gedit, Kate and VS Code are not installed here. GNOME Text Editor was tested through its save library, not by driving its window.
+- Registration at scale: the prototype looks up registrations linearly.
 - Network filesystems.
 - Btrfs subvolumes other than the top level.
 
@@ -96,8 +124,9 @@ Also to check: full vim (`vim-enhanced`, not installed here) may copy extended a
 ```
 make -C proto/m0 all     # builds build/m0/fanwatch and build/m0/fhtool
 proto/m0/testbed.sh up    # loopback ext4, btrfs, FAT under /var/tmp/wps-m0-$USER (sudo)
-proto/m0/m0.py            # all scenarios; or e.g. m0.py 4 7 for a subset
+proto/m0/m0.py            # kernel scenarios; or e.g. m0.py 4 7 for a subset
+proto/m0/filter.py        # per-user filtering scenarios
 proto/m0/testbed.sh down
 ```
 
-`fanwatch` runs as root through sudo. Test users are bare UIDs 60001 and 60002 (group 60000), run with `setpriv`; no accounts are created.
+`fanwatch` and `watchd` run as root through sudo. Scenario 20 starts a separate headless LibreOffice with its own profile under the test bed, so it does not touch a LibreOffice you have open. Test users are bare UIDs 60001 and 60002 (group 60000), run with `setpriv`; no accounts are created.
