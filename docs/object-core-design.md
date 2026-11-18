@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.7 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.8 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -496,8 +496,8 @@ Most outside changes need no special handling: `mv` within a filesystem keeps th
 | Atomic save: an editor writes a temp file (in any folder) and renames it over the original | `FAN_RENAME` onto a name with an object; the incoming inode has no ID | Same object, new contents: keep the object ID, copy the settings onto the new inode, update the handle |
 | Save by renaming the original away (vim's default: `file` → `file~`, a new `file`, then `file~` deleted) | `FAN_RENAME` of the object within its folder; `FAN_CREATE` of a file without an ID at the old name; later `FAN_DELETE_SELF` of the object | Displacement rule (below): when the renamed-away object is deleted, its identity passes to the new file |
 | `mv a b` in one folder, where both already have IDs | `FAN_RENAME` onto a name with an object; the incoming inode has its own ID | A real replacement: `b`'s object is deleted; `a`'s object keeps its ID |
-| `mv` across filesystems (copy, then delete) | `FAN_CREATE` of a file carrying an existing `user.wps.id`, later `FAN_DELETE` of the original | Pending duplicate until the original is deleted: then a move, and the ID, settings and shadows carry over. No time window |
-| `cp -a` or a restore from backup | `FAN_CREATE` carrying an existing ID; the original stays | After a 1-hour grace period, or when either copy is changed: a copy, and it gets a new ID with its settings kept |
+| `mv` across filesystems (copy, then delete) | `FAN_CREATE` of a file carrying an existing `user.wps.id`, later `FAN_DELETE` of the original | Pending duplicate until the original is deleted: then a move, and the ID, settings and shadows carry over. No timer |
+| `cp -a` or a restore from backup | `FAN_CREATE` carrying an existing ID; the original stays | Both share the ID until either is changed (its modification time differs from what the copy preserved, or its WPS settings change): then a copy, and the new file gets a new ID with its settings kept |
 | A tool that drops extended attributes (moving to FAT, some file managers) | `FAN_CREATE` with no ID, `FAN_DELETE` of an object elsewhere | Best effort: pair by name and size, and say so in the object's settings |
 | `cp` without `-a` | `FAN_CREATE`, a new handle with no ID | Nothing is registered until WPS stores something for it |
 | `rm` | `FAN_DELETE_SELF` once the last link is gone | Remove the object and its managed shadows; keep its row for 7 days so an undo or a restore can reclaim the ID |
@@ -515,7 +515,7 @@ M0 tested how real programs save a file (`proto/m0/RESULTS.md`). GNOME Text Edit
 1. **Rename-over rule.** A rename onto a name that holds an object, where the incoming file has no ID, keeps the object: same ID, settings copied to the new inode. The replaced inode is reported by its own handle (`FAN_DELETE_SELF`), so no name lookup is needed. If the incoming file has its own ID, it is a real replacement instead.
 2. **Displacement rule.** When an object is renamed within its folder, its former name is remembered as displaced. If a file without an ID is then created at that name, the two form a candidate pair. When the displaced object is later deleted while the pair exists, its identity passes to the new file: same ID, settings copied, shadows retargeted. The pair is cancelled if the new file is removed or renamed, or the displaced object is renamed again or modified.
 
-When the user keeps editor backups (`set backup` in vim), the backup is never deleted, so rule 2 never completes and the object stays with the backup. Whether to also treat a rename to a typical backup name (`~` suffix, `.bak`, `.orig`) as an immediate displacement is an open question.
+When the user keeps editor backups (`set backup` in vim), the backup is never deleted, so rule 2 never completes and the object stays with the backup. For that case there is a setting, off by default: with `backup-names` on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save immediately.
 
 ## Scale: large folders and bulk operations
 
@@ -617,7 +617,7 @@ The core is finished when every scenario below passes from the command line, wit
 | 5 | Edit the target with vi (default settings, which rename the original away), `sed -i`, GNOME Text Editor, LibreOffice, and an editor that writes its temp file in another folder | Same object ID; settings kept; the shadow still works |
 | 6 | `mv` a 2 GB target from ext4 to btrfs | The shadow follows; the object ID is kept |
 | 7 | `rm` the target | The managed shadow is removed; a user-made symlink is left |
-| 8 | `cp -a` a file and wait out the grace period | Both exist, with different object IDs |
+| 8 | `cp -a` a file, then change the copy | Both exist; after the change they have different object IDs |
 | 9 | `mv draft.txt final.txt` in one folder, both with IDs | `final.txt`'s object is deleted; `draft.txt`'s ID is kept |
 | 10 | Hard-link a file into two folders; set positions in each | One object ID; a separate position in each folder |
 | 11 | Atomic save through one hard link | The split is noted only if the object has user settings |
@@ -723,16 +723,17 @@ These follow from the principles above but need not be designed in full before M
 
 - [x] Class interface files: decided in M1 — a small custom format (`.wpi`), documented in `tools/wpoc.py`. An IDL subset brought tooling we would not use.
 - [x] State for removable volumes: decided 2026-11-18. A per-user database on the volume, synchronised git-style with a full copy in the user's main database (see Persistence: State that travels with a volume).
-- [ ] Should `wps-watchd` be required, or optional with a clearly weaker mode? Distributions may hesitate to ship a root service.
+- [x] `wps-watchd`: decided 2026-11-18. Optional. Without it the service uses inotify on the folders it tracks, and says so in its status.
 - [ ] How should objects inside the trash behave: kept with their IDs until emptied, or treated as deleted?
-- [ ] Should a rename to a typical backup name (`~`, `.bak`, `.orig`) count as a save immediately, so the object stays with the edited file when editor backups are kept? It works by guessing from names.
-- [ ] Is 1 hour the right grace period for deciding that a duplicate ID is a copy rather than a move?
+- [x] Backup names: decided 2026-11-18. A setting, off by default (`backup-names` in the configuration folder). When on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save at once.
+- [x] Duplicate IDs: decided 2026-11-18. No timer. A file that appears with another file's ID shares it until either file is changed (content or WPS settings), which makes it a copy with a new ID, or until the original is deleted, which makes it a move.
 - [ ] Should plug-ins ever run in-process, even when trusted, or is the speed gain not worth the risk?
 
 ## Change log
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.8 | 2026-11-18 | Decided: backup-name rule as an option, off by default; `wps-watchd` optional; duplicate IDs shared until either file changes (no timer) |
 | 0.7 | 2026-11-18 | M2 done: service, client, persistence, overlays, volume sync; simplifications listed under M2 |
 | 0.6 | 2026-11-18 | Decided: state travels with removable volumes in per-user volume databases, synchronised git-style with the main database; WPS identity per user; four new scenarios (25a–25d) |
 | 0.5 | 2026-11-18 | M1 first version: runtime, loop, `wpoc`, seven classes, tests; `.wpi` format decided |
