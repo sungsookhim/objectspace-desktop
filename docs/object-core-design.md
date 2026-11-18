@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.5 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.6 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -272,6 +272,28 @@ Layout is the least valuable state: the worst failure is rearranged icons, never
 ### Write policy
 
 `wpSaveDeferred` marks an object dirty. The service writes dirty objects after 2 seconds of quiet, on shutdown, and before any move or copy of that object. Writes run on workers. A crash loses at most the last few seconds of layout changes, never object identity.
+
+### State that travels with a volume
+
+Decided 2026-11-18: a removable volume carries its own copy of each user's state about it, so the state follows the disk to another computer, much as a git clone carries its history. The user's main database stays the authority on their own computer and always holds a full copy of every volume's portion.
+
+**What travels.** Everything in a user's database that belongs to one volume and does not already live in the files' extended attributes: per-user overlays, per-user folder layouts, object IDs and settings for files on filesystems without extended attributes (FAT, exFAT), and the path-keyed records used there. Settings stored in extended attributes travel by themselves.
+
+**Where.** `<volume root>/.wps/<identity>.db`, a small SQLite file per user. The `.wps` folder is created mode 1777 (like `/tmp`), so each user can create their own file, and each file is mode 0600. On FAT and exFAT there are no permissions; see Privacy below.
+
+**Which volumes.** Volumes on removable or USB-attached devices (`removable` in sysfs, or a USB bus), plus any volume the user marks as portable. Not the volume holding the user's home folder, and never system volumes. The user can turn it off per volume.
+
+**Identity across computers.** Each user has a WPS identity: a random ID created on first use, stored in `~/.config/wps/identity`. Volume databases are named by it, not by the numeric user ID, which differs between computers. To be the same WPS user on another computer, copy the identity file there, as one would copy an SSH key or a git configuration. A friendlier way to link identities is a GUI matter.
+
+**Synchronisation, like git.**
+- Every row carries a revision: a logical clock (one more than the highest revision either side has seen) plus the identity and computer that wrote it.
+- While the volume is mounted and writable, every change is written to both databases by the database writer.
+- While it is absent or read-only, changes go to the main database only and are marked as not yet pushed.
+- On mount, the service pulls (rows newer on the volume replace the main copy) and pushes (rows newer in the main copy, or not yet pushed, are written to the volume), all in a background job.
+- Deletions are kept as tombstones for 30 days, so a deletion on one computer is not undone by an old copy on another.
+- If the same row was changed on two computers while they were apart, the higher revision wins, with the writer's ID breaking ties. The losing value is kept in a `conflicts` table, so nothing is lost silently; the GUI can show it later.
+
+**Privacy.** On FAT and exFAT, anyone holding the disk can read the `.wps` files. They contain titles, layouts and IDs, not file contents. The per-volume setting lets a user keep a volume's state on their computer only.
 
 ## Concurrency and multiple users
 
@@ -623,6 +645,10 @@ The core is finished when every scenario below passes from the command line, wit
 | 23 | User A and user B both write settings on a shared writable file | Both changes are kept; each service sees the other's change |
 | 24 | User B, without write permission, retitles A's file | B sees the new title; A does not; A's file is unchanged |
 | 25 | Users A and B arrange a shared folder differently | Each keeps their own arrangement |
+| 25a | Computer A retitles a file on a FAT USB volume; the volume moves to computer B, same WPS identity, its own main database | B shows the new title |
+| 25b | A and B both retitle the same file while the volume is apart from one of them | The higher revision wins everywhere; the other value is in `conflicts` |
+| 25c | A changes a file while the volume is mounted read-only, then remounts it writable | The change is pushed to the volume |
+| 25d | Two users share the USB volume | Each has their own volume database; neither sees the other's state |
 | 26 | User B holds `flock` on a shared file forever | A's change goes to A's overlay as pending; A's service stays responsive |
 | 27 | User B renames files in B's private folder | A's service receives no event and cannot learn the names |
 
@@ -662,7 +688,7 @@ The core takes about 3.5–4 months of focused work for one developer. Durations
 
 1. **M0: Tracking prototype — done.** `proto/m0`: a fanotify watcher and 21 kernel scenarios (16 pass, 4 observations, 1 finding: vim's save pattern, now covered by the displacement rule), and a per-user filtering prototype of `wps-watchd` with 11 scenarios, all passing. Results in `proto/m0/RESULTS.md`.
 2. **M1: Runtime and main loop — first version done.** `runtime/` (`libwpo` core in C11 using only eight C library functions, the three-queue loop with watchdog and worker pool, plug-in loading), `tools/wpoc.py` (the `.wpi` generator), and the seven classes in `classes/` as first versions. 128 runtime checks and 19 loop checks pass, including plug-ins built against older, newer and incompatible class versions, class replacement by a plug-in, and interactive latency while workers are busy (0.12 ms worst case). Still to do in M1: run the tests under AddressSanitizer (needs `libasan`, `libubsan`).
-3. **M2: Persistence, identity and concurrency (2–3 weeks).** Extended attributes with locking and merge, overlays, lazy IDs, the database writer, `wpsd`, `wpsctl`. Scenarios 1, 2, 10 and 21–25 pass.
+3. **M2: Persistence, identity and concurrency (2–3 weeks).** Extended attributes with locking and merge, overlays, lazy IDs, the database writer, state that travels with removable volumes, `wpsd`, `wpsctl`. Scenarios 1, 2, 10, 21–25 and 25a–25d pass.
 4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26, 27, 33 and 36 pass.
 5. **M4: Scale, shadows, object files and jobs (3–4 weeks).** Streaming folder listing, selections, the job manager with journal and logout handling, managed symlinks with folder records, `.wpobj` files, no-replace operations, unavailable volumes. Scenarios 3, 6, 12, 28–32, 34, 35, 38, 39 and 40 pass.
 6. **M5: API, programs and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system object folders, root sessions, MIME classes, templates. Scenarios 17–20, 37 and 41 pass; all 41 now pass. GUI design starts from here.
@@ -689,7 +715,7 @@ These follow from the principles above but need not be designed in full before M
 ## Open questions
 
 - [x] Class interface files: decided in M1 — a small custom format (`.wpi`), documented in `tools/wpoc.py`. An IDL subset brought tooling we would not use.
-- [ ] Should per-user overlays and layouts for a removable volume be stored on that volume, so they travel with a USB disk?
+- [x] State for removable volumes: decided 2026-11-18. A per-user database on the volume, synchronised git-style with a full copy in the user's main database (see Persistence: State that travels with a volume).
 - [ ] Should `wps-watchd` be required, or optional with a clearly weaker mode? Distributions may hesitate to ship a root service.
 - [ ] How should objects inside the trash behave: kept with their IDs until emptied, or treated as deleted?
 - [ ] Should a rename to a typical backup name (`~`, `.bak`, `.orig`) count as a save immediately, so the object stays with the edited file when editor backups are kept? It works by guessing from names.
@@ -700,6 +726,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.6 | 2026-11-18 | Decided: state travels with removable volumes in per-user volume databases, synchronised git-style with the main database; WPS identity per user; four new scenarios (25a–25d) |
 | 0.5 | 2026-11-18 | M1 first version: runtime, loop, `wpoc`, seven classes, tests; `.wpi` format decided |
 | 0.4 | 2026-11-18 | M0 results folded in: displacement rule for saves that rename the original away (vim); save detection section; replaced inode identified by its handle; per-user filtering rules validated by the prototype (register by descriptor, re-check on folder changes, hidden rename targets, overflow notices for slow services); FAT handles valid within a mount; rsync note; M0 marked done |
 | 0.3 | 2026-11-18 | Added Multiple logged-in users: services of different users never talk to each other; abstract objects are stored as files (`.desktop`, symlinks, `.wpobj`) so other users can see them; shadow records stored on their folder so any user can maintain them; simultaneous-operation rules with no-replace file operations; shared and system programs, always launched as the launching user, with confirmation for programs owned by others; per-user fairness through systemd slices; root sessions. Nine new test scenarios; milestones extended to 3.5–4 months |
