@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.2 · 2026-11-18 · Changes from v0.1 are listed in the [change log](#change-log) at the end.
+Version 0.3 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -9,7 +9,7 @@ The object core is a headless C service that makes every file, folder and abstra
 The core rests on five decisions:
 
 - **A small SOM-like runtime written in C**, not GObject, so it can also run on X64-DOS.
-- **Object state lives on the file** in extended attributes, with SQLite for abstract objects, per-user state and filesystems without extended attributes.
+- **Object state lives in the filesystem**: settings in extended attributes, abstract objects as files in their folders, and SQLite only for per-user state and filesystems without extended attributes. This is also what lets several logged-in users share objects safely.
 - **Object identity is a kernel file handle plus the filesystem UUID**, not a path, so objects survive renames. IDs are assigned lazily, only to files WPS stores something about.
 - **fanotify tracks changes made outside WPS**, for example from the command line, so shadows and state stay correct.
 - **Nothing waits on anything it does not own.** No client, plug-in, user, large folder or bulk operation can stall the service for anyone else. This is the lesson of OS/2's single input queue, applied from the start.
@@ -40,6 +40,7 @@ These rules apply to every section below. A change that breaks one needs an expl
 3. **Isolation between parties.** A slow client, a hung plug-in or another user's activity can delay only itself.
 4. **The kernel arbitrates access.** WPS never grants access the filesystem would refuse, and never assumes it is the only writer.
 5. **Lazy identity.** Files become objects only when WPS has something to remember about them.
+6. **The filesystem is the only shared state.** Services of different users never talk to each other. Anything more than one user must see lives in the filesystem, under ordinary permissions.
 
 ## Architecture
 
@@ -164,9 +165,9 @@ Version 1 ships seven classes. File-backed objects descend from `WPFileSystem`; 
 | `WPFileSystem` | `WPObject` | Anything with a directory entry | Extended attributes on the inode, or per-user overlay |
 | `WPDataFile` | `WPFileSystem` | A regular file; subclassed by type (text, image, …) | Extended attributes |
 | `WPFolder` | `WPFileSystem` | A directory, with its view state and icon positions | Extended attributes on the directory, or SQLite |
-| `WPAbstract` | `WPObject` | Objects with no file of their own | SQLite |
-| `WPProgram` | `WPAbstract` | A program to start, built from a Linux `.desktop` entry | SQLite |
-| `WPShadow` | `WPAbstract` | A pointer to another object; see Links | A managed symlink plus SQLite, or SQLite alone |
+| `WPAbstract` | `WPObject` | Objects that are not ordinary files or folders | An object file in the folder where it lives (see Multiple logged-in users) |
+| `WPProgram` | `WPAbstract` | A program to start | A standard `.desktop` file |
+| `WPShadow` | `WPAbstract` | A pointer to another object; see Links | A managed symlink, recorded on its folder |
 
 Data file subclasses are chosen by MIME type (via shared-mime-info), so `image/png` can map to a `WPImageFile` plug-in. Desktop entries for programs are read from the standard XDG directories and kept in sync with them.
 
@@ -240,7 +241,9 @@ An object's state is stored on the thing it describes wherever possible. That fo
 | The same settings, when the user cannot write the file | Per-user overlay in SQLite | Filesystem UUID + handle |
 | Layout of a folder the user owns (icon positions, sort order, view type) | Extended attribute on the folder if it fits, otherwise SQLite | Each child's object ID |
 | Layout of a folder the user does not own | Per-user SQLite | Folder handle + child IDs |
-| Abstract objects (programs, shadows, future printers and settings objects) | SQLite | Object ID |
+| Abstract objects (programs, shadows, future printers and settings objects) | A file in the folder where the object lives: `.desktop`, symlink or `.wpobj` | The file's `user.wps.id` |
+| Shadow records for a folder (symlink name → target object ID) | Extended attribute on the folder, `user.wps.shadows` | Symlink name |
+| Abstract objects that are in no folder (internal objects) | SQLite | Object ID |
 | ID → location map (UUID, handle, cached path) | SQLite | Object ID |
 | Fallback for filesystems without extended attributes | SQLite | Volume UUID + path |
 
@@ -262,8 +265,8 @@ Layout is the least valuable state: the worst failure is rearranged icons, never
 ### The database
 
 - One SQLite file per user: `~/.local/share/wps/objects.db`, in WAL mode. Only that user's `wpsd` opens it; every other client goes through the API.
-- Tables: `objects` (ID, class, abstract state), `locations` (ID, UUID, handle, path, ctime, size), `overlay` (per-user settings for files the user cannot write), `layout` (large folders and folders the user does not own), `shadows` (shadow ID, target ID, symlink handle), `jobs` (the job journal), `volumes` (UUID, last generation or scan time).
-- The database can be rebuilt. Everything in it except abstract objects, overlays and the journal can be regenerated by scanning the extended attributes on mounted volumes. Abstract objects are also exported to a plain text file daily, as a backup.
+- Tables: `objects` (ID, class; state only for objects in no folder), `locations` (ID, UUID, handle, path, ctime, size), `overlay` (per-user settings for files the user cannot write), `layout` (large folders and folders the user does not own), `shadows` (an index of shadow records, rebuilt from the folders), `jobs` (the job journal), `volumes` (UUID, last generation or scan time).
+- The database can be rebuilt. Everything in it except overlays, per-user layouts, internal objects and the journal can be regenerated by scanning mounted volumes, because abstract objects in folders are files. The non-rebuildable parts are also exported to a plain text file daily, as a backup.
 - Database writes run on a dedicated writer thread in batched transactions, never on the main loop.
 
 ### Write policy
@@ -302,24 +305,96 @@ Other processes can write `user.wps.*` too: another user's `wpsd` on a shared fi
 - **Events are filtered per user.** One `wps-watchd` serves all users. Each user's service registers the directories it tracks by passing open directory descriptors over its socket. Because the service opened them, the kernel has already checked access. The helper forwards only events under directories that user registered, and performs any handle-to-path lookup with the user's filesystem credentials (`setfsuid` in a worker thread).
 - **No user can slow another.** Locks are always taken with a timeout, the helper has a separate queue per user, and an overflowing queue triggers a rescan for that user only.
 
+## Multiple logged-in users
+
+Linux is multi-user all the time. Several people can be logged in at once, at the console, through remote desktops or over SSH, each with a WPS session open on the same shared folders and programs. This section covers what happens when they act at the same moment.
+
+### Model
+
+- Each user has their own `wpsd`, running with that user's credentials inside that user's systemd slice.
+- **Services of different users never talk to each other.** The only shared state is the filesystem: files, their extended attributes, and object files. Everything one user's service learns about another user's actions comes from the kernel through fanotify or inotify, filtered by permissions. There is no cross-user channel to attack, and no service can be made to wait for another user's service.
+- It follows that anything more than one user must see has to live in the filesystem, under ordinary permissions. Two rules below come from this: abstract objects are files, and shadow records are stored on their folder.
+
+### Shared folders
+
+| User A, in a shared folder | What user B sees | How |
+| --- | --- | --- |
+| Creates, renames, moves or deletes a file | B's open view of the folder updates within about 1 s | B's service registered the folder; fanotify, or inotify for open folders |
+| Changes a file's title or icon, with write permission on it | The new title or icon | Shared attribute on the inode; `FAN_ATTRIB` |
+| Rearranges icons | Nothing changes for B | Layout is per user in folders they do not own. B starts from the owner's arrangement and keeps B's own changes |
+| Creates a program, shadow or other abstract object | The new object, if B can read the folder | Abstract objects are files (below) |
+| Moves a file to the trash | It disappears for B; only A can restore it | Per-user trash on each volume (`.Trash-<uid>`, per the XDG trash specification) |
+
+### Abstract objects are files
+
+In v0.2 abstract objects lived only in their creator's database, so no other user could see them. They are now files in the folder where they live:
+
+| Object | Stored as |
+| --- | --- |
+| `WPProgram` | A standard `.desktop` file, which every other Linux desktop and launcher can also use |
+| `WPShadow` | A managed symlink, with its record on the folder |
+| Other abstract classes (future printers, settings objects, web links) | A small `.wpobj` file holding the class name and state in the same tagged format as the extended attributes, with its ID in `user.wps.id` |
+
+- File permissions decide who can open, change or delete the object, exactly as for any file.
+- Object files are written to a temporary name and renamed into place with `RENAME_NOREPLACE`, so readers never see a half-written object and two creators cannot overwrite each other.
+- This applies in private folders too. One rule is simpler than two, and the database becomes almost fully rebuildable. Only internal objects that are in no folder stay database-only.
+
+### Shadows maintained by any user
+
+A managed symlink in a shared folder may need rewriting while the user who made it is logged out. Shadow records are therefore stored on the folder (`user.wps.shadows`), not in one user's database.
+
+- Any logged-in user's service that sees the target move, and can write the folder, rewrites the symlink. It does so under the folder's lock, checking the change counter, so two services repairing the same shadow at the same moment do the work once.
+- If no one with write permission on the folder is logged in, the catch-up scan repairs the symlink at the next login of someone who can.
+- A shadow whose target the viewing user cannot read is shown as "no access", not as broken.
+
+### Simultaneous operations
+
+| Situation | Handling |
+| --- | --- |
+| A and B drop a file with the same name into one folder at the same moment | Every create, copy and move uses no-replace operations (`O_EXCL`, `renameat2` with `RENAME_NOREPLACE`, `linkat`). One wins; the other gets a name conflict and is asked. Nothing is silently overwritten |
+| A moves or deletes a folder while B is copying from it | B's job reports the items that disappeared and completes the rest |
+| A renames a file while B has its Properties open | B's save carries the old change counter and is refused with the current values |
+| A's and B's services both react to the same outside change, such as an atomic save of a shared file | Repairs are idempotent and done under the file's lock with a change-counter check; the second service finds the work already done |
+| A and B assign an ID to the same file at once | `XATTR_CREATE` lets exactly one ID win |
+| A starts a large copy into a shared folder, then logs out | A's jobs are paused and journaled at logout and resume at A's next login. With systemd lingering enabled for A, they continue |
+| A opens a document that B already has open | Each opens it with their own program in their own session. Locking the document is the application's job |
+
+### Shared applications
+
+- **System programs** come from the standard `.desktop` directories (`/usr/share/applications`, `/usr/local/share/applications`). Every user sees them as program objects; only an administrator can change them. A user's change to their title or icon goes to that user's overlay.
+- **Programs placed in a shared folder** are `.desktop` files there. Anyone who can write the file can change it for everyone.
+- **A program always runs as the user who launches it**, in that user's session, with that user's environment and permissions. It never runs as the user who created the object.
+- **Untrusted programs ask first.** A `.desktop` file is launched without confirmation only if it is owned by the launching user or by root. Otherwise WPS shows the command it would run and asks, so one user cannot plant a program that runs when another double-clicks it.
+- **Administrator-provided objects**, such as a Programs folder for everyone, live in system folders: `/usr/share/wps/objects` for packages and `/etc/wps/objects` for local additions. They are read-only to users.
+
+### Fairness between users
+
+- Each user's service runs in that user's systemd slice, so the kernel's cgroup controls share CPU, memory and disk I/O between users.
+- The helper keeps a separate bounded queue per user, so one user's event flood never delays another user's events.
+- Jobs run at reduced I/O priority within their user's slice.
+
+### Root sessions
+
+Running WPS as root is supported but discouraged, because root's service could see every user's files. A root session shows a warning, and never registers objects inside other users' home folders unless root explicitly opens them.
+
 ## Links
 
 A WPS shadow of a file or folder is a **managed symlink**: a real symlink on disk that the service rewrites whenever its target moves. Every Linux program can follow it, unlike OS/2 shadows, which only WPS could see. Symlinks and hard links made by other tools keep their Linux meaning.
 
 | Kind | On disk | When the target moves | When the target is deleted | WPS shows it as |
 | --- | --- | --- | --- | --- |
-| Shadow of a file or folder | A symlink + a row in `shadows` | The service rewrites the symlink | The service removes the shadow | Shadow (italic title, as in OS/2) |
-| Shadow of an abstract object | A row in `shadows` only | Nothing to do: targets are found by ID | The shadow is removed | Shadow |
+| Shadow of a file or folder | A symlink + a record in its folder's `user.wps.shadows` | The service rewrites the symlink | The service removes the shadow | Shadow (italic title, as in OS/2) |
+| Shadow of an abstract object | A managed symlink to the object's file | The service rewrites the symlink | The service removes the shadow | Shadow |
 | Symlink made by the user (`ln -s`) | A symlink only | Left alone; may dangle | Left alone | Link, with a badge; "Track target" turns it into a shadow |
 | Hard link (`ln`) | Another name for the same inode | Not affected | The file lives while any name remains | The same object, shown in each folder |
 
 ### Managed symlinks
 
-- Linux refuses `user.*` extended attributes on symlinks, so a shadow's own state is stored in SQLite, keyed by the symlink's file handle.
+- Linux refuses `user.*` extended attributes on symlinks, so a shadow's record (its target's object ID) is stored on the folder that holds it, in `user.wps.shadows`. Any user who can write that folder can therefore maintain it (see Multiple logged-in users). On filesystems without extended attributes, the record goes to the creating user's database.
 - The symlink holds an **absolute** path, so moving the shadow itself does not break it.
 - When a target is renamed, the service rewrites every symlink pointing to that object ID. The rewrite is atomic: write a new symlink beside the old one, then rename it over the old one. When a whole folder moves, shadows pointing into it are found through an index on target path prefix and rewritten as a job.
 - If the target is on a volume that is not mounted, the symlink is left as it is, and WPS shows the shadow as unavailable.
-- Shadows of abstract objects cannot be symlinks, because there is no file to point at.
+- Shadows of abstract objects point to the object's file, so they are symlinks like any other shadow.
 - A user can create a managed shadow only in a folder they can write; the kernel enforces this.
 
 ### Symlinks made by the user
@@ -493,7 +568,7 @@ The core is finished when every scenario below passes from the command line, wit
 | # | Scenario | Pass when |
 | --- | --- | --- |
 | 1 | Set a file's title; restart the service | Title is restored from extended attributes |
-| 2 | Delete the database; restart | Everything except abstract objects and overlays is rebuilt by scanning |
+| 2 | Delete the database; restart | Everything except overlays, per-user layouts and internal objects is rebuilt by scanning, including programs and shadows |
 | 3 | Create a shadow; `mv` the target to another folder | The symlink points to the new path; `cat` through it works |
 | 4 | Same, with the service stopped during the move | Fixed by the catch-up scan at the next start |
 | 5 | Edit the target with `vim`, `sed -i`, and an editor that writes its temp file in another folder | Same object ID; settings kept; the shadow still works |
@@ -530,6 +605,20 @@ The core is finished when every scenario below passes from the command line, wit
 | 26 | User B holds `flock` on a shared file forever | A's change goes to A's overlay as pending; A's service stays responsive |
 | 27 | User B renames files in B's private folder | A's service receives no event and cannot learn the names |
 
+### Scenarios: several users logged in at once
+
+| # | Scenario | Pass when |
+| --- | --- | --- |
+| 33 | Users A and B both have a shared folder open; A creates, renames and deletes files | B's view updates within 1 s for each |
+| 34 | A and B drop a file named `report.txt` into one folder at the same instant, 100 times | Nothing is ever overwritten; exactly one conflict each time |
+| 35 | A creates a shadow in a shared folder and logs out; B moves the target | B's service rewrites the shadow; it works for A at next login |
+| 36 | A's and B's services both see an atomic save of a shared file | Settings are carried over once; the object keeps one ID |
+| 37 | A creates a program object in a shared folder; B double-clicks it | B is asked to confirm the command; it runs as B |
+| 38 | A starts a 10 GB copy and logs out | The job is paused and journaled, and resumes at A's next login |
+| 39 | A runs a parallel build in a shared project folder while B browses it | B's interactive requests stay under 20 ms (99th percentile) |
+| 40 | A moves away a folder that B is copying from | B's job reports the missing items and completes the rest |
+| 41 | Start a root session | A warning is shown; no objects are registered in other users' homes |
+
 ### Scenarios: scale
 
 | # | Scenario | Pass when |
@@ -548,14 +637,14 @@ The core is finished when every scenario below passes from the command line, wit
 
 ## Milestones
 
-The core takes about 3–3.5 months of focused work for one developer. Durations are estimates. Each milestone ends with the named test scenarios passing.
+The core takes about 3.5–4 months of focused work for one developer. Durations are estimates. Each milestone ends with the named test scenarios passing.
 
 1. **M0: Tracking prototype (3–5 days).** A standalone C program using `FAN_RENAME` and `name_to_handle_at()` that prints old path, new path and handle while `mv`, `vim` and a cross-filesystem `mv` run in another terminal. It also confirms that `mv` across filesystems keeps `user.*` attributes. Validates the kernel behaviour the design relies on before anything is built on it.
 2. **M1: Runtime and main loop (2–3 weeks).** `libwpo`, `wpoc`, the seven classes as shells, deferred results, the three-queue loop, the watchdog and the worker pool. Unit tests pass.
 3. **M2: Persistence, identity and concurrency (2–3 weeks).** Extended attributes with locking and merge, overlays, lazy IDs, the database writer, `wpsd`, `wpsctl`. Scenarios 1, 2, 10 and 21–25 pass.
-4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26 and 27 pass.
-5. **M4: Scale, shadows and jobs (2–3 weeks).** Streaming folder listing, selections, the job manager with journal, managed symlinks, unavailable volumes. Scenarios 3, 6, 12 and 28–32 pass.
-6. **M5: API and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs, MIME classes, templates. Scenarios 17–20 pass; all 32 now pass. GUI design starts from here.
+4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26, 27, 33 and 36 pass.
+5. **M4: Scale, shadows, object files and jobs (3–4 weeks).** Streaming folder listing, selections, the job manager with journal and logout handling, managed symlinks with folder records, `.wpobj` files, no-replace operations, unavailable volumes. Scenarios 3, 6, 12, 28–32, 34, 35, 38, 39 and 40 pass.
+6. **M5: API, programs and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system object folders, root sessions, MIME classes, templates. Scenarios 17–20, 37 and 41 pass; all 41 now pass. GUI design starts from here.
 
 ## Deferred: decided in principle, details later
 
@@ -569,13 +658,16 @@ These follow from the principles above but need not be designed in full before M
 - [ ] **Disk full and quota errors during jobs** (M4).
 - [ ] **Undo for jobs** (after M5).
 - [ ] **Opt-in shared layouts** for team folders (after M5).
+- [ ] **Showing who has a document open**, by reading the lock files that applications such as LibreOffice already write (after M5).
+- [ ] **`.wpobj` format details** (M4): versioning, and how a class missing on one user's system shows to that user (proposed: as a plain object with its title and a "class not installed" note).
+- [ ] **Group-shared folders with the setgid bit** (M4): confirm that object files and shadow records created there get the right group and permissions.
 - [ ] **Security review of `wps-watchd`** (before any release).
 - [ ] **X64-DOS platform layer** (after M5): which parts of the runtime need it; X64-DOS is single-user, so the concurrency layer reduces to the loop.
 
 ## Open questions
 
 - [ ] Should the class interface files (`.wpi`) be a custom format, or a subset of an existing IDL to reuse its tools?
-- [ ] One database per user, or also one per volume stored on the volume, so a USB disk carries its abstract objects with it?
+- [ ] Should per-user overlays and layouts for a removable volume be stored on that volume, so they travel with a USB disk?
 - [ ] Should `wps-watchd` be required, or optional with a clearly weaker mode? Distributions may hesitate to ship a root service.
 - [ ] How should objects inside the trash behave: kept with their IDs until emptied, or treated as deleted?
 - [ ] Is 1 hour the right grace period for deciding that a duplicate ID is a copy rather than a move?
@@ -585,5 +677,6 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.3 | 2026-11-18 | Added Multiple logged-in users: services of different users never talk to each other; abstract objects are stored as files (`.desktop`, symlinks, `.wpobj`) so other users can see them; shadow records stored on their folder so any user can maintain them; simultaneous-operation rules with no-replace file operations; shared and system programs, always launched as the launching user, with confirmation for programs owned by others; per-user fairness through systemd slices; root sessions. Nine new test scenarios; milestones extended to 3.5–4 months |
 | 0.2 | 2026-11-18 | Folded in the [external review](reviews/2026-11-18-gemini-review.md): lazy ID assignment; replacement decided by incoming identity instead of timing; cross-filesystem moves matched by ID with no time window; all-or-nothing layout storage; hard-link notes only for objects with user settings; excluded paths. Added design principles; responsiveness rules against a single-queue stall (loop budget, deferred results, three queues, plug-in hosts); concurrency and multi-user model (per-user service, change counters, locked merge, overlays, per-user layout, per-user event filtering); scale section (streaming folder listing, selections, jobs with journal, reflink copies); API messages for selections, jobs and viewports; 16 new test scenarios; revised milestones; deferred items |
 | 0.1 | 2026-11-17 | First version |
