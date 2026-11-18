@@ -2,6 +2,7 @@
 #
 #   make          build the runtime, the core classes and the tests
 #   make test     run the unit tests (with AddressSanitizer and UBSan if installed)
+#   make check    tests + strict C11 core check + ThreadSanitizer loop run
 #   make m0       build the M0 prototypes (see proto/m0)
 #   make clean
 
@@ -66,10 +67,29 @@ test: all
 	$(TV)/test_runtime $(TV)/plugins
 	$(TV)/test_loop
 
+# Everything that must stay true: the unit tests (with ASan/UBSan when
+# installed), the core building as strict C11 with only the C library, and
+# the loop under ThreadSanitizer when libtsan is installed.
+CORE_LIBC := calloc free malloc memcpy realloc strchr strcmp strlen
+TSAN_OK   := $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=thread -x c - -o /dev/null 2>/dev/null && echo yes)
+
+check: test
+	@mkdir -p $(TV)
+	$(CC) -std=c11 -Wall -Wextra -pedantic -Werror -Iruntime/include -c runtime/src/wpo.c -o $(TV)/wpo_c11.o
+	@extra=$$(nm -u $(TV)/wpo_c11.o | awk '{print $$2}' | grep -vxE '$(subst $(eval) ,|,$(CORE_LIBC))'); \
+	 if [ -n "$$extra" ]; then echo "core uses more than the C library subset: $$extra"; exit 1; fi; \
+	 echo "core: strict C11, C library subset only"
+ifeq ($(TSAN_OK),yes)
+	$(CC) -O1 -g -std=gnu11 -fsanitize=thread $(INC) -o $(TV)/test_loop_tsan tests/test_loop.c runtime/src/wpo_loop_posix.c -lpthread
+	$(TV)/test_loop_tsan
+else
+	@echo "ThreadSanitizer not installed (Fedora: libtsan); loop race check skipped"
+endif
+
 m0:
 	$(MAKE) -C proto/m0 all
 
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test m0 clean
+.PHONY: all plugins test check m0 clean
