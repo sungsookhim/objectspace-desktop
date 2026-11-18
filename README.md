@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: M0 (kernel prototypes) done; M1 (object runtime) first version done.
+Status: M0 (kernel prototypes), M1 (object runtime) and M2 (persistence, service, multi-user, travelling volumes) done.
 
 ## Documents
 
@@ -17,9 +17,10 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 ## Plan
 
 1. M0: kernel-behaviour and per-user filtering prototypes. Done; findings folded into design v0.4.
-2. M1: object runtime, main loop, class generator, core classes. First version done.
-3. M2–M5: persistence and identity, change tracking, shadows and jobs, API and plug-in host.
-4. Then design the GUI on top of the object core.
+2. M1: object runtime, main loop, class generator, core classes. Done.
+3. M2: persistence, identity, concurrency, `wpsd` and `wpsctl`, state that travels with removable volumes. Done.
+4. M3–M5: change tracking, shadows and jobs, API and plug-in host.
+5. Then design the GUI on top of the object core.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 
@@ -29,6 +30,7 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 |---|---|
 | `runtime/` | `libwpo`: the object runtime (`wpo.h`, `wpo.c`: C11, C library only), the main loop (`wpo_loop.h`, POSIX implementation) and plug-in loading |
 | `tools/wpoc.py` | Generates C headers and registration code from `.wpi` class files |
+| `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), attribute store, database and volume sync, CBOR protocol |
 | `classes/` | The core classes: `WPObject`, `WPFileSystem`, `WPDataFile`, `WPFolder`, `WPAbstract`, `WPProgram`, `WPShadow` |
 | `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
 | `proto/m0/` | M0 kernel and filtering prototypes |
@@ -36,8 +38,20 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 ## Building
 
 ```
-make          # runtime, classes, plug-ins, tests (needs gcc and python3)
-make test     # run the unit tests
+make          # runtime, classes, service, plug-ins, tests (needs gcc, python3, sqlite-devel)
+make test     # unit tests
+make check    # unit tests + strict C11 core check + ThreadSanitizer run of the loop
+make m2       # M2 scenarios: real services on loopback ext4/btrfs/FAT, several users (uses sudo)
 ```
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.
+
+Try the service by hand:
+
+```
+build/wpsd &                                  # socket in $XDG_RUNTIME_DIR/wps.sock
+build/wpsctl call ~/notes.txt wpSetTitle "My notes"
+build/wpsctl resolve ~/notes.txt
+getfattr -d -m user.wps ~/notes.txt           # the title travels with the file
+build/wpsctl shutdown
+```

@@ -18,7 +18,7 @@
 
 struct task {
     struct task *next;
-    const char *label;
+    char label[48];          /* copied: the task may free whatever named it */
     wpo_task_fn fn;          /* loop task, or `done` for deferred work */
     wpo_task_fn work;        /* deferred work, run on a worker */
     void *arg;
@@ -164,7 +164,7 @@ void wpo_loop_post(wpo_loop *l, wpo_queue q, const char *label, wpo_task_fn fn, 
     if (q >= WPO_Q_COUNT || !fn) return;
     struct task *t = calloc(1, sizeof *t);
     if (!t) return;
-    t->label = label ? label : "task";
+    snprintf(t->label, sizeof t->label, "%s", label ? label : "task");
     t->fn = fn;
     t->arg = arg;
     pthread_mutex_lock(&l->mu);
@@ -179,7 +179,7 @@ void wpo_defer(wpo_loop *l, const char *label, wpo_task_fn work, wpo_task_fn don
 {
     struct task *t = calloc(1, sizeof *t);
     if (!t) return;
-    t->label = label ? label : "deferred";
+    snprintf(t->label, sizeof t->label, "%s", label ? label : "deferred");
     t->work = work;
     t->fn = done ? done : noop;
     t->arg = arg;

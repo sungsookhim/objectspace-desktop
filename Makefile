@@ -3,6 +3,7 @@
 #   make          build the runtime, the core classes and the tests
 #   make test     run the unit tests (with AddressSanitizer and UBSan if installed)
 #   make check    tests + strict C11 core check + ThreadSanitizer loop run
+#   make m2       M2 scenarios with real services on loopback filesystems (sudo)
 #   make m0       build the M0 prototypes (see proto/m0)
 #   make clean
 
@@ -111,10 +112,15 @@ else
 	@echo "ThreadSanitizer not installed (Fedora: libtsan); loop race check skipped"
 endif
 
+# M2 scenarios against the loopback test bed (needs sudo; see proto/m0/testbed.sh).
+m2: all
+	proto/m0/testbed.sh up
+	tests/m2/m2.py; rc=$$?; proto/m0/testbed.sh down; exit $$rc
+
 m0:
 	$(MAKE) -C proto/m0 all
 
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test check m0 clean
+.PHONY: all plugins test check m0 m2 clean

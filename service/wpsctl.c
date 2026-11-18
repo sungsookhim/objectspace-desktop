@@ -116,11 +116,12 @@ int main(int argc, char **argv)
     }
 
     int fd = connect_socket();
-    if (fd < 0) return 1;
+    if (fd < 0) { cb_free(&b); return 1; }
     unsigned char hdr[4] = { (unsigned char)(b.n >> 24), (unsigned char)(b.n >> 16),
                              (unsigned char)(b.n >> 8), (unsigned char)b.n };
     if (io_all(fd, hdr, 4, true) || io_all(fd, b.d, b.n, true) || io_all(fd, hdr, 4, false)) {
         fprintf(stderr, "wpsctl: connection failed\n");
+        cb_free(&b);
         return 1;
     }
     uint32_t n = (uint32_t)hdr[0] << 24 | (uint32_t)hdr[1] << 16 | (uint32_t)hdr[2] << 8 | hdr[3];
@@ -128,6 +129,8 @@ int main(int argc, char **argv)
     cv reply;
     if (!body || io_all(fd, body, n, false) || cv_decode(body, n, &reply)) {
         fprintf(stderr, "wpsctl: bad reply\n");
+        free(body);
+        cb_free(&b);
         return 1;
     }
     cbuf j;

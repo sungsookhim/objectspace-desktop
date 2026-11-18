@@ -44,7 +44,7 @@ down() {
     for fs in ext4 btrfs fat; do
         if mountpoint -q "$WORK/mnt/$fs"; then sudo umount "$WORK/mnt/$fs"; fi
     done
-    rm -rf "$WORK"
+    sudo rm -rf "$WORK"
     echo "testbed down"
 }
 

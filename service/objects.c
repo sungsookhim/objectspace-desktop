@@ -178,10 +178,14 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
     ld->owned = ld->st.st_uid == geteuid();
     ld->writable = access(ld->path, W_OK) == 0 && !v.ro;
 
+    /* Does the filesystem take user attributes? Probe the user namespace
+     * itself: FAT, for one, lists security labels but refuses user.*. */
+    char probe[1];
+    ld->xattr_ok = !S_ISLNK(ld->st.st_mode) &&
+                   (lgetxattr(ld->path, "user.wps.probe", probe, 0) >= 0 || errno != ENOTSUP);
     /* Shared state: every user.wps.<Class> attribute on the file. */
     char names[8192];
-    ssize_t nl = S_ISLNK(ld->st.st_mode) ? -1 : llistxattr(ld->path, names, sizeof names);
-    ld->xattr_ok = nl >= 0 || (errno != ENOTSUP && !S_ISLNK(ld->st.st_mode));
+    ssize_t nl = ld->xattr_ok ? llistxattr(ld->path, names, sizeof names) : -1;
     if (ld->xattr_ok && wps_attr_get_id(ld->path, ld->id)) { /* has an ID */ }
     for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
         const char *n = names + o;

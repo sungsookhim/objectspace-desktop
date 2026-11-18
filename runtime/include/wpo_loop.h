@@ -52,8 +52,8 @@ wpo_loop *wpo_loop_new(unsigned workers);
  * Tasks still queued are dropped without running. */
 void wpo_loop_free(wpo_loop *loop);
 
-/* Queue a task. Safe from any thread. `label` must stay valid until the
- * task has run; it names the task in watchdog reports. */
+/* Queue a task. Safe from any thread. `label` names the task in watchdog
+ * reports; it is copied (up to 47 characters). */
 void wpo_loop_post(wpo_loop *loop, wpo_queue q, const char *label, wpo_task_fn fn, void *arg);
 
 /* Run `work(arg)` on a worker, then `done(arg)` on the loop thread.

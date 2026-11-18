@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.6 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.7 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -688,7 +688,14 @@ The core takes about 3.5–4 months of focused work for one developer. Durations
 
 1. **M0: Tracking prototype — done.** `proto/m0`: a fanotify watcher and 21 kernel scenarios (16 pass, 4 observations, 1 finding: vim's save pattern, now covered by the displacement rule), and a per-user filtering prototype of `wps-watchd` with 11 scenarios, all passing. Results in `proto/m0/RESULTS.md`.
 2. **M1: Runtime and main loop — first version done.** `runtime/` (`libwpo` core in C11 using only eight C library functions, the three-queue loop with watchdog and worker pool, plug-in loading), `tools/wpoc.py` (the `.wpi` generator), and the seven classes in `classes/` as first versions. 128 runtime checks and 19 loop checks pass, including plug-ins built against older, newer and incompatible class versions, class replacement by a plug-in, and interactive latency while workers are busy (0.12 ms worst case). Still to do in M1: run the tests under AddressSanitizer (needs `libasan`, `libubsan`).
-3. **M2: Persistence, identity and concurrency (2–3 weeks).** Extended attributes with locking and merge, overlays, lazy IDs, the database writer, state that travels with removable volumes, `wpsd`, `wpsctl`. Scenarios 1, 2, 10, 21–25 and 25a–25d pass.
+3. **M2: Persistence, identity and concurrency — done.** `service/`: the attribute store (locked merge, change counters, ID assignment), the database with git-style volume sync (merge base per row, conflicts kept, tombstones), volume and identity handling, the CBOR protocol, `wpsd` and `wpsctl`. Scenarios 1, 2, 10, 21–25, 25a, 25b (which also covers 25c) and 25d pass with real services for three users and two simulated computers (`make m2`), with no sanitizer reports. Simplifications left for later milestones:
+    - The service's object table is a linear list; M4 replaces it with an index.
+    - Database writes are serialised calls from workers, not yet a batching writer thread (M4, for scale).
+    - A file whose lock cannot be taken in time is saved to the user's overlay, but not yet retried into the shared attribute (M3, with change events).
+    - Abstract objects (programs) are not persisted yet; they become files in M4.
+    - An object passed as a method argument is given an ID when passed.
+    - A volume is identified by its filesystem UUID, plus `:<root>` for a btrfs subvolume or bind mount (for example `/home`).
+    - A disk's `.wps` folder is created by the first user who can write the disk's root; if nobody can, travelling state stays on each computer until it can be created.
 4. **M3: Change tracking (2–3 weeks).** `wps-watchd` with per-user filtering and excluded paths, inotify fallback, the replacement and move rules, catch-up scan. Scenarios 4, 5, 7–9, 11, 13–16, 26, 27, 33 and 36 pass.
 5. **M4: Scale, shadows, object files and jobs (3–4 weeks).** Streaming folder listing, selections, the job manager with journal and logout handling, managed symlinks with folder records, `.wpobj` files, no-replace operations, unavailable volumes. Scenarios 3, 6, 12, 28–32, 34, 35, 38, 39 and 40 pass.
 6. **M5: API, programs and plug-in host (2–3 weeks).** Subscriptions and events, menus and settings as data, `wps-plughost`, `.desktop` programs with launch confirmation, system object folders, root sessions, MIME classes, templates. Scenarios 17–20, 37 and 41 pass; all 41 now pass. GUI design starts from here.
@@ -726,6 +733,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.7 | 2026-11-18 | M2 done: service, client, persistence, overlays, volume sync; simplifications listed under M2 |
 | 0.6 | 2026-11-18 | Decided: state travels with removable volumes in per-user volume databases, synchronised git-style with the main database; WPS identity per user; four new scenarios (25a–25d) |
 | 0.5 | 2026-11-18 | M1 first version: runtime, loop, `wpoc`, seven classes, tests; `.wpi` format decided |
 | 0.4 | 2026-11-18 | M0 results folded in: displacement rule for saves that rename the original away (vim); save detection section; replaced inode identified by its handle; per-user filtering rules validated by the prototype (register by descriptor, re-check on folder changes, hidden rename targets, overflow notices for slow services); FAT handles valid within a mount; rsync note; M0 marked done |
