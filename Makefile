@@ -26,7 +26,7 @@ CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GE
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
 TV      := $(B)/tests
 
-all: $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs plugins
+all: $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db plugins
 
 $(GEN)/.stamp: $(WPI) tools/wpoc.py
 	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
@@ -52,6 +52,10 @@ $(TV)/test_attrs: tests/test_attrs.c service/attrs.c service/attrs.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_attrs.c service/attrs.c
 
+$(TV)/test_db: tests/test_db.c service/db.c service/db.h service/attrs.c
+	@mkdir -p $(TV)
+	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_db.c service/db.c service/attrs.c -lsqlite3 -lpthread
+
 PLUGINS := $(TV)/plugins/tchild_v10.so $(TV)/plugins/tchild_v12.so $(TV)/plugins/tchild_v20.so \
            $(TV)/plugins/myfolder.so
 plugins: $(PLUGINS)
@@ -71,6 +75,7 @@ test: all
 	$(TV)/test_runtime $(TV)/plugins
 	$(TV)/test_loop
 	$(TV)/test_attrs $(TV)/attrs-tmp
+	$(TV)/test_db $(TV)/db-tmp
 
 # Everything that must stay true: the unit tests (with ASan/UBSan when
 # installed), the core building as strict C11 with only the C library, and
