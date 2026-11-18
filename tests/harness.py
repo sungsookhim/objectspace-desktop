@@ -57,7 +57,7 @@ LIVE = []   # services started by the running scenario, stopped after it
 class Service:
     """One wpsd: a user (None = current user), a computer (host), dirs."""
 
-    def __init__(self, name, user=None, host=None, identity_from=None):
+    def __init__(self, name, user=None, host=None, identity_from=None, extra_env=None):
         self.name, self.user = name, user
         self.base = WORK / "svc" / name
         self.env = {
@@ -69,6 +69,7 @@ class Service:
             "WPS_HOST_ID": host or f"host-{name}",
             "ASAN_OPTIONS": "detect_leaks=1",
         }
+        self.env.update(extra_env or {})
         self.proc = None
         self.log = OUT / f"wpsd-{name}.log"
         # The services' parent folder is shared by every test user, like /tmp.
@@ -182,7 +183,7 @@ def prepare():
             sys.exit(f"{m} is not mounted; run proto/m0/testbed.sh up first")
     OUT.mkdir(parents=True, exist_ok=True)
     BIN.mkdir(parents=True, exist_ok=True)
-    for b in ("wpsd", "wpsctl", "wps-watchd"):
+    for b in ("wpsd", "wpsctl", "wps-watchd", "wps-plughost"):
         if (ROOT / "build" / b).exists():
             shutil.copy(ROOT / "build" / b, BIN / b)
     os.chmod(WORK, 0o755)

@@ -235,6 +235,138 @@ def s41():
                 f"but its folder is not watched: watched {w0} before, {w1} after"]
 
 
+# ----------------------------------------------------------------- plug-ins
+
+PLUG = {"WPS_PLUGIN_DIRS": f"{ROOT}/build/tests/m5plugins:{ROOT}/build/tests/m5future"}
+
+
+def plugins_ready(svc, timeout=10):
+    end = time.time() + timeout
+    while time.time() < end:
+        ps = svc.ctl("stats").get("result", {}).get("plugins", [])
+        if any(p["ready"] for p in ps):
+            return ps
+        time.sleep(0.1)
+    return svc.ctl("stats").get("result", {}).get("plugins", [])
+
+
+def labels(menu):
+    return [i["label"] for i in menu.get("result", [])] if menu.get("ok") else None
+
+
+@scenario(17, "A plug-in replaces WPFolder: new folders are its class and get its menu item")
+def s17():
+    me = Service("me", extra_env=PLUG).start()
+    ps = plugins_ready(me)
+    d = fresh("ext4", "s17")
+    (d / "projects").mkdir()
+    o = obj(me, d / "projects")
+    m = labels(me.ctl("menu", d / "projects"))
+    st = me.call(d / "projects", "wpStamp")
+    me.ctl("flush")
+    me.stop()
+    me.start()
+    plugins_ready(me)
+    t = obj(me, d / "projects").get("title")
+    me.stop()
+    ok = o.get("class") == "TestFolder" and m == ["Open", "Properties", "Arrange", "From the plug-in"] and \
+        st.get("plugin") and t == "Stamped by the plug-in"
+    return ok, [f"plug-ins: {[(p['name'], p['ready']) for p in ps]}", f"new folder is a {o.get('class')}; menu {m}",
+                f"a setting changed in the host is saved by the service: {t!r}"]
+
+
+@scenario(18, "A plug-in built against a newer WPFolder than installed is refused; the service carries on")
+def s18():
+    me = Service("me", extra_env=PLUG).start()
+    ps = {p["name"]: p for p in plugins_ready(me)}
+    pong = me.ctl("ping").get("ok")
+    me.stop()
+    fut = ps.get("future", {})
+    ok = fut.get("ready") is False and "incompatible" in (fut.get("error") or "") and ps.get("testfolder", {}).get("ready") and pong
+    return ok, [f"future.so: ready={fut.get('ready')}, error {fut.get('error')!r}",
+                "(plug-ins built against older versions loading is covered by the runtime tests)",
+                f"service still answers: {pong}"]
+
+
+@scenario(19, "A plug-in hangs for 60 s in its menu code: others are unaffected; the parent's menu after the deadline")
+def s19():
+    me = Service("me", extra_env=PLUG).start()
+    plugins_ready(me)
+    d = fresh("ext4", "s19")
+    (d / "slow").mkdir()
+    me.call(d / "slow", "wpSetTitle", "SLOW")
+    pings, stop = [], [False]
+    import threading
+    def pinger():
+        c = Conn(me)
+        while not stop[0]:
+            t = time.time()
+            c.request(op="ping")
+            pings.append((time.time() - t) * 1000)
+        c.close()
+    th = threading.Thread(target=pinger)
+    th.start()
+    t0 = time.time()
+    m = labels(me.ctl("menu", d / "slow"))
+    took = time.time() - t0
+    stop[0] = True
+    th.join()
+    pid = me.ctl("stats").get("result", {}).get("plugins", [{}])[0].get("pid")
+    me.stop()
+    pings.sort()
+    p99 = pings[int(len(pings) * 0.99)] if pings else None
+    ok = m == ["Open", "Properties", "Arrange"] and 1.8 < took < 4 and p99 is not None and p99 < 20
+    return ok, [f"menu came back after {took:.1f} s with the parent's items: {m}",
+                f"pings meanwhile: {len(pings)}, 99th percentile {p99:.2f} ms"]
+
+
+@scenario(20, "The plug-in's host is killed mid-call: the parent's menu at once; the host restarts; wpsd keeps running")
+def s20():
+    me = Service("me", extra_env=PLUG).start()
+    ps = plugins_ready(me)
+    pid0 = next(p["pid"] for p in ps if p["name"] == "testfolder")
+    d = fresh("ext4", "s20")
+    (d / "slow").mkdir()
+    me.call(d / "slow", "wpSetTitle", "SLOW")
+    import threading
+    res = {}
+    def ask():
+        t = time.time()
+        res["menu"] = labels(me.ctl("menu", d / "slow"))
+        res["took"] = time.time() - t
+    th = threading.Thread(target=ask)
+    th.start()
+    time.sleep(0.5)
+    run(["kill", "-9", str(pid0)])
+    th.join()
+    time.sleep(1.0)
+    ps2 = {p["name"]: p for p in me.ctl("stats").get("result", {}).get("plugins", [])}
+    tf = ps2.get("testfolder", {})
+    (d / "fast").mkdir()
+    again = labels(me.ctl("menu", d / "fast"))
+    wpsd_alive = me.proc.poll() is None
+    me.stop()
+    ok = res.get("menu") == ["Open", "Properties", "Arrange"] and res.get("took", 9) < 1.5 and tf.get("ready") and \
+        tf.get("pid") != pid0 and tf.get("restarts") == 1 and again and again[-1] == "From the plug-in" and wpsd_alive
+    return ok, [f"menu during the crash: {res.get('menu')} after {res.get('took', 0):.2f} s",
+                f"host restarted: pid {pid0} -> {tf.get('pid')}, restarts {tf.get('restarts')}",
+                f"plug-in works again: {again}; wpsd never restarted: {wpsd_alive}"]
+
+
+@scenario("SB", "The plug-in's sandbox: no home folder, no network, its data folder only")
+def ssb():
+    me = Service("me", extra_env=PLUG).start()
+    ps = plugins_ready(me)
+    d = fresh("ext4", "sb")
+    (d / "x").mkdir()
+    data = me.base / "state" / "plugins" / "testfolder"
+    probe = me.call(d / "x", "wpSandboxProbe", str(data)).get("result", "")
+    sb = next(p["sandbox"] for p in ps if p["name"] == "testfolder")
+    me.stop()
+    ok = "home=Permission denied" in probe and "net=Network is unreachable" in probe and "data=writable" in probe
+    return ok, [f"sandbox: {sb}", f"probe from inside the plug-in: {probe}"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

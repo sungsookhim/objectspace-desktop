@@ -1,0 +1,6 @@
+# A test plug-in: replaces WPFolder; runs in a sandboxed wps-plughost.
+class TestFolder : WPFolder
+version 1.0
+override wpModifyPopupMenu
+method wpStamp() -> bool
+method wpSandboxProbe(string data_dir) -> string

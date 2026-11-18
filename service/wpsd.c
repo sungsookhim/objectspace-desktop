@@ -59,6 +59,7 @@
 #include "objects.h"
 #include "jobs.h"
 #include "listing.h"
+#include "plugins.h"
 #include "shadows.h"
 #include "WPShadow.h"
 #include "WPProgram.h"
@@ -245,6 +246,7 @@ struct req {
     char target[PATH_MAX];
     wps_loaded tgt;
     wps_loaded shadow_target;    /* a shadow's target, when the target is a shadow */
+    char *remote_text;           /* a plug-in's answer, for menus */
     int nobj;
     char objpath[MAX_ARGS][PATH_MAX];
     wps_loaded *objs;
@@ -254,6 +256,7 @@ static void req_free(struct req *r)
 {
     wps_loaded_free(&r->tgt);
     wps_loaded_free(&r->shadow_target);
+    free(r->remote_text);
     for (int i = 0; r->objs && i < r->nobj; i++) wps_loaded_free(&r->objs[i]);
     free(r->objs);
     cv_free(&r->msg);
@@ -288,7 +291,67 @@ static void reply_ok_object(struct req *r, wpo_object *o, const wpo_value *resul
     cb_free(&b);
 }
 
-static void do_call(struct req *r, wpo_object *o)
+static void req_free(struct req *r);
+
+/* A method implemented by a plug-in: run in its host; reply when it
+ * answers, or with the parent's behaviour if it misses its deadline. */
+struct remote_ctx { struct req *r; wpo_object *o; };
+
+static void local_call_reply(struct req *r, wpo_object *o);
+
+static void remote_done(void *arg, const cv *result)
+{
+    struct remote_ctx *x = arg;
+    struct req *r = x->r;
+    if (!r->c->dead) {
+        if (!result) {
+            local_call_reply(r, x->o);   /* deadline passed or host failed: parent's behaviour */
+        } else {
+            cbuf b;
+            cb_init(&b);
+            cb_map(&b, 5);
+            cb_text(&b, "id"); cb_int(&b, r->id);
+            cb_text(&b, "ok"); cb_bool(&b, true);
+            cb_text(&b, "result");
+            cbuf j;
+            cb_init(&j);
+            switch (result->k) {
+            case CV_BOOL: cb_bool(&b, result->b); break;
+            case CV_INT: cb_int(&b, result->i); break;
+            case CV_FLOAT: cb_double(&b, result->d); break;
+            case CV_TEXT: cb_textn(&b, result->s, result->len); break;
+            default: cb_null(&b); break;
+            }
+            cb_free(&j);
+            cb_text(&b, "plugin"); cb_bool(&b, true);
+            cb_text(&b, "object"); put_object(&b, x->o);
+            send_frame(r->c, &b);
+            cb_free(&b);
+        }
+    }
+    wpo_unref(x->o);
+    free(x);
+    req_free(r);
+}
+
+/* Returns true if the reply will come later (the request is kept). */
+static bool do_call(struct req *r, wpo_object *o)
+{
+    const char *method = cv_text(&r->msg, "method");
+    int64_t ex;
+    if (method && wps_plugin_routes(o, method) &&
+        !(cv_int(&r->msg, "expect", &ex) && (uint64_t)ex != WPObject_data(o)->changes)) {
+        struct remote_ctx *x = calloc(1, sizeof *x);
+        x->r = r;
+        x->o = wpo_ref(o);
+        wps_plugin_call(o, wps_object_path(o), method, cv_get(&r->msg, "args"), 2000, remote_done, x);
+        return true;
+    }
+    local_call_reply(r, o);
+    return false;
+}
+
+static void local_call_reply(struct req *r, wpo_object *o)
 {
     const char *method = cv_text(&r->msg, "method");
     const cv *args = cv_get(&r->msg, "args");
@@ -370,7 +433,7 @@ static void do_menus(struct req *r, wpo_object *o)
     cb_text(&b, "ok"); cb_bool(&b, true);
     cb_text(&b, "result");
     if (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select")) {
-        char *t = call_text(o, "wpModifyPopupMenu", "");
+        char *t = r->remote_text ? strdup(r->remote_text) : call_text(o, "wpModifyPopupMenu", "");
         put_menu(&b, t, "");
         free(t);
     } else {
@@ -381,6 +444,18 @@ static void do_menus(struct req *r, wpo_object *o)
     cb_text(&b, "object"); put_object(&b, o);
     send_frame(r->c, &b);
     cb_free(&b);
+}
+
+static void menu_remote_done(void *arg, const cv *result)
+{
+    struct remote_ctx *x = arg;
+    struct req *r = x->r;
+    if (result && result->k == CV_TEXT) r->remote_text = strdup(result->s);
+    /* With no answer in time, the parent class's menu is used. */
+    if (!r->c->dead) do_menus(r, x->o);
+    wpo_unref(x->o);
+    free(x);
+    req_free(r);
 }
 
 static void prepare_done(void *arg)    /* loop */
@@ -400,11 +475,22 @@ static void prepare_done(void *arg)    /* loop */
     }
     if (!o) reply_error(r->c, r->id, "failed", "cannot create the object");
     else if (strcmp(r->op, "resolve") == 0) reply_ok_object(r, o, NULL);
+    else if (!strcmp(r->op, "menu") && wps_plugin_routes(o, "wpModifyPopupMenu")) {
+        /* A plug-in builds this menu: ask its host, with a deadline. */
+        struct remote_ctx *x = calloc(1, sizeof *x);
+        x->r = r;
+        x->o = wpo_ref(o);
+        cv args = { .k = CV_ARRAY, .n = 1, .nitems = 1 };
+        cv empty = { .k = CV_TEXT, .s = "", .len = 0 };
+        args.items = &empty;
+        wps_plugin_call(o, wps_object_path(o), "wpModifyPopupMenu", &args, 2000, menu_remote_done, x);
+        return;
+    }
     else if (!strcmp(r->op, "menu") || !strcmp(r->op, "settings") || !strcmp(r->op, "settings_set") ||
              !strcmp(r->op, "menu_select")) do_menus(r, o);
     else if (!strcmp(r->op, "open")) do_open(r, o);
     else if (!strcmp(r->op, "from_template")) do_from_template(r, o);
-    else do_call(r, o);
+    else if (do_call(r, o)) return;   /* the reply comes from the plug-in */
     req_free(r);
 }
 
@@ -481,7 +567,8 @@ static void stats_done(void *arg)
         cb_text(&b, "result");
         wps_tracker_stats ts;
         wps_tracker_get_stats(&ts);
-        cb_map(&b, 12);
+        cb_map(&b, 13);
+        cb_text(&b, "plugins"); wps_plugins_status(&b);
         cb_text(&b, "objects"); cb_uint(&b, wps_objects_count());
         cb_text(&b, "tracking"); cb_text(&b, ts.mode ? ts.mode : "none");
         cb_text(&b, "events"); cb_uint(&b, ts.events);
@@ -1535,6 +1622,7 @@ int main(void)
     wps_shadows_init(loop, db);
     wps_listing_init(loop);
     wps_jobs_init(loop, db, env.identity);
+    wps_plugins_init(loop, &env);
     wps_on_changed = on_object_changed;
     wps_on_fs_event = on_fs_event;
     wps_on_job = on_job;
@@ -1550,6 +1638,7 @@ int main(void)
     /* Running jobs pause and are journaled; they resume at the next start
      * (design: logout). */
     wps_jobs_shutdown(true);
+    wps_plugins_shutdown();
     wps_tracker_shutdown();
     wps_listing_shutdown();
     unlink(sock_path);
@@ -1557,6 +1646,7 @@ int main(void)
     wpo_loop_free(loop);
     wps_db_close(db);
     wpo_shutdown();
+    wps_plugins_free_defs();
     log_msg("stopped");
     return quitting ? 0 : 1;
 }
