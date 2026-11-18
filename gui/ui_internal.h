@@ -81,6 +81,7 @@ struct ui_app {
     double px, py;
     uint32_t enter_serial, last_serial;
     int last_button;
+    int swallow_release;
     double last_click_t, last_click_x, last_click_y;
     int axis_source;
     unsigned mods;
@@ -94,6 +95,11 @@ struct ui_app {
 };
 
 void ui_set_cursor(ui_app *a, const char *name);
+/* Menus close themselves on presses elsewhere in this program (compositors
+ * only dismiss them for clicks on other programs' windows). */
+bool ui_menu_press_outside(ui_surface *s);   /* true: a menu closed; the press is used up */
+ui_surface *ui_menu_key_surface(void);       /* where keys go while a menu is open */
+void ui_menu_close_all(void);
 /* Draw the layer's changes; -1 if no buffer is free yet. */
 double ui_layer_render(ui_layer *l);
 /* For ui_surface_verify: paste the slice last shown onto `img` (device

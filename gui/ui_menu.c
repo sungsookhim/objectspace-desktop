@@ -326,3 +326,33 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     ui_rect anchor = { x, y, 1, 1 };
     open_menu(r, NULL, parent, r->items, n, anchor, serial);
 }
+
+static bool in_tree(struct menu_root *r, ui_surface *s)
+{
+    for (struct menu *m = r->top; m; m = m->child)
+        if (m->surf == s) return true;
+    return false;
+}
+
+bool ui_menu_press_outside(ui_surface *s)
+{
+    if (!active || active->closing || in_tree(active, s)) return false;
+    finish(active, -1);
+    close_now(active);
+    return true;
+}
+
+ui_surface *ui_menu_key_surface(void)
+{
+    if (!active || active->closing || !active->top) return NULL;
+    return active->top->surf;   /* menu_key passes them to the deepest open menu */
+}
+
+void ui_menu_close_all(void)
+{
+    if (!active || active->closing) return;
+    finish(active, -1);
+    close_now(active);
+}
+
+bool ui_menu_is_open(void) { return active && !active->closing; }

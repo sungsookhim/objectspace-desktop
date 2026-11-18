@@ -426,7 +426,17 @@ static void selftest(ui_surface *s, double now)
     else if (step == 2 && t > 520) { ui_frame_system_menu(s, 0); step++; }           /* click again: closes */
     else if (step == 3 && t > 800) { ui_menu_popup(s, items, 2, 100, 120, 0, selftest_chosen, NULL); step++; }
     else if (step == 4 && t > 820) { ui_menu_popup(s, items, 2, 300, 200, 0, selftest_chosen, NULL); ui_frame_system_menu(s, 0); step++; }
-    else if (step == 5 && t > 1500) { fprintf(stderr, "selftest: done\n"); ui_app_quit(app); step++; }
+    else if (step == 5 && t > 1000) {
+        /* The menu opened last is open; a press on the window must close it. */
+        ui_menu_item one[] = { { 1, "One", true, false, NULL, 0 } };
+        ui_menu_popup(s, one, 1, 50, 50, 0, selftest_chosen, NULL);
+        bool open_before = ui_menu_is_open();
+        extern bool ui_menu_press_outside(ui_surface *);   /* what a press on the window does */
+        bool used = ui_menu_press_outside(s);
+        fprintf(stderr, "selftest: press outside: open before %d, used %d, open after %d\n", open_before, used, ui_menu_is_open());
+        step++;
+    }
+    else if (step == 6 && t > 1500) { fprintf(stderr, "selftest: done\n"); ui_app_quit(app); step++; }
 }
 
 static void win_frame(ui_surface *s, double now)

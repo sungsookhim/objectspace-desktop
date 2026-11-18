@@ -205,6 +205,7 @@ typedef void (*ui_menu_fn)(void *arg, int64_t id);   /* id -1: closed with no ch
 void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                    ui_menu_fn fn, void *arg);
 void ui_menu_items_free(ui_menu_item *items, size_t n);
+bool ui_menu_is_open(void);
 
 /* ------------------------------------------------------------- containers */
 

@@ -46,6 +46,8 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 
 - **Clicking the system menu button while its menu was open killed the shell** (`xdg_wm_base error 2: parent not top most surface`). The click dismissed the menu, then reached the button, which opened a new menu while the dismissed one still existed; destroying the old one afterwards broke Wayland's rule that popups go topmost first. Now at most one menu tree exists: opening a menu destroys any other at once, and a click on the button whose menu it just dismissed closes it without reopening. `WPS_SHELL_SELFTEST=menus` replays these orders (the old code fails it with the same error).
 
+- **A menu could not be closed by clicking elsewhere in the window.** GNOME dismisses a menu only for clicks on other programs' windows; clicks on the program's own windows are delivered to it, and it must close its menus itself. Now a press anywhere outside the open menu closes it and is used up (as in OS/2), keys go to the open menu wherever the keyboard focus is (Escape works), and menus close when their window loses focus.
+
 ## Not yet (later milestones)
 
 - Interactive use has not been checked by a person: menus, clicks, keyboard, resizing and opening windows were built against the protocol but only the benchmark has driven them. Please try `wps-shell` by hand.

@@ -280,6 +280,7 @@ static void top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h,
         s->h = h;
         if (s->ops->resized) s->ops->resized(s, w, h);
     }
+    if (was_active && !s->activated) ui_menu_close_all();
     if (was_active != s->activated && s->ops->focus) s->ops->focus(s, s->activated);
 }
 static void top_close(void *d, struct xdg_toplevel *t)
@@ -482,6 +483,11 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
     a->last_serial = serial;
     int b = button == BTN_LEFT ? UI_BTN1 : button == BTN_RIGHT ? UI_BTN2 : button == BTN_MIDDLE ? UI_BTN3 : 0;
     if (!b) return;
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED && a->ptr_focus && ui_menu_press_outside(a->ptr_focus)) {
+        a->swallow_release = b;   /* the click only closed the menu */
+        return;
+    }
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED && a->swallow_release == b) { a->swallow_release = 0; return; }
     ui_pointer_event e = { .kind = state == WL_POINTER_BUTTON_STATE_PRESSED ? UI_PRESS : UI_RELEASE,
                            .button = b, .clicks = 1, .serial = serial };
     if (e.kind == UI_PRESS) {
@@ -521,7 +527,8 @@ static const struct wl_pointer_listener p_listener = {
 
 static void send_key(ui_app *a, uint32_t key, bool repeat)
 {
-    ui_surface *s = a->key_focus;
+    ui_surface *s = ui_menu_key_surface();   /* an open menu takes the keys */
+    if (!s) s = a->key_focus;
     if (!s || !s->ops->key || !a->kstate) return;
     ui_key_event e = { .sym = xkb_state_key_get_one_sym(a->kstate, key + 8), .mods = a->mods, .repeat = repeat };
     xkb_state_key_get_utf8(a->kstate, key + 8, e.utf8, sizeof e.utf8);
