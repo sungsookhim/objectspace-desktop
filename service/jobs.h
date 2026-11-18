@@ -51,6 +51,10 @@ bool wps_job_pause(int64_t id);
 bool wps_job_resume(int64_t id);
 bool wps_job_decide(int64_t id, const char *decision, bool all);
 
+/* Called on the loop thread when a job changes state or makes progress
+ * (at most about four times a second per job). */
+extern void (*wps_on_job)(int64_t id);
+
 /* Encode a job's status (or all jobs, id < 0) as a CBOR value. */
 bool wps_job_status(int64_t id, cbuf *out);
 

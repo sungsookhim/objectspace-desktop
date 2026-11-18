@@ -14,14 +14,20 @@ override wpUnInitData
 method wpQueryTitle() -> string
 method wpSetTitle(string title) -> bool
 method wpQueryHandle() -> string
-# Menus are text in M1/M2: one "id<TAB>label" line per item. M5 turns them
-# into structured data returned asynchronously.
+# Menus and settings pages are data, built as text by each class and
+# parsed by the service into structures for clients (design: Menus and
+# settings pages as data):
+#   menu item:      id<TAB>label[<TAB>parent-id[<TAB>flags]]   flags: disabled,checked
+#   settings page:  page<TAB>title
+#   settings field: field<TAB>key<TAB>type<TAB>label<TAB>value<TAB>setter[<TAB>choices]
+#                   type: text, number, checkbox, choice; setter: a method name
 method wpModifyPopupMenu(string menu) -> string
 method wpMenuItemSelected(int item) -> bool
 method wpSaveDeferred() -> void
 method wpObjectChanged() -> void
 # Persistence. The service reads and writes storage on workers; these run on
 # the loop thread and only move values between fields and the state bag.
+method wpAddSettingsPages(string pages) -> string
 method wpSaveState() -> bool
 method wpRestoreProperties() -> void
 classmethod wpclsQueryTitle() -> string

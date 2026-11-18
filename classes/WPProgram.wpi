@@ -9,4 +9,5 @@ override wpSaveState
 override wpRestoreProperties
 method wpQueryCommand() -> string
 method wpSetCommand(string command) -> bool
+override wpAddSettingsPages
 classoverride wpclsQueryTitle

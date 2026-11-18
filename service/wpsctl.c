@@ -13,6 +13,8 @@
  *   wpsctl move|copy SELECTION DEST
  *   wpsctl job ID | jobs | job_cancel ID | job_pause ID | job_resume ID
  *   wpsctl job_decide ID skip|rename [all]
+ *   wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET | settings_set TARGET KEY=VALUE...
+ *   wpsctl watch [folder PATH]... [object TARGET]... [jobs]
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -45,7 +47,10 @@ static int usage(void)
             "       wpsctl select FOLDER all [EXCEPT...] | select FOLDER ITEM...\n"
             "       wpsctl move|copy SELECTION DEST\n"
             "       wpsctl job ID | jobs | job_cancel|job_pause|job_resume ID\n"
-            "       wpsctl job_decide ID skip|rename [all]\n");
+            "       wpsctl job_decide ID skip|rename [all]\n"
+            "       wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET\n"
+            "       wpsctl settings_set TARGET KEY=VALUE...\n"
+            "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n");
     return 2;
 }
 
@@ -102,6 +107,7 @@ int main(int argc, char **argv)
     cbuf b;
     cb_init(&b);
     int i = 2;
+    bool watching = false;
     if (!strcmp(op, "ping") || !strcmp(op, "stats") || !strcmp(op, "flush") ||
         !strcmp(op, "sync") || !strcmp(op, "scan") || !strcmp(op, "shutdown")) {
         if (argc != 2) return usage();
@@ -153,6 +159,53 @@ int main(int argc, char **argv)
         cb_text(&b, "job"); cb_int(&b, atoll(argv[2]));
         cb_text(&b, "decision"); cb_text(&b, argv[3]);
         cb_text(&b, "all"); cb_bool(&b, argc > 4 && !strcmp(argv[4], "all"));
+    } else if (!strcmp(op, "menu") || !strcmp(op, "settings")) {
+        if (argc != 3) return usage();
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "menu_select")) {
+        if (argc != 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "item"); cb_int(&b, atoll(argv[3]));
+    } else if (!strcmp(op, "settings_set")) {
+        /* settings_set TARGET KEY=VALUE... (numbers and true/false are typed) */
+        if (argc < 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "values");
+        cb_map(&b, (size_t)(argc - 3));
+        for (int k = 3; k < argc; k++) {
+            char *eq = strchr(argv[k], '=');
+            if (!eq) return usage();
+            cb_textn(&b, argv[k], (size_t)(eq - argv[k]));
+            put_arg(&b, eq + 1);
+        }
+    } else if (!strcmp(op, "watch")) {
+        /* watch [folder PATH]... [object TARGET]... [jobs]: print events until interrupted */
+        size_t nf = 0, no = 0;
+        bool jobs = false;
+        for (int k = 2; k < argc; k++) {
+            if (!strcmp(argv[k], "jobs")) jobs = true;
+            else if (!strcmp(argv[k], "folder") && k + 1 < argc) { nf++; k++; }
+            else if (!strcmp(argv[k], "object") && k + 1 < argc) { no++; k++; }
+            else return usage();
+        }
+        cb_map(&b, 5);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "subscribe");
+        cb_text(&b, "folders"); cb_array(&b, nf);
+        for (int k = 2; k < argc; k++) if (!strcmp(argv[k], "folder")) cb_text(&b, argv[++k]); else if (!strcmp(argv[k], "object")) k++;
+        cb_text(&b, "objects"); cb_array(&b, no);
+        for (int k = 2; k < argc; k++) if (!strcmp(argv[k], "object")) cb_text(&b, argv[++k]); else if (!strcmp(argv[k], "folder")) k++;
+        cb_text(&b, "jobs"); cb_bool(&b, jobs);
+        watching = true;
     } else if (!strcmp(op, "list")) {
         if (argc < 3 || argc > 6) return usage();
         bool details = argc == 6 && !strcmp(argv[5], "details");
@@ -217,6 +270,24 @@ int main(int argc, char **argv)
     cb_init(&j);
     cv_json(&reply, &j);
     printf("%.*s\n", (int)j.n, (const char *)j.d);
+    fflush(stdout);
+    /* watch: then print each event as one line of JSON, until interrupted. */
+    while (watching) {
+        unsigned char h[4];
+        if (io_all(fd, h, 4, false)) break;
+        uint32_t len = (uint32_t)h[0] << 24 | (uint32_t)h[1] << 16 | (uint32_t)h[2] << 8 | h[3];
+        unsigned char *ev = len <= (1u << 24) ? malloc(len ? len : 1) : NULL;
+        cv e;
+        if (!ev || io_all(fd, ev, len, false) || cv_decode(ev, len, &e)) { free(ev); break; }
+        cbuf o;
+        cb_init(&o);
+        cv_json(&e, &o);
+        printf("%.*s\n", (int)o.n, (const char *)o.d);
+        fflush(stdout);
+        cb_free(&o);
+        cv_free(&e);
+        free(ev);
+    }
     const cv *ok = cv_get(&reply, "ok");
     int rc = ok && ok->k == CV_BOOL && ok->b ? 0 : 1;
     cv_free(&reply);

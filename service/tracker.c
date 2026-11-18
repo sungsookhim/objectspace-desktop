@@ -793,9 +793,17 @@ static void on_saved(sobj *s)
 
 static void scan_soon(void);
 
+void (*wps_on_fs_event)(char kind, const char *from, const char *path);
+
 static void apply(const tev *e)
 {
     stats.events++;
+    if (wps_on_fs_event && (!e->path[0] || !strstr(e->path, "/" WPS_SHADOW_TMP)) &&
+        (!e->from[0] || !strstr(e->from, "/" WPS_SHADOW_TMP))) {
+        if (e->k == E_CREATE) wps_on_fs_event('c', "", e->path);
+        else if (e->k == E_DELETE) wps_on_fs_event('d', "", e->path);
+        else if (e->k == E_MOVE) wps_on_fs_event('m', e->from, e->path);
+    }
     /* A folder listing that saw this change is stale now. */
     if (e->k != E_OVERFLOW) {
         char d[PATH_MAX];

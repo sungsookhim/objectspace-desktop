@@ -55,6 +55,11 @@ void wps_tracker_get_stats(wps_tracker_stats *out);
 /* An object record is going away: drop pending pairings that refer to it. */
 struct sobj;
 void wps_tracker_forget(struct sobj *s);
+/* Folder content changes, for event subscribers (loop thread):
+ * kind 'c' created, 'd' deleted, 'm' moved (from -> path; either may be ""
+ * when outside the folders in view). */
+extern void (*wps_on_fs_event)(char kind, const char *from, const char *path);
+
 /* An object record was created for `path`. */
 void wps_tracker_object_at(const char *path);
 

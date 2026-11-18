@@ -16,6 +16,11 @@
  *   {op:"move"|"copy", selection, dest}        a job; returns its ID
  *   {op:"job", job} {op:"jobs"} {op:"job_cancel"|"job_pause"|"job_resume", job}
  *   {op:"job_decide", job, decision:"skip"|"rename", all}
+ *   {op:"subscribe", objects:[...], folders:[...], jobs} -> sub; events follow:
+ *       {event:"object_changed"|"content_added"|"content_removed"|"object_moved"|"job"|"volumes", sub, ...}
+ *   {op:"unsubscribe", sub}
+ *   {op:"menu"|"settings", target}            menus and settings pages as data
+ *   {op:"menu_select", target, item}  {op:"settings_set", target, values:{key:value}, expect}
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"stats"}
@@ -54,6 +59,7 @@
 #include "WPProgram.h"
 #include "WPFolder.h"
 #include "WPDataFile.h"
+#include "wps_state.h"
 #include "tracker.h"
 #include "volumes.h"
 #include "wpo.h"
@@ -105,10 +111,18 @@ static void client_unref(struct client *c)
     free(c);
 }
 
+static void subs_drop_client(struct client *c);
+static void on_volumes_changed(const char *report);
+static char *call_text(wpo_object *o, const char *method, const char *arg);
+static const char *apply_settings(wpo_object *o, const cv *values);
+static void put_menu(cbuf *b, const char *text, const char *parent);
+static void put_settings(cbuf *b, const char *text);
+
 static void client_close(struct client *c)
 {
     if (c->dead) return;
     c->dead = true;
+    subs_drop_client(c);
     if (c->prev) c->prev->next = c->next;
     else clients = c->next;
     if (c->next) c->next->prev = c->prev;
@@ -323,6 +337,44 @@ static void do_call(struct req *r, wpo_object *o)
     wpo_value_clear(&ret);
 }
 
+static void do_menus(struct req *r, wpo_object *o)
+{
+    const char *err = NULL;
+    int64_t v;
+    if (!strcmp(r->op, "menu_select")) {
+        wpo_value a, ret;
+        a = wpo_v_int(cv_int(&r->msg, "item", &v) ? v : -1);
+        bool ok = wpo_send(o, "wpMenuItemSelected", &a, 1, &ret) == WPO_OK && ret.type == 'b' && ret.u.b;
+        wpo_value_clear(&ret);
+        if (!ok) { reply_error(r->c, r->id, "failed", "the item was not handled"); return; }
+    } else if (!strcmp(r->op, "settings_set")) {
+        if (cv_int(&r->msg, "expect", &v) && (uint64_t)v != WPObject_data(o)->changes) err = "conflict";
+        else err = apply_settings(o, cv_get(&r->msg, "values"));
+        if (err) {
+            reply_error(r->c, r->id, !strcmp(err, "conflict") ? "conflict" : "bad request", err);
+            return;
+        }
+    }
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 4);
+    cb_text(&b, "id"); cb_int(&b, r->id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    if (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select")) {
+        char *t = call_text(o, "wpModifyPopupMenu", "");
+        put_menu(&b, t, "");
+        free(t);
+    } else {
+        char *t = call_text(o, "wpAddSettingsPages", "");
+        put_settings(&b, t);
+        free(t);
+    }
+    cb_text(&b, "object"); put_object(&b, o);
+    send_frame(r->c, &b);
+    cb_free(&b);
+}
+
 static void prepare_done(void *arg)    /* loop */
 {
     struct req *r = arg;
@@ -340,6 +392,8 @@ static void prepare_done(void *arg)    /* loop */
     }
     if (!o) reply_error(r->c, r->id, "failed", "cannot create the object");
     else if (strcmp(r->op, "resolve") == 0) reply_ok_object(r, o, NULL);
+    else if (!strcmp(r->op, "menu") || !strcmp(r->op, "settings") || !strcmp(r->op, "settings_set") ||
+             !strcmp(r->op, "menu_select")) do_menus(r, o);
     else do_call(r, o);
     req_free(r);
 }
@@ -502,6 +556,7 @@ static void volume_done(void *arg)
     struct vol_job *j = arg;
     wps_volumes_replace(&j->vs);
     log_msg("volumes: %s", j->report);
+    if (strcmp(j->report, "no portable volumes") != 0) on_volumes_changed(j->report);
     if (j->reply) reply_simple_ok(j->reply, j->report);
     free(j);
     volume_job_running = false;
@@ -528,6 +583,278 @@ static void on_mounts(int fd, short rev, void *arg)
 }
 
 static void scanned(void *arg, const char *report) { reply_simple_ok(arg, report); }
+
+/* ---- subscriptions and events (design: Service API, Events) */
+
+struct sub {
+    struct sub *next;
+    int64_t id;
+    struct client *c;
+    char **targets;        /* object IDs, or paths */
+    size_t ntargets;
+    char **folders;
+    size_t nfolders;
+    bool jobs;
+};
+
+static struct sub *subs;
+static int64_t next_sub = 1;
+
+static void subs_drop_client(struct client *c)
+{
+    for (struct sub **pp = &subs; *pp;) {
+        struct sub *x = *pp;
+        if (x->c != c) { pp = &x->next; continue; }
+        *pp = x->next;
+        for (size_t i = 0; i < x->ntargets; i++) free(x->targets[i]);
+        for (size_t i = 0; i < x->nfolders; i++) free(x->folders[i]);
+        free(x->targets);
+        free(x->folders);
+        free(x);
+    }
+}
+
+static bool in_folder(const char *path, const char *folder)
+{
+    size_t l = strlen(folder);
+    if (strncmp(path, folder, l) != 0 || path[l] != '/') return false;
+    return strchr(path + l + 1, '/') == NULL;   /* a direct entry */
+}
+
+/* Start an event frame: {event, sub, ...rest}; the caller adds `extra`
+ * key/value pairs and sends. */
+static void event_head(cbuf *b, const char *name, int64_t sub, size_t extra)
+{
+    cb_init(b);
+    cb_map(b, 2 + extra);
+    cb_text(b, "event"); cb_text(b, name);
+    cb_text(b, "sub"); cb_int(b, sub);
+}
+
+static void on_object_changed(wpo_object *o)
+{
+    sobj *rec = wps_sobj_of(o);
+    const char *path = rec ? rec->path : wps_object_path(o);
+    const char *id = wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "";
+    for (struct sub *x = subs; x; x = x->next) {
+        bool hit = false;
+        for (size_t i = 0; i < x->ntargets && !hit; i++)
+            hit = (id[0] && !strcmp(x->targets[i], id)) || (path && !strcmp(x->targets[i], path));
+        for (size_t i = 0; i < x->nfolders && !hit && path; i++) hit = in_folder(path, x->folders[i]);
+        if (!hit || x->c->dead) continue;
+        cbuf b;
+        event_head(&b, "object_changed", x->id, 1);
+        cb_text(&b, "object"); put_object(&b, o);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
+
+static void on_fs_event(char kind, const char *from, const char *path)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead) continue;
+        for (size_t i = 0; i < x->nfolders; i++) {
+            const char *f = x->folders[i];
+            bool in_new = path[0] && in_folder(path, f), in_old = from[0] && in_folder(from, f);
+            if (!in_new && !in_old) continue;
+            cbuf b;
+            if (kind == 'm' && in_new && in_old) {
+                event_head(&b, "object_moved", x->id, 3);
+                cb_text(&b, "folder"); cb_text(&b, f);
+                cb_text(&b, "from"); cb_text(&b, strrchr(from, '/') + 1);
+                cb_text(&b, "to"); cb_text(&b, strrchr(path, '/') + 1);
+            } else {
+                bool added = kind == 'c' || (kind == 'm' && in_new);
+                const char *p = added ? path : (kind == 'm' ? from : path);
+                event_head(&b, added ? "content_added" : "content_removed", x->id, 2);
+                cb_text(&b, "folder"); cb_text(&b, f);
+                cb_text(&b, "name"); cb_text(&b, strrchr(p, '/') + 1);
+            }
+            send_frame(x->c, &b);
+            cb_free(&b);
+        }
+    }
+}
+
+static void on_job(int64_t jid)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (!x->jobs || x->c->dead) continue;
+        cbuf st;
+        cb_init(&st);
+        if (!wps_job_status(jid, &st)) { cb_free(&st); return; }
+        cbuf b;
+        event_head(&b, "job", x->id, 1);
+        cb_text(&b, "status");
+        unsigned char *n = realloc(b.d, b.n + st.n);
+        if (n) { b.d = n; memcpy(b.d + b.n, st.d, st.n); b.n += st.n; b.cap = b.n; }
+        send_frame(x->c, &b);
+        cb_free(&b);
+        cb_free(&st);
+    }
+}
+
+static void on_volumes_changed(const char *report)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead) continue;
+        cbuf b;
+        event_head(&b, "volumes", x->id, 1);
+        cb_text(&b, "report"); cb_text(&b, report);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
+
+static void strlist(const cv *a, char ***out, size_t *n)
+{
+    *out = NULL;
+    *n = 0;
+    if (!a || a->k != CV_ARRAY) return;
+    *out = calloc(a->n + 1, sizeof **out);
+    for (size_t i = 0; i < a->n; i++)
+        if (a->items[i].k == CV_TEXT) {
+            const char *t = a->items[i].s;
+            if (!strncmp(t, "id:", 3)) t += 3;
+            (*out)[(*n)++] = strdup(t);
+        }
+}
+
+/* ---- menus and settings pages as data */
+
+/* Menu text: id TAB label [TAB parent [TAB flags]] per line, as a tree. */
+static void put_menu(cbuf *b, const char *text, const char *parent)
+{
+    size_t n = 0;
+    for (const char *l = text; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) {
+        char line[512], *f[4] = { 0 };
+        const char *e = strchr(l, '\n');
+        snprintf(line, sizeof line, "%.*s", (int)(e ? e - l : (long)strlen(l)), l);
+        int k = 0;
+        for (char *p = line, *t; k < 4 && (t = strsep(&p, "\t")); k++) f[k] = t;
+        if (k >= 2 && !strcmp(f[2] ? f[2] : "", parent)) n++;
+    }
+    cb_array(b, n);
+    for (const char *l = text; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) {
+        char line[512], *f[4] = { 0 };
+        const char *e = strchr(l, '\n');
+        snprintf(line, sizeof line, "%.*s", (int)(e ? e - l : (long)strlen(l)), l);
+        int k = 0;
+        for (char *p = line, *t; k < 4 && (t = strsep(&p, "\t")); k++) f[k] = t;
+        if (k < 2 || strcmp(f[2] ? f[2] : "", parent)) continue;
+        const char *flags = f[3] ? f[3] : "";
+        cb_map(b, 5);
+        cb_text(b, "id"); cb_int(b, atoll(f[0]));
+        cb_text(b, "label"); cb_text(b, f[1]);
+        cb_text(b, "enabled"); cb_bool(b, !strstr(flags, "disabled"));
+        cb_text(b, "checked"); cb_bool(b, strstr(flags, "checked") != NULL);
+        cb_text(b, "items"); put_menu(b, text, f[0]);
+    }
+}
+
+struct field { char key[64], type[16], label[128], value[1024], setter[64], choices[256]; };
+
+static size_t parse_settings(const char *text, char pages[][64], int *page_of, struct field *fields, size_t max, size_t *npages)
+{
+    size_t nf = 0;
+    *npages = 0;
+    for (const char *l = text; l && *l && nf < max; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) {
+        char line[2048], *f[7] = { 0 };
+        const char *e = strchr(l, '\n');
+        snprintf(line, sizeof line, "%.*s", (int)(e ? e - l : (long)strlen(l)), l);
+        int k = 0;
+        for (char *p = line, *t; k < 7 && (t = strsep(&p, "\t")); k++) f[k] = t;
+        if (k >= 2 && !strcmp(f[0], "page") && *npages < 16) snprintf(pages[(*npages)++], 64, "%s", f[1]);
+        else if (k >= 6 && !strcmp(f[0], "field") && *npages) {
+            struct field *x = &fields[nf];
+            page_of[nf++] = (int)*npages - 1;
+            snprintf(x->key, sizeof x->key, "%s", f[1]);
+            snprintf(x->type, sizeof x->type, "%s", f[2]);
+            snprintf(x->label, sizeof x->label, "%s", f[3]);
+            snprintf(x->value, sizeof x->value, "%s", f[4]);
+            snprintf(x->setter, sizeof x->setter, "%s", f[5]);
+            snprintf(x->choices, sizeof x->choices, "%s", f[6] ? f[6] : "");
+        }
+    }
+    return nf;
+}
+
+static void put_settings(cbuf *b, const char *text)
+{
+    char pages[16][64];
+    int page_of[64];
+    struct field fields[64];
+    size_t np, nf = parse_settings(text, pages, page_of, fields, 64, &np);
+    cb_array(b, np);
+    for (size_t p = 0; p < np; p++) {
+        size_t cnt = 0;
+        for (size_t i = 0; i < nf; i++) cnt += page_of[i] == (int)p;
+        cb_map(b, 2);
+        cb_text(b, "title"); cb_text(b, pages[p]);
+        cb_text(b, "fields");
+        cb_array(b, cnt);
+        for (size_t i = 0; i < nf; i++) {
+            if (page_of[i] != (int)p) continue;
+            struct field *x = &fields[i];
+            cb_map(b, x->choices[0] ? 5 : 4);
+            cb_text(b, "key"); cb_text(b, x->key);
+            cb_text(b, "type"); cb_text(b, x->type);
+            cb_text(b, "label"); cb_text(b, x->label);
+            cb_text(b, "value");
+            if (!strcmp(x->type, "number") || !strcmp(x->type, "choice")) cb_int(b, atoll(x->value));
+            else if (!strcmp(x->type, "checkbox")) cb_bool(b, !strcmp(x->value, "1") || !strcmp(x->value, "true"));
+            else cb_text(b, x->value);
+            if (x->choices[0]) {
+                size_t nc = 1;
+                for (const char *c = x->choices; *c; c++) nc += *c == ',';
+                cb_text(b, "choices");
+                cb_array(b, nc);
+                char tmp[256];
+                snprintf(tmp, sizeof tmp, "%s", x->choices);
+                for (char *q = tmp, *t; (t = strsep(&q, ","));) cb_text(b, t);
+            }
+        }
+    }
+}
+
+static char *call_text(wpo_object *o, const char *method, const char *arg)
+{
+    wpo_value a = wpo_v_string(arg), r;
+    char *out = NULL;
+    if (wpo_send(o, method, &a, 1, &r) == WPO_OK && r.type == 's') { out = r.u.s; r.u.s = NULL; }
+    wpo_value_clear(&a);
+    wpo_value_clear(&r);
+    return out ? out : strdup("");
+}
+
+/* settings_set: apply {key: value} through each field's setter. */
+static const char *apply_settings(wpo_object *o, const cv *values)
+{
+    char *text = call_text(o, "wpAddSettingsPages", "");
+    char pages[16][64];
+    int page_of[64];
+    struct field fields[64];
+    size_t np, nf = parse_settings(text, pages, page_of, fields, 64, &np);
+    free(text);
+    const char *err = NULL;
+    for (size_t k = 0; values && values->k == CV_MAP && k < values->n && !err; k++) {
+        const cv *key = &values->items[2 * k], *val = &values->items[2 * k + 1];
+        struct field *f = NULL;
+        for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
+        if (!f) { err = "no such setting"; break; }
+        wpo_value a, r;
+        if (val->k == CV_TEXT) a = wpo_v_string(val->s);
+        else if (val->k == CV_INT) a = wpo_v_int(val->i);
+        else if (val->k == CV_BOOL) a = wpo_v_bool(val->b);
+        else { err = "unsupported value"; break; }
+        if (wpo_send(o, f->setter, &a, 1, &r) != WPO_OK) err = "the setter refused the value";
+        else if (r.type == 'b' && !r.u.b) err = "the setter refused the value";
+        wpo_value_clear(&a);
+        wpo_value_clear(&r);
+    }
+    return err;
+}
 
 /* ---- selections and jobs */
 
@@ -808,7 +1135,36 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
-    } else if (strcmp(op, "resolve") == 0 || strcmp(op, "call") == 0) {
+    } else if (strcmp(op, "subscribe") == 0) {
+        struct sub *x = calloc(1, sizeof *x);
+        x->id = next_sub++;
+        x->c = c;
+        strlist(cv_get(msg, "objects"), &x->targets, &x->ntargets);
+        strlist(cv_get(msg, "folders"), &x->folders, &x->nfolders);
+        const cv *j = cv_get(msg, "jobs");
+        x->jobs = j && j->k == CV_BOOL && j->b;
+        for (size_t i = 0; i < x->nfolders; i++) wps_tracker_watch(x->folders[i]);   /* in view now */
+        x->next = subs;
+        subs = x;
+        reply_int(c, id, x->id);
+    } else if (strcmp(op, "unsubscribe") == 0) {
+        int64_t sid = -1;
+        cv_int(msg, "sub", &sid);
+        bool found = false;
+        for (struct sub **pp = &subs; *pp; pp = &(*pp)->next)
+            if ((*pp)->id == sid && (*pp)->c == c) {
+                struct sub *x = *pp;
+                *pp = x->next;
+                for (size_t i = 0; i < x->ntargets; i++) free(x->targets[i]);
+                for (size_t i = 0; i < x->nfolders; i++) free(x->folders[i]);
+                free(x->targets); free(x->folders); free(x);
+                found = true;
+                break;
+            }
+        if (found) reply_int(c, id, sid);
+        else reply_error(c, id, "not found", "no such subscription");
+    } else if (strcmp(op, "resolve") == 0 || strcmp(op, "call") == 0 || strcmp(op, "menu") == 0 ||
+               strcmp(op, "menu_select") == 0 || strcmp(op, "settings") == 0 || strcmp(op, "settings_set") == 0) {
         const char *target = cv_text(msg, "target");
         if (!target) { reply_error(c, id, "bad request", "missing target"); cv_free(msg); return; }
         struct req *r = calloc(1, sizeof *r);
@@ -964,6 +1320,9 @@ int main(void)
     wps_shadows_init(loop, db);
     wps_listing_init(loop);
     wps_jobs_init(loop, db, env.identity);
+    wps_on_changed = on_object_changed;
+    wps_on_fs_event = on_fs_event;
+    wps_on_job = on_job;
     wps_tracker_init(loop, &env, db);
     wps_tracker_stats ts;
     wps_tracker_get_stats(&ts);

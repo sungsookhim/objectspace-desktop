@@ -297,14 +297,44 @@ class Conn:
         self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.s.connect(svc.env["WPS_RUNTIME_DIR"] + "/wps.sock")
         self.next = 0
+        self.queued = []
 
     def request(self, **msg):
         self.next += 1
         msg["id"] = self.next
         body = cbor_encode(msg)
         self.s.sendall(len(body).to_bytes(4, "big") + body)
+        while True:   # events may arrive before the reply: keep them
+            m = self._frame()
+            if "event" in m:
+                self.queued.append(m)
+            elif m.get("id") == msg["id"]:
+                return m
+
+    def _frame(self):
         hdr = self._read(4)
         return cbor_decode(self._read(int.from_bytes(hdr, "big")))[0]
+
+    def events(self, timeout=1.0, until=None):
+        """Events received within `timeout` seconds (or until one matches)."""
+        out, end = [], time.time() + timeout
+        while self.queued:
+            out.append(self.queued.pop(0))
+            if until and until(out[-1]):
+                return out
+        while time.time() < end:
+            self.s.settimeout(max(0.01, end - time.time()))
+            try:
+                m = self._frame()
+            except (TimeoutError, OSError):
+                break
+            finally:
+                self.s.settimeout(None)
+            if "event" in m:
+                out.append(m)
+                if until and until(m):
+                    break
+        return out
 
     def _read(self, n):
         out = b""

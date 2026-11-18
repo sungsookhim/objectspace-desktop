@@ -7,6 +7,7 @@
 #include "WPObject.h"
 
 void (*wps_on_dirty)(wpo_object *o);
+void (*wps_on_changed)(wpo_object *o);
 
 void wps_state_clear_touched(wps_cstate *c)
 {

@@ -116,6 +116,15 @@ static struct job *job_by_id(int64_t id)
     return NULL;
 }
 
+void (*wps_on_job)(int64_t id);
+
+static void job_event(void *arg)   /* loop thread */
+{
+    int64_t *id = arg;
+    if (wps_on_job) wps_on_job(*id);
+    free(id);
+}
+
 static void journal(struct job *j, bool force)   /* caller holds mu */
 {
     /* At most four times a second, so progress after a crash is close. */
@@ -126,6 +135,10 @@ static void journal(struct job *j, bool force)   /* caller holds mu */
     if (!force && now == j->journaled && j->items_done - j->journaled_items < 256) return;
     j->journaled = now;
     j->journaled_items = j->items_done;
+    /* Subscribers hear about it on the loop thread. */
+    int64_t *eid = malloc(sizeof *eid);
+    if (eid && loop) { *eid = j->id; wpo_loop_post(loop, WPO_Q_RESULTS, "job event", job_event, eid); }
+    else free(eid);
     char *sel = encode_selection(&j->sel);
     char src[PATH_MAX], dest[PATH_MAX], kind[8], state[32];
     snprintf(src, sizeof src, "%s", j->sel.folder);

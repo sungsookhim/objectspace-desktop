@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "wps_classes.h"
 
@@ -75,6 +76,16 @@ wpo_pending *WPFolder__wpPopulate(wpo_object *self)
     wpo_pending *p = wpo_pending_new();
     wpo_pending_complete(p, wpo_v_int(0));
     return p;
+}
+
+char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
+{
+    char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
+    snprintf(line, sizeof line, "page\tView\nfield\tsort\tchoice\tSort by\t%d\twpSetSortOrder\tname,type,size,date\n",
+             WPFolder_data(self)->sort_order);
+    char *r = wps_concat(base, line);
+    free(base);
+    return r;
 }
 
 char *WPFolder__wpclsQueryTitle(wpo_object *self)

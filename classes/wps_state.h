@@ -46,5 +46,7 @@ void wps_state_clear_touched(wps_cstate *c);
 
 /* Called by wpSaveDeferred; the service installs it to schedule saves. */
 extern void (*wps_on_dirty)(wpo_object *o);
+/* Called by wpObjectChanged; the service installs it to notify subscribers. */
+extern void (*wps_on_changed)(wpo_object *o);
 
 #endif

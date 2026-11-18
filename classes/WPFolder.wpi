@@ -15,4 +15,5 @@ method wpSetIconPos(object child, int x, int y) -> bool
 method wpQueryIconPos(object child) -> string
 # Lists the folder's contents; streaming and paging arrive in M4.
 method wpPopulate() -> pending async
+override wpAddSettingsPages
 classoverride wpclsQueryTitle

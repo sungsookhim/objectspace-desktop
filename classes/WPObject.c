@@ -52,6 +52,20 @@ char *WPObject__wpModifyPopupMenu(wpo_object *self, const char *menu)
     return wps_concat(menu, "1\tOpen\n2\tProperties\n");
 }
 
+char *WPObject__wpAddSettingsPages(wpo_object *self, const char *pages)
+{
+    WPObjectData *d = WPObject_data(self);
+    char *title = WPObject_wpQueryTitle(self);
+    size_t n = strlen(title ? title : "") + 128;
+    char *line = malloc(n);
+    snprintf(line, n, "page\tGeneral\nfield\ttitle\ttext\tTitle\t%s\twpSetTitle\n", title ? title : "");
+    (void)d;
+    char *r = wps_concat(pages, line);
+    free(line);
+    free(title);
+    return r;
+}
+
 bool WPObject__wpMenuItemSelected(wpo_object *self, int64_t item)
 {
     (void)self;
@@ -66,7 +80,8 @@ void WPObject__wpSaveDeferred(wpo_object *self)
 
 void WPObject__wpObjectChanged(wpo_object *self)
 {
-    WPObject_data(self)->changes++;          /* subscribers are notified in M5 */
+    WPObject_data(self)->changes++;
+    if (wps_on_changed) wps_on_changed(self);   /* the service tells subscribers */
 }
 
 bool WPObject__wpSaveState(wpo_object *self)

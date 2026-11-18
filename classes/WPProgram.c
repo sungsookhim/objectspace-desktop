@@ -1,6 +1,8 @@
 #include "WPProgram.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "wps_classes.h"
 
@@ -40,6 +42,19 @@ void WPProgram__wpRestoreProperties(wpo_object *self)
     char *c = NULL;
     free(WPProgram_data(self)->command);
     WPProgram_data(self)->command = wps_state_get_str(self, "WPProgram", "command", &c) ? c : NULL;
+}
+
+char *WPProgram__wpAddSettingsPages(wpo_object *self, const char *pages)
+{
+    char *base = WPProgram_parent_wpAddSettingsPages(self, pages);
+    const char *c = WPProgram_data(self)->command;
+    size_t n = (c ? strlen(c) : 0) + 128;
+    char *line = malloc(n);
+    snprintf(line, n, "page\tProgram\nfield\tcommand\ttext\tCommand\t%s\twpSetCommand\n", c ? c : "");
+    char *r = wps_concat(base, line);
+    free(base);
+    free(line);
+    return r;
 }
 
 char *WPProgram__wpclsQueryTitle(wpo_object *self)
