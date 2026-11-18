@@ -9,6 +9,7 @@ Status: object core done (M0–M5): kernel prototypes, object runtime, persisten
 | Document | What it holds |
 |---|---|
 | [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.13: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
+| [docs/gui-design.md](docs/gui-design.md) | GUI design v0.1: OS/2 Warp 4–4.52 base, modern features, configurable appearance, action events for sounds and animations |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
 
