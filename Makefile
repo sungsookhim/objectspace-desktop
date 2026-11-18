@@ -27,7 +27,7 @@ CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GE
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
 TV      := $(B)/tests
 
-all: $(B)/wpsd $(B)/wpsctl $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor plugins
+all: $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor plugins
 
 $(GEN)/.stamp: $(WPI) tools/wpoc.py
 	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
@@ -61,11 +61,15 @@ $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_cbor.c service/cbor.c
 
-SERVICE := service/wpsd.c service/objects.c service/db.c service/env.c service/volumes.c service/cbor.c
+SERVICE := service/wpsd.c service/objects.c service/tracker.c service/db.c service/env.c service/volumes.c service/cbor.c
 
 $(B)/wpsd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
 	@mkdir -p $(B)
 	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ $(SERVICE) $(RUNTIME) $(CLASSES) -lsqlite3 -ldl -lpthread
+
+$(B)/wps-watchd: service/watchd.c service/cbor.c service/cbor.h
+	@mkdir -p $(B)
+	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/watchd.c service/cbor.c
 
 $(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h
 	@mkdir -p $(B)

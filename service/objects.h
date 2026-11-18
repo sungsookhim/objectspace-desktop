@@ -62,6 +62,47 @@ void wps_objects_flush(void (*done)(void *arg), void *arg);
 size_t wps_objects_count(void);
 size_t wps_objects_pending(void);
 
+/* ---- Object records, for the change tracker (loop thread only). */
+typedef struct sobj {
+    wpo_object *o;
+    dev_t dev;
+    ino_t ino;
+    nlink_t nlink;
+    struct timespec ctime, mtime;
+    char path[PATH_MAX];
+    char vol[WPS_VOLID_MAX];
+    char rel[PATH_MAX];
+    char locator[PATH_MAX + 16];
+    bool xattr_ok, writable, owned;
+    bool queued, saving;
+    bool retry;                  /* some keys went to the overlay because the file was busy */
+    bool forgotten;              /* removed while a save was running; freed when it ends */
+    int retry_delay_ms;
+} sobj;
+
+sobj *wps_sobj_by_path(const char *path);
+sobj *wps_sobj_by_id(const char *id);
+sobj *wps_sobj_of(wpo_object *o);
+size_t wps_sobj_count(void);
+sobj *wps_sobj_at(size_t i);
+/* The object now lives at `path` (renamed or moved); updates its record,
+ * its WPFileSystem path and its location row. */
+void wps_sobj_set_path(sobj *s, const char *path);
+/* The object's file was replaced by another inode at the same place
+ * (identity carried over). */
+void wps_sobj_set_inode(sobj *s, const struct stat *st);
+/* The object is gone (deleted, or replaced by another object). */
+void wps_sobj_forget(sobj *s);
+/* Snapshot of all stored properties, per class, for copying them elsewhere. */
+void wps_sobj_snapshot(sobj *s, wps_loaded *out);
+/* Called when an object's WPS settings were saved (the tracker treats a
+ * pending duplicate as a copy from then on). */
+extern void (*wps_on_saved)(sobj *s);
+
+/* Excluded paths (design: Change tracking): defaults plus <config>/excluded.
+ * Files there are never given IDs or state, and are not watched. */
+bool wps_path_excluded(const char *path);
+
 /* Volumes: a snapshot shared with workers. */
 void wps_volumes_replace(wps_volumes *vs);    /* loop; takes ownership */
 bool wps_volume_for_path(const char *path, wps_volume *out);

@@ -2,7 +2,7 @@
  * wpsctl - command-line client for wpsd. Prints each reply as one line of
  * JSON and exits 0 if the reply was ok, 1 if not, 2 on usage errors.
  *
- *   wpsctl ping | stats | flush | sync | shutdown
+ *   wpsctl ping | stats | flush | sync | scan | shutdown
  *   wpsctl resolve TARGET
  *   wpsctl call [--expect N] TARGET METHOD [ARG...]
  *   wpsctl describe CLASS
@@ -27,7 +27,7 @@
 static int usage(void)
 {
     fprintf(stderr,
-            "usage: wpsctl ping|stats|flush|sync|shutdown\n"
+            "usage: wpsctl ping|stats|flush|sync|scan|shutdown\n"
             "       wpsctl resolve TARGET\n"
             "       wpsctl call [--expect N] TARGET METHOD [ARG...]\n"
             "       wpsctl describe CLASS\n");
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     cb_init(&b);
     int i = 2;
     if (!strcmp(op, "ping") || !strcmp(op, "stats") || !strcmp(op, "flush") ||
-        !strcmp(op, "sync") || !strcmp(op, "shutdown")) {
+        !strcmp(op, "sync") || !strcmp(op, "scan") || !strcmp(op, "shutdown")) {
         if (argc != 2) return usage();
         cb_map(&b, 2);
         cb_text(&b, "id"); cb_int(&b, 1);

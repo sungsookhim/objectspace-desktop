@@ -119,6 +119,8 @@ wps_db *wps_db_open(const char *path, const char *writer, char *err, size_t errl
         free(db);
         return NULL;
     }
+    /* Added in M3; ignore the error when the column already exists. */
+    sqlite3_exec(db->h, "ALTER TABLE locations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0", NULL, NULL, NULL);
     db->clock = meta_clock(db->h);
     return db;
 }
@@ -529,7 +531,7 @@ int wps_db_set_location(wps_db *db, const char *id, const char *vol, const char 
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
     int rc = -1;
-    if (sqlite3_prepare_v2(db->h, "INSERT OR REPLACE INTO locations(id,vol,path) VALUES(?,?,?)", -1, &s, NULL) == SQLITE_OK) {
+    if (sqlite3_prepare_v2(db->h, "INSERT OR REPLACE INTO locations(id,vol,path,deleted) VALUES(?,?,?,0)", -1, &s, NULL) == SQLITE_OK) {
         sqlite3_bind_text(s, 1, id, -1, SQLITE_STATIC);
         sqlite3_bind_text(s, 2, vol, -1, SQLITE_STATIC);
         sqlite3_bind_text(s, 3, relpath, -1, SQLITE_STATIC);
@@ -545,13 +547,45 @@ int wps_db_get_location(wps_db *db, const char *id, char *vol, size_t vn, char *
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
     int rc = -1;
-    if (sqlite3_prepare_v2(db->h, "SELECT vol,path FROM locations WHERE id=?", -1, &s, NULL) == SQLITE_OK) {
+    if (sqlite3_prepare_v2(db->h, "SELECT vol,path FROM locations WHERE id=? AND deleted=0", -1, &s, NULL) == SQLITE_OK) {
         sqlite3_bind_text(s, 1, id, -1, SQLITE_STATIC);
         if (sqlite3_step(s) == SQLITE_ROW) {
             snprintf(vol, vn, "%s", sqlite3_column_text(s, 0));
             snprintf(relpath, rn, "%s", sqlite3_column_text(s, 1));
             rc = 0;
         }
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return rc;
+}
+
+int wps_db_locations(wps_db *db, wps_db_loc_fn fn, void *user)
+{
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int n = -1;
+    if (sqlite3_prepare_v2(db->h, "SELECT id,vol,path FROM locations WHERE deleted=0", -1, &s, NULL) == SQLITE_OK) {
+        n = 0;
+        while (sqlite3_step(s) == SQLITE_ROW) {
+            fn((const char *)sqlite3_column_text(s, 0), (const char *)sqlite3_column_text(s, 1),
+               (const char *)sqlite3_column_text(s, 2), user);
+            n++;
+        }
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return n;
+}
+
+int wps_db_location_forget(wps_db *db, const char *id)
+{
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int rc = -1;
+    if (sqlite3_prepare_v2(db->h, "UPDATE locations SET deleted=strftime('%s','now') WHERE id=?", -1, &s, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, id, -1, SQLITE_STATIC);
+        rc = sqlite3_step(s) == SQLITE_DONE ? 0 : -1;
         sqlite3_finalize(s);
     }
     pthread_mutex_unlock(&db->mu);

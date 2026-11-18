@@ -76,4 +76,11 @@ uint64_t wps_db_clock(wps_db *db);
 int wps_db_set_location(wps_db *db, const char *id, const char *vol, const char *relpath);
 int wps_db_get_location(wps_db *db, const char *id, char *vol, size_t vn, char *relpath, size_t rn);
 
+/* Every known location (live rows), for the catch-up scan. */
+typedef void (*wps_db_loc_fn)(const char *id, const char *vol, const char *relpath, void *user);
+int wps_db_locations(wps_db *db, wps_db_loc_fn fn, void *user);
+/* The object was deleted: keep the row (an undo or a restore can reclaim
+ * the ID) but mark it, so the scan stops looking for it. */
+int wps_db_location_forget(wps_db *db, const char *id);
+
 #endif

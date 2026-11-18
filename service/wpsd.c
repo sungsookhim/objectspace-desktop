@@ -9,6 +9,7 @@
  *   {op:"describe", class}
  *   {op:"flush"}       reply once every pending change is written
  *   {op:"sync"}        rescan volumes and synchronise portable ones
+ *   {op:"scan"}        run the catch-up scan now
  *   {op:"stats"}
  *   {op:"shutdown"}
  * Every request carries an "id" that the reply echoes; replies are
@@ -37,6 +38,7 @@
 #include "db.h"
 #include "env.h"
 #include "objects.h"
+#include "tracker.h"
 #include "volumes.h"
 #include "wpo.h"
 #include "wpo_loop.h"
@@ -369,8 +371,16 @@ static void stats_done(void *arg)
         cb_text(&b, "id"); cb_int(&b, j->id);
         cb_text(&b, "ok"); cb_bool(&b, true);
         cb_text(&b, "result");
-        cb_map(&b, 6);
+        wps_tracker_stats ts;
+        wps_tracker_get_stats(&ts);
+        cb_map(&b, 12);
         cb_text(&b, "objects"); cb_uint(&b, wps_objects_count());
+        cb_text(&b, "tracking"); cb_text(&b, ts.mode ? ts.mode : "none");
+        cb_text(&b, "events"); cb_uint(&b, ts.events);
+        cb_text(&b, "overflows"); cb_uint(&b, ts.overflows);
+        cb_text(&b, "watched"); cb_uint(&b, ts.watched);
+        cb_text(&b, "scans"); cb_uint(&b, ts.scans);
+        cb_text(&b, "missing"); cb_uint(&b, ts.missing);
         cb_text(&b, "pending"); cb_uint(&b, wps_objects_pending());
         cb_text(&b, "rows"); cb_int(&b, j->rows);
         cb_text(&b, "conflicts"); cb_int(&b, j->conflicts);
@@ -473,6 +483,8 @@ static void on_mounts(int fd, short rev, void *arg)
     start_volume_job(NULL);
 }
 
+static void scanned(void *arg, const char *report) { reply_simple_ok(arg, report); }
+
 static void quit_after_flush(void *arg) { (void)arg; quitting = true; wpo_loop_quit(loop); }
 
 static void shutdown_flushed(void *arg)
@@ -502,6 +514,10 @@ static void handle(struct client *c, cv *msg)
         if (op[0] == 'f') wps_objects_flush(flushed, s);
         else if (op[1] == 'h') wps_objects_flush(shutdown_flushed, s);
         else start_volume_job(s);
+    } else if (strcmp(op, "scan") == 0) {
+        struct simple *s = calloc(1, sizeof *s);
+        s->c = c; s->id = id; c->refs++;
+        wps_tracker_scan(scanned, s);
     } else if (strcmp(op, "stats") == 0) {
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
@@ -514,7 +530,9 @@ static void handle(struct client *c, cv *msg)
         r->id = id;
         r->msg = *msg;     /* takes ownership */
         r->op = cv_text(&r->msg, "op");
-        snprintf(r->target, sizeof r->target, "%s", target);
+        /* An ID of an object we already hold: use where it is now. */
+        sobj *known = strncmp(target, "id:", 3) == 0 ? wps_sobj_by_id(target + 3) : NULL;
+        snprintf(r->target, sizeof r->target, "%s", known ? known->path : target);
         const cv *args = cv_get(&r->msg, "args");
         for (size_t i = 0; args && args->k == CV_ARRAY && i < args->n; i++) {
             const char *p = cv_text(&args->items[i], "obj");
@@ -657,11 +675,16 @@ int main(void)
     wps_volumes vs;
     if (wps_volumes_scan(&vs, &env) == 0) wps_volumes_replace(&vs);
     start_volume_job(NULL);
+    wps_tracker_init(loop, &env, db);
+    wps_tracker_stats ts;
+    wps_tracker_get_stats(&ts);
+    log_msg("tracking changes with %s", ts.mode);
     log_msg("ready: socket %s, identity %s, host %s", sock_path, env.identity, env.host);
     wpo_loop_run(loop);
 
     wpo_loop_run_until_idle(loop, 10000);
     while (clients) client_close(clients);
+    wps_tracker_shutdown();
     unlink(sock_path);
     wps_objects_shutdown();
     wpo_loop_free(loop);
