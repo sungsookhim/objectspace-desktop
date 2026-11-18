@@ -1,6 +1,6 @@
 # Review of the Object Core Design v0.1 (2026-11-18)
 
-An external review of [../object-core-design.md](../object-core-design.md) was done with Gemini. Below are its five findings as received, our assessment of each, and the design changes we accepted. The accepted changes go into design v0.2.
+An external review of [../object-core-design.md](../object-core-design.md) was done with Gemini. Below are its five findings as received, our assessment of each, and the design changes we accepted. The accepted changes are folded into design v0.2.
 
 ## Summary
 
