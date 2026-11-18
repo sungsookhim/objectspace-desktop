@@ -11,6 +11,7 @@
  *   {op:"sync"}        rescan volumes and synchronise portable ones
  *   {op:"scan"}        run the catch-up scan now
  *   {op:"shadow", target, folder}   create a shadow (managed symlink)
+ *   {op:"list", target, offset, count, details}   a page of a folder (streamed)
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"stats"}
@@ -35,12 +36,14 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <dirent.h>
 #include <unistd.h>
 
 #include "cbor.h"
 #include "db.h"
 #include "env.h"
 #include "objects.h"
+#include "listing.h"
 #include "shadows.h"
 #include "WPShadow.h"
 #include "WPProgram.h"
@@ -521,6 +524,50 @@ static void on_mounts(int fd, short rev, void *arg)
 
 static void scanned(void *arg, const char *report) { reply_simple_ok(arg, report); }
 
+/* ---- list: a page of a folder's entries */
+
+struct list_req { struct client *c; int64_t id; };
+
+static void list_reply(void *arg, const wps_page *pg)
+{
+    struct list_req *r = arg;
+    if (!r->c->dead) {
+        if (pg->err) {
+            reply_error(r->c, r->id, "failed", strerror(pg->err));
+        } else {
+            cbuf b;
+            cb_init(&b);
+            cb_map(&b, 3);
+            cb_text(&b, "id"); cb_int(&b, r->id);
+            cb_text(&b, "ok"); cb_bool(&b, true);
+            cb_text(&b, "result");
+            cb_map(&b, 4);
+            cb_text(&b, "total"); cb_uint(&b, pg->total);
+            cb_text(&b, "complete"); cb_bool(&b, pg->complete);
+            cb_text(&b, "offset"); cb_uint(&b, pg->offset);
+            cb_text(&b, "items");
+            cb_array(&b, pg->n);
+            for (size_t i = 0; i < pg->n; i++) {
+                const wps_entry *e = &pg->items[i];
+                const char *t = e->type == DT_DIR ? "folder" : e->type == DT_LNK ? "link" : e->type == DT_REG ? "file" : "other";
+                cb_map(&b, e->detailed ? 6 : 2);
+                cb_text(&b, "name"); cb_text(&b, e->name);
+                cb_text(&b, "type"); cb_text(&b, t);
+                if (e->detailed) {
+                    cb_text(&b, "size"); cb_int(&b, e->size);
+                    cb_text(&b, "mtime"); cb_int(&b, e->mtime);
+                    cb_text(&b, "id"); cb_text(&b, e->id);
+                    cb_text(&b, "title"); cb_text(&b, e->title);
+                }
+            }
+            send_frame(r->c, &b);
+            cb_free(&b);
+        }
+    }
+    client_unref(r->c);
+    free(r);
+}
+
 /* ---- create: a new object of a class in a folder, never overwriting */
 
 struct create_req {
@@ -627,6 +674,21 @@ static void handle(struct client *c, cv *msg)
         if (op[0] == 'f') wps_objects_flush(flushed, s);
         else if (op[1] == 'h') wps_objects_flush(shutdown_flushed, s);
         else start_volume_job(s);
+    } else if (strcmp(op, "list") == 0) {
+        const char *folder = cv_text(msg, "target");
+        int64_t off = 0, cnt = 100;
+        cv_int(msg, "offset", &off);
+        cv_int(msg, "count", &cnt);
+        const cv *det = cv_get(msg, "details");
+        if (!folder || off < 0 || cnt < 0 || cnt > 100000) {
+            reply_error(c, id, "bad request", "list needs a target folder and a sane range");
+            cv_free(msg);
+            return;
+        }
+        struct list_req *r = calloc(1, sizeof *r);
+        r->c = c; c->refs++;
+        r->id = id;
+        wps_listing_request(folder, (size_t)off, (size_t)cnt, det && det->k == CV_BOOL && det->b, list_reply, r);
     } else if (strcmp(op, "create") == 0) {
         const char *folder = cv_text(msg, "folder"), *clsname = cv_text(msg, "class");
         const char *title = cv_text(msg, "title"), *command = cv_text(msg, "command");
@@ -814,6 +876,7 @@ int main(void)
     if (wps_volumes_scan(&vs, &env) == 0) wps_volumes_replace(&vs);
     start_volume_job(NULL);
     wps_shadows_init(loop, db);
+    wps_listing_init(loop);
     wps_tracker_init(loop, &env, db);
     wps_tracker_stats ts;
     wps_tracker_get_stats(&ts);
@@ -824,6 +887,7 @@ int main(void)
     wpo_loop_run_until_idle(loop, 10000);
     while (clients) client_close(clients);
     wps_tracker_shutdown();
+    wps_listing_shutdown();
     unlink(sock_path);
     wps_objects_shutdown();
     wpo_loop_free(loop);

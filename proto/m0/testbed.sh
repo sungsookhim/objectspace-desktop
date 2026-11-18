@@ -41,7 +41,7 @@ up() {
 }
 
 down() {
-    for fs in ext4 btrfs fat; do
+    for fs in ext4 btrfs fat big; do
         if mountpoint -q "$WORK/mnt/$fs"; then sudo umount "$WORK/mnt/$fs"; fi
     done
     sudo rm -rf "$WORK"

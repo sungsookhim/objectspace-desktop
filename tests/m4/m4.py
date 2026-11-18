@@ -258,6 +258,58 @@ def sa3():
                 f"shadow in menu/ resolves to a {(sh.get('target') or {}).get('class')}"]
 
 
+# -------------------------------------------------------------------- scale
+
+def percentile(xs, p):
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, int(len(xs) * p))] if xs else None
+
+
+@scenario(28, "A folder of 1,000,000 files: first page fast; other requests stay fast while it loads")
+def s28():
+    big = big_volume()
+    d = big / "million"
+    if not (d / "f0999999").exists():
+        run(["rm", "-rf", str(d)])
+        d.mkdir()
+        for i in range(1000000):
+            os.close(os.open(d / f"f{i:07}", os.O_CREAT | os.O_WRONLY, 0o644))
+    run(["sudo", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])   # a cold start
+    me = Service("me").start()
+    c = Conn(me)
+    pings = []
+    stop = [False]
+
+    def pinger():   # interactive requests all the while the folder is read
+        p2 = Conn(me)
+        while not stop[0]:
+            p0 = time.time()
+            p2.request(op="ping")
+            pings.append((time.time() - p0) * 1000)
+        p2.close()
+
+    import threading
+    th = threading.Thread(target=pinger)
+    t0 = time.time()
+    th.start()
+    first = c.request(op="list", target=str(d), offset=0, count=50, details=True)
+    t_first = time.time() - t0
+    r = c.request(op="list", target=str(d), offset=999950, count=50)   # answered when that far is read
+    t_all = time.time() - t0
+    stop[0] = True
+    th.join()
+    total = r.get("result", {}).get("total")
+    last = [x["name"] for x in r.get("result", {}).get("items", [])]
+    c.close()
+    me.stop()
+    fr = first.get("result", {})
+    ok = fr.get("items") and len(fr["items"]) == 50 and fr["items"][0].get("size") == 0 and t_first < 0.15 and \
+        total == 1000000 and len(last) == 50 and percentile(pings, 0.99) < 20
+    return ok, [f"first page of 50 (with details) after {t_first * 1000:.0f} ms; complete=false then: {fr.get('complete') is False}",
+                f"whole folder read in {t_all:.1f} s; total {total}; last page has {len(last)} entries",
+                f"pings while loading: {len(pings)}, 99th percentile {percentile(pings, 0.99):.2f} ms, worst {max(pings):.2f} ms"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

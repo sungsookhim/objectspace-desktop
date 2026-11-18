@@ -204,3 +204,115 @@ def finish():
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
     print("summary:", ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     sys.exit(0 if not bad and counts.get("PASS", 0) == len(results) else 1)
+
+
+# ------------------------------------------------- a direct protocol client
+
+def _cb_head(major, n):
+    if n < 24:
+        return bytes([major << 5 | n])
+    for info, size in ((24, 1), (25, 2), (26, 4), (27, 8)):
+        if n < 1 << (8 * size):
+            return bytes([major << 5 | info]) + n.to_bytes(size, "big")
+    raise ValueError("too big")
+
+
+def cbor_encode(v):
+    if v is None:
+        return b"\xf6"
+    if v is True:
+        return b"\xf5"
+    if v is False:
+        return b"\xf4"
+    if isinstance(v, int):
+        return _cb_head(0, v) if v >= 0 else _cb_head(1, -1 - v)
+    if isinstance(v, str):
+        b = v.encode()
+        return _cb_head(3, len(b)) + b
+    if isinstance(v, (list, tuple)):
+        return _cb_head(4, len(v)) + b"".join(cbor_encode(x) for x in v)
+    if isinstance(v, dict):
+        return _cb_head(5, len(v)) + b"".join(cbor_encode(k) + cbor_encode(x) for k, x in v.items())
+    raise TypeError(type(v))
+
+
+def cbor_decode(b, i=0):
+    ib = b[i]; i += 1
+    major, info = ib >> 5, ib & 31
+    if major == 7:
+        if info == 20: return False, i
+        if info == 21: return True, i
+        if info in (22, 23): return None, i
+        if info == 27:
+            import struct
+            return struct.unpack(">d", b[i:i + 8])[0], i + 8
+        raise ValueError("simple")
+    if info < 24:
+        n = info
+    else:
+        size = {24: 1, 25: 2, 26: 4, 27: 8}[info]
+        n = int.from_bytes(b[i:i + size], "big"); i += size
+    if major == 0: return n, i
+    if major == 1: return -1 - n, i
+    if major in (2, 3):
+        s = b[i:i + n]
+        return (s.decode() if major == 3 else s), i + n
+    if major == 4:
+        out = []
+        for _ in range(n):
+            x, i = cbor_decode(b, i)
+            out.append(x)
+        return out, i
+    if major == 5:
+        out = {}
+        for _ in range(n):
+            k, i = cbor_decode(b, i)
+            x, i = cbor_decode(b, i)
+            out[k] = x
+        return out, i
+    raise ValueError("tag")
+
+
+class Conn:
+    """A persistent connection to a service (current user only), for
+    measuring request latency without process start-up in the way."""
+
+    def __init__(self, svc):
+        import socket
+        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.s.connect(svc.env["WPS_RUNTIME_DIR"] + "/wps.sock")
+        self.next = 0
+
+    def request(self, **msg):
+        self.next += 1
+        msg["id"] = self.next
+        body = cbor_encode(msg)
+        self.s.sendall(len(body).to_bytes(4, "big") + body)
+        hdr = self._read(4)
+        return cbor_decode(self._read(int.from_bytes(hdr, "big")))[0]
+
+    def _read(self, n):
+        out = b""
+        while len(out) < n:
+            chunk = self.s.recv(n - len(out))
+            if not chunk:
+                raise ConnectionError("closed")
+            out += chunk
+        return out
+
+    def close(self):
+        self.s.close()
+
+
+def big_volume(size="6G", inodes=1300000):
+    """A large ext4 scratch volume for scale scenarios, at <WORK>/mnt/big."""
+    mnt = WORK / "mnt" / "big"
+    if os.path.ismount(mnt):
+        return mnt
+    img = WORK / "img" / "big.img"
+    run(["truncate", "-s", size, str(img)], check=True)
+    run(["mkfs.ext4", "-q", "-F", "-N", str(inodes), "-L", "wpsbig", str(img)], check=True)
+    mnt.mkdir(parents=True, exist_ok=True)
+    run(["sudo", "mount", "-o", "loop", str(img), str(mnt)], check=True)
+    run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(mnt)], check=True)
+    return mnt

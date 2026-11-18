@@ -64,7 +64,7 @@ $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_cbor.c service/cbor.c
 
-SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c service/db.c service/env.c service/volumes.c service/cbor.c
+SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/db.c service/env.c service/volumes.c service/cbor.c
 
 $(B)/wpsd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
 	@mkdir -p $(B)

@@ -21,6 +21,7 @@
 #include "attrs.h"
 #include "cbor.h"
 #include "objects.h"
+#include "listing.h"
 #include "shadows.h"
 #include "WPObject.h"
 
@@ -795,6 +796,12 @@ static void scan_soon(void);
 static void apply(const tev *e)
 {
     stats.events++;
+    /* A folder listing that saw this change is stale now. */
+    if (e->k != E_OVERFLOW) {
+        char d[PATH_MAX];
+        if (e->path[0]) { dir_of(e->path, d, sizeof d); wps_listing_invalidate(d); }
+        if (e->from[0]) { dir_of(e->from, d, sizeof d); wps_listing_invalidate(d); }
+    }
     if (trace) {
         static const char *k[] = { "CREATE", "DELETE", "MOVE", "ATTRIB", "WRITE", "OVERFLOW" };
         fprintf(stderr, "wpsd: event %s%s %s%s%s\n", k[e->k], e->isdir ? " (dir)" : "", e->from,

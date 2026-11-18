@@ -8,6 +8,7 @@
  *   wpsctl describe CLASS
  *   wpsctl shadow TARGET FOLDER
  *   wpsctl create FOLDER CLASS TITLE [COMMAND]
+ *   wpsctl list FOLDER [OFFSET [COUNT [details]]]
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -19,6 +20,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -34,7 +36,8 @@ static int usage(void)
             "       wpsctl call [--expect N] TARGET METHOD [ARG...]\n"
             "       wpsctl describe CLASS\n"
             "       wpsctl shadow TARGET FOLDER\n"
-            "       wpsctl create FOLDER CLASS TITLE [COMMAND]\n");
+            "       wpsctl create FOLDER CLASS TITLE [COMMAND]\n"
+            "       wpsctl list FOLDER [OFFSET [COUNT [details]]]\n");
     return 2;
 }
 
@@ -103,6 +106,16 @@ int main(int argc, char **argv)
         cb_text(&b, "id"); cb_int(&b, 1);
         cb_text(&b, "op"); cb_text(&b, op);
         cb_text(&b, op[0] == 'r' ? "target" : "class"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "list")) {
+        if (argc < 3 || argc > 6) return usage();
+        bool details = argc == 6 && !strcmp(argv[5], "details");
+        cb_map(&b, 6);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "list");
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "offset"); cb_int(&b, argc > 3 ? atoll(argv[3]) : 0);
+        cb_text(&b, "count"); cb_int(&b, argc > 4 ? atoll(argv[4]) : 100);
+        cb_text(&b, "details"); cb_bool(&b, details);
     } else if (!strcmp(op, "create")) {
         if (argc < 5 || argc > 6) return usage();
         cb_map(&b, argc == 6 ? 6 : 5);
