@@ -104,18 +104,17 @@ TEST(objects_and_static_calls)
     CHECK_STR(t, "text/plain");
     free(t);
 
-    /* Lazy identity: no ID until something is stored. */
+    /* Lazy identity: no ID until the service stores something. */
     char *h = WPObject_wpQueryHandle(f);
     CHECK_STR(h, "");
     free(h);
+    uint64_t before = WPObject_data(f)->changes;
     CHECK(WPObject_wpSetTitle(f, "My notes"));
     t = WPObject_wpQueryTitle(f);
     CHECK_STR(t, "My notes");
     free(t);
-    h = WPObject_wpQueryHandle(f);
-    CHECK(h && strlen(h) == 36 && h[14] == '4');
-    free(h);
     CHECK(WPObject_data(f)->dirty == 1);
+    CHECK(WPObject_data(f)->changes == before + 1);
     wpo_unref(f);
 }
 
@@ -156,7 +155,7 @@ TEST(calls_by_name)
     /* Method info for clients (the service API describes classes from this). */
     const wpo_method_def *mi = wpo_method_info(WPProgramClass, "wpSetCommand");
     CHECK(mi && strcmp(mi->sig, "b(s)") == 0);
-    mi = wpo_method_info(WPObjectClass, "wpRestoreState");
+    mi = wpo_method_info(WPFolderClass, "wpPopulate");
     CHECK(mi && (mi->flags & WPO_M_ASYNC));
     wpo_unref(p);
 }
@@ -165,13 +164,13 @@ static int pending_seen;
 static void on_done(wpo_pending *p, const wpo_value *v, void *user)
 {
     (void)p;
-    *(int *)user = v->type == 'b' && v->u.b ? 1 : -1;
+    *(int *)user = (v->type == 'b' && v->u.b) || v->type == 'i' ? 1 : -1;
 }
 
 TEST(pending_results)
 {
     wpo_object *o = wpo_new(WPFolderClass);
-    wpo_pending *p = WPObject_wpRestoreState(o);
+    wpo_pending *p = WPFolder_wpPopulate(o);
     CHECK(wpo_pending_done(p));
     wpo_pending_then(p, on_done, &pending_seen);
     CHECK(pending_seen == 1);
@@ -302,6 +301,47 @@ TEST(async_with_loop)
     wpo_loop_free(l);
 }
 
+TEST(state_bag)
+{
+    wpo_object *d = wpo_new(WPFolderClass);
+    wpo_object *child = wpo_new(WPDataFileClass);
+    /* Saving puts each class's fields into its part of the bag. */
+    WPObject_wpSetTitle(d, "Projects");
+    WPFolder_wpSetSortOrder(d, 3);
+    CHECK(WPObject_wpSaveState(d));
+    wps_cstate *o = wps_state_class(&WPObject_data(d)->state, "WPObject", false);
+    wps_cstate *f = wps_state_class(&WPObject_data(d)->state, "WPFolder", false);
+    CHECK(o && f && o->ntouched == 1 && f->ntouched == 1);
+    /* Saving again with nothing changed touches nothing new. */
+    wps_state_clear_touched(o);
+    wps_state_clear_touched(f);
+    CHECK(WPObject_wpSaveState(d));
+    CHECK(o->ntouched == 0 && f->ntouched == 0);
+    /* Icon positions need the child's ID (assigned by the service). */
+    CHECK(!WPFolder_wpSetIconPos(d, child, 10, 20));
+    snprintf(WPObject_data(child)->id, sizeof WPObject_data(child)->id, "%s",
+             "11111111-2222-4333-8444-555555555555");
+    CHECK(WPFolder_wpSetIconPos(d, child, 10, 20));
+    char *pos = WPFolder_wpQueryIconPos(d, child);
+    CHECK_STR(pos, "10,20");
+    free(pos);
+    /* Restoring reads the bag back into the fields. */
+    wpo_object *d2 = wpo_new(WPFolderClass);
+    wps_state_load(d2, "WPObject", &o->props);
+    wps_state_load(d2, "WPFolder", &f->props);
+    WPObject_wpRestoreProperties(d2);
+    char *t = WPObject_wpQueryTitle(d2);
+    CHECK_STR(t, "Projects");
+    free(t);
+    CHECK(WPFolder_wpQuerySortOrder(d2) == 3);
+    pos = WPFolder_wpQueryIconPos(d2, child);
+    CHECK_STR(pos, "10,20");
+    free(pos);
+    wpo_unref(d);
+    wpo_unref(d2);
+    wpo_unref(child);
+}
+
 int main(int argc, char **argv)
 {
     plugin_dir = argc > 1 ? argv[1] : "build/tests/plugins";
@@ -320,6 +360,7 @@ int main(int argc, char **argv)
     RUN(versions_and_plugins);
     RUN(class_replacement);
     RUN(async_with_loop);
+    RUN(state_bag);
     wpo_shutdown();
     return CHECK_SUMMARY();
 }

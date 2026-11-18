@@ -16,11 +16,11 @@ CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-unused-parameter
 # libasan, libubsan); otherwise a plain build. Override with SAN=.
 SAN     ?= $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=address,undefined -x c - \
              -o /dev/null 2>/dev/null && echo -fsanitize=address,undefined -fno-omit-frame-pointer)
-INC     := -Iruntime/include -Iclasses -I$(GEN)
+INC     := -Iruntime/include -Iclasses -Iservice -I$(GEN)
 
 RUNTIME := runtime/src/wpo.c runtime/src/wpo_loop_posix.c runtime/src/wpo_plugin_posix.c
 WPI     := $(wildcard classes/*.wpi)
-CLASSES := $(wildcard classes/*.c) $(patsubst classes/%.wpi,$(GEN)/%.reg.c,$(WPI))
+CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GEN)/%.reg.c,$(WPI))
 
 # Test class TBase: version 1.1 is "installed"; plug-ins are built against
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
@@ -58,7 +58,7 @@ plugins: $(PLUGINS)
 
 $(TV)/plugins/tchild_%.so: tests/plugins/TChild.c $(B)/gen-%/.stamp
 	@mkdir -p $(TV)/plugins
-	$(CC) $(CFLAGS) $(SAN) -fPIC -shared -Iruntime/include -I$(B)/gen-$*/plugin -I$(B)/gen-$* \
+	$(CC) $(CFLAGS) $(SAN) -fPIC -shared -Iruntime/include -Iservice -I$(B)/gen-$*/plugin -I$(B)/gen-$* \
 	    -o $@ tests/plugins/TChild.c $(B)/gen-$*/plugin/TChild.reg.c
 
 $(TV)/plugins/myfolder.so: tests/plugins/MyFolder.c tests/plugins/MyFolder.wpi $(GEN)/.stamp

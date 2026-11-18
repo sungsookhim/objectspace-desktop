@@ -5,5 +5,14 @@ data {
     int sort_order;
 }
 override wpModifyPopupMenu
+override wpSaveState
+override wpRestoreProperties
 method wpQuerySortOrder() -> int
+method wpSetSortOrder(int order) -> bool
+# Icon positions, stored on the folder by the child's object ID (design:
+# Persistence; per user in folders the user does not own).
+method wpSetIconPos(object child, int x, int y) -> bool
+method wpQueryIconPos(object child) -> string
+# Lists the folder's contents; streaming and paging arrive in M4.
+method wpPopulate() -> pending async
 classoverride wpclsQueryTitle

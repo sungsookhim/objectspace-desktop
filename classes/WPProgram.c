@@ -25,6 +25,23 @@ bool WPProgram__wpSetCommand(wpo_object *self, const char *command)
     return true;
 }
 
+bool WPProgram__wpSaveState(wpo_object *self)
+{
+    WPProgram_parent_wpSaveState(self);
+    const char *c = WPProgram_data(self)->command;
+    if (c) wps_state_put_str(self, "WPProgram", "command", c);
+    else wps_state_remove(self, "WPProgram", "command");
+    return true;
+}
+
+void WPProgram__wpRestoreProperties(wpo_object *self)
+{
+    WPProgram_parent_wpRestoreProperties(self);
+    char *c = NULL;
+    free(WPProgram_data(self)->command);
+    WPProgram_data(self)->command = wps_state_get_str(self, "WPProgram", "command", &c) ? c : NULL;
+}
+
 char *WPProgram__wpclsQueryTitle(wpo_object *self)
 {
     (void)self;

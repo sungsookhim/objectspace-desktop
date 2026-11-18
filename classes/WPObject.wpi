@@ -1,21 +1,27 @@
 # The root of all WPS objects.
 class WPObject
 version 1.0
+include "wps_state.h"
 data {
     char *title;        /* NULL: the class decides (see wpQueryTitle) */
-    char id[37];        /* object ID; empty until assigned (lazy) */
+    char id[37];        /* object ID; empty until assigned (lazily, by the service) */
     uint32_t dirty;     /* state changed since the last save */
+    uint64_t changes;   /* in-memory change counter, for optimistic client writes */
+    wps_state *state;   /* stored properties, per class (see wps_state.h) */
 }
 override wpInitData
 override wpUnInitData
 method wpQueryTitle() -> string
 method wpSetTitle(string title) -> bool
 method wpQueryHandle() -> string
-# Menus are text in M1: one "id<TAB>label" line per item. M5 turns them
+# Menus are text in M1/M2: one "id<TAB>label" line per item. M5 turns them
 # into structured data returned asynchronously.
 method wpModifyPopupMenu(string menu) -> string
 method wpMenuItemSelected(int item) -> bool
 method wpSaveDeferred() -> void
 method wpObjectChanged() -> void
-method wpRestoreState() -> pending async
+# Persistence. The service reads and writes storage on workers; these run on
+# the loop thread and only move values between fields and the state bag.
+method wpSaveState() -> bool
+method wpRestoreProperties() -> void
 classmethod wpclsQueryTitle() -> string

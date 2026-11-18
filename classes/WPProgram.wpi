@@ -5,6 +5,8 @@ data {
     char *command;
 }
 override wpUnInitData
+override wpSaveState
+override wpRestoreProperties
 method wpQueryCommand() -> string
 method wpSetCommand(string command) -> bool
 classoverride wpclsQueryTitle
