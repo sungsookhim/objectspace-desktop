@@ -809,7 +809,7 @@ int main(int argc, char **argv)
     svc_on_event(on_event, NULL);
     for (int k = i; k < argc; k++) {
         struct folder *f = open_folder(argv[k], opt_view);
-        if (k == i && getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);
+        if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);   /* every window ticks */
         if (k == i && opt_bench > 0) {
             f->bench_secs = opt_bench;
             f->bench_seed = 12345;
