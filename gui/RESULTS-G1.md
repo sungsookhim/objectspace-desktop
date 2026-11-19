@@ -50,7 +50,7 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 
 - **Second round of hand testing:**
   - A double click on the system menu button did nothing: the second click only closed the menu. The second click of a double click now reaches the frame, which closes the window (as in OS/2).
-  - Button 2 on the title bar opened the system menu; it no longer does.
+  - Button 2 on the title bar opened the system menu; it no longer does. Button 2 on the system menu icon does, as button 1 does (as in OS/2).
   - **Closing one folder window crashed the shell, taking every window with it.** The close button freed the window inside its own click handler, which then used it. Closing now happens on the next loop turn; menus opened from a window are closed before it goes.
   - Pop-up menus on items and the background never appeared. They open on button release, after asking the service for their items, and GNOME refuses an input grab once no button is held, dismissing the menu at once. These menus now open without a grab (the shell closes its own menus on clicks elsewhere and when the window loses focus); the system menu, opened on press, still grabs.
   - New files did not appear until the folder was opened again. Windows now subscribe to their folder's events and re-read it in the background after a change, swapping the new contents in with details for the rows on screen, keeping scroll position, selection and cursor. A burst of changes costs at most two re-reads. (Incremental updates for very large folders: G2.)

@@ -259,6 +259,12 @@ bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e)
             return false;
         }
     }
+    /* The system menu icon opens its menu with either button (OS/2); the
+     * rest of the title bar has no button 2 menu. */
+    if (e->kind == UI_PRESS && e->button == UI_BTN2 && h == UI_HIT_SYSMENU) {
+        system_menu(s, e->serial);
+        return true;
+    }
     if (e->kind == UI_RELEASE && s->pressed) {
         ui_hit p = s->pressed;
         s->pressed = UI_HIT_NONE;
