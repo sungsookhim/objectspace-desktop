@@ -122,7 +122,8 @@ TEST(parent_calls)
 {
     wpo_object *d = wpo_new(WPFolderClass);
     char *m = WPObject_wpModifyPopupMenu(d, "");
-    CHECK_STR(m, "1\tOpen\n2\tProperties\n20\tArrange\n");
+    /* "Open" is a cascade of the folder's views, as "Open as" in Warp 4. */
+    CHECK_STR(m, "1\tOpen\n2\tProperties\n11\tIcon view\t1\n12\tTree view\t1\n13\tDetails view\t1\n20\tArrange\n");
     free(m);
     wpo_unref(d);
     wpo_object *f = wpo_new(WPDataFileClass);
@@ -246,7 +247,8 @@ TEST(class_replacement)
     wpo_object *d = wpo_new(WPFolderClass);   /* asks for WPFolder ... */
     CHECK(d && strcmp(d->cls->name, "MyFolder") == 0);   /* ... gets the replacement */
     char *m = WPObject_wpModifyPopupMenu(d, "");
-    CHECK_STR(m, "1\tOpen\n2\tProperties\n20\tArrange\n90\tMy Plug-in Item\n");
+    CHECK_STR(m, "1\tOpen\n2\tProperties\n11\tIcon view\t1\n12\tTree view\t1\n13\tDetails view\t1\n20\tArrange\n"
+                 "90\tMy Plug-in Item\n");
     free(m);
     CHECK(wpo_is_a(d, WPFolderClass));
     wpo_unref(d);
