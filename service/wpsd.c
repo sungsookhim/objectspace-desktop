@@ -24,7 +24,7 @@
  *   {op:"open", target, confirm}   start a program (as this user) or open a file;
  *                      a program owned by another user (not root) needs confirm
  *   {op:"from_template", target, folder, title}
- *   {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}}   icon positions
+ *   {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}, items:[{name,id,x,y}]}
  *   {op:"place", folder, items:[{target, x, y}]} -> [ID...]  set positions
  *   {op:"arrange", target:FOLDER}   forget the folder's positions
  *   {op:"rename", target, name}   rename a file or folder in its folder (never
@@ -1275,31 +1275,98 @@ static void tmpl_done(void *arg)
 
 /* ---- icon positions: layout, place, arrange (G2: free placement) */
 
-/* {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}} */
+/* {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}, items:[{name, id, x, y}]}
+ * Positions are kept by object ID; the GUI knows items by name, so a
+ * worker reads the folder and matches each child's ID (one attribute read
+ * per child, and only when the folder has positions at all). */
+struct layout_job {
+    struct client *c;
+    int64_t id;
+    char folder[PATH_MAX];
+    size_t n;
+    char (*ids)[WPS_ID_LEN + 1];
+    char **vals;
+    char **names;        /* found by the worker, per position */
+};
+
+static void layout_work(void *arg)
+{
+    struct layout_job *j = arg;
+    DIR *d = opendir(j->folder);
+    struct dirent *de;
+    size_t found = 0;
+    while (d && found < j->n && (de = readdir(d))) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+        char p[PATH_MAX + NAME_MAX + 2], id[WPS_ID_LEN + 1];
+        snprintf(p, sizeof p, "%s/%s", j->folder, de->d_name);
+        if (!wps_attr_get_id(p, id)) continue;
+        for (size_t i = 0; i < j->n; i++)
+            if (!j->names[i] && !strcmp(j->ids[i], id)) { j->names[i] = strdup(de->d_name); found++; break; }
+    }
+    if (d) closedir(d);
+}
+
+static void layout_done(void *arg)
+{
+    struct layout_job *j = arg;
+    if (!j->c->dead) {
+        size_t named = 0;
+        for (size_t i = 0; i < j->n; i++) named += j->names[i] != NULL;
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, j->id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result");
+        cb_map(&b, 2);
+        cb_text(&b, "positions");
+        cb_map(&b, j->n);
+        for (size_t i = 0; i < j->n; i++) { cb_text(&b, j->ids[i]); cb_text(&b, j->vals[i]); }
+        cb_text(&b, "items");
+        cb_array(&b, named);
+        for (size_t i = 0; i < j->n; i++) {
+            if (!j->names[i]) continue;
+            long long x = 0, y = 0;
+            sscanf(j->vals[i], "%lld,%lld", &x, &y);
+            cb_map(&b, 4);
+            cb_text(&b, "name"); cb_text(&b, j->names[i]);
+            cb_text(&b, "id"); cb_text(&b, j->ids[i]);
+            cb_text(&b, "x"); cb_int(&b, x);
+            cb_text(&b, "y"); cb_int(&b, y);
+        }
+        send_frame(j->c, &b);
+        cb_free(&b);
+    }
+    for (size_t i = 0; i < j->n; i++) { free(j->vals[i]); free(j->names[i]); }
+    free(j->ids);
+    free(j->vals);
+    free(j->names);
+    client_unref(j->c);
+    free(j);
+}
+
 static void do_layout(struct req *r, wpo_object *o)
 {
     if (!wpo_is_a(o, WPFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
     wps_state *st = WPObject_data(o)->state;
     wps_cstate *cs = st ? wps_state_class(&st, "WPFolder", false) : NULL;
+    struct layout_job *j = calloc(1, sizeof *j);
+    j->c = r->c; r->c->refs++;
+    j->id = r->id;
+    snprintf(j->folder, sizeof j->folder, "%s", r->tgt.path);
     size_t n = 0;
     for (size_t i = 0; cs && i < cs->props.n; i++) n += !strncmp(cs->props.p[i].key, "pos:", 4);
-    cbuf b;
-    cb_init(&b);
-    cb_map(&b, 3);
-    cb_text(&b, "id"); cb_int(&b, r->id);
-    cb_text(&b, "ok"); cb_bool(&b, true);
-    cb_text(&b, "result");
-    cb_map(&b, 1);
-    cb_text(&b, "positions");
-    cb_map(&b, n);
+    j->ids = calloc(n ? n : 1, sizeof *j->ids);
+    j->vals = calloc(n ? n : 1, sizeof *j->vals);
+    j->names = calloc(n ? n : 1, sizeof *j->names);
     for (size_t i = 0; cs && i < cs->props.n; i++) {
         const wps_prop *p = &cs->props.p[i];
         if (strncmp(p->key, "pos:", 4)) continue;
-        cb_text(&b, p->key + 4);
-        cb_textn(&b, (const char *)p->val, p->len);
+        snprintf(j->ids[j->n], sizeof j->ids[0], "%s", p->key + 4);
+        j->vals[j->n++] = strndup((const char *)p->val, p->len);
     }
-    send_frame(r->c, &b);
-    cb_free(&b);
+    if (!j->n) { layout_done(j); return; }   /* nothing placed: no need to read the folder */
+    wpo_defer(loop, "layout", layout_work, layout_done, j);
 }
 
 /* {op:"arrange", target:FOLDER}: forget the stored positions; the GUI

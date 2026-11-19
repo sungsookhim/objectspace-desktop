@@ -419,15 +419,17 @@ def sl1():
     b.ctl("flush")
     lay_b = b.ctl("layout", d).get("result", {}).get("positions", {})
     lay_a2 = a.ctl("layout", d).get("result", {}).get("positions", {})
+    named = {i["name"]: (i["x"], i["y"]) for i in a.ctl("layout", d).get("result", {}).get("items", [])}
     ar = a.ctl("arrange", d)
     a.ctl("flush")
     lay_a3 = a.ctl("layout", d).get("result", {}).get("positions", {})
     a.stop(); b.stop()
     ok = len(ids) == 2 and all(ids) and lay_a.get(ids[0]) == "40,30" and lay_a.get(ids[1]) == "200,90" and \
-        lay_b.get(ids[0]) == "500,500" and lay_a2.get(ids[0]) == "40,30" and ar.get("result") == 2 and lay_a3 == {}
+        lay_b.get(ids[0]) == "500,500" and lay_a2.get(ids[0]) == "40,30" and ar.get("result") == 2 and lay_a3 == {} and \
+        named == {"one.txt": (40, 30), "two.txt": (200, 90)}
     return ok, [f"placed with IDs {ids}", f"after a restart A sees {lay_a}",
                 f"B (not the folder's owner) sees one.txt at {lay_b.get(ids[0]) if ids else None}; A still at {lay_a2.get(ids[0]) if ids else None}",
-                f"Arrange cleared {ar.get('result')} positions: now {lay_a3}"]
+                f"by name: {named}", f"Arrange cleared {ar.get('result')} positions: now {lay_a3}"]
 
 
 # ------------------------------------------------------------------- driver
