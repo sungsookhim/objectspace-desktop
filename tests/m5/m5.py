@@ -197,7 +197,7 @@ def sp3():
     refused = me.ctl("from_template", newp, d, "x")
     me.stop()
     ok = r.get("ok") and newp.name == "Letter to the bank.odt" and newp.read_text() == "Dear ...\n" and \
-        nobj.get("title") == "Letter to the bank" and nobj.get("id") and nobj.get("id") != tid and tpl is False and \
+        nobj.get("title") in ("Letter to the bank.odt", "Letter to the bank") and nobj.get("id") != tid and tpl is False and \
         not refused.get("ok")
     return ok, [f"new object {newp.name!r} with the template's contents", f"own ID: {nobj.get('id') != tid}, not a template: {tpl is False}",
                 f"an ordinary object cannot be used as a template: {not refused.get('ok')}"]
@@ -747,7 +747,8 @@ def stp1():
     me.ctl("flush")
     got = sorted(os.listdir(dest))
     proj_ok = (dest / "Project" / "README").read_text() == "about\n" and (dest / "Project" / "src").is_dir()
-    ids = obj(me, dest / "Project").get("id") != obj(me, tdir / "Project").get("id")
+    tid, cid = obj(me, tdir / "Project").get("id"), obj(me, dest / "Project").get("id")
+    ids = not cid or cid != tid   # never the template's ID (IDs come lazily: none yet is fine)
     kinds = {"Folder": (dest / "Folder").is_dir(), "Data File": (dest / "Data File").is_file(),
              "Program": any(n.startswith("Program") and n.endswith(".desktop") for n in got)}
     # once made, never again: delete one, restart

@@ -1136,7 +1136,12 @@ static void placed_reply(void *arg, const cv *reply)
         snprintf(m, sizeof m, "Positions not kept: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
         struct folder *f = from_arg(arg);
         if (f) { snprintf(f->error, sizeof f->error, "%s", m); damage_status(f); }
+        return;
     }
+    /* Stored: read the positions again, so an earlier answer (asked when the
+     * new item appeared, before this one was kept) does not have the last word. */
+    struct folder *f = from_arg(arg);
+    if (f) svc_layout(f->path, got_layout, as_arg(f));
 }
 
 /* Arrange (folder menu): a grid that fits the window, in name order;
@@ -3474,10 +3479,35 @@ static void win_frame(ui_surface *s, double now)
                     access(p, F_OK) == 0, model_find(&nw->m, "Data File") >= 0, nw->m.total, ui_container_rename_item(nw->cont) != SIZE_MAX);
             ui_key_event esc = { .sym = XKB_KEY_Escape };
             if (ui_container_rename_item(nw->cont) != SIZE_MAX) ui_surface_send_key(nw->win, &esc);
+            /* three more Data Files, each dropped at its own spot */
+            snprintf(data, sizeof data, "%s\ttemplate\n", td);
+            static const double spots[3][2] = { { 350, 120 }, { 150, 300 }, { 400, 330 } };
+            for (int k = 0; k < 3; k++) win_drop(nw->win, spots[k][0], spots[k][1], MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            step = 10;
+            t0 = now;
+        } else if (step == 10 && t > 3000) {
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            if (ui_container_rename_item(nw->cont) != SIZE_MAX) ui_surface_send_key(nw->win, &esc);
+            static const double spots[4][2] = { { 150, 120 }, { 350, 120 }, { 150, 300 }, { 400, 330 } };
+            char out[1024] = "";
+            for (size_t i = 0; i < nw->m.total; i++) {
+                ui_item it = { 0 };
+                src_item(nw, i, &it);
+                double x, y, lx = 0, ly = 0;
+                layout_pos(nw->lay, i, &x, &y);
+                /* where it was dropped (each in drop order: Data File, (2), (3), (4)) */
+                const char *n = model_name(&nw->m, i);
+                int k = !n ? -1 : !strcmp(n, "Data File") ? 0 : !strcmp(n, "Data File (2)") ? 1 : !strcmp(n, "Data File (3)") ? 2 :
+                        !strcmp(n, "Data File (4)") ? 3 : -1;
+                if (k >= 0) ui_container_to_list(nw->cont, spots[k][0], spots[k][1], &lx, &ly);
+                snprintf(out + strlen(out), sizeof out - strlen(out), " [%s titled '%s' at %.0f,%.0f, dropped at %.0f,%.0f]",
+                         n ? n : "?", it.title ? it.title : "", x, y, lx, ly);
+            }
+            fprintf(stderr, "selftest: four Data Files:%s\n", out);
             /* rename the open folder (as its icon's rename does) */
             snprintf(p, sizeof p, "%s/Folder", f->path);
             svc_rename(p, "Renamed", ignore_reply, NULL);
-            step++;
+            step = 4;
             t0 = now;
         } else if (step == 4 && t > 2000) {
             snprintf(p, sizeof p, "%s/Renamed", f->path);

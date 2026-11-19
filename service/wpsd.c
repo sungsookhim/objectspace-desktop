@@ -1400,6 +1400,7 @@ static void tmpl_attrs(int in, int out, bool top)
             wps_props ps;
             if (wps_props_decode(v, (size_t)vl, &ps) == 0) {
                 wps_props_remove(&ps, "template");
+                wps_props_remove(&ps, "title");   /* the copy is titled by its own name */
                 ps.counter = 0;
                 size_t el;
                 unsigned char *enc = wps_props_encode(&ps, &el);
@@ -1511,7 +1512,8 @@ static void tmpl_done(void *arg)
         wpo_object *o = j->err || j->ld.err ? NULL : wps_object_from_loaded(&j->ld);
         if (!o) reply_error(j->c, j->id, "failed", strerror(j->err ? j->err : j->ld.err));
         else {
-            WPObject_wpSetTitle(o, j->title);
+            /* Titled by its name, like any file (see create_done). */
+            if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);
             struct req fake = { .c = j->c, .id = j->id };
             reply_ok_object(&fake, o, NULL);
         }
@@ -1997,7 +1999,9 @@ static void create_done(void *arg)
         if (!o) {
             reply_error(r->c, r->id, "failed", strerror(r->err ? r->err : r->ld.err));
         } else {
-            if (r->title[0]) WPObject_wpSetTitle(o, r->title);
+            /* A file or folder is titled by its name (renaming its icon renames
+             * it): a title of its own would hide a numbered name, "Folder (2)". */
+            if (r->title[0] && !wpo_is_a(o, WPFileSystemClass)) WPObject_wpSetTitle(o, r->title);
             if (r->command[0] && wpo_is_a(o, WPProgramClass)) WPProgram_wpSetCommand(o, r->command);
             if (r->central && wps_on_central_change) wps_on_central_change(r->folder, r->path + 5, 'c');
             struct req fake = { .c = r->c, .id = r->id };
