@@ -178,6 +178,8 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 - Drags within an icon view move the icons, each keeping its offset from where it was grabbed. Over a million entries icon view still runs at 59–60 fps at 1× and 2× full screen, and the pixel check matches.
 - Found: GNOME chooses a drag's action from the modifiers (Shift move, Ctrl copy, Alt ask); whether the program sees Ctrl+Shift during a drag is being checked by hand (`WPS_DEBUG_DND=1`). Alt (ask) opens a Move / Copy / Create shadow menu at the drop point.
 
+- **Central objects in the GUI** (2026-11-18): shadows made by dragging (and other WPS-only objects) are kept centrally unless the folder is set to keep files (its View page: "Keep objects as files here"). Windows list them after the files, address them as `vobj:<id>`, and move or copy them through the service. Anything dropped on a window's background in icon view lands where it was dropped, each item keeping its offset in the drag: shadows and central objects as soon as they exist, copied and moved files once they have their final names (after any renaming).
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.

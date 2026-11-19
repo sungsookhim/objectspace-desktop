@@ -30,7 +30,12 @@ void svc_rename(const char *target, const char *name, svc_fn fn, void *arg);
 void svc_settings(const char *target, svc_fn fn, void *arg);
 void svc_shadow(const char *target, const char *folder, svc_fn fn, void *arg);
 void svc_select(const char *folder, const char *const *names, size_t n, svc_fn fn, void *arg);
-void svc_job_start(const char *kind, int64_t selection, const char *dest, svc_fn fn, void *arg);   /* "move", "copy" */
+/* "move", "copy"; with names/x/y (n > 0), where the items should land. */
+void svc_job_start(const char *kind, int64_t selection, const char *dest, const char *const *names, const int64_t *x,
+                   const int64_t *y, size_t n, svc_fn fn, void *arg);
+/* Move or copy a central object (vobj:ID) into a folder; the reply's
+ * result is its address there. */
+void svc_vmove(const char *target, const char *folder, bool copy, svc_fn fn, void *arg);
 void svc_job_decide(int64_t job, const char *decision, bool all);                                 /* "skip", "rename" */
 void svc_job_cancel(int64_t job);
 void svc_subscribe_jobs(svc_fn fn, void *arg);

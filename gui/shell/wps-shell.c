@@ -131,6 +131,7 @@ static const char *model_name(struct model *m, size_t i)
 
 static ui_kind kind_of(const char *type, const char *name)
 {
+    if (type && !strcmp(type, "object")) return UI_KIND_OTHER;   /* a central object */
     if (type && !strcmp(type, "folder")) return UI_KIND_FOLDER;
     if (type && !strcmp(type, "link")) return UI_KIND_LINK;
     size_t l = name ? strlen(name) : 0;
@@ -623,7 +624,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->detailed = pg->state == P_DETAILED;
     out->kind = r->kind;
     out->name = r->name;
-    out->title = r->title ? r->title : r->name;
+    out->title = r->title ? r->title : r->name[0] == '\x01' ? "" : r->name;   /* a central object: its title comes with details */
     out->size = r->size;
     out->mtime = r->mtime;
     out->shadow = r->shadow;
@@ -653,6 +654,8 @@ static const char *row_name(struct folder *f, size_t i) { return model_name(&f->
 
 static void target_of(struct folder *f, size_t i, char *out, size_t n)
 {
+    const char *cn = is_tree(f) || i == SIZE_MAX ? NULL : model_name(&f->m, i);
+    if (cn && cn[0] == '\x01') { snprintf(out, n, "%s", cn + 1); return; }   /* a central object: vobj:<id> */
     if (is_tree(f)) {
         snprintf(out, n, "%s", i < f->ntvis ? f->tvis[i]->path : f->path);
         return;
@@ -1180,6 +1183,7 @@ static void src_rename(void *ctx, size_t i, const char *name)
 struct dragging {
     char **paths;
     size_t n;
+    char src_folder[PATH_MAX];
     char *wps, *uris;        /* the data in both formats */
     double *dx, *dy;         /* each icon's offset from the grab point (icon view) */
 };
@@ -1259,8 +1263,10 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
         size_t need = wl + strlen(d->paths[k]) + 2;
         if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->wps = realloc(d->wps, wc); }
         wl += (size_t)sprintf(d->wps + wl, "%s\n", d->paths[k]);
-        uri_append(&d->uris, &ul, &uc, d->paths[k]);
+        if (strncmp(d->paths[k], "vobj:", 5)) uri_append(&d->uris, &ul, &uc, d->paths[k]);   /* central: no file to offer */
     }
+    if (!d->uris) d->uris = strdup("");
+    snprintf(d->src_folder, sizeof d->src_folder, "%s", f->path);
     if (!d->wps || !d->uris) { dragging_free(d); return; }
     /* The drag image: the item's icon, and how many go. */
     int sc = ui_surface_scale(f->win);
@@ -1367,6 +1373,8 @@ struct xfer {
     long folder;
     char kind[8], dest[PATH_MAX], from[PATH_MAX];
     char **names;
+    int64_t *x, *y;          /* where each lands (if place) */
+    bool place;
     size_t n;
 };
 
@@ -1374,6 +1382,8 @@ static void xfer_free(struct xfer *x)
 {
     for (size_t i = 0; i < x->n; i++) free(x->names[i]);
     free(x->names);
+    free(x->x);
+    free(x->y);
     free(x);
 }
 
@@ -1409,18 +1419,9 @@ static void got_sel(void *arg, const cv *reply)
     struct xfer *x = arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res || res->k != CV_INT) { set_status(x->folder, "Cannot select the dragged objects"); xfer_free(x); return; }
-    svc_job_start(x->kind, res->i, x->dest, got_job, x);
+    svc_job_start(x->kind, res->i, x->dest, (const char *const *)x->names, x->x, x->y, x->place ? x->n : 0, got_job, x);
 }
 
-static void shadowed(void *arg, const cv *reply)
-{
-    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
-    if (!(ok && ok->k == CV_BOOL && ok->b)) {
-        char m[300];
-        snprintf(m, sizeof m, "Cannot make a shadow: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
-        set_status((long)(intptr_t)arg, m);
-    }
-}
 
 /* "file:///a%20b" -> "/a b"; NULL if not a local file. */
 static char *uri_path(const char *u)
@@ -1450,6 +1451,10 @@ static bool reposition(struct folder *f, double x, double y)
 {
     struct dragging *d = cur_drag;
     for (size_t i = 0; i < d->n; i++) {
+        if (!strncmp(d->paths[i], "vobj:", 5)) {
+            if (strcmp(d->src_folder, f->path)) return false;
+            continue;
+        }
         const char *sl = strrchr(d->paths[i], '/');
         size_t pl = sl ? (size_t)(sl - d->paths[i]) : 0;
         if (pl != strlen(f->path) || strncmp(d->paths[i], f->path, pl)) return false;
@@ -1461,7 +1466,10 @@ static bool reposition(struct folder *f, double x, double y)
         double nx = lx + d->dx[i], ny = ly + d->dy[i];
         px[i] = nx < 0 ? 0 : (int64_t)nx;
         py[i] = ny < 0 ? 0 : (int64_t)ny;
-        layout_place(f->lay, strrchr(d->paths[i], '/') + 1, (int)px[i], (int)py[i]);
+        char nm[NAME_MAX + 8];
+        if (!strncmp(d->paths[i], "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", d->paths[i]);
+        else snprintf(nm, sizeof nm, "%s", strrchr(d->paths[i], '/') + 1);
+        layout_place(f->lay, nm, (int)px[i], (int)py[i]);
     }
     svc_place(f->path, (const char *const *)d->paths, px, py, d->n, placed_reply, as_arg(f));
     free(px);
@@ -1471,16 +1479,21 @@ static bool reposition(struct folder *f, double x, double y)
     return true;
 }
 
-static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how);
+/* Where dropped items land: on the window's own folder's background in icon
+ * view, at the drop point (in list coordinates), each keeping its offset in
+ * the drag; elsewhere (onto a folder icon, other views) wherever is free. */
+struct drop_at { bool place; double lx, ly; };
+
+static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how, struct drop_at at);
 
 /* The compositor said "ask" (Alt in GNOME): a menu at the drop point. */
-struct ask_ctx { long folder; char dest[PATH_MAX]; char *mime, *data; };
+struct ask_ctx { long folder; char dest[PATH_MAX]; char *mime, *data; struct drop_at at; };
 
 static void ask_chosen(void *arg, int64_t id)
 {
     struct ask_ctx *a = arg;
     struct folder *f = folder_by_id(a->folder);
-    if (f && id >= DROP_MOVE && id <= DROP_SHADOW) do_drop(f, a->dest, a->mime, a->data, (int)id);
+    if (f && id >= DROP_MOVE && id <= DROP_SHADOW) do_drop(f, a->dest, a->mime, a->data, (int)id, a->at);
     free(a->mime);
     free(a->data);
     free(a);
@@ -1514,6 +1527,8 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
     int w = drop_how(action, start_action, mods);
+    struct drop_at at = { item == SIZE_MAX && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON, 0, 0 };
+    if (at.place) ui_container_to_list(f->cont, x, y, &at.lx, &at.ly);
     int how = w == 2 ? DROP_SHADOW : w == 1 ? DROP_COPY : DROP_MOVE;
     if (how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
         reposition(f, x, y))
@@ -1524,6 +1539,7 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
         snprintf(a->dest, sizeof a->dest, "%s", dest);
         a->mime = strdup(mime);
         a->data = strdup(data);
+        a->at = at;
         ui_menu_item items[] = {
             { DROP_MOVE, "Move here", true, false, NULL, 0 },
             { DROP_COPY, "Copy here", true, false, NULL, 0 },
@@ -1536,11 +1552,37 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     }
     if (getenv("WPS_DEBUG_DND"))
         fprintf(stderr, "dnd: dropping as %s\n", how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
-    do_drop(f, dest, mime, data, how);
+    do_drop(f, dest, mime, data, how, at);
 }
 
-static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how)
+/* A shadow or central object made or moved by a drop: place it where it
+ * was dropped once the service gives its address. */
+struct land { long folder; char dest[PATH_MAX]; int64_t x, y; bool place; };
+
+static void landed(void *arg, const cv *reply)
 {
+    struct land *l = arg;
+    struct folder *f = folder_by_id(l->folder);
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    const char *addr = reply ? cv_text(reply, "result") : NULL;
+    if (!(ok && ok->k == CV_BOOL && ok->b) || !addr) {
+        char m[300];
+        snprintf(m, sizeof m, "Not done: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        set_status(l->folder, m);
+    } else if (l->place && f) {
+        const char *t[1] = { addr };
+        svc_place(l->dest, t, &l->x, &l->y, 1, placed_reply, as_arg(f));
+        char nm[NAME_MAX + 8];
+        if (!strncmp(addr, "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", addr);
+        else snprintf(nm, sizeof nm, "%s", strrchr(addr, '/') ? strrchr(addr, '/') + 1 : addr);
+        layout_place(f->lay, nm, (int)l->x, (int)l->y);   /* before the listing catches up */
+    }
+    free(l);
+}
+
+static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how, struct drop_at at)
+{
+    size_t k = 0;   /* the item's place in the drag */
     bool shadow = how == DROP_SHADOW;
     const char *kind = how == DROP_COPY ? "copy" : "move";
     /* Paths, grouped by the folder they come from (a job per folder). */
@@ -1552,7 +1594,25 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
         char *p = !strcmp(mime, MIME_URIS) ? uri_path(line) : strdup(line);
         if (!p) continue;
         total++;
-        if (shadow) { svc_shadow(p, dest, shadowed, as_arg(f)); free(p); continue; }
+        /* Where this item lands: its offset in our own drag, or a small
+         * step per item for drags from other programs. */
+        double ox = 16.0 * (double)k, oy = 16.0 * (double)k;
+        if (cur_drag && k < cur_drag->n && !strcmp(cur_drag->paths[k], p)) { ox = cur_drag->dx[k]; oy = cur_drag->dy[k]; }
+        int64_t px = at.lx + ox < 0 ? 0 : (int64_t)(at.lx + ox), py = at.ly + oy < 0 ? 0 : (int64_t)(at.ly + oy);
+        k++;
+        if (shadow || !strncmp(p, "vobj:", 5)) {
+            struct land *l = calloc(1, sizeof *l);
+            l->folder = f->id;
+            snprintf(l->dest, sizeof l->dest, "%s", dest);
+            l->x = px;
+            l->y = py;
+            l->place = at.place;
+            if (shadow) svc_shadow(p, dest, landed, l);
+            else if (!strcmp(kind, "move") && cur_drag && !strcmp(cur_drag->src_folder, dest)) free(l);   /* already there */
+            else svc_vmove(p, dest, !strcmp(kind, "copy"), landed, l);
+            free(p);
+            continue;
+        }
         char *sl = strrchr(p, '/');
         if (!sl || under(dest, p)) { free(p); continue; }   /* never into itself */
         *sl = 0;
@@ -1570,6 +1630,11 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
         }
         if (g) {
             g->names = realloc(g->names, (g->n + 1) * sizeof *g->names);
+            g->x = realloc(g->x, (g->n + 1) * sizeof *g->x);
+            g->y = realloc(g->y, (g->n + 1) * sizeof *g->y);
+            g->x[g->n] = px;
+            g->y[g->n] = py;
+            g->place = at.place;
             g->names[g->n++] = strdup(name);
         }
         free(p);
@@ -2166,7 +2231,8 @@ static void win_frame(ui_surface *s, double now)
         for (size_t i = 0; i < f->m.total; i++) {
             const char *n = model_name(&f->m, i);
             if (!n) continue;
-            if (!strcmp(n, "T.wpobj")) si = i;
+            struct page *pg = f->m.pages[i / PAGE];
+            if (pg && pg->rows[i % PAGE].shadow) si = i;
             if (!strcmp(n, "T")) ti = i;
             if (!strcmp(n, "link-to-T")) li = i;
         }
@@ -2239,8 +2305,53 @@ static void win_frame(ui_surface *s, double now)
             step++;
         } else if (step == 1 && now - t0 > 1500) {
             bool made = false;
-            for (size_t i = 0; i < f->m.total; i++) made |= model_name(&f->m, i) && !strcmp(model_name(&f->m, i), "T.wpobj");
+            for (size_t i = 0; i < f->m.total; i++) {
+                struct page *pg = f->m.pages[i / PAGE];
+                made |= pg && pg->rows[i % PAGE].shadow;
+            }
             fprintf(stderr, "selftest: the logged drag made a shadow: %d\n", made);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "droppos")) {
+        /* Drops onto the background land where they were dropped. */
+        static double t0;
+        static int step;
+        static double sx, sy, cx, cy;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char data[PATH_MAX];
+        ui_rect cl = ui_frame_client(s);
+        if (step == 0) {
+            sx = cl.x + 260; sy = cl.y + 200;
+            snprintf(data, sizeof data, "%s/T\n", f->path);
+            win_drop(s, sx, sy, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);   /* a shadow */
+            cx = cl.x + 420; cy = cl.y + 120;
+            snprintf(data, sizeof data, "%s/f.txt\n", f->path);
+            win_drop(s, cx, cy, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);                 /* a copy (renamed) */
+            step++;
+        } else if (step == 1 && last_dialog) {
+            ui_key_event r = { .sym = XKB_KEY_r, .utf8 = "r" };
+            ui_surface_send_key(ui_dialog_surface(last_dialog), &r);
+            last_dialog = NULL;
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 2000) {
+            double lsx, lsy, lcx, lcy;
+            ui_container_to_list(f->cont, sx, sy, &lsx, &lsy);
+            ui_container_to_list(f->cont, cx, cy, &lcx, &lcy);
+            for (size_t i = 0; i < f->m.total; i++) {
+                const char *n = model_name(&f->m, i);
+                struct page *pg = f->m.pages[i / PAGE];
+                double x, y;
+                layout_pos(f->lay, i, &x, &y);
+                if (pg && pg->rows[i % PAGE].shadow)
+                    fprintf(stderr, "selftest: shadow at %.0f,%.0f (dropped at %.0f,%.0f)\n", x, y, lsx, lsy);
+                if (n && !strcmp(n, "f (2).txt"))
+                    fprintf(stderr, "selftest: copy 'f (2).txt' at %.0f,%.0f (dropped at %.0f,%.0f)\n", x, y, lcx, lcy);
+            }
             ui_app_quit(app);
             step++;
         }

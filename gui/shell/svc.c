@@ -321,12 +321,33 @@ void svc_select(const char *folder, const char *const *names, size_t n, svc_fn f
     send_req(o, id, fn, arg);
 }
 
-void svc_job_start(const char *kind, int64_t selection, const char *dest, svc_fn fn, void *arg)
+void svc_job_start(const char *kind, int64_t selection, const char *dest, const char *const *names, const int64_t *x,
+                   const int64_t *y, size_t n, svc_fn fn, void *arg)
 {
     int64_t id;
-    struct out *o = begin(kind, 2, &id);
+    struct out *o = begin(kind, n ? 3 : 2, &id);
     cb_text(&o->b, "selection"); cb_int(&o->b, selection);
     cb_text(&o->b, "dest"); cb_text(&o->b, dest);
+    if (n) {
+        cb_text(&o->b, "positions");
+        cb_array(&o->b, n);
+        for (size_t i = 0; i < n; i++) {
+            cb_map(&o->b, 3);
+            cb_text(&o->b, "name"); cb_text(&o->b, names[i]);
+            cb_text(&o->b, "x"); cb_int(&o->b, x[i]);
+            cb_text(&o->b, "y"); cb_int(&o->b, y[i]);
+        }
+    }
+    send_req(o, id, fn, arg);
+}
+
+void svc_vmove(const char *target, const char *folder, bool copy, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("vmove", 3, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    cb_text(&o->b, "copy"); cb_bool(&o->b, copy);
     send_req(o, id, fn, arg);
 }
 

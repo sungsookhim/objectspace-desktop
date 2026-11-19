@@ -54,6 +54,12 @@ def link_of(path):
 
 # ------------------------------------------------------------------ shadows
 
+def keep_files(svc, folder):
+    """Shadow files are for folders set to keep objects as files (shadows are
+    central by default, decided 2026-11-18); these scenarios test the files."""
+    svc.call(folder, "wpSetLocalObjects", "true")
+    svc.ctl("flush")
+
 @scenario(3, "A shadow follows its target to another folder, and stays a shadow when it is moved itself")
 def s3():
     me = Service("me").start()
@@ -62,6 +68,7 @@ def s3():
         (d / sub).mkdir()
     (d / "docs" / "report.txt").write_text("quarterly numbers\n")
     tracked(me, d / "docs" / "report.txt", "Report")
+    keep_files(me, d / "desk")
     r = me.ctl("shadow", d / "docs" / "report.txt", d / "desk")
     link = Path(r.get("result", ""))
     os.rename(d / "docs" / "report.txt", d / "archive" / "report.txt")
@@ -91,6 +98,7 @@ def s4s():
     (d / "b").mkdir()
     (d / "a" / "f.txt").write_text("x")
     tracked(me, d / "a" / "f.txt", "F")
+    keep_files(me, d)
     link = Path(me.ctl("shadow", d / "a" / "f.txt", d).get("result", ""))
     me.stop()
     os.rename(d / "a" / "f.txt", d / "b" / "f.txt")
@@ -106,6 +114,7 @@ def s7s():
     d = fresh("ext4", "s7s")
     (d / "t.txt").write_text("x")
     tracked(me, d / "t.txt", "T")
+    keep_files(me, d)
     link = Path(me.ctl("shadow", d / "t.txt", d).get("result", ""))
     os.symlink(d / "t.txt", d / "my-own-link")
     obj(me, d / "my-own-link")
@@ -123,6 +132,7 @@ def s12():
     d, t = fresh("ext4", "s12"), fresh("btrfs", "s12")
     (t / "data.bin").write_text("on btrfs\n")
     tracked(me, t / "data.bin", "Data")
+    keep_files(me, d)
     link = Path(me.ctl("shadow", t / "data.bin", d).get("result", ""))
     me.stop()
     run(["sudo", "umount", str(MNT["btrfs"])], check=True)
@@ -146,6 +156,7 @@ def s35():
     run(["mkdir", "-m", "2775", f"{d}/team", f"{d}/docs", f"{d}/done"], user=60001, check=True)
     write_as(60001, d / "docs" / "spec.txt", "spec\n", mode="0664")
     tracked(a, d / "docs" / "spec.txt", "Spec")
+    keep_files(a, d / "team")   # a team folder shares its shadows as files
     link = Path(a.ctl("shadow", d / "docs" / "spec.txt", d / "team").get("result", ""))
     a.ctl("flush")
     a.stop()                                   # A logs out
@@ -170,6 +181,7 @@ def st1():
     trash.mkdir(parents=True, exist_ok=True)
     (d / "old.txt").write_text("x")
     oid = tracked(me, d / "old.txt", "Old notes")
+    keep_files(me, d)
     link = Path(me.ctl("shadow", d / "old.txt", d).get("result", ""))
     os.rename(d / "old.txt", trash / "old.txt")
     in_trash = wait_for(lambda: link_of(link) == str(trash / "old.txt"))
@@ -192,6 +204,7 @@ def st2():
     trash.mkdir(parents=True, exist_ok=True)
     (d / "junk.txt").write_text("x")
     tracked(me, d / "junk.txt", "Junk")
+    keep_files(me, d)
     link = Path(me.ctl("shadow", d / "junk.txt", d).get("result", ""))
     os.rename(d / "junk.txt", trash / "junk.txt")
     wait_for(lambda: link_of(link) == str(trash / "junk.txt"))
@@ -265,6 +278,7 @@ def sa3():
     p1 = Path(me.ctl("create", d, "WPProgram", "Terminal", "ptyxis").get("result", {}).get("path", ""))
     p2 = Path(me.ctl("create", d, "WPProgram", "Terminal", "xterm").get("result", {}).get("path", ""))
     me.ctl("flush")
+    keep_files(me, d / "menu")
     link = Path(me.ctl("shadow", p1, d / "menu").get("result", ""))
     sh = obj(me, link)
     me.stop()
