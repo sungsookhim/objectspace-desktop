@@ -145,7 +145,18 @@ static void detail_work(void *arg)
             if (e->shadow && e->target_type == DT_REG) e->locked = wps_lock_file_present(e->target_path);
             continue;
         }
-        if (e->type == DT_REG || e->type == DT_LNK) e->locked = wps_lock_file_present(p);
+        if (e->type == DT_LNK) {
+            /* A plain link shows what it points to: its kind, and where. */
+            struct stat ts;
+            e->target_type = DT_UNKNOWN;
+            if (stat(p, &ts) == 0 && realpath(p, e->target_path)) {
+                e->target_type = S_ISDIR(ts.st_mode) ? DT_DIR : DT_REG;
+                if (S_ISREG(ts.st_mode)) e->locked = wps_lock_file_present(e->target_path);
+            } else {
+                e->target_path[0] = 0;   /* dangling */
+            }
+        }
+        if (e->type == DT_REG) e->locked = wps_lock_file_present(p);
         size_t nl = strlen(e->name);
         char tid[WPS_ID_LEN + 1];
         if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".wpobj") &&

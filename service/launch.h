@@ -29,9 +29,13 @@ void wps_launch_init(wpo_loop *loop, void (*changed)(const char *path, bool in_u
 void wps_launch_shutdown(void);
 
 /* Loop thread: start argv (searched on PATH) for the object at `path`
- * (the file opened, or the program object), and track it. The pid, or -1
- * with errno set. */
-pid_t wps_launch(char **argv, const char *path);
+ * (the file opened, or the program object), in folder `cwd` if given, and
+ * track it. The pid, or -1 with errno set. */
+pid_t wps_launch(char **argv, const char *path, const char *cwd);
+
+/* Whether `path` is a program to run: executable by this user, and a
+ * binary (ELF) or a script (#!). */
+bool wps_is_program_file(const char *path);
 
 /* Loop thread: whether programs WPS started have `path` open. */
 bool wps_launch_in_use(const char *path);

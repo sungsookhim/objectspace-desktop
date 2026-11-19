@@ -1137,9 +1137,10 @@ static void list_reply(void *arg, const wps_page *pg)
                     char fp[PATH_MAX + NAME_MAX + 2];
                     snprintf(fp, sizeof fp, "%s/%s", strcmp(r->folder, "/") ? r->folder : "", e->name);
                     iu = e->locked || (e->name[0] != '\x01' && wps_launch_in_use(fp)) ||
-                         (e->shadow && e->target_path[0] && wps_launch_in_use(e->target_path));
+                         ((e->shadow || e->type == DT_LNK) && e->target_path[0] && wps_launch_in_use(e->target_path));
                 }
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : 6) + iu : 2);
+                bool link = e->detailed && !e->shadow && e->type == DT_LNK;
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -1150,6 +1151,11 @@ static void list_reply(void *arg, const wps_page *pg)
                     if (e->shadow) {
                         cb_text(&b, "shadow"); cb_bool(&b, true);
                         cb_text(&b, "target"); cb_text(&b, e->target_type == DT_DIR ? "folder" : "file");
+                        cb_text(&b, "target_path"); cb_text(&b, e->target_path);
+                    }
+                    if (link) {   /* "folder", "file", or "missing" for a dangling link */
+                        cb_text(&b, "target");
+                        cb_text(&b, e->target_type == DT_DIR ? "folder" : e->target_type == DT_REG ? "file" : "missing");
                         cb_text(&b, "target_path"); cb_text(&b, e->target_path);
                     }
                     if (iu) { cb_text(&b, "in_use"); cb_bool(&b, true); }
@@ -1179,11 +1185,29 @@ static void reply_folder(struct req *r, const char *path)
     cb_free(&b);
 }
 
+/* A program another user (not root) owns asks first: nobody can plant
+ * something that runs when another user opens it. */
+static void ask_first(struct req *r, const char *cmd, uid_t owner)
+{
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 3);
+    cb_text(&b, "id"); cb_int(&b, r->id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    cb_map(&b, 3);
+    cb_text(&b, "needs_confirmation"); cb_bool(&b, true);
+    cb_text(&b, "command"); cb_text(&b, cmd);
+    cb_text(&b, "owner_uid"); cb_int(&b, (int64_t)owner);
+    send_frame(r->c, &b);
+    cb_free(&b);
+}
+
 static void do_open(struct req *r, wpo_object *o)
 {
     const cv *cf = cv_get(&r->msg, "confirm");
     bool confirmed = cf && cf->k == CV_BOOL && cf->b;
-    char buf[8192], *argv[64];
+    char buf[8192], *argv[64], cwd[PATH_MAX] = "";
     const char *what;
     const char *tracked;   /* what shows as in use while it runs */
     const char *path = r->tgt.path;
@@ -1202,49 +1226,38 @@ static void do_open(struct req *r, wpo_object *o)
         st = &r->shadow_target.st;
     }
     if (wpo_is_a(o, WPFolderClass)) { reply_folder(r, path); wpo_unref(orig); return; }
-    /* A plain file-system link opens what it points to. */
+    /* A plain file-system link opens what it points to, as that would. */
     struct stat ts;
     char real[PATH_MAX];
+    bool data = wpo_is_a(o, WPDataFileClass);
     if (S_ISLNK(st->st_mode) && stat(path, &ts) == 0 && realpath(path, real)) {
         if (S_ISDIR(ts.st_mode)) { reply_folder(r, real); wpo_unref(orig); return; }
-        tracked = real;
-        if (wps_handler_argv(real, buf, sizeof buf, argv, 64) > 0) { what = argv[0]; goto launch; }
-        argv[0] = "xdg-open";
-        argv[1] = real;
-        argv[2] = NULL;
-        what = "xdg-open";
-        goto launch;
+        path = real;
+        st = &ts;
+        data = true;
     }
-    if (wpo_is_a(o, WPProgramClass)) {
+    if (!data && wpo_is_a(o, WPProgramClass)) {
         const char *cmd = WPProgram_data(o)->command;
-        if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); return; }
-        /* A program another user (not root) owns asks first: nobody can
-         * plant something that runs when another user opens it. */
-        uid_t owner = st->st_uid;
-        if (owner != geteuid() && owner != 0 && !confirmed) {
-            cbuf b;
-            cb_init(&b);
-            cb_map(&b, 3);
-            cb_text(&b, "id"); cb_int(&b, r->id);
-            cb_text(&b, "ok"); cb_bool(&b, true);
-            cb_text(&b, "result");
-            cb_map(&b, 3);
-            cb_text(&b, "needs_confirmation"); cb_bool(&b, true);
-            cb_text(&b, "command"); cb_text(&b, cmd);
-            cb_text(&b, "owner_uid"); cb_int(&b, (int64_t)owner);
-            send_frame(r->c, &b);
-            cb_free(&b);
-            wpo_unref(orig);
-            return;
-        }
+        if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); wpo_unref(orig); return; }
+        if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, cmd, st->st_uid); wpo_unref(orig); return; }
         if (wps_split_exec(cmd, NULL, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
         what = cmd;
         tracked = path;
-    } else if (wpo_is_a(o, WPDataFileClass)) {
-        /* Its type's default application, started directly so that its
-         * process stands for the open file (xdg-open hands over and exits). */
+    } else if (data) {
         tracked = path;
-        if (wps_handler_argv(path, buf, sizeof buf, argv, 64) > 0) {
+        if (S_ISREG(st->st_mode) && wps_is_program_file(path)) {
+            /* An executable runs (as a program file does in OS/2), in its
+             * own folder; one another user owns asks first. */
+            if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, path, st->st_uid); wpo_unref(orig); return; }
+            argv[0] = (char *)path;
+            argv[1] = NULL;
+            what = path;
+            snprintf(cwd, sizeof cwd, "%s", path);
+            *strrchr(cwd, '/') = 0;
+            if (!cwd[0]) strcpy(cwd, "/");
+        } else if (wps_handler_argv(path, buf, sizeof buf, argv, 64) > 0) {
+            /* Its type's default application, started directly so that its
+             * process stands for the open file (xdg-open hands over and exits). */
             what = argv[0];
         } else {
             argv[0] = "xdg-open";
@@ -1257,8 +1270,7 @@ static void do_open(struct req *r, wpo_object *o)
         wpo_unref(orig);
         return;
     }
-launch:;
-    pid_t pid = wps_launch(argv, tracked);   /* as this user, in this user's session */
+    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     cbuf b;
     cb_init(&b);

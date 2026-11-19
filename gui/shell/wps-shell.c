@@ -27,7 +27,7 @@
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use; char *target; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link; char *target; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -192,6 +192,7 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
         dst->name = strdup(nm ? nm : "?");
         dst->title = ti && *ti ? strdup(ti) : NULL;
         dst->kind = kind_of(ty, nm);
+        dst->link = ty && !strcmp(ty, "link");
         if (cv_get(it, "mtime")) {
             details = true;
             cv_int(it, "size", &dst->size);
@@ -200,8 +201,9 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             dst->shadow = sh && sh->k == CV_BOOL && sh->b;
             dst->in_use = iu && iu->k == CV_BOOL && iu->b;   /* a program has it open */
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
-            if (dst->shadow) {
-                dst->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_of("file", tp ? tp : nm);
+            if (dst->shadow || (dst->link && tt && strcmp(tt, "missing"))) {
+                /* drawn as what it points to */
+                dst->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_of("file", tp && *tp ? tp : nm);
                 dst->target = tp && *tp ? strdup(tp) : NULL;
             }
         }
@@ -367,7 +369,7 @@ static void on_in_use_event(const cv *ev)
             for (size_t k = 0; k < PAGE; k++) {
                 struct row *r = &pg->rows[k];
                 if (!r->name || r->in_use == v->b) continue;
-                if ((here && !strcmp(r->name, slash + 1)) || (r->shadow && r->target && !strcmp(r->target, path))) {
+                if ((here && !strcmp(r->name, slash + 1)) || ((r->shadow || r->link) && r->target && !strcmp(r->target, path))) {
                     r->in_use = v->b;
                     changed = true;
                 }
@@ -663,10 +665,11 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->mtime = r->mtime;
     out->shadow = r->shadow;
     out->in_use = r->in_use;
+    out->link = r->link;
     if (r->kind == UI_KIND_FOLDER) {
         /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];
-        if (r->shadow) snprintf(p, sizeof p, "%s", r->target ? r->target : "");
+        if (r->shadow || r->link) snprintf(p, sizeof p, "%s", r->target ? r->target : "");
         else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
         for (struct folder *o = folders; o && !out->in_use; o = o->next)
             out->in_use = !o->closing && !strcmp(o->path, p);
@@ -762,7 +765,7 @@ static struct row *row_at(struct folder *f, size_t i)
 static void open_item(struct folder *f, size_t i, ui_view view)
 {
     struct row *rw = row_at(f, i);
-    if (rw && (rw->shadow || rw->kind == UI_KIND_LINK)) {
+    if (rw && (rw->shadow || rw->link)) {
         /* A shadow opens its original, a link what it points to; the
          * service finds them (a shadow by ID) and says if it is a folder. */
         char t[PATH_MAX];
@@ -2307,6 +2310,11 @@ static void win_frame(ui_surface *s, double now)
             ui_item it;
             src_item(f, ti, &it);
             fprintf(stderr, "selftest: T window closed: in use %d\n", it.in_use);
+            if (li != SIZE_MAX) {
+                ui_item lk;
+                src_item(f, li, &lk);
+                fprintf(stderr, "selftest: link-to-T drawn as: a folder %d, link mark %d\n", lk.kind == UI_KIND_FOLDER, lk.link);
+            }
             if (li != SIZE_MAX) src_activate(f, li);
             step++;
             t0 = now;

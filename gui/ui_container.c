@@ -452,10 +452,6 @@ static void draw_icon_paths(cairo_t *cr, ui_kind k, double x, double y, double s
         cairo_stroke(cr);
         for (int l = 0; l < 4; l++) { cairo_move_to(cr, 10, 14 + l * 4); cairo_line_to(cr, 23, 14 + l * 4); }
         cairo_set_source_rgb(cr, 0.6, 0.6, 0.6); cairo_stroke(cr);
-        if (k == UI_KIND_LINK) {
-            cairo_move_to(cr, 3, 29); cairo_line_to(cr, 3, 21); cairo_line_to(cr, 11, 21); cairo_close_path(cr);
-            cairo_set_source_rgb(cr, 0.1, 0.5, 0.1); cairo_fill(cr);
-        }
         break;
     }
     cairo_restore(cr);
@@ -533,11 +529,24 @@ static void columns(ui_container *c, double *x)
 
 /* An item's icon: in use, it has the hatching behind it, and a folder is
  * drawn open (OS/2). */
+/* A file-system link's mark: a green corner, bottom left. */
+static void link_mark(cairo_t *cr, double x, double y, double sz)
+{
+    double u = sz / 32.0;
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_scale(cr, u, u);
+    cairo_move_to(cr, 1, 31); cairo_line_to(cr, 1, 21); cairo_line_to(cr, 11, 31); cairo_close_path(cr);
+    cairo_set_source_rgb(cr, 0.1, 0.5, 0.1); cairo_fill(cr);
+    cairo_restore(cr);
+}
+
 static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double sz)
 {
     if (it->in_use) in_use(cr, x, y, sz);
     if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
-    else draw_icon(cr, it->kind, x, y, sz);
+    else draw_icon(cr, it->kind == UI_KIND_LINK ? UI_KIND_FILE : it->kind, x, y, sz);
+    if (it->link || it->kind == UI_KIND_LINK) link_mark(cr, x, y, sz);
 }
 
 static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, double *x)

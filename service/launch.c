@@ -148,7 +148,7 @@ void wps_launch_shutdown(void)
     on_changed = NULL;
 }
 
-static pid_t spawn(char **argv)
+static pid_t spawn(char **argv, const char *cwd)
 {
     posix_spawnattr_t at;
     posix_spawn_file_actions_t fa;
@@ -163,6 +163,7 @@ static pid_t spawn(char **argv)
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    if (cwd) posix_spawn_file_actions_addchdir_np(&fa, cwd);
     extern char **environ;
     pid_t pid = -1;
     int e = posix_spawnp(&pid, argv[0], &fa, &at, argv, environ);
@@ -172,9 +173,9 @@ static pid_t spawn(char **argv)
     return pid;
 }
 
-pid_t wps_launch(char **argv, const char *path)
+pid_t wps_launch(char **argv, const char *path, const char *cwd)
 {
-    pid_t pid = spawn(argv);
+    pid_t pid = spawn(argv, cwd);
     if (pid < 0 || !path || !*path) return pid;
     struct use *u = NULL;
     for (struct use *x = uses; x && !u; x = x->next)
@@ -371,15 +372,41 @@ static bool default_app(const char *mime, char *desktop, size_t n)
     return false;
 }
 
+/* A file whose name says nothing: text if its start has no NUL bytes
+ * (as GNOME decides, roughly). */
+static bool looks_like_text(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY | O_NONBLOCK);
+    if (fd < 0) return false;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) { close(fd); return false; }
+    char b[4096];
+    ssize_t n = read(fd, b, sizeof b);
+    close(fd);
+    return n >= 0 && !memchr(b, 0, (size_t)n);
+}
+
 int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max)
 {
     const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
     const char *mime = wps_mime_for_name(base);
+    if (!mime && looks_like_text(file)) mime = "text/plain";
     char desktop[PATH_MAX], exec[4096], v[64];
     if (!mime || !default_app(mime, desktop, sizeof desktop)) return 0;
     if (!ini_get(desktop, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
     if (ini_get(desktop, "[Desktop Entry]", "Terminal", v, sizeof v) && !strcmp(v, "true")) return 0;
     return wps_split_exec(exec, file, buf, n, argv, max);
+}
+
+bool wps_is_program_file(const char *path)
+{
+    if (access(path, X_OK) != 0) return false;
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
+    if (fd < 0) return false;
+    char m[4] = { 0 };
+    ssize_t n = read(fd, m, sizeof m);
+    close(fd);
+    return (n == 4 && !memcmp(m, "\x7f" "ELF", 4)) || (n >= 2 && m[0] == '#' && m[1] == '!');
 }
 
 /* ------------------------------------------------------------ lock files */
