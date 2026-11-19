@@ -54,7 +54,8 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
   - **Closing one folder window crashed the shell, taking every window with it.** The close button freed the window inside its own click handler, which then used it. Closing now happens on the next loop turn; menus opened from a window are closed before it goes.
   - Pop-up menus on items and the background never appeared. They open on button release, after asking the service for their items, and GNOME refuses an input grab once no button is held, dismissing the menu at once. These menus now open without a grab (the shell closes its own menus on clicks elsewhere and when the window loses focus); the system menu, opened on press, still grabs.
   - New files did not appear until the folder was opened again. Windows now subscribe to their folder's events and re-read it in the background after a change, swapping the new contents in with details for the rows on screen, keeping scroll position, selection and cursor. A burst of changes costs at most two re-reads. (Incremental updates for very large folders: G2.)
-  - Self-tests: `WPS_SHELL_SELFTEST=menus`, `=live` (files created and deleted appear and disappear) and `=close` (closing one of two windows leaves the other and the process running).
+  - Pop-up menus on items and the background still did not appear after that: the toolkit could open a menu without a grab, but the shell still passed the click's serial. Fixed; `WPS_SHELL_SELFTEST=ctxmenu` sends a right click with a real-looking serial and checks the menu is still open 0.7 s later (the old code fails it).
+  - Self-tests: `WPS_SHELL_SELFTEST=menus`, `=ctxmenu`, `=live` (files created and deleted appear and disappear) and `=close` (closing one of two windows leaves the other and the process running).
 
 ## Not yet (later milestones)
 

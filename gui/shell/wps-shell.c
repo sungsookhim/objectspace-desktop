@@ -442,7 +442,10 @@ static void got_menu(void *arg, const cv *reply)
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
-    ui_menu_popup(f->win, items, n, m->x, m->y, m->serial, menu_chosen, m);
+    /* No grab (serial 0): the button was released before the service
+     * answered, and GNOME refuses a grab then, dismissing the menu at once.
+     * The shell closes its own menus on clicks elsewhere. */
+    ui_menu_popup(f->win, items, n, m->x, m->y, 0, menu_chosen, m);
     free_converted(items, n);
 }
 
@@ -649,6 +652,24 @@ static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "ctxmenu")) {
+        /* A right click on the background, as GNOME delivers it (with a
+         * real-looking serial); the menu must still be open afterwards. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        ui_rect c = ui_frame_client(s);
+        ui_pointer_event e = { .x = c.x + c.w - 60, .y = c.y + c.h - 60, .button = UI_BTN2, .clicks = 1, .serial = 4242 };
+        if (step == 0) { e.kind = UI_PRESS; win_pointer(s, &e); e.kind = UI_RELEASE; win_pointer(s, &e); step++; }
+        else if (step == 1 && now - t0 > 700) { fprintf(stderr, "selftest: right click on background: menu open %d\n", ui_menu_is_open()); step++; }
+        else if (step == 2) {
+            /* and on an item */
+            e.x = c.x + 40; e.y = c.y + 30;
+            e.kind = UI_PRESS; win_pointer(s, &e); e.kind = UI_RELEASE; win_pointer(s, &e); step++; t0 = now;
+        }
+        else if (step == 3 && now - t0 > 700) { fprintf(stderr, "selftest: right click on an item: menu open %d\n", ui_menu_is_open()); ui_app_quit(app); step++; }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
