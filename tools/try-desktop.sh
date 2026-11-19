@@ -15,6 +15,11 @@ for f in "$REPO/build/wps-shell" "$REPO/build/wpsd"; do
     [ -x "$f" ] || { echo "$f is missing: run 'make && make gui' first" >&2; exit 1; }
 done
 SIZE=${2:-1280x800}
+case "$SIZE" in
+    *[!0-9x]*|x*|*x|*x*x*|"") echo "size must look like 1600x900, not '$SIZE'" >&2; exit 2 ;;
+    *x*) ;;
+    *) echo "size must look like 1600x900, not '$SIZE'" >&2; exit 2 ;;
+esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/wps-try-XXXX")
 PARENT_RT=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 PARENT_WL="$PARENT_RT/${WAYLAND_DISPLAY:-wayland-0}"

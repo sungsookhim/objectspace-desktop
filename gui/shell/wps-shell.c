@@ -2959,7 +2959,12 @@ int main(int argc, char **argv)
         if (tries == 0) fprintf(stderr, "wps-shell: waiting for wpsd...\n");
         usleep(100000);
     }
-    if (!up) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
+    if (!up) {
+        fprintf(stderr, "wps-shell: %s\n", err);
+        fprintf(stderr, "wps-shell: start wpsd first (build/wpsd &), with the same WPS_RUNTIME_DIR%s%s\n",
+                getenv("WPS_RUNTIME_DIR") ? ": " : " (unset here)", getenv("WPS_RUNTIME_DIR") ? getenv("WPS_RUNTIME_DIR") : "");
+        return 1;
+    }
     svc_on_event(on_event, NULL);
     svc_subscribe_jobs(ignore_reply, NULL);
     if (desk) {
