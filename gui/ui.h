@@ -329,6 +329,7 @@ typedef struct {
     int64_t size, mtime;
     bool shadow;               /* a shadow of another object: drawn as one */
     bool link;                 /* a plain file-system link: drawn as what it points to, with a link mark */
+    bool is_template;          /* a template: drawn on a pad of paper (OS/2) */
     bool in_use;               /* in-use emphasis (OS/2): a folder with a window open (drawn open), or a file open in a program */
     /* Tree view only. */
     int depth;
@@ -408,6 +409,8 @@ void ui_container_layout_changed(ui_container *c);
 double ui_container_list_width(ui_container *c);
 void ui_container_set_drop_target(ui_container *c, size_t i);
 size_t ui_container_rename_item(ui_container *c);           /* SIZE_MAX: none */
+/* Start editing item i's title (as F2 does). */
+void ui_container_begin_rename(ui_container *c, size_t i);
 /* After ui_container_reset: the item being renamed is now at i, or gone
  * (SIZE_MAX cancels the rename). */
 void ui_container_rename_moved(ui_container *c, size_t i);

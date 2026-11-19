@@ -306,6 +306,26 @@ void svc_settings_set(const char *target, const char *key, const cv *value, int6
     send_req(o, id, fn, arg);
 }
 
+void svc_from_template(const char *target, const char *folder, const char *title, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("from_template", title ? 3 : 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    if (title) { cb_text(&o->b, "title"); cb_text(&o->b, title); }
+    send_req(o, id, fn, arg);
+}
+
+void svc_create(const char *folder, const char *cls, const char *title, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("create", 3, &id);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    cb_text(&o->b, "class"); cb_text(&o->b, cls);
+    cb_text(&o->b, "title"); cb_text(&o->b, title);
+    send_req(o, id, fn, arg);
+}
+
 void svc_shadow(const char *target, const char *folder, svc_fn fn, void *arg)
 {
     int64_t id;

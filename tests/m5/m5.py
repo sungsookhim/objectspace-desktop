@@ -109,7 +109,7 @@ def ss1():
     me.stop()
     fl = [i["label"] for i in folder]
     dl = [i["label"] for i in data]
-    ok = fl == ["Open", "Properties", "Delete...", "Arrange"] and dl == ["Open", "Properties", "Delete...", "Open With"] and sel.get("ok")
+    ok = fl == ["Open", "Properties", "Create another", "Delete...", "Arrange"] and dl == ["Open", "Properties", "Create another", "Delete...", "Open With"] and sel.get("ok")
     return ok, [f"folder menu: {fl}", f"data file menu: {dl}", f"selecting Properties: ok={sel.get('ok')}"]
 
 
@@ -270,7 +270,7 @@ def s17():
     plugins_ready(me)
     t = obj(me, d / "projects").get("title")
     me.stop()
-    ok = o.get("class") == "TestFolder" and m == ["Open", "Properties", "Delete...", "Arrange", "From the plug-in"] and \
+    ok = o.get("class") == "TestFolder" and m == ["Open", "Properties", "Create another", "Delete...", "Arrange", "From the plug-in"] and \
         st.get("plugin") and t == "Stamped by the plug-in"
     return ok, [f"plug-ins: {[(p['name'], p['ready']) for p in ps]}", f"new folder is a {o.get('class')}; menu {m}",
                 f"a setting changed in the host is saved by the service: {t!r}"]
@@ -316,7 +316,7 @@ def s19():
     me.stop()
     pings.sort()
     p99 = pings[int(len(pings) * 0.99)] if pings else None
-    ok = m == ["Open", "Properties", "Delete...", "Arrange"] and 1.8 < took < 4 and p99 is not None and p99 < 20
+    ok = m == ["Open", "Properties", "Create another", "Delete...", "Arrange"] and 1.8 < took < 4 and p99 is not None and p99 < 20
     return ok, [f"menu came back after {took:.1f} s with the parent's items: {m}",
                 f"pings meanwhile: {len(pings)}, 99th percentile {p99:.2f} ms"]
 
@@ -347,7 +347,7 @@ def s20():
     again = labels(me.ctl("menu", d / "fast"))
     wpsd_alive = me.proc.poll() is None
     me.stop()
-    ok = res.get("menu") == ["Open", "Properties", "Delete...", "Arrange"] and res.get("took", 9) < 1.5 and tf.get("ready") and \
+    ok = res.get("menu") == ["Open", "Properties", "Create another", "Delete...", "Arrange"] and res.get("took", 9) < 1.5 and tf.get("ready") and \
         tf.get("pid") != pid0 and tf.get("restarts") == 1 and again and again[-1] == "From the plug-in" and wpsd_alive
     return ok, [f"menu during the crash: {res.get('menu')} after {res.get('took', 0):.2f} s",
                 f"host restarted: pid {pid0} -> {tf.get('pid')}, restarts {tf.get('restarts')}",
@@ -713,6 +713,61 @@ def sd1():
                 f"other filesystem: {btrash.name}, Path {info_c!r}, a second c.txt kept as c.txt.2: {two}",
                 f"in the trash already: not_trashed {st4.get('not_trashed')}; deleted for good with its info: {gone}",
                 f"central shadow deleted: {vd.get('ok')}, folder now {left}"]
+
+
+# ---------------------------------------------------------------- templates
+
+@scenario("TP1", "Templates: built-in Folder, Data File and Program; anything in the templates folder; new objects from each")
+def stp1():
+    d = fresh("ext4", "tp1")
+    tdir, dest = d / "Templates", d / "dest"
+    tdir.mkdir()
+    dest.mkdir()
+    (tdir / "Letter.odt").write_text("Dear ...\n")
+    (tdir / "Project").mkdir()
+    (tdir / "Project" / "README").write_text("about\n")
+    (tdir / "Project" / "src").mkdir()
+    (d / "plain.txt").write_text("x")
+    env = {"WPS_TEMPLATES_DIR": str(tdir)}
+    me = Service("me", extra_env=env).start()
+    c = Conn(me)
+
+    def listing(folder):
+        return c.request(op="list", target=str(folder), offset=0, count=100, details=True).get("result", {}).get("items", [])
+
+    items = wait_for(lambda: [i for i in listing(tdir) if i.get("makes")] and listing(tdir), timeout=5) or []
+    builtins = {i["title"]: (i["makes"], i.get("template")) for i in items if i.get("makes")}
+    files = {i["name"]: i.get("template") for i in items if not i.get("makes")}
+    made = {}
+    for i in items:
+        target = i["name"][1:] if i["name"].startswith("\x01") else str(tdir / i["name"])
+        r = c.request(op="from_template", target=target, folder=str(dest))
+        made[i.get("title") or i["name"]] = r.get("ok")
+    refused = c.request(op="from_template", target=str(d / "plain.txt"), folder=str(dest))
+    me.ctl("flush")
+    got = sorted(os.listdir(dest))
+    proj_ok = (dest / "Project" / "README").read_text() == "about\n" and (dest / "Project" / "src").is_dir()
+    ids = obj(me, dest / "Project").get("id") != obj(me, tdir / "Project").get("id")
+    kinds = {"Folder": (dest / "Folder").is_dir(), "Data File": (dest / "Data File").is_file(),
+             "Program": any(n.startswith("Program") and n.endswith(".desktop") for n in got)}
+    # once made, never again: delete one, restart
+    folder_tpl = next((i["name"][1:] for i in items if i.get("makes") == "WPFolder"), "")
+    c.request(op="vdelete", target=folder_tpl)
+    c.close()
+    me.stop()
+    me = Service("me", extra_env=env).start()
+    c = Conn(me)
+    time.sleep(1)
+    again = sorted(i["title"] for i in listing(tdir) if i.get("makes"))
+    c.close()
+    me.stop()
+    ok = builtins == {"Folder": ("WPFolder", True), "Data File": ("WPDataFile", True), "Program": ("WPProgram", True)} and \
+        files == {"Letter.odt": True, "Project": True} and all(made.values()) and len(made) == 5 and \
+        not refused.get("ok") and all(kinds.values()) and "Letter.odt" in got and proj_ok and ids and \
+        again == ["Data File", "Program"]
+    return ok, [f"built-in templates: {builtins}", f"in the templates folder: {files}",
+                f"made from each: {made}; in dest: {got}", f"kinds right: {kinds}; folder template copied with its contents: {proj_ok}, own ID: {ids}",
+                f"an ordinary file is not a template: {not refused.get('ok')}", f"after deleting Folder and restarting: {again}"]
 
 
 # ------------------------------------------------------------------- driver

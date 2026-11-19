@@ -29,7 +29,7 @@
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link; char *target; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -60,6 +60,7 @@ struct folder {
     size_t ntvis, captvis;
     unsigned tgen;           /* replies for a freed tree are dropped */
     char pending_open[PATH_MAX];   /* the program asked about, if any */
+    char rename_new[NAME_MAX + 64];  /* a new object made here: edit its name once it is listed */
     ui_view pending_view;          /* how to open a folder the service names */
     icon_layout *lay;        /* icon view: where each icon is */
     bool lay_started;        /* its grid width is set */
@@ -170,6 +171,7 @@ static void *page_arg(struct folder *f, bool shadow)
 }
 
 static void request_more(struct folder *f, bool shadow);
+static void rename_new_now(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
@@ -216,6 +218,10 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             const cv *sh = cv_get(it, "shadow"), *iu = cv_get(it, "in_use");
             dst->shadow = sh && sh->k == CV_BOOL && sh->b;
             dst->in_use = iu && iu->k == CV_BOOL && iu->b;   /* a program has it open */
+            const cv *tv = cv_get(it, "template");
+            dst->tpl = tv && tv->k == CV_BOOL && tv->b;
+            const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
+            if (mk) dst->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
             if (dst->shadow || (dst->link && tt && strcmp(tt, "missing"))) {
                 /* drawn as what it points to */
@@ -276,6 +282,7 @@ static void swap(struct folder *f)
         for (size_t i = 0; i < f->m.total && ren_new == SIZE_MAX; i++)
             if (model_name(&f->m, i) && !strcmp(renname, model_name(&f->m, i))) ren_new = i;
     if (ren != SIZE_MAX) ui_container_rename_moved(f->cont, ren_new);   /* gone: cancelled */
+    if (ren == SIZE_MAX) rename_new_now(f);
     free(renname);
     for (size_t j = 0; j < k; j++) free(sel[j]);
     free(sel);
@@ -687,6 +694,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->shadow = r->shadow;
     out->in_use = r->in_use;
     out->link = r->link;
+    out->is_template = r->tpl;
     if (r->kind == UI_KIND_FOLDER) {
         /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];
@@ -726,6 +734,7 @@ static void target_of(struct folder *f, size_t i, char *out, size_t n)
 
 static void ignore_reply(void *arg, const cv *reply) { (void)arg; (void)reply; }
 static void opened(void *arg, const cv *reply);
+static bool open_properties(const char *target);
 
 /* A program another user owns: show its command and ask (the service
  * never runs it unconfirmed). */
@@ -770,7 +779,12 @@ static void opened(void *arg, const cv *reply)
         damage_status(f);
         return;
     }
-    else if (!res && msg)
+    else if (!res && msg && strstr(msg, "opens in the GUI") && f->pending_open[0]) {
+        /* An abstract object with no view of its own (a built-in
+         * template): its settings notebook. */
+        open_properties(f->pending_open);
+        f->error[0] = 0;
+    } else if (!res && msg)
         snprintf(f->error, sizeof f->error, "%s", msg);
     else
         f->error[0] = 0;
@@ -1127,6 +1141,7 @@ static void free_converted(ui_menu_item *m, size_t n)
 
 static void selected_done(void *arg, const cv *reply) { opened(arg, reply); }
 static void delete_request(struct folder *f, size_t i, bool permanent);
+static void create_another(struct folder *f, size_t i);
 
 static void menu_chosen(void *arg, int64_t id)
 {
@@ -1155,6 +1170,7 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
         case WPS_MI_ARRANGE: arrange(f); break;
         case WPS_MI_DELETE: delete_request(f, m->item, false); break;
+        case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
         default: svc_menu_select(t, id, selected_done, as_arg(f)); break;
         }
     }
@@ -1243,6 +1259,7 @@ static void src_rename(void *ctx, size_t i, const char *name)
  * itself before the data is read). */
 struct dragging {
     char **paths;
+    bool *tpl;               /* templates: dropping one makes a new object */
     size_t n;
     char src_folder[PATH_MAX];
     char *wps, *uris;        /* the data in both formats */
@@ -1255,6 +1272,7 @@ static void dragging_free(struct dragging *d)
     if (!d) return;
     for (size_t i = 0; i < d->n; i++) free(d->paths[i]);
     free(d->paths);
+    free(d->tpl);
     free(d->dx);
     free(d->dy);
     free(d->wps);
@@ -1308,6 +1326,7 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
         if (d->n == cap) {
             cap = cap ? cap * 2 : 16;
             d->paths = realloc(d->paths, cap * sizeof *d->paths);
+            d->tpl = realloc(d->tpl, cap * sizeof *d->tpl);
             d->dx = realloc(d->dx, cap * sizeof *d->dx);
             d->dy = realloc(d->dy, cap * sizeof *d->dy);
         }
@@ -1317,13 +1336,16 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
         if (!is_tree(f)) layout_pos(f->lay, k, &ix, &iy);
         d->dx[d->n] = ix - gx;
         d->dy[d->n] = iy - gy;
+        struct row *rw = row_at(f, k);
+        d->tpl[d->n] = rw && rw->tpl;
         d->paths[d->n++] = strdup(t);
     }
     size_t wl = 0, wc = 0, ul = 0, uc = 0;
     for (size_t k = 0; k < d->n; k++) {
-        size_t need = wl + strlen(d->paths[k]) + 2;
+        size_t need = wl + strlen(d->paths[k]) + 12;
         if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->wps = realloc(d->wps, wc); }
-        wl += (size_t)sprintf(d->wps + wl, "%s\n", d->paths[k]);
+        /* "<path>\ttemplate" for a template (WPS's own type only) */
+        wl += (size_t)sprintf(d->wps + wl, "%s%s\n", d->paths[k], d->tpl[k] ? "\ttemplate" : "");
         if (strncmp(d->paths[k], "vobj:", 5)) uri_append(&d->uris, &ul, &uc, d->paths[k]);   /* central: no file to offer */
     }
     if (!d->uris) d->uris = strdup("");
@@ -1621,6 +1643,94 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
  * was dropped once the service gives its address. */
 struct land { long folder; char dest[PATH_MAX]; int64_t x, y; bool place; };
 
+static void landed(void *arg, const cv *reply);
+
+/* The new object made here, once listed: selected, its name being edited. */
+static void rename_new_now(struct folder *f)
+{
+    if (!f->rename_new[0] || ui_container_rename_item(f->cont) != SIZE_MAX) return;
+    for (size_t i = 0; i < f->m.total; i++)
+        if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), f->rename_new)) {
+            f->rename_new[0] = 0;
+            ui_container_select_none(f->cont);
+            ui_container_select(f->cont, i);
+            ui_container_set_cursor(f->cont, i);
+            ui_container_begin_rename(f->cont, i);
+            return;
+        }
+}
+
+/* Create another (OS/2): a new, empty object of the same kind beside
+ * item i (the folder itself for SIZE_MAX), its name ready to edit. */
+static void made_new(void *arg, const cv *reply);
+static void create_another(struct folder *f, size_t i)
+{
+    struct row *rw = row_at(f, i);
+    char dir[PATH_MAX], title[NAME_MAX + 32];
+    const char *cls;
+    if (i == SIZE_MAX || is_tree(f)) {
+        char t[PATH_MAX];
+        target_of(f, i, t, sizeof t);
+        char *sl = strrchr(t, '/');
+        if (!sl || sl == t) return;
+        *sl = 0;
+        snprintf(dir, sizeof dir, "%s", t);
+        cls = "WPFolder";
+        snprintf(title, sizeof title, "New Folder");
+    } else {
+        if (!rw || rw->shadow || rw->link || rw->name[0] == '\x01' || rw->tpl) {
+            set_status(f->id, "Create another works on files, folders and programs (drag a template to make one from it)");
+            return;
+        }
+        snprintf(dir, sizeof dir, "%s", f->path);
+        size_t nl = strlen(rw->name);
+        if (rw->kind == UI_KIND_FOLDER) { cls = "WPFolder"; snprintf(title, sizeof title, "New Folder"); }
+        else if (nl > 8 && !strcmp(rw->name + nl - 8, ".desktop")) { cls = "WPProgram"; snprintf(title, sizeof title, "New Program"); }
+        else {
+            /* a data file of the same type: the same extension */
+            const char *dot = strrchr(rw->name, '.');
+            cls = "WPDataFile";
+            snprintf(title, sizeof title, "New Data File%s", dot && dot != rw->name ? dot : "");
+        }
+    }
+    struct land *l = calloc(1, sizeof *l);
+    l->folder = f->id;
+    snprintf(l->dest, sizeof l->dest, "%s", dir);
+    svc_create(dir, cls, title, made_new, l);
+}
+
+/* A new object was made (from a template, or Create another): place it
+ * where it was dropped, and edit its name once the window lists it. */
+static void made_new(void *arg, const cv *reply)
+{
+    struct land *l = arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    const char *addr = res ? cv_text(res, "address") : NULL, *path = res ? cv_text(res, "path") : NULL;
+    if (!addr || !*addr) addr = path;
+    if (!res || !addr || !*addr) {
+        char m[300];
+        snprintf(m, sizeof m, "Not made: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        set_status(l->folder, m);
+        free(l);
+        return;
+    }
+    char nm[NAME_MAX + 64];
+    if (!strncmp(addr, "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", addr);
+    else snprintf(nm, sizeof nm, "%s", strrchr(addr, '/') ? strrchr(addr, '/') + 1 : addr);
+    for (struct folder *o = folders; o; o = o->next)
+        if (!o->closing && !strcmp(o->path, l->dest) && !is_tree(o)) {
+            snprintf(o->rename_new, sizeof o->rename_new, "%s", nm);
+            rename_new_now(o);   /* already listed (the folder's change came first) */
+        }
+    struct folder *f = folder_by_id(l->folder);
+    if (l->place && f) {
+        const char *t[1] = { addr };
+        svc_place(l->dest, t, &l->x, &l->y, 1, placed_reply, as_arg(f));
+        layout_place(f->lay, nm, (int)l->x, (int)l->y);   /* before the listing catches up */
+    }
+    free(l);
+}
+
 static void landed(void *arg, const cv *reply)
 {
     struct land *l = arg;
@@ -1653,6 +1763,9 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
     size_t ng = 0, total = 0;
     for (char *line = strtok_r(copy, "\r\n", &save); line; line = strtok_r(NULL, "\r\n", &save)) {
         if (!*line || *line == '#') continue;
+        bool tpl = false;
+        char *tab = !strcmp(mime, MIME_URIS) ? NULL : strchr(line, '\t');
+        if (tab) { tpl = !strcmp(tab + 1, "template"); *tab = 0; }
         char *p = !strcmp(mime, MIME_URIS) ? uri_path(line) : strdup(line);
         if (!p) continue;
         total++;
@@ -1662,6 +1775,19 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
         if (cur_drag && k < cur_drag->n && !strcmp(cur_drag->paths[k], p)) { ox = cur_drag->dx[k]; oy = cur_drag->dy[k]; }
         int64_t px = at.lx + ox < 0 ? 0 : (int64_t)(at.lx + ox), py = at.ly + oy < 0 ? 0 : (int64_t)(at.ly + oy);
         k++;
+        if (tpl && !shadow) {
+            /* A template dropped (moved or copied): a new object from it,
+             * where it was dropped, with its name ready to edit (OS/2). */
+            struct land *l = calloc(1, sizeof *l);
+            l->folder = f->id;
+            snprintf(l->dest, sizeof l->dest, "%s", dest);
+            l->x = px;
+            l->y = py;
+            l->place = at.place;
+            svc_from_template(p, dest, NULL, made_new, l);
+            free(p);
+            continue;
+        }
         if (shadow || !strncmp(p, "vobj:", 5)) {
             struct land *l = calloc(1, sizeof *l);
             l->folder = f->id;
@@ -2770,6 +2896,113 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "templates")) {
+        /* Two windows: <D>/Templates (the templates folder) and <D>. Drop
+         * the built-in Folder template on <D>, type a name; drop Data File
+         * and the Letter.odt template; Create another on the new folder. */
+        static double t0;
+        static int step;
+        struct folder *tw = NULL;
+        for (struct folder *o = folders; o; o = o->next)
+            if (strlen(o->path) > 10 && !strcmp(o->path + strlen(o->path) - 10, "/Templates")) tw = o;
+        if (f == tw || !tw) return;
+        if (!t0) { if (!f->m.complete || !tw->m.complete) return; t0 = now; }
+        double t = now - t0;
+        ui_rect cl = ui_frame_client(s);
+        char data[PATH_MAX + 32], tpl_folder[PATH_MAX] = "", tpl_data[PATH_MAX] = "", tpl_letter[PATH_MAX] = "";
+        char rows[600] = "";
+        for (size_t i = 0; i < tw->m.total; i++) {
+            struct row *r = row_at(tw, i);
+            if (!r || !r->name) continue;
+            ui_item it;
+            src_item(tw, i, &it);
+            snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s%s(%s%s)", rows[0] ? ", " : "", it.title ? it.title : r->name,
+                     r->kind == UI_KIND_FOLDER ? "folder" : r->kind == UI_KIND_PROGRAM ? "program" : "file", r->tpl ? ", template" : "");
+            char tg[PATH_MAX];
+            target_of(tw, i, tg, sizeof tg);
+            if (r->tpl && r->name[0] == '\x01' && r->kind == UI_KIND_FOLDER) snprintf(tpl_folder, sizeof tpl_folder, "%s", tg);
+            if (r->tpl && r->name[0] == '\x01' && r->kind == UI_KIND_FILE) snprintf(tpl_data, sizeof tpl_data, "%s", tg);
+            if (r->tpl && !strcmp(r->name, "Letter.odt")) snprintf(tpl_letter, sizeof tpl_letter, "%s", tg);
+        }
+        char p[PATH_MAX + 32];
+        if (step == 0 && t > 300 && tpl_folder[0] && tpl_data[0] && tpl_letter[0]) {
+            fprintf(stderr, "selftest: the templates folder: %s\n", rows);
+            snprintf(data, sizeof data, "%s\ttemplate\n", tpl_folder);
+            win_drop(s, cl.x + 220, cl.y + 150, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            step++;
+            t0 = now;
+        } else if (step == 0 && t > 5000) {
+            fprintf(stderr, "selftest: the templates folder lacks the templates: %s\n", rows);
+            ui_app_quit(app);
+            step = 99;
+        } else if (step == 1 && t > 1500) {
+            size_t ri = ui_container_rename_item(f->cont);
+            fprintf(stderr, "selftest: dropped the Folder template: Folder made %d, its name being edited %d\n",
+                    (snprintf(p, sizeof p, "%s/Folder", f->path), access(p, F_OK) == 0), ri != SIZE_MAX && !strcmp(model_name(&f->m, ri), "Folder"));
+            if (ri != SIZE_MAX) {
+                ui_key_event sa = { .sym = XKB_KEY_a, .mods = UI_MOD_CTRL };
+                ui_surface_send_key(s, &sa);
+                for (const char *c = "Letters"; *c; c++) {
+                    ui_key_event k = { .sym = (uint32_t)*c };
+                    k.utf8[0] = *c;
+                    ui_surface_send_key(s, &k);
+                }
+                ui_key_event en = { .sym = XKB_KEY_Return };
+                ui_surface_send_key(s, &en);
+            }
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            snprintf(p, sizeof p, "%s/Letters", f->path);
+            fprintf(stderr, "selftest: typed a name: Letters on disk %d\n", access(p, F_OK) == 0);
+            snprintf(data, sizeof data, "%s\ttemplate\n%s\ttemplate\n", tpl_data, tpl_letter);
+            win_drop(s, cl.x + 420, cl.y + 150, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 2000) {
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            if (ui_container_rename_item(f->cont) != SIZE_MAX) ui_surface_send_key(s, &esc);
+            char a1[PATH_MAX + 32], a2[PATH_MAX + 32];
+            snprintf(a1, sizeof a1, "%s/Data File", f->path);
+            snprintf(a2, sizeof a2, "%s/Letter.odt", f->path);
+            snprintf(p, sizeof p, "%s/Templates/Letter.odt", f->path);
+            fprintf(stderr, "selftest: dropped Data File and Letter.odt: made %d %d; the templates stay %d\n",
+                    access(a1, F_OK) == 0, access(a2, F_OK) == 0, access(p, F_OK) == 0);
+            size_t li = SIZE_MAX;
+            for (size_t i = 0; i < f->m.total; i++)
+                if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), "Letters")) li = i;
+            struct menu_ctx *mc = calloc(1, sizeof *mc);
+            mc->folder = f->id;
+            mc->item = li;
+            menu_chosen(mc, WPS_MI_CREATE_ANOTHER);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 1500) {
+            size_t ri = ui_container_rename_item(f->cont);
+            snprintf(p, sizeof p, "%s/New Folder", f->path);
+            fprintf(stderr, "selftest: Create another on Letters: New Folder %d, its name being edited %d\n", access(p, F_OK) == 0,
+                    ri != SIZE_MAX && !strcmp(model_name(&f->m, ri), "New Folder"));
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            if (ri != SIZE_MAX) ui_surface_send_key(s, &esc);
+            step++;
+        } else if (step == 5) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            const char *shot = getenv("WPS_SHELL_SHOT");   /* the templates window (with WPS_UI_NO_LAYER=1) */
+            if (shot) {
+                cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ui_surface_width(tw->win), (int)ui_surface_height(tw->win));
+                cairo_t *icr = cairo_create(img);
+                win_draw(tw->win, icr, (ui_rect){ 0, 0, ui_surface_width(tw->win), ui_surface_height(tw->win) });
+                cairo_destroy(icr);
+                cairo_surface_write_to_png(img, shot);
+                cairo_surface_destroy(img);
+            }
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -2885,18 +3118,20 @@ static void desk_wallpaper_changed(void *ctx)
     if (f) ui_container_layout_changed(f->cont);   /* redraws the whole list area */
 }
 
-/* The desktop folder: XDG_DESKTOP_DIR from user-dirs.dirs, else ~/Desktop. */
-static void desktop_dir(char *out, size_t n)
+/* An XDG user folder (XDG_<key>_DIR in user-dirs.dirs), else ~/<fallback>. */
+static void user_dir(const char *key, const char *fallback, char *out, size_t n)
 {
     const char *home = getenv("HOME"), *xdg = getenv("XDG_CONFIG_HOME");
-    char cfg[PATH_MAX], line[PATH_MAX + 64];
+    char cfg[PATH_MAX], line[PATH_MAX + 64], want[64];
     if (xdg && *xdg) snprintf(cfg, sizeof cfg, "%s/user-dirs.dirs", xdg);
     else snprintf(cfg, sizeof cfg, "%s/.config/user-dirs.dirs", home ? home : "");
-    snprintf(out, n, "%s/Desktop", home ? home : "");
+    snprintf(out, n, "%s/%s", home ? home : "", fallback);
+    snprintf(want, sizeof want, "XDG_%s_DIR=\"", key);
+    size_t wl = strlen(want);
     FILE *fp = fopen(cfg, "r");
     while (fp && fgets(line, sizeof line, fp)) {
-        if (strncmp(line, "XDG_DESKTOP_DIR=\"", 17)) continue;
-        char *v = line + 17, *e = strrchr(v, '"');
+        if (strncmp(line, want, wl)) continue;
+        char *v = line + wl, *e = strrchr(v, '"');
         if (!e) break;
         *e = 0;
         if (!strncmp(v, "$HOME", 5)) snprintf(out, n, "%s%s", home ? home : "", v + 5);
@@ -2907,11 +3142,38 @@ static void desktop_dir(char *out, size_t n)
     mkdir(out, 0755);   /* a fresh account may not have one yet */
 }
 
+/* The desktop folder: XDG_DESKTOP_DIR, else ~/Desktop. */
+static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", out, n); }
+
+/* The desktop's first start: a shadow of the Templates folder on it, as
+ * OS/2's desktop had (once: deleting it is the user's choice). */
+static void desktop_first_start(const char *desk)
+{
+    char cfgdir[PATH_MAX], marker[PATH_MAX + 32], tdir[PATH_MAX];
+    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (cfg && *cfg) snprintf(cfgdir, sizeof cfgdir, "%s", cfg);
+    else if (xdg && *xdg) snprintf(cfgdir, sizeof cfgdir, "%s/wps", xdg);
+    else snprintf(cfgdir, sizeof cfgdir, "%s/.config/wps", home ? home : "");
+    snprintf(marker, sizeof marker, "%s/desktop-made", cfgdir);
+    if (access(marker, F_OK) == 0) return;
+    const char *t = getenv("WPS_TEMPLATES_DIR");
+    if (t && *t) { snprintf(tdir, sizeof tdir, "%s", t); mkdir(tdir, 0755); }
+    else user_dir("TEMPLATES", "Templates", tdir, sizeof tdir);
+    svc_shadow(tdir, desk, ignore_reply, NULL);
+    char p[PATH_MAX];
+    snprintf(p, sizeof p, "%s", cfgdir);
+    for (char *q = p + 1; *q; q++) if (*q == '/') { *q = 0; mkdir(p, 0700); *q = '/'; }
+    mkdir(p, 0700);
+    FILE *m = fopen(marker, "w");
+    if (m) { fputs("The desktop was set up (a shadow of the Templates folder).\n", m); fclose(m); }
+}
+
 static struct folder *open_desktop(const char *path)
 {
     char d[PATH_MAX];
     if (!path) { desktop_dir(d, sizeof d); path = d; }
     struct folder *f = open_window(path, UI_VIEW_ICON, true);
+    desktop_first_start(f->path);
     return f;
 }
 

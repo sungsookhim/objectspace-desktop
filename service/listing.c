@@ -93,9 +93,14 @@ static void central_details(wps_entry *e)
     e->size = e->mtime = 0;
     if (ld.err) { wps_loaded_free(&ld); return; }
     memcpy(e->id, ld.id, sizeof e->id);
-    const wps_props *op = props_of(&ld, "WPObject");
+    const wps_props *op = props_of(&ld, "WPObject"), *wp = props_of(&ld, "WPS");
     char *t = NULL;
     if (op && wps_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+    free(t);
+    int64_t tv;
+    if (op && wps_props_int(op, "template", &tv) && tv) e->is_template = true;
+    t = NULL;
+    if (wp && wps_props_str(wp, "makes", &t)) { snprintf(e->makes, sizeof e->makes, "%s", t); e->is_template = true; }
     free(t);
     if (ld.shadow_of[0]) {
         e->shadow = true;
@@ -138,8 +143,11 @@ static void detail_work(void *arg)
         if (e->id[0] && wps_attr_read(p, "WPObject", &ps) == WPS_A_OK) {
             if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
             free(t);
+            int64_t tv;
+            if (wps_props_int(&ps, "template", &tv) && tv) e->is_template = true;
             wps_props_free(&ps);
         }
+        if (e->name[0] != '\x01' && !wps_is_lock_file(e->name) && wps_in_templates(p)) e->is_template = true;
         if (e->name[0] == '\x01') {   /* a central object */
             central_details(e);
             if (e->shadow && e->target_type == DT_REG) e->locked = wps_lock_file_present(e->target_path);

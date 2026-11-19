@@ -1034,3 +1034,40 @@ void wps_central_forget(const char *id)
     sobj *s = by_central(id);
     if (s) wps_sobj_forget(s);
 }
+
+/* ------------------------------------------------------- templates folder */
+
+static char templates[PATH_MAX];
+
+void wps_templates_init(void)
+{
+    const char *t = getenv("WPS_TEMPLATES_DIR"), *home = getenv("HOME"), *xdg = getenv("XDG_CONFIG_HOME");
+    if (t && *t) { snprintf(templates, sizeof templates, "%s", t); return; }
+    snprintf(templates, sizeof templates, "%s/Templates", home ? home : "");
+    char cfg[PATH_MAX], line[PATH_MAX + 64];
+    if (xdg && *xdg) snprintf(cfg, sizeof cfg, "%s/user-dirs.dirs", xdg);
+    else snprintf(cfg, sizeof cfg, "%s/.config/user-dirs.dirs", home ? home : "");
+    FILE *f = fopen(cfg, "re");
+    while (f && fgets(line, sizeof line, f)) {
+        if (strncmp(line, "XDG_TEMPLATES_DIR=\"", 19)) continue;
+        char *v = line + 19, *e = strrchr(v, '"');
+        if (!e) break;
+        *e = 0;
+        if (!strncmp(v, "$HOME", 5)) snprintf(templates, sizeof templates, "%s%s", home ? home : "", v + 5);
+        else if (v[0] == '/') snprintf(templates, sizeof templates, "%s", v);
+        break;
+    }
+    if (f) fclose(f);
+    char real[PATH_MAX];
+    if (realpath(templates, real)) snprintf(templates, sizeof templates, "%s", real);
+}
+
+const char *wps_templates_dir(void) { return templates; }
+
+bool wps_in_templates(const char *path)
+{
+    size_t l = strlen(templates);
+    if (!l || !path || strncmp(path, templates, l) || path[l] != '/') return false;
+    const char *name = path + l + 1;
+    return *name && *name != '.' && !strchr(name, '/');   /* a direct entry, not a hidden one */
+}

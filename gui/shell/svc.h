@@ -29,6 +29,10 @@ void svc_open(const char *target, bool confirm, svc_fn fn, void *arg);
 void svc_rename(const char *target, const char *name, svc_fn fn, void *arg);
 void svc_settings(const char *target, svc_fn fn, void *arg);
 void svc_shadow(const char *target, const char *folder, svc_fn fn, void *arg);
+/* A new object from a template, in folder (title NULL: the template's). */
+void svc_from_template(const char *target, const char *folder, const char *title, svc_fn fn, void *arg);
+/* A new object of class cls in folder. */
+void svc_create(const char *folder, const char *cls, const char *title, svc_fn fn, void *arg);
 void svc_select(const char *folder, const char *const *names, size_t n, svc_fn fn, void *arg);
 /* "move", "copy"; with names/x/y (n > 0), where the items should land. */
 void svc_job_start(const char *kind, int64_t selection, const char *dest, const char *const *names, const int64_t *x,

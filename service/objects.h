@@ -135,6 +135,15 @@ void wps_central_forget(const char *id);
 /* Worker: move a central object to another folder, or copy it (a new ID). */
 int wps_central_move(const char *id, const char *dest_vol, const char *dest_folder_id, bool copy, char new_id[WPS_ID_LEN + 1]);
 
+/* The templates folder: XDG_TEMPLATES_DIR from user-dirs.dirs, else
+ * ~/Templates (WPS_TEMPLATES_DIR for tests). The same folder GNOME's
+ * "New Document" uses, so files put there are templates in both. Resolved
+ * once at start-up (wps_templates_init), read-only after. */
+void wps_templates_init(void);
+const char *wps_templates_dir(void);
+/* Whether `path` is directly in the templates folder (so a template). */
+bool wps_in_templates(const char *path);
+
 /* Write a new abstract object's file (no-replace); 0 or an errno value. */
 int wps_object_file_create(const char *path, const char *cls, const char *title);
 

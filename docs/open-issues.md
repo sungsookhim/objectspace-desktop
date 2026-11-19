@@ -45,9 +45,15 @@ Known problems and gaps found while building and trying G2, as of 2026-11-19. Ea
 - Moving a central object into a folder that keeps objects as files should turn it into a `.wpobj` file.
 - Shadows made before central objects stay as they are (old symlinks are plain links; old `.wpobj` shadows still work).
 
+## Templates (built 2026-11-19)
+
+- **No way to move a template by dragging**: every drag of a template makes a new object (OS/2 moved a template with Shift held, but GNOME does not tell a program which keys are held during a drag). Move templates with cut and paste once that exists, or turn the template mark off first.
+- **Create another makes the object beside the original**, its name ready to edit; OS/2 asked for a name and a folder in a dialog.
+- **No "New" cascade** in folder menus listing the templates (XWorkplace had one; GNOME Files has "New Document").
+- **Titles of new data files include the extension** when made by Create another ("New Data File.txt").
+
 ## Remaining G2 work
 
-- Templates (next).
 - Incremental live updates for very large folders (a burst of changes now costs at most two re-reads of the folder).
 
 ## Tests

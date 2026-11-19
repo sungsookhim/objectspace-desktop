@@ -1151,7 +1151,8 @@ static void list_reply(void *arg, const wps_page *pg)
                          ((e->shadow || e->type == DT_LNK) && e->target_path[0] && wps_launch_in_use(e->target_path));
                 }
                 bool link = e->detailed && !e->shadow && e->type == DT_LNK;
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu : 2);
+                bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0];
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -1170,6 +1171,8 @@ static void list_reply(void *arg, const wps_page *pg)
                         cb_text(&b, "target_path"); cb_text(&b, e->target_path);
                     }
                     if (iu) { cb_text(&b, "in_use"); cb_bool(&b, true); }
+                    if (tpl) { cb_text(&b, "template"); cb_bool(&b, true); }
+                    if (makes) { cb_text(&b, "makes"); cb_text(&b, e->makes); }   /* a built-in template */
                 }
             }
             send_frame(r->c, &b);
@@ -1324,25 +1327,11 @@ struct tmpl_job {
     wps_loaded ld;
 };
 
-static void tmpl_work(void *arg)
+/* Copy the user.wps.* attributes of one open file to another, without
+ * the object ID (a new object gets its own) and, at the top, without the
+ * template mark. */
+static void tmpl_attrs(int in, int out, bool top)
 {
-    struct tmpl_job *j = arg;
-    const char *base = strrchr(j->src, '/') ? strrchr(j->src, '/') + 1 : j->src;
-    const char *ext = strchr(base, '.') ? strchr(base, '.') : "";
-    int in = open(j->src, O_RDONLY | O_NOFOLLOW | O_CLOEXEC), out = -1;
-    if (in < 0) { j->err = errno; return; }
-    for (int k = 1; k < 100 && out < 0; k++) {
-        if (k == 1) snprintf(j->path, sizeof j->path, "%s/%.200s%s", j->folder, j->title, ext);
-        else snprintf(j->path, sizeof j->path, "%s/%.200s (%d)%s", j->folder, j->title, k, ext);
-        out = open(j->path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);   /* never overwrite */
-        if (out < 0 && errno != EEXIST) break;
-    }
-    if (out < 0) { j->err = errno; close(in); return; }
-    char buf[65536];
-    ssize_t n;
-    while ((n = read(in, buf, sizeof buf)) > 0)
-        if (write(out, buf, (size_t)n) != n) { j->err = EIO; break; }
-    /* Settings come along; identity and the template mark do not. */
     char names[8192];
     ssize_t nl = flistxattr(in, names, sizeof names);
     for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
@@ -1351,7 +1340,7 @@ static void tmpl_work(void *arg)
         unsigned char v[65536];
         ssize_t vl = fgetxattr(in, nm, v, sizeof v);
         if (vl < 0) continue;
-        if (!strcmp(nm, "user.wps.WPObject")) {
+        if (top && !strcmp(nm, "user.wps.WPObject")) {
             wps_props ps;
             if (wps_props_decode(v, (size_t)vl, &ps) == 0) {
                 wps_props_remove(&ps, "template");
@@ -1366,6 +1355,94 @@ static void tmpl_work(void *arg)
             fsetxattr(out, nm, v, (size_t)vl, 0);
         }
     }
+}
+
+/* A folder template's contents, copied (links as links; nothing else). */
+static int tmpl_copy_tree(const char *src, const char *dst, int depth)
+{
+    if (depth > 64) return ELOOP;
+    DIR *d = opendir(src);
+    if (!d) return errno;
+    struct dirent *de;
+    int err = 0;
+    while (!err && (de = readdir(d))) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+        char s[PATH_MAX], t[PATH_MAX];
+        snprintf(s, sizeof s, "%s/%s", src, de->d_name);
+        snprintf(t, sizeof t, "%s/%s", dst, de->d_name);
+        struct stat st;
+        if (lstat(s, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (mkdir(t, st.st_mode & 07777) != 0) { err = errno; break; }
+            int a = open(s, O_RDONLY | O_DIRECTORY | O_CLOEXEC), b = open(t, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+            if (a >= 0 && b >= 0) tmpl_attrs(a, b, false);
+            if (a >= 0) close(a);
+            if (b >= 0) close(b);
+            err = tmpl_copy_tree(s, t, depth + 1);
+        } else if (S_ISLNK(st.st_mode)) {
+            char l[PATH_MAX];
+            ssize_t n = readlink(s, l, sizeof l - 1);
+            if (n >= 0) { l[n] = 0; if (symlink(l, t) != 0) err = errno; }
+        } else if (S_ISREG(st.st_mode)) {
+            int in = open(s, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+            int out = in < 0 ? -1 : open(t, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, st.st_mode & 0777);
+            if (in < 0 || out < 0) err = errno;
+            char buf[65536];
+            ssize_t n;
+            while (!err && (n = read(in, buf, sizeof buf)) > 0)
+                if (write(out, buf, (size_t)n) != n) err = EIO;
+            if (!err) tmpl_attrs(in, out, false);
+            if (in >= 0) close(in);
+            if (out >= 0) close(out);
+        }
+    }
+    closedir(d);
+    return err;
+}
+
+static void tmpl_work(void *arg)
+{
+    struct tmpl_job *j = arg;
+    struct stat sst;
+    if (lstat(j->src, &sst) != 0) { j->err = errno; return; }
+    if (S_ISDIR(sst.st_mode)) {
+        /* A folder template: a new folder with a copy of what it holds. */
+        int e = EEXIST;
+        for (int k = 1; k < 100 && e == EEXIST; k++) {
+            if (k == 1) snprintf(j->path, sizeof j->path, "%s/%.200s", j->folder, j->title);
+            else snprintf(j->path, sizeof j->path, "%s/%.200s (%d)", j->folder, j->title, k);
+            e = mkdir(j->path, 0777) == 0 ? 0 : errno;   /* never into an existing one */
+        }
+        if (e) { j->err = e; return; }
+        int a = open(j->src, O_RDONLY | O_DIRECTORY | O_CLOEXEC), b = open(j->path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (a >= 0 && b >= 0) tmpl_attrs(a, b, true);
+        if (a >= 0) close(a);
+        if (b >= 0) close(b);
+        j->err = tmpl_copy_tree(j->src, j->path, 0);
+        if (!j->err) wps_load(j->path, false, &j->ld);
+        return;
+    }
+    const char *base = strrchr(j->src, '/') ? strrchr(j->src, '/') + 1 : j->src;
+    const char *ext = strchr(base, '.') ? strchr(base, '.') : "";
+    /* A title that already ends in the extension (a file named as it is
+     * titled) does not get it twice. */
+    size_t tl = strlen(j->title), el = strlen(ext);
+    if (el && tl > el && !strcmp(j->title + tl - el, ext)) j->title[tl - el] = 0;
+    int in = open(j->src, O_RDONLY | O_NOFOLLOW | O_CLOEXEC), out = -1;
+    if (in < 0) { j->err = errno; return; }
+    for (int k = 1; k < 100 && out < 0; k++) {
+        if (k == 1) snprintf(j->path, sizeof j->path, "%s/%.200s%s", j->folder, j->title, ext);
+        else snprintf(j->path, sizeof j->path, "%s/%.200s (%d)%s", j->folder, j->title, k, ext);
+        out = open(j->path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);   /* never overwrite */
+        if (out < 0 && errno != EEXIST) break;
+    }
+    if (out < 0) { j->err = errno; close(in); return; }
+    char buf[65536];
+    ssize_t n;
+    while ((n = read(in, buf, sizeof buf)) > 0)
+        if (write(out, buf, (size_t)n) != n) { j->err = EIO; break; }
+    /* Settings come along; identity and the template mark do not. */
+    tmpl_attrs(in, out, true);
     close(in);
     close(out);
     if (!j->err) wps_load(j->path, false, &j->ld);
@@ -1766,13 +1843,37 @@ static void do_rename(struct req *r, wpo_object *o)
     wpo_defer(loop, "rename", rename_work, rename_done, j);
 }
 
+static void start_create(struct client *c, int64_t id, const char *folder, const char *cls, const char *title,
+                         const char *command);
+
 static void do_from_template(struct req *r, wpo_object *o)
 {
     const char *folder = cv_text(&r->msg, "folder"), *title = cv_text(&r->msg, "title");
-    if (!WPObject_data(o)->is_template) { reply_error(r->c, r->id, "bad request", "not a template"); return; }
-    if (!folder) { reply_error(r->c, r->id, "bad request", "from_template needs a folder"); return; }
-    if (!S_ISREG(r->tgt.st.st_mode)) { reply_error(r->c, r->id, "bad request", "only file templates in this version"); return; }
+    /* A template: marked as one, or anything in the templates folder. */
+    char *makes = NULL;
+    wps_state_get_str(o, "WPS", "makes", &makes);
+    bool tpl = WPObject_data(o)->is_template || (makes && *makes) || (r->tgt.path[0] && wps_in_templates(r->tgt.path));
+    if (!tpl) { free(makes); reply_error(r->c, r->id, "bad request", "not a template"); return; }
+    if (!folder) { free(makes); reply_error(r->c, r->id, "bad request", "from_template needs a folder"); return; }
     char *t = WPObject_wpQueryTitle(o);
+    if (makes && *makes) {
+        /* A built-in template (Folder, Data File, Program): a new, empty
+         * object of the class it makes, titled like the template. */
+        wpo_class *mc = wpo_find_class(makes);
+        if (!mc || mc->is_meta || !wpo_subclass_of(mc, WPObjectClass) || wpo_subclass_of(mc, WPShadowClass))
+            reply_error(r->c, r->id, "failed", "the template makes an unknown kind of object");
+        else
+            start_create(r->c, r->id, folder, makes, title && *title ? title : t ? t : "New", NULL);
+        free(makes);
+        free(t);
+        return;
+    }
+    free(makes);
+    if (!S_ISREG(r->tgt.st.st_mode) && !S_ISDIR(r->tgt.st.st_mode)) {
+        free(t);
+        reply_error(r->c, r->id, "bad request", "only file and folder templates");
+        return;
+    }
     struct tmpl_job *j = calloc(1, sizeof *j);
     j->c = r->c; r->c->refs++;
     j->id = r->id;
@@ -1851,6 +1952,59 @@ static void create_done(void *arg)
     client_unref(r->c);
     free(r);
 }
+
+static void start_create(struct client *c, int64_t id, const char *folder, const char *cls, const char *title,
+                         const char *command)
+{
+    struct create_req *r = calloc(1, sizeof *r);
+    r->c = c; c->refs++;
+    r->id = id;
+    snprintf(r->folder, sizeof r->folder, "%s", folder);
+    snprintf(r->cls, sizeof r->cls, "%s", cls);
+    snprintf(r->title, sizeof r->title, "%s", title ? title : "");
+    snprintf(r->command, sizeof r->command, "%s", command ? command : "");
+    wpo_defer(loop, "create object", create_work, create_done, r);
+}
+
+/* ---- the built-in templates (Folder, Data File, Program), made once in
+ * the templates folder as central objects: other programs (GNOME's "New
+ * Document") do not see them. Not made again once the user deletes them. */
+static void builtin_templates_work(void *arg)
+{
+    (void)arg;
+    const char *td = wps_templates_dir();
+    if (!td[0]) return;
+    if (mkdir(td, 0755) != 0 && errno != EEXIST) return;
+    wps_loaded fl;
+    wps_load(td, true, &fl);
+    if (fl.err || !fl.id[0]) { wps_loaded_free(&fl); return; }
+    char loc[WPS_ID_LEN + 16], key[PATH_MAX + 128];
+    snprintf(loc, sizeof loc, "templates:%s", fl.id);
+    wps_props done;
+    wps_props_init(&done);
+    int64_t v = 0;
+    bool made = wps_db_get_class(db, fl.vol, loc, "WPS", &done) > 0 && wps_props_int(&done, "builtin", &v) && v;
+    wps_props_free(&done);
+    if (!made) {
+        static const char *const builtins[][2] = { { "WPFolder", "Folder" }, { "WPDataFile", "Data File" }, { "WPProgram", "Program" } };
+        for (size_t i = 0; i < 3; i++) {
+            char id[WPS_ID_LEN + 1], vl[64];
+            if (wps_central_create(fl.vol, fl.id, "WPAbstract", builtins[i][1], NULL, id)) continue;
+            snprintf(vl, sizeof vl, "vobj:%s", id);
+            wps_db_key(key, sizeof key, vl, "WPS", "makes");
+            wps_db_put(db, fl.vol, key, 's', builtins[i][0], (uint32_t)strlen(builtins[i][0]));
+            unsigned char one[8] = { 1 };
+            wps_db_key(key, sizeof key, vl, "WPObject", "template");
+            wps_db_put(db, fl.vol, key, 'i', one, 8);
+        }
+        unsigned char one[8] = { 1 };
+        wps_db_key(key, sizeof key, loc, "WPS", "builtin");
+        wps_db_put(db, fl.vol, key, 'i', one, 8);
+    }
+    wps_loaded_free(&fl);
+}
+
+static void builtin_templates_done(void *arg) { (void)arg; wps_listing_invalidate(wps_templates_dir()); }
 
 struct shadow_reply { struct simple *s; char link[PATH_MAX]; };
 
@@ -1934,14 +2088,7 @@ static void handle(struct client *c, cv *msg)
             cv_free(msg);
             return;
         }
-        struct create_req *r = calloc(1, sizeof *r);
-        r->c = c; c->refs++;
-        r->id = id;
-        snprintf(r->folder, sizeof r->folder, "%s", folder);
-        snprintf(r->cls, sizeof r->cls, "%s", clsname);
-        snprintf(r->title, sizeof r->title, "%s", title ? title : "");
-        snprintf(r->command, sizeof r->command, "%s", command ? command : "");
-        wpo_defer(loop, "create object", create_work, create_done, r);
+        start_create(c, id, folder, clsname, title, command);
     } else if (strcmp(op, "shadow") == 0) {
         const char *t = cv_text(msg, "target"), *f = cv_text(msg, "folder");
         if (!t || !f) { reply_error(c, id, "bad request", "shadow needs target and folder"); cv_free(msg); return; }
@@ -2190,6 +2337,7 @@ int main(void)
     wps_listing_init(loop);
     wps_jobs_init(loop, db, env.identity);
     wps_launch_init(loop, on_in_use);
+    wps_templates_init();
     wps_plugins_init(loop, &env);
     wps_on_central_change = on_central_change;
     wps_on_job_placed = job_placed;
@@ -2197,6 +2345,7 @@ int main(void)
     wps_on_fs_event = on_fs_event;
     wps_on_job = on_job;
     wps_tracker_init(loop, &env, db);
+    wpo_defer(loop, "built-in templates", builtin_templates_work, builtin_templates_done, NULL);
     wps_tracker_stats ts;
     wps_tracker_get_stats(&ts);
     log_msg("tracking changes with %s", ts.mode);

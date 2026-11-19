@@ -545,8 +545,38 @@ static void link_mark(cairo_t *cr, double x, double y, double sz)
     cairo_restore(cr);
 }
 
+/* A template (OS/2): the object's icon on a pad of paper. */
+static void template_pad(cairo_t *cr, double x, double y, double sz)
+{
+    double u = sz / 32.0;
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_scale(cr, u, u);
+    cairo_set_line_width(cr, 1);
+    for (int k = 2; k >= 0; k--) {   /* the sheets below, then the top one */
+        cairo_rectangle(cr, 3.5 + k, 4.5 + k, 24, 24);
+        cairo_set_source_rgb(cr, k ? 0.85 : 0.98, k ? 0.85 : 0.98, k ? 0.82 : 0.94);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgb(cr, 0.35, 0.35, 0.35);
+        cairo_stroke(cr);
+    }
+    /* the binding at the top */
+    cairo_rectangle(cr, 3, 2, 25, 4);
+    cairo_set_source_rgb(cr, 0.45, 0.25, 0.1);
+    cairo_fill(cr);
+    cairo_restore(cr);
+}
+
 static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double sz)
 {
+    if (it->is_template) {
+        template_pad(cr, x, y, sz);
+        /* the object it makes, smaller, on the top sheet */
+        ui_item in = *it;
+        in.is_template = false;
+        item_icon(cr, &in, x + sz * 0.2, y + sz * 0.25, sz * 0.6);
+        return;
+    }
     if (it->in_use) in_use(cr, x, y, sz);
     if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
     else draw_icon(cr, it->kind == UI_KIND_LINK ? UI_KIND_FILE : it->kind, x, y, sz);
