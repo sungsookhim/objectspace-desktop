@@ -86,7 +86,13 @@ TEST(default_handler)
     CHECK_STR(joined(argv), "img|/d/a.png");
     CHECK(wps_handler_argv("/d/a.unknown", buf, sizeof buf, argv, 16) == 0);
     put("config/gnome-mimeapps.list", "[Default Applications]\ntext/plain=term.desktop\n");
-    CHECK(wps_handler_argv("/d/a.txt", buf, sizeof buf, argv, 16) == 0);    /* a terminal program: xdg-open */
+    const char *path0 = getenv("PATH");
+    char saved[4096];
+    snprintf(saved, sizeof saved, "%s", path0 ? path0 : "");
+    setenv("WPS_TERMINAL", "", 1);
+    setenv("PATH", "/nonexistent", 1);
+    CHECK(wps_handler_argv("/d/a.txt", buf, sizeof buf, argv, 16) == 0);    /* a terminal program, no terminal: xdg-open */
+    setenv("PATH", saved, 1);
 }
 
 TEST(lock_files)
@@ -113,6 +119,37 @@ TEST(lock_files)
     CHECK(!wps_is_lock_file("report.ods") && !wps_is_lock_file(".bashrc") && !wps_is_lock_file(".swp"));
 }
 
+TEST(terminals)
+{
+    /* text-mode programs: binaries without window libraries, and scripts */
+    CHECK(wps_program_needs_terminal("/usr/bin/true"));
+    CHECK(wps_program_needs_terminal("/usr/bin/vi"));
+    CHECK(!wps_program_needs_terminal("/usr/bin/ptyxis"));   /* links GTK */
+    put("t/s.sh", "#!/bin/sh\n");
+    char p[4200];
+    snprintf(p, sizeof p, "%s/t/s.sh", dir);
+    CHECK(wps_program_needs_terminal(p));
+    char *argv[16] = { "vim", "/f", NULL };
+    setenv("WPS_TERMINAL", "myterm --hold -e", 1);
+    CHECK(wps_terminal_wrap(argv, 2, 16) == 5);
+    CHECK_STR(joined(argv), "myterm|--hold|-e|vim|/f");
+    char *argv2[16] = { "vim", NULL };
+    setenv("WPS_TERMINAL", "", 1);
+    setenv("PATH", dir, 1);   /* no terminal installed */
+    CHECK(wps_terminal_wrap(argv2, 1, 16) == 0);
+    put("ptyxis", "");
+    snprintf(p, sizeof p, "%s/ptyxis", dir);
+    chmod(p, 0755);
+    CHECK(wps_terminal_wrap(argv2, 1, 16) == 4);
+    CHECK_STR(joined(argv2), "ptyxis|-s|--|vim");
+    /* a Terminal=true default application comes wrapped */
+    put("data/applications/vimish.desktop", "[Desktop Entry]\nExec=vim %f\nTerminal=true\n");
+    put("config/gnome-mimeapps.list", "[Default Applications]\ntext/plain=vimish.desktop\n");
+    char buf[1024], *a3[16];
+    CHECK(wps_handler_argv("/d/a.txt", buf, sizeof buf, a3, 16) == 5);
+    CHECK_STR(joined(a3), "ptyxis|-s|--|vim|/d/a.txt");
+}
+
 int main(int argc, char **argv)
 {
     snprintf(dir, sizeof dir, "%s", argc > 1 ? argv[1] : "/tmp/wps-test-launch");
@@ -122,5 +159,6 @@ int main(int argc, char **argv)
     RUN(exec_lines);
     RUN(default_handler);
     RUN(lock_files);
+    RUN(terminals);
     return CHECK_SUMMARY();
 }

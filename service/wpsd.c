@@ -1240,7 +1240,15 @@ static void do_open(struct req *r, wpo_object *o)
         const char *cmd = WPProgram_data(o)->command;
         if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); wpo_unref(orig); return; }
         if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, cmd, st->st_uid); wpo_unref(orig); return; }
-        if (wps_split_exec(cmd, NULL, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
+        int argc = wps_split_exec(cmd, NULL, buf, sizeof buf, argv, 64);
+        if (argc == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
+        size_t pl = strlen(path);
+        if (pl > 8 && !strcmp(path + pl - 8, ".desktop") && wps_desktop_wants_terminal(path) &&
+            !wps_terminal_wrap(argv, argc, 64)) {
+            reply_error(r->c, r->id, "failed", "it runs in a terminal, and no terminal program was found (set WPS_TERMINAL)");
+            wpo_unref(orig);
+            return;
+        }
         what = cmd;
         tracked = path;
     } else if (data) {
@@ -1252,6 +1260,11 @@ static void do_open(struct req *r, wpo_object *o)
             argv[0] = (char *)path;
             argv[1] = NULL;
             what = path;
+            if (wps_program_needs_terminal(path) && !wps_terminal_wrap(argv, 1, 64)) {
+                reply_error(r->c, r->id, "failed", "a text-mode program, and no terminal program was found (set WPS_TERMINAL)");
+                wpo_unref(orig);
+                return;
+            }
             snprintf(cwd, sizeof cwd, "%s", path);
             *strrchr(cwd, '/') = 0;
             if (!cwd[0]) strcpy(cwd, "/");

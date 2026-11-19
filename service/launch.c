@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <elf.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -386,16 +388,71 @@ static bool looks_like_text(const char *path)
     return n >= 0 && !memchr(b, 0, (size_t)n);
 }
 
+/* ------------------------------------------------------------- terminals */
+
+static bool on_path(const char *prog)
+{
+    if (strchr(prog, '/')) return access(prog, X_OK) == 0;
+    const char *pv = getenv("PATH");
+    char copy[8192], p[PATH_MAX];
+    snprintf(copy, sizeof copy, "%s", pv && *pv ? pv : "/usr/local/bin:/usr/bin:/bin");
+    for (char *s = copy, *t; (t = strsep(&s, ":"));) {
+        snprintf(p, sizeof p, "%s/%s", *t ? t : ".", prog);
+        if (access(p, X_OK) == 0) return true;
+    }
+    return false;
+}
+
+/* Terminals, best first, each with the arguments that open a new window of
+ * its own (one that lives as long as the window, so the program can be
+ * tracked) running the command that follows. */
+static const char *const terminals[][5] = {
+    { "xdg-terminal-exec", NULL },
+    { "ptyxis", "-s", "--", NULL },
+    { "gnome-terminal", "--wait", "--", NULL },
+    { "kgx", "-e", NULL },
+    { "konsole", "--nofork", "-e", NULL },
+    { "xfce4-terminal", "--disable-server", "-x", NULL },
+    { "alacritty", "-e", NULL },
+    { "kitty", NULL },
+    { "foot", NULL },
+    { "wezterm", "start", "--", NULL },
+    { "xterm", "-e", NULL },
+};
+
+int wps_terminal_wrap(char **argv, int argc, int max)
+{
+    char *pre[16];
+    int k = 0;
+    const char *env = getenv("WPS_TERMINAL");
+    static char envbuf[1024];
+    if (env && *env) {
+        /* the user's choice: the command goes after these words */
+        k = wps_split_exec(env, NULL, envbuf, sizeof envbuf, pre, 16);
+    } else {
+        for (size_t t = 0; t < sizeof terminals / sizeof *terminals && !k; t++)
+            if (on_path(terminals[t][0]))
+                for (int i = 0; terminals[t][i]; i++) pre[k++] = (char *)terminals[t][i];
+    }
+    if (!k || argc + k >= max) return 0;
+    memmove(argv + k, argv, (size_t)(argc + 1) * sizeof *argv);
+    memcpy(argv, pre, (size_t)k * sizeof *argv);
+    return argc + k;
+}
+
+bool wps_desktop_wants_terminal(const char *desktop);
+
 int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max)
 {
     const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
     const char *mime = wps_mime_for_name(base);
     if (!mime && looks_like_text(file)) mime = "text/plain";
-    char desktop[PATH_MAX], exec[4096], v[64];
+    char desktop[PATH_MAX], exec[4096];
     if (!mime || !default_app(mime, desktop, sizeof desktop)) return 0;
     if (!ini_get(desktop, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
-    if (ini_get(desktop, "[Desktop Entry]", "Terminal", v, sizeof v) && !strcmp(v, "true")) return 0;
-    return wps_split_exec(exec, file, buf, n, argv, max);
+    int argc = wps_split_exec(exec, file, buf, n, argv, max);
+    if (argc > 0 && wps_desktop_wants_terminal(desktop)) argc = wps_terminal_wrap(argv, argc, max);
+    return argc;
 }
 
 bool wps_is_program_file(const char *path)
@@ -407,6 +464,77 @@ bool wps_is_program_file(const char *path)
     ssize_t n = read(fd, m, sizeof m);
     close(fd);
     return (n == 4 && !memcmp(m, "\x7f" "ELF", 4)) || (n >= 2 && m[0] == '#' && m[1] == '!');
+}
+
+bool wps_desktop_wants_terminal(const char *desktop)
+{
+    char v[64];
+    return ini_get(desktop, "[Desktop Entry]", "Terminal", v, sizeof v) && !strcmp(v, "true");
+}
+
+/* Libraries only programs with windows of their own link. */
+static bool gui_library(const char *lib)
+{
+    static const char *const prefixes[] = {
+        "libwayland-client", "libX11", "libxcb.", "libgtk-", "libgdk-", "libadwaita", "libQt5Gui", "libQt6Gui",
+        "libQt5Widgets", "libQt6Widgets", "libSDL", "libglfw", "libEGL", "libGL.", "libGLX", "libOpenGL",
+        "libvulkan", "libfltk", "libwx_", "libgdk_pixbuf", "libelementary", "libnotcurses-x",
+    };
+    for (size_t i = 0; i < sizeof prefixes / sizeof *prefixes; i++)
+        if (!strncmp(lib, prefixes[i], strlen(prefixes[i]))) return true;
+    return false;
+}
+
+/* Walk an ELF file's dynamic section: does it link a GUI library? */
+#define ELF_GUI(Ehdr, Phdr, Dyn)                                                                     \
+    {                                                                                                \
+        const Ehdr *eh = (const Ehdr *)m;                                                            \
+        if (eh->e_phoff > sz || eh->e_phnum > 4096 ||                                                \
+            eh->e_phoff + (uint64_t)eh->e_phnum * sizeof(Phdr) > sz) return false;                   \
+        const Phdr *ph = (const Phdr *)(m + eh->e_phoff);                                            \
+        const Phdr *dyn = NULL;                                                                      \
+        for (int i = 0; i < eh->e_phnum; i++) if (ph[i].p_type == PT_DYNAMIC) dyn = &ph[i];          \
+        if (!dyn || dyn->p_offset > sz || dyn->p_offset + dyn->p_filesz > sz) return false;          \
+        const Dyn *d = (const Dyn *)(m + dyn->p_offset);                                             \
+        size_t nd = dyn->p_filesz / sizeof(Dyn);                                                     \
+        uint64_t strtab = 0, stroff = UINT64_MAX;                                                    \
+        for (size_t i = 0; i < nd && d[i].d_tag != DT_NULL; i++) if (d[i].d_tag == DT_STRTAB) strtab = d[i].d_un.d_val; \
+        for (int i = 0; i < eh->e_phnum; i++)                                                        \
+            if (ph[i].p_type == PT_LOAD && strtab >= ph[i].p_vaddr && strtab < ph[i].p_vaddr + ph[i].p_filesz) \
+                stroff = strtab - ph[i].p_vaddr + ph[i].p_offset;                                    \
+        if (stroff >= sz) return false;                                                              \
+        for (size_t i = 0; i < nd && d[i].d_tag != DT_NULL; i++) {                                   \
+            if (d[i].d_tag != DT_NEEDED || stroff + d[i].d_un.d_val >= sz) continue;                 \
+            const char *lib = (const char *)m + stroff + d[i].d_un.d_val;                            \
+            if (memchr(lib, 0, sz - (stroff + d[i].d_un.d_val)) && gui_library(lib)) return true;    \
+        }                                                                                            \
+        return false;                                                                                \
+    }
+
+static bool elf_links_gui(const unsigned char *m, size_t sz)
+{
+    if (sz < sizeof(Elf64_Ehdr) || m[EI_DATA] != ELFDATA2LSB) return false;
+    if (m[EI_CLASS] == ELFCLASS64) ELF_GUI(Elf64_Ehdr, Elf64_Phdr, Elf64_Dyn)
+    if (m[EI_CLASS] == ELFCLASS32) ELF_GUI(Elf32_Ehdr, Elf32_Phdr, Elf32_Dyn)
+    return false;
+}
+
+bool wps_program_needs_terminal(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
+    if (fd < 0) return false;
+    struct stat st;
+    char head[2] = { 0 };
+    if (fstat(fd, &st) != 0 || pread(fd, head, 2, 0) != 2) { close(fd); return false; }
+    if (head[0] == '#' && head[1] == '!') { close(fd); return true; }   /* scripts get a window, as .CMD files did */
+    size_t sz = (size_t)st.st_size;
+    if (sz > (size_t)1 << 31) sz = (size_t)1 << 31;
+    void *m = mmap(NULL, sz, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (m == MAP_FAILED) return false;
+    bool gui = elf_links_gui(m, sz);
+    munmap(m, sz);
+    return !gui;   /* a program without a window library is a text-mode one */
 }
 
 /* ------------------------------------------------------------ lock files */

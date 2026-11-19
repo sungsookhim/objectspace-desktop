@@ -590,7 +590,7 @@ def su1():
     return ok, out
 
 
-@scenario("U2", "Opening: links show and open as what they point to; executables run in their folder; untyped text opens as text")
+@scenario("U2", "Opening: links show and open as what they point to; executables run in their folder (text-mode ones in a terminal); untyped text opens as text")
 def su2():
     d = fresh("ext4", "u2", user=None)
     run(["sudo", "chmod", "1777", str(d)], check=True)
@@ -605,8 +605,11 @@ def su2():
     hold.chmod(0o755)
     (xdg / "data" / "applications" / "wps-hold.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Hold\nExec={hold} %f\n")
     (xdg / "config" / "mimeapps.list").write_text("[Default Applications]\ntext/plain=wps-hold.desktop\n")
+    term, tlog = xdg / "term.sh", xdg / "term-args"
+    term.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> {tlog}\nshift\nexec "$@"\n')   # a stand-in terminal: logs, then runs
+    term.chmod(0o755)
     me = Service("me", extra_env={"XDG_CONFIG_HOME": str(xdg / "config"), "XDG_DATA_HOME": str(xdg / "data"),
-                                  "XDG_CONFIG_DIRS": str(xdg / "sys")}).start()
+                                  "XDG_CONFIG_DIRS": str(xdg / "sys"), "WPS_TERMINAL": f"{term} -e"}).start()
     (d / "sub").mkdir()
     (d / "doc.txt").write_text("x")
     os.symlink(d / "sub", d / "to-sub")
@@ -617,6 +620,8 @@ def su2():
     (d / "tool.sh").chmod(0o755)
     (d / "README").write_text("plain words, no extension\n")
     write_as(60001, d / "theirs.sh", "#!/bin/sh\ntouch /tmp/never", mode="0755")
+    tui = d / "top.desktop"
+    tui.write_text(f"[Desktop Entry]\nType=Application\nName=Top\nExec=sh -c \"echo tui > {d}/tui-ran\"\nTerminal=true\n")
     c = Conn(me)
     items = c.request(op="list", target=str(d), offset=0, count=100, details=True).get("result", {}).get("items", [])
     links = {i["name"]: (i.get("target"), i.get("target_path")) for i in items if i["type"] == "link"}
@@ -625,16 +630,20 @@ def su2():
     asked = c.request(op="open", target=str(d / "theirs.sh")).get("result", {})
     text = c.request(op="open", target=str(d / "README")).get("result", {})
     via = c.request(op="open", target=str(d / "to-doc")).get("result", {})
+    c.request(op="open", target=str(tui))
     c.close()
-    time.sleep(0.5)
+    time.sleep(0.8)
     me.stop()
+    tl = tlog.read_text().splitlines() if tlog.exists() else []
+    in_term = [l for l in tl if "tool.sh" in l] == [f"-e {d / 'tool.sh'}"] and any("tui-ran" in l for l in tl) and \
+        (d / "tui-ran").exists()
     args = log.read_text().split() if log.exists() else []
     ranin = where.read_text().strip() if where.exists() else None
     ok = links == {"to-sub": ("folder", str(d / "sub")), "to-doc": ("file", str(d / "doc.txt")), "dangling": ("missing", "")} and \
         folder.get("folder") == str(d / "sub") and ran.get("command") == str(d / "tool.sh") and ranin == str(d) and \
         asked.get("needs_confirmation") is True and text.get("command") == str(hold) and via.get("command") == str(hold) and \
-        args == [str(d / "README"), str(d / "doc.txt")]
-    return ok, [f"links listed as: {links}", f"link to a folder opens it: {folder.get('folder')}",
+        args == [str(d / "README"), str(d / "doc.txt")] and in_term
+    return ok, [f"in the terminal: {tl}", f"links listed as: {links}", f"link to a folder opens it: {folder.get('folder')}",
                 f"tool.sh ran: {ran.get('command')!r}, in {ranin}", f"another user's script asks first: {asked.get('needs_confirmation')}",
                 f"README and a link to doc.txt opened with the text default: {text.get('command') == str(hold)}, {via.get('command') == str(hold)}, args {args}"]
 

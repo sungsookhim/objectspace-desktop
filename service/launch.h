@@ -52,8 +52,22 @@ int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char
 /* Arguments that open `file` with the default application for its type,
  * read from mimeapps.list and the installed .desktop files. 0 when there
  * is none to start directly (unknown type, no default, or one that runs in
- * a terminal): the caller uses xdg-open. */
+ * a terminal when no terminal program is found): the caller uses
+ * xdg-open. A terminal application comes wrapped in a terminal window. */
 int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max);
+
+/* Run argv[0..argc) in a terminal window: $WPS_TERMINAL (words the
+ * command is appended to), else xdg-terminal-exec, else the first
+ * installed common terminal, each asked for a window of its own. Shifts
+ * argv; the new count, or 0 when there is no terminal. */
+int wps_terminal_wrap(char **argv, int argc, int max);
+
+/* Whether a program needs a terminal: a script, or a binary that links
+ * no window library (as OS/2 told text-mode programs from PM ones). */
+bool wps_program_needs_terminal(const char *path);
+
+/* Whether a .desktop file says its program runs in a terminal. */
+bool wps_desktop_wants_terminal(const char *desktop);
 
 /* Any thread: whether a lock file next to `path` says it is open. */
 bool wps_lock_file_present(const char *path);
