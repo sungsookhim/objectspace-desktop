@@ -32,8 +32,11 @@ static ui_rect button_rect(ui_surface *s, int which)
     const ui_scheme *k = &ui_scheme_now;
     ui_rect t = title_rect(s);
     double y = t.y + (t.h - k->button_h) / 2;
-    if (which == 0) return (ui_rect){ t.x + 3, y, k->button_h, k->button_h };
-    return (ui_rect){ t.x + t.w - 3 - (4 - which) * (k->button_w + 2), y, k->button_w, k->button_h };
+    ui_rect r = which == 0 ? (ui_rect){ t.x + 3, y, k->button_h, k->button_h }
+                           : (ui_rect){ t.x + t.w - 3 - (4 - which) * (k->button_w + 2), y, k->button_w, k->button_h };
+    /* Mirrored layout: the system menu on the right, close first on the left. */
+    if (k->title_mirrored) r.x = t.x + t.w - (r.x - t.x) - r.w;
+    return r;
 }
 
 static bool buttons_shown(ui_surface *s)
@@ -171,9 +174,26 @@ void ui_frame_draw(ui_surface *s, cairo_t *cr, ui_rect clip, const char *title)
         ui_bevel(cr, (ui_rect){ bw() - 1, bw() - 1, s->w - 2 * bw() + 2, s->h - 2 * bw() + 2 }, false);
     }
     ui_rect t = title_rect(s);
-    ui_fill(cr, t, s->activated ? k->title_active : k->title_inactive);
-    double left = t.x + 3 + k->button_h + 6;
-    double right = buttons_shown(s) ? button_rect(s, 1).x - 6 : t.x + t.w - 6;
+    ui_color tc = s->activated ? k->title_active : k->title_inactive;
+    if (k->translucency == 1) {
+        /* Translucent title bar: what is behind the window shows through. */
+        tc.a = 0.8;
+        cairo_save(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+        ui_fill(cr, t, tc);
+        cairo_restore(cr);
+    } else {
+        ui_fill(cr, t, tc);
+    }
+    ui_rect sys = button_rect(s, 0), mn = button_rect(s, 1);
+    double left, right;
+    if (!k->title_mirrored) {
+        left = sys.x + sys.w + 6;
+        right = buttons_shown(s) ? mn.x - 6 : t.x + t.w - 6;
+    } else {
+        left = buttons_shown(s) ? mn.x + mn.w + 6 : t.x + 6;
+        right = sys.x - 6;
+    }
     ui_set_color(cr, s->activated ? k->title_text : k->title_text_inactive);
     double tw = ui_text_width(UI_FONT_BOLD, title);
     double tx = left + fmax(0, ((right - left) - tw) / 2);   /* centred, as in Warp 4 */

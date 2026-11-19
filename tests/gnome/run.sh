@@ -9,6 +9,8 @@
 #   KILLTEST=1         the desktop is killed once: the extension restarts it
 #   WLDEBUG=1          the desktop's Wayland traffic goes to the log
 #   DESKENV=NAME=VALUE one more setting for the desktop (e.g. WPS_DEBUG_DND=1)
+#   SYSTEM="key=value ..." the System object's options (e.g. shadows=2)
+#   PROBE_MODE=frame   click the folder window's maximize button (input through a shadow margin)
 #   PROBE_MODE=interact  a virtual pointer double-clicks and drags desktop
 #                      icons (no folder window; set SECS=14 for the time it needs)
 # usage: tests/gnome/run.sh   (after make && make gui)
@@ -30,13 +32,21 @@ else
 fi
 cp -r "$REPO/tests/gnome/wps-probe@local" "$T/data/gnome-shell/extensions/"
 export XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache"
-export WPS_TEMPLATES_DIR="$T/templates"
+export WPS_TEMPLATES_DIR="$T/templates" WPS_SETUP_DIR="$T/setup"
 export WPS_CONFIG_DIR="$T/w/config" WPS_STATE_DIR="$T/w/state" WPS_RUNTIME_DIR="$RT/wps"
 export PROBE_SHOT="$T/shot.png" WPS_WALLPAPER="${WALL:-/usr/share/backgrounds/f45/default/f45-01-day.jxl}"
 unset WAYLAND_DISPLAY DISPLAY JOURNAL_STREAM INVOCATION_ID
 mkdir -p "$RT/wps"
 "$REPO/build/wpsd" 2> "$T/wpsd.log" &
 WP=$!
+# SYSTEM="shadows=2 title_layout=1": the System object's options, before anything opens
+if [ -n "$SYSTEM" ]; then
+  for i in $(seq 50); do
+    SA=$("$REPO/build/wpsctl" setup 2>/dev/null | grep -o '"WPSystem": *{"address": *"vobj:[^"]*"' | grep -o 'vobj:[^"]*')
+    [ -n "$SA" ] && break; sleep 0.1
+  done
+  "$REPO/build/wpsctl" settings_set "$SA" $SYSTEM > /dev/null
+fi
 dbus-run-session -- sh -c "
   gsettings set org.gnome.shell enabled-extensions \"['wps@wps-linux', 'wps-probe@local']\"
   gsettings set org.gnome.shell disable-user-extensions false
@@ -44,7 +54,7 @@ dbus-run-session -- sh -c "
   gnome-shell --headless --wayland --no-x11 --virtual-monitor 1280x800 --wayland-display wps-hl > '$T/shell.log' 2>&1 &
   SH=\$!
   sleep 5
-  [ -n \"\$PROBE_MODE\" ] || WAYLAND_DISPLAY=wps-hl '$REPO/build/wps-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
+  [ \"\$PROBE_MODE\" = interact ] || WAYLAND_DISPLAY=wps-hl '$REPO/build/wps-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
   if [ -n \"\$KILLTEST\" ]; then sleep 1; pkill -KILL -f -- 'wps-shell --deskto[p]'; fi
   sleep 4
   echo late > '$T/desk/added-later.txt'

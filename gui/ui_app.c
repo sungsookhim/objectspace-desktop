@@ -77,9 +77,15 @@ static struct ui_buffer *buf_get(ui_surface *s, int w, int h)
 
 /* ----------------------------------------------------------------- damage */
 
+/* The buffer: the window and its shadow margin, in device pixels. */
+static int buf_w(ui_surface *s) { return (int)lround((s->w + 2 * s->m) * s->scale); }
+static int buf_h(ui_surface *s) { return (int)lround((s->h + 2 * s->m) * s->scale); }
+
 static ui_irect to_dev(ui_surface *s, ui_rect r)
 {
     int k = s->scale;
+    r.x += s->m;   /* window coordinates -> buffer */
+    r.y += s->m;
     int x0 = (int)floor(r.x * k), y0 = (int)floor(r.y * k);
     int x1 = (int)ceil((r.x + r.w) * k), y1 = (int)ceil((r.y + r.h) * k);
     ui_irect o = { x0, y0, x1 - x0, y1 - y0 };
@@ -96,7 +102,7 @@ static void want_draw(ui_surface *s)
 
 void ui_surface_damage(ui_surface *s, ui_rect r)
 {
-    ui_damage_add(&s->cur, to_dev(s, r), (int)(s->w * s->scale), (int)(s->h * s->scale));
+    ui_damage_add(&s->cur, to_dev(s, r), buf_w(s), buf_h(s));
     s->cur_any = true;
     want_draw(s);
 }
@@ -147,13 +153,47 @@ static void move_area(struct ui_buffer *b, ui_irect a, int dy)
             memcpy(px + (size_t)y * stride + (size_t)a.x * 4, px + (size_t)(y + dy) * stride + (size_t)a.x * 4, row);
 }
 
+/* Shadows (System object): a margin around a toplevel window that is not
+ * maximized or frameless; none for menus. */
+static double margin_for(ui_surface *s)
+{
+    if (!s->top || s->frameless || s->maximized) return 0;
+    return ui_scheme_now.shadows == 2 ? 18 : ui_scheme_now.shadows == 1 ? 10 : 0;
+}
+
+/* The shadow in the margin: soft, a little below the window. */
+static void draw_shadow(ui_surface *s, cairo_t *cr)
+{
+    double m = s->m, dy = m / 4, a = ui_scheme_now.shadows == 2 ? 0.42 : 0.26;
+    cairo_save(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+    cairo_set_line_width(cr, 1);
+    for (double i = m; i >= 1; i--) {
+        double f = 1 - i / m;
+        cairo_set_source_rgba(cr, 0, 0, 0, a * f * f / 3);
+        cairo_rectangle(cr, m - i + 0.5, m - i + dy + 0.5, s->w + 2 * i - 1, s->h + 2 * i - 1);
+        cairo_fill(cr);
+    }
+    cairo_restore(cr);
+}
+
 static void render(ui_surface *s)
 {
     if (!s->configured || s->destroyed || s->frame_pending) return;
     double now = ui_now_ms();
     if (s->ops->frame) s->ops->frame(s, now);
+    double m = margin_for(s);
+    if (m != s->m) {   /* shadows switched, or maximized: everything again */
+        s->m = m;
+        s->cur.full = true;
+        s->cur_any = true;
+        if (s->layer) s->layer_dirty = true;
+    }
     if (!s->cur_any && !s->continuous && !s->layer_dirty) { s->needs_draw = false; return; }
-    int bw = (int)lround(s->w * s->scale), bh = (int)lround(s->h * s->scale);
+    int bw = buf_w(s), bh = buf_h(s);
     if (bw <= 0 || bh <= 0) return;
     struct ui_buffer *b = buf_get(s, bw, bh);
     if (!b) return;   /* all buffers with the compositor: try at the next release */
@@ -178,11 +218,18 @@ static void render(ui_surface *s)
         cairo_surface_t *cs = cairo_image_surface_create_for_data(b->data, CAIRO_FORMAT_ARGB32, bw, bh, bw * 4);
         cairo_surface_set_device_scale(cs, s->scale, s->scale);
         cairo_t *cr = cairo_create(cs);
+        if (s->m > 0 && plan.full) draw_shadow(s, cr);
+        cairo_translate(cr, s->m, s->m);   /* the window inside its margin */
         /* Each rectangle on its own: a scroll damages a thin strip and the
          * scroll bar, and their bounding box would be the whole list. */
         for (int i = 0; i < plan.nrects; i++) {
             ui_irect r = plan.rects[i];
-            ui_rect clip = { (double)r.x / s->scale, (double)r.y / s->scale, (double)r.w / s->scale, (double)r.h / s->scale };
+            ui_rect clip = { (double)r.x / s->scale - s->m, (double)r.y / s->scale - s->m, (double)r.w / s->scale,
+                             (double)r.h / s->scale };
+            /* only the window: the margin holds the shadow */
+            double x0 = fmax(clip.x, 0), y0 = fmax(clip.y, 0), x1 = fmin(clip.x + clip.w, s->w), y1 = fmin(clip.y + clip.h, s->h);
+            if (x1 <= x0 || y1 <= y0) continue;
+            clip = (ui_rect){ x0, y0, x1 - x0, y1 - y0 };
             cairo_save(cr);
             cairo_rectangle(cr, clip.x, clip.y, clip.w, clip.h);
             cairo_clip(cr);
@@ -214,6 +261,18 @@ static void render(ui_surface *s)
     double t1 = ui_now_ms();
     b->frame = s->frame_no++;
     b->busy = true;
+    if (s->top && (s->geo_m != s->m || s->geo_w != s->w || s->geo_h != s->h)) {
+        /* The window is the part inside the margin: what the compositor
+         * moves, tiles and maximizes, and where input goes. */
+        xdg_surface_set_window_geometry(s->xs, (int)s->m, (int)s->m, (int)s->w, (int)s->h);
+        struct wl_region *in = wl_compositor_create_region(s->app->comp);
+        wl_region_add(in, (int)s->m, (int)s->m, (int)s->w, (int)s->h);
+        wl_surface_set_input_region(s->wl, in);
+        wl_region_destroy(in);
+        s->geo_m = s->m;
+        s->geo_w = s->w;
+        s->geo_h = s->h;
+    }
     wl_surface_set_buffer_scale(s->wl, s->scale);
     wl_surface_attach(s->wl, b->wb, 0, 0);
     s->frame_cb = wl_surface_frame(s->wl);
@@ -458,8 +517,8 @@ static void send_ptr(ui_app *a, ui_pointer_event *e)
 {
     ui_surface *s = a->ptr_focus;
     if (!s || !s->ops->pointer) return;
-    e->x = a->px;
-    e->y = a->py;
+    e->x = a->px - s->m;   /* buffer -> window coordinates */
+    e->y = a->py - s->m;
     e->mods = a->mods;
     s->ops->pointer(s, e);
 }
@@ -776,15 +835,18 @@ size_t ui_surface_verify(ui_surface *s, const char *png_prefix)
     struct ui_buffer *b = NULL;
     for (int i = 0; i < UI_BUFFERS; i++)
         if (s->bufs[i].wb && s->bufs[i].frame == s->frame_no - 1) b = &s->bufs[i];
-    int bw = (int)lround(s->w * s->scale), bh = (int)lround(s->h * s->scale);
-    if (!b || b->w != bw || b->h != bh) return SIZE_MAX;
+    /* the window's part of the buffer (inside any shadow margin) */
+    int bw = (int)lround(s->w * s->scale), bh = (int)lround(s->h * s->scale), om = (int)lround(s->m * s->scale);
+    if (!b || b->w != buf_w(s) || b->h != buf_h(s)) return SIZE_MAX;
     size_t stride = (size_t)bw * 4, n = stride * (size_t)bh;
     /* What is shown: the window's buffer, with the layer's slice on it. */
     cairo_surface_t *shown = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, bw, bh);
     cairo_surface_flush(shown);
     unsigned char *sp = cairo_image_surface_get_data(shown);
     int sstride = cairo_image_surface_get_stride(shown);
-    for (int y = 0; y < bh; y++) memcpy(sp + (size_t)y * (size_t)sstride, (unsigned char *)b->data + (size_t)y * stride, stride);
+    size_t bstride = (size_t)b->w * 4;
+    for (int y = 0; y < bh; y++)
+        memcpy(sp + (size_t)y * (size_t)sstride, (unsigned char *)b->data + (size_t)(y + om) * bstride + (size_t)om * 4, stride);
     if (s->layer && !ui_layer_paste_shown(s->layer, sp, sstride)) { cairo_surface_destroy(shown); return SIZE_MAX; }
     cairo_surface_mark_dirty(shown);
     /* What should be shown: everything drawn afresh. */
@@ -814,6 +876,18 @@ size_t ui_surface_verify(ui_surface *s, const char *png_prefix)
     cairo_surface_destroy(shown);
     cairo_surface_destroy(exp);
     return diff;
+}
+
+bool ui_surface_snapshot(ui_surface *s, const char *png)
+{
+    struct ui_buffer *b = NULL;
+    for (int i = 0; i < UI_BUFFERS; i++)
+        if (s->bufs[i].wb && s->bufs[i].frame == s->frame_no - 1) b = &s->bufs[i];
+    if (!b) return false;
+    cairo_surface_t *cs = cairo_image_surface_create_for_data(b->data, CAIRO_FORMAT_ARGB32, b->w, b->h, b->w * 4);
+    bool ok = cairo_surface_write_to_png(cs, png) == CAIRO_STATUS_SUCCESS;
+    cairo_surface_destroy(cs);
+    return ok;
 }
 
 void ui_surface_send_key(ui_surface *s, const ui_key_event *e)

@@ -46,12 +46,20 @@ typedef struct {
     double border, title_h, button_w, button_h;
     double corner_radius;      /* 0: square (the default) */
     bool buttons_on_hover;     /* false: always visible (the default) */
+    int shadows;               /* 0 off (the default), 1 subtle, 2 strong */
+    int translucency;          /* 0 off (the default), 1 title bars, 2 menus */
+    bool title_mirrored;       /* buttons on the left, system menu on the right */
 } ui_scheme;
 
 extern ui_scheme ui_scheme_now;
 /* Switch the colours to a scheme ("classic", "dark", "high contrast"),
- * keeping the window options (corners, buttons, border); false if unknown. */
+ * keeping the window options; false if unknown. */
 bool ui_scheme_use(const char *name);
+/* A window option, as the System object names them: corner_radius,
+ * buttons (always, on hover), border (visible, thin, none), shadows (off,
+ * subtle, strong), translucency (off, title bars, menus), title_layout
+ * (normal, mirrored, compact). False if unknown. */
+bool ui_scheme_set_option(const char *key, const char *value);
 /* The frame border: "visible" (4 px), "thin" (1 px) or "none". */
 void ui_scheme_set_border(const char *mode);
 /* "classic" (default), "dark"; WPS_UI_SCHEME, WPS_UI_CORNER_RADIUS and
@@ -235,6 +243,9 @@ void ui_layer_damage_all(ui_layer *l);
  * drawn (nothing to compare). With `png_prefix`, mismatches are saved as
  * <prefix>-shown.png and <prefix>-expected.png. */
 size_t ui_surface_verify(ui_surface *s, const char *png_prefix);
+/* Save the buffer last given to the compositor (with any shadow margin
+ * and transparency) as a PNG (self-tests). False if there is none yet. */
+bool ui_surface_snapshot(ui_surface *s, const char *png);
 
 /* Per-frame statistics (for benchmarks). */
 typedef struct { double draw_ms, move_ms, interval_ms, drawn_fraction; bool full; } ui_frame_stat;

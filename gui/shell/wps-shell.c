@@ -3520,6 +3520,39 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "appearance")) {
+        /* The System object's window options: strong shadows, translucent
+         * title bars, the mirrored layout; then the frame and the buffer. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete || !setup_ids[0][0]) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0) {
+            cv two = { .k = CV_INT, .i = 2 }, one = { .k = CV_INT, .i = 1 };
+            svc_settings_set(setup_ids[0], "shadows", &two, -1, ignore_reply, NULL);
+            svc_settings_set(setup_ids[0], "translucency", &one, -1, ignore_reply, NULL);
+            svc_settings_set(setup_ids[0], "title_layout", &one, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            ui_rect c = ui_frame_client(s);
+            double tw = ui_surface_width(s), ty = c.y - ui_scheme_now.title_h / 2;
+            fprintf(stderr, "selftest: options: shadows %d, translucency %d, mirrored %d\n", ui_scheme_now.shadows,
+                    ui_scheme_now.translucency, ui_scheme_now.title_mirrored);
+            fprintf(stderr, "selftest: mirrored frame: left end is %s, right end is %s\n",
+                    ui_frame_hit(s, 12, ty) == UI_HIT_CLOSE ? "close" : "something else",
+                    ui_frame_hit(s, tw - 12, ty) == UI_HIT_SYSMENU ? "the system menu" : "something else");
+            step++;
+        } else if (step == 2) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw (inside the shadow): %zu differ\n", d);
+            if (getenv("WPS_SHELL_SHOT")) fprintf(stderr, "selftest: buffer saved %d\n", ui_surface_snapshot(s, getenv("WPS_SHELL_SHOT")));
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -3653,9 +3686,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
         else if (!strcmp(cls, "WPMouse")) ui_mouse_set(key, val);
         else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
         else if (!strcmp(cls, "WPSystem")) {
-            if (!strcmp(key, "corner_radius")) ui_scheme_now.corner_radius = atof(val);
-            else if (!strcmp(key, "buttons")) ui_scheme_now.buttons_on_hover = !strcmp(val, "on hover");
-            else if (!strcmp(key, "border")) ui_scheme_set_border(val);
+            if (ui_scheme_set_option(key, val)) {}   /* corners, buttons, border, shadows, translucency, title layout */
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
         }

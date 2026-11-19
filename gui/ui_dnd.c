@@ -264,8 +264,9 @@ static void d_enter(void *x, struct wl_data_device *dd, uint32_t serial, struct 
     a->drag_focus = s ? wl_surface_get_user_data(s) : NULL;
     /* Our own popups and layer parts are not drop targets: their window is. */
     if (a->drag_focus && a->drag_focus->popup) a->drag_focus = NULL;
-    a->drag_x = wl_fixed_to_double(px);
-    a->drag_y = wl_fixed_to_double(py);
+    double m = a->drag_focus ? a->drag_focus->m : 0;   /* buffer -> window coordinates */
+    a->drag_x = wl_fixed_to_double(px) - m;
+    a->drag_y = wl_fixed_to_double(py) - m;
     a->drag_serial = serial;
     negotiate(a, serial);
 }
@@ -284,8 +285,9 @@ static void d_motion(void *x, struct wl_data_device *dd, uint32_t t, wl_fixed_t 
 {
     (void)dd; (void)t;
     ui_app *a = x;
-    a->drag_x = wl_fixed_to_double(px);
-    a->drag_y = wl_fixed_to_double(py);
+    double m = a->drag_focus ? a->drag_focus->m : 0;
+    a->drag_x = wl_fixed_to_double(px) - m;
+    a->drag_y = wl_fixed_to_double(py) - m;
     negotiate(a, a->drag_serial);
 }
 

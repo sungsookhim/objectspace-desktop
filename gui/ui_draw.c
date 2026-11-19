@@ -69,37 +69,64 @@ static const ui_scheme high_contrast = {
 
 ui_scheme ui_scheme_now;
 
+/* The window options (System object), kept apart from the colours so a
+ * change of scheme keeps them. */
+static struct {
+    double corner_radius, border;
+    bool buttons_on_hover, title_mirrored, compact;
+    int shadows, translucency;
+} opts = { 0, 4, false, false, false, 0, 0 };
+
+static void apply_opts(void)
+{
+    ui_scheme_now.corner_radius = opts.corner_radius;
+    ui_scheme_now.border = opts.border;
+    ui_scheme_now.buttons_on_hover = opts.buttons_on_hover;
+    ui_scheme_now.title_mirrored = opts.title_mirrored;
+    ui_scheme_now.shadows = opts.shadows;
+    ui_scheme_now.translucency = opts.translucency;
+    if (opts.compact) { ui_scheme_now.title_h = 17; ui_scheme_now.button_w = 15; ui_scheme_now.button_h = 13; }
+}
+
 bool ui_scheme_use(const char *name)
 {
     const ui_scheme *s = !strcmp(name, "classic") ? &classic : !strcmp(name, "dark") ? &dark :
                          !strcmp(name, "high contrast") ? &high_contrast : NULL;
     if (!s) return false;
-    /* Colours from the scheme; the System object's choices stay. */
-    double r = ui_scheme_now.corner_radius, b = ui_scheme_now.border;
-    bool h = ui_scheme_now.buttons_on_hover;
-    ui_scheme_now = *s;
-    ui_scheme_now.corner_radius = r;
-    ui_scheme_now.buttons_on_hover = h;
-    if (b >= 0) ui_scheme_now.border = b;
+    ui_scheme_now = *s;   /* colours and metrics from the scheme ... */
+    apply_opts();         /* ... the System object's choices on top */
     return true;
 }
 
 void ui_scheme_set_border(const char *mode)
 {
-    ui_scheme_now.border = !strcmp(mode, "none") ? 0 : !strcmp(mode, "thin") ? 1 : 4;
+    opts.border = !strcmp(mode, "none") ? 0 : !strcmp(mode, "thin") ? 1 : 4;
+    ui_scheme_now.border = opts.border;
+}
+
+bool ui_scheme_set_option(const char *key, const char *v)
+{
+    if (!strcmp(key, "corner_radius")) { double r = atof(v); opts.corner_radius = r < 0 ? 0 : r > 16 ? 16 : r; }
+    else if (!strcmp(key, "buttons")) opts.buttons_on_hover = !strcmp(v, "on hover") || !strcmp(v, "hover");
+    else if (!strcmp(key, "border")) opts.border = !strcmp(v, "none") ? 0 : !strcmp(v, "thin") ? 1 : 4;
+    else if (!strcmp(key, "shadows")) opts.shadows = !strcmp(v, "strong") ? 2 : !strcmp(v, "subtle") ? 1 : 0;
+    else if (!strcmp(key, "translucency")) opts.translucency = !strcmp(v, "menus") ? 2 : !strcmp(v, "title bars") ? 1 : 0;
+    else if (!strcmp(key, "title_layout")) { opts.title_mirrored = !strcmp(v, "mirrored"); opts.compact = !strcmp(v, "compact"); }
+    else return false;
+    /* metrics may change (compact): start from the scheme again */
+    ui_scheme_use(ui_scheme_now.name);
+    return true;
 }
 
 void ui_scheme_init(void)
 {
     const char *n = getenv("WPS_UI_SCHEME");
     ui_scheme_now = n && !strcmp(n, "dark") ? dark : classic;
-    const char *r = getenv("WPS_UI_CORNER_RADIUS");
-    if (r) {
-        double v = atof(r);
-        ui_scheme_now.corner_radius = v < 0 ? 0 : v > 16 ? 16 : v;
-    }
-    const char *b = getenv("WPS_UI_BUTTONS");
-    if (b && !strcmp(b, "hover")) ui_scheme_now.buttons_on_hover = true;
+    const char *r = getenv("WPS_UI_CORNER_RADIUS"), *b = getenv("WPS_UI_BUTTONS"), *sh = getenv("WPS_UI_SHADOWS");
+    if (r) ui_scheme_set_option("corner_radius", r);
+    if (b) ui_scheme_set_option("buttons", b);
+    if (sh) ui_scheme_set_option("shadows", sh);
+    apply_opts();
 }
 
 void ui_set_color(cairo_t *cr, ui_color c) { cairo_set_source_rgba(cr, c.r, c.g, c.b, c.a); }

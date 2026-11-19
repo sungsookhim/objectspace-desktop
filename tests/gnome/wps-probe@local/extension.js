@@ -53,6 +53,34 @@ export default class Probe {
         for (const t of [3, 4, 4.5, 5, 5.5])
             at(t, () => { if (Main.overview.visible) Main.overview.hide(); });
         at(5.8, () => console.log(`probe: overview visible ${Main.overview.visible}`));
+        if (GLib.getenv('PROBE_MODE') === 'frame') {
+            // Click the folder window's maximize button (in its frame: border
+            // 4, title bar 22, buttons 18 wide 2 apart, 3 from the right end).
+            const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+            const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            this._dev = dev;
+            const other = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell');
+            at(2, () => dev.notify_absolute_motion(GLib.get_monotonic_time(), 640, 700));
+            at(8.5, () => { if (out) shoot(`${out}-before.png`); });
+            at(9, () => {
+                const w = other();
+                if (!w) return;
+                const r = w.get_frame_rect();
+                console.log(`probe: folder window ${r.width}x${r.height}+${r.x}+${r.y}, maximized ${w.is_maximized()}`);
+                const x = r.x + r.width - 4 - 3 - 2 * 20 + 9, y = r.y + 4 + 11;
+                dev.notify_absolute_motion(GLib.get_monotonic_time(), x, y);
+                dev.notify_button(GLib.get_monotonic_time(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+                dev.notify_button(GLib.get_monotonic_time(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+                console.log(`probe: clicked ${x},${y}`);
+            });
+            at(11, () => {
+                const w = other();
+                const r = w?.get_frame_rect();
+                console.log(`probe: after the click: ${r?.width}x${r?.height}+${r?.x}+${r?.y}, maximized ${w?.is_maximized()}`);
+                if (out) shoot(out);
+            });
+            return;
+        }
         if (GLib.getenv('PROBE_MODE') !== 'interact') {
             // Another program's window (the folder window run.sh opens) through
             // minimize, restore, maximize and unmaximize: window events.

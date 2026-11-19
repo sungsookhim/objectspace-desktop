@@ -34,7 +34,9 @@ struct ui_surface {
     struct xdg_toplevel *top;
     struct xdg_popup *popup;
     ui_surface *parent;
-    double w, h;           /* logical */
+    double w, h;           /* logical: the window itself */
+    double m;              /* a margin around it for its shadow (0: none) */
+    double geo_m, geo_w, geo_h;   /* the window geometry last told the compositor */
     int scale;
     bool configured, maximized, activated, destroyed;
     bool frameless;          /* no frame at all (the desktop) */

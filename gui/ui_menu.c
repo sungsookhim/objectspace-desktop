@@ -94,7 +94,17 @@ static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     (void)clip;
     struct menu *m = ui_surface_data(s);
     const ui_scheme *k = &ui_scheme_now;
-    ui_fill(cr, (ui_rect){ 0, 0, m->w, m->h }, k->menu_bg);
+    if (k->translucency == 2) {
+        /* Translucent menus: what is behind them shows through. */
+        ui_color bg = k->menu_bg;
+        bg.a = 0.88;
+        cairo_save(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+        ui_fill(cr, (ui_rect){ 0, 0, m->w, m->h }, bg);
+        cairo_restore(cr);
+    } else {
+        ui_fill(cr, (ui_rect){ 0, 0, m->w, m->h }, k->menu_bg);
+    }
     ui_bevel(cr, (ui_rect){ 0, 0, m->w, m->h }, true);
     for (size_t i = 0; i < m->n; i++) {
         const ui_menu_item *it = &m->items[i];

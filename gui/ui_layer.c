@@ -250,7 +250,7 @@ double ui_layer_render(ui_layer *l)
 
     /* Show the slice [r0, r0 + H): one contiguous window of the content. */
     int r0 = ((top % H) + H) % H;
-    wl_subsurface_set_position(l->sub, (int)l->area.x, (int)l->area.y);
+    wl_subsurface_set_position(l->sub, (int)(l->area.x + l->s->m), (int)(l->area.y + l->s->m));   /* inside any shadow margin */
     wl_surface_attach(l->part, r->wb, 0, 0);
     wp_viewport_set_source(l->vp, wl_fixed_from_int(0), wl_fixed_from_int(r0), wl_fixed_from_int(W), wl_fixed_from_int(H));
     wp_viewport_set_destination(l->vp, (int)l->area.w, (int)l->area.h);

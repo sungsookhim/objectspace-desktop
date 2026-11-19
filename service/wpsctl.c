@@ -38,7 +38,7 @@
 static int usage(void)
 {
     fprintf(stderr,
-            "usage: wpsctl ping|stats|flush|sync|scan|shutdown\n"
+            "usage: wpsctl ping|stats|flush|sync|scan|shutdown|setup\n"
             "       wpsctl resolve TARGET\n"
             "       wpsctl call [--expect N] TARGET METHOD [ARG...]\n"
             "       wpsctl describe CLASS\n"
@@ -117,7 +117,7 @@ int main(int argc, char **argv)
     cb_init(&b);
     int i = 2;
     bool watching = false;
-    if (!strcmp(op, "ping") || !strcmp(op, "stats") || !strcmp(op, "flush") ||
+    if (!strcmp(op, "ping") || !strcmp(op, "setup") || !strcmp(op, "stats") || !strcmp(op, "flush") ||
         !strcmp(op, "sync") || !strcmp(op, "scan") || !strcmp(op, "shutdown")) {
         if (argc != 2) return usage();
         cb_map(&b, 2);
