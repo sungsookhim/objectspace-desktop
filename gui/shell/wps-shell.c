@@ -2217,7 +2217,14 @@ int main(int argc, char **argv)
     app = ui_app_new();
     if (!app) return 1;
     char err[512];
-    if (!svc_start(app, err, sizeof err)) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
+    /* The service may be starting at the same moment (a session starts
+     * both): wait for it a little before giving up. */
+    bool up = false;
+    for (int tries = 0; tries < 50 && !(up = svc_start(app, err, sizeof err)); tries++) {
+        if (tries == 0) fprintf(stderr, "wps-shell: waiting for wpsd...\n");
+        usleep(100000);
+    }
+    if (!up) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
     svc_on_event(on_event, NULL);
     svc_subscribe_jobs(ignore_reply, NULL);
     for (int k = i; k < argc; k++) {
