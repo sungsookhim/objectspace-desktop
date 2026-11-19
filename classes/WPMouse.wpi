@@ -1,0 +1,4 @@
+# The Mouse object: what each mouse action is.
+class WPMouse : WPSetup
+version 1.0
+classoverride wpclsQueryTitle

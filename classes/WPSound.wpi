@@ -1,0 +1,4 @@
+# The Sound object: which sound each action event plays.
+class WPSound : WPSetup
+version 1.0
+classoverride wpclsQueryTitle

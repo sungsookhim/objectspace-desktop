@@ -1,0 +1,11 @@
+# Settings objects (gui-design.md: these settings are objects themselves,
+# like OS/2's System, Sound and Mouse objects and the Scheme Palette): one
+# of each per user, kept centrally in the System Setup folder. Each
+# subclass describes its settings as a table; each setting is a string in
+# the object's own state, and the GUI reads them all (wpQuerySettings).
+class WPSetup : WPAbstract
+version 1.0
+method wpQuerySettings() -> string
+method wpSetSetting(string key, string value) -> bool
+override wpAddSettingsPages
+override wpModifyPopupMenu

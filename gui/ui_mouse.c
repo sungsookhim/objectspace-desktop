@@ -88,20 +88,20 @@ void ui_mouse_load(void)
         for (char *e = k + strlen(k); e > k && isspace((unsigned char)e[-1]);) *--e = 0;
         while (isspace((unsigned char)*v)) v++;
         for (char *e = v + strlen(v); e > v && isspace((unsigned char)e[-1]);) *--e = 0;
-        bool done = false;
-        for (int a = 0; a < UI_ACT_COUNT && !done; a++)
-            if (!strcmp(k, names[a])) {
-                done = true;
-                if (!ui_mouse_parse_chord(v, &ui_mouse.act[a]))
-                    fprintf(stderr, "wps-ui: %s:%d: cannot read \"%s\" (e.g. alt+button1 double)\n", path, n, v);
-            }
-        if (done) continue;
-        if (!strcmp(k, "left_handed")) ui_mouse.left_handed = yes(v);
-        else if (!strcmp(k, "double_click_ms")) { int ms = atoi(v); if (ms >= 100 && ms <= 2000) ui_mouse.double_click_ms = ms; }
-        else if (!strcmp(k, "wheel_speed")) { double w = atof(v); if (w > 0 && w <= 20) ui_mouse.wheel_speed = w; }
-        else fprintf(stderr, "wps-ui: %s:%d: unknown setting \"%s\"\n", path, n, k);
+        if (!ui_mouse_set(k, v)) fprintf(stderr, "wps-ui: %s:%d: cannot use \"%s = %s\"\n", path, n, k, v);
     }
     fclose(f);
+}
+
+bool ui_mouse_set(const char *k, const char *v)
+{
+    for (int a = 0; a < UI_ACT_COUNT; a++)
+        if (!strcmp(k, names[a])) return ui_mouse_parse_chord(v, &ui_mouse.act[a]);
+    if (!strcmp(k, "left_handed")) ui_mouse.left_handed = yes(v);
+    else if (!strcmp(k, "double_click_ms")) { int ms = atoi(v); if (ms < 100 || ms > 2000) return false; ui_mouse.double_click_ms = ms; }
+    else if (!strcmp(k, "wheel_speed")) { double w = atof(v); if (w <= 0 || w > 20) return false; ui_mouse.wheel_speed = w; }
+    else return false;
+    return true;
 }
 
 /* Does this press (or release) make the action? The chord's modifiers

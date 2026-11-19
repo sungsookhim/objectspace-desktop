@@ -49,4 +49,11 @@ const char *events_sound_for(const char *name);
 /* Read the scheme again (settings changed). */
 void events_reload(void);
 
+/* The Sound object's settings (G3), replacing sounds.conf: begin, then
+ * each key (enabled, volume, or an event name) with its value (a theme
+ * sound, a file, or "" for none). GNOME's event-sounds switch still
+ * silences everything. */
+void events_setup_begin(void);
+void events_setup_set(const char *key, const char *value);
+
 #endif

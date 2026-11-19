@@ -836,6 +836,46 @@ def sb1():
     return ok, out
 
 
+# ----------------------------------------------------------- settings objects
+
+@scenario("G3", "Settings objects: System, Sound, Mouse, Scheme Palette made once; their pages; changes kept; the GUI reads them all")
+def sg3():
+    d = fresh("ext4", "g3")
+    env = {"WPS_SETUP_DIR": str(d / "System Setup")}
+    me = Service("me", extra_env=env).start()
+    c = Conn(me)
+    setup = wait_for(lambda: (lambda r: r if len(r.get("objects", {})) == 4 else None)(c.request(op="setup").get("result", {})), timeout=5) or {}
+    objs = setup.get("objects", {})
+    listed = sorted(i.get("title", "") for i in c.request(op="list", target=str(d / "System Setup"), offset=0, count=10, details=True).get("result", {}).get("items", []))
+    sysaddr = objs.get("WPSystem", {}).get("address", "")
+    pages = [p["title"] for p in c.request(op="settings", target=sysaddr).get("result", [])]
+    r1 = c.request(op="settings_set", target=sysaddr, values={"corner_radius": 3, "confirm_delete": False})
+    r2 = c.request(op="settings_set", target=objs.get("WPSound", {}).get("address", ""), values={"window.open": "bell", "volume": "40"})
+    bad = c.request(op="settings_set", target=sysaddr, values={"buttons": 9})
+    after = c.request(op="setup").get("result", {}).get("objects", {})
+    c.close()
+    me.stop()
+    me = Service("me", extra_env=env).start()          # kept, and not made twice
+    c = Conn(me)
+    again = c.request(op="setup").get("result", {}).get("objects", {})
+    n_listed = len(c.request(op="list", target=str(d / "System Setup"), offset=0, count=10).get("result", {}).get("items", []))
+    c.close()
+    me.stop()
+    sysv, sndv = after.get("WPSystem", {}).get("settings", {}), after.get("WPSound", {}).get("settings", {})
+    ok = sorted(objs) == ["WPMouse", "WPSchemePalette", "WPSound", "WPSystem"] and \
+        listed == ["Mouse", "Scheme Palette", "Sound", "System"] and pages == ["General", "Window", "Confirmations"] and \
+        r1.get("ok") and r2.get("ok") and not bad.get("ok") and sysv.get("corner_radius") == "8" and \
+        sysv.get("confirm_delete") == "0" and sndv.get("window.open") == "bell" and sndv.get("volume") == "40" and \
+        objs.get("WPMouse", {}).get("settings", {}).get("open") == "button1 double" and \
+        again.get("WPSystem", {}).get("settings", {}).get("corner_radius") == "8" and n_listed == 4 and \
+        again.get("WPSystem", {}).get("address") == sysaddr
+    return ok, [f"objects {sorted(objs)}; in the System Setup folder: {listed}", f"System's pages: {pages}",
+                f"after changes: corner_radius {sysv.get('corner_radius')!r} (choice 3), confirm_delete {sysv.get('confirm_delete')!r}, "
+                f"window.open {sndv.get('window.open')!r}, volume {sndv.get('volume')!r}; a bad choice refused {not bad.get('ok')}",
+                f"after a restart: corner_radius {again.get('WPSystem', {}).get('settings', {}).get('corner_radius')!r}, "
+                f"{n_listed} objects (not made again), same address {again.get('WPSystem', {}).get('address') == sysaddr}"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

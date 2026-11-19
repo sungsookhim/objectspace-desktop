@@ -50,7 +50,44 @@ static const ui_scheme dark = {
     .corner_radius = 0, .buttons_on_hover = false,
 };
 
+/* High contrast: black and white, yellow emphasis, thicker frames. */
+static const ui_scheme high_contrast = {
+    .name = "high contrast",
+    .face = RGB(0, 0, 0), .light = RGB(255, 255, 255), .shadow = RGB(255, 255, 255), .dark = RGB(255, 255, 255),
+    .text = RGB(255, 255, 255), .disabled_text = RGB(0, 255, 0),
+    .title_active = RGB(255, 255, 0), .title_inactive = RGB(0, 0, 0),
+    .title_text = RGB(0, 0, 0), .title_text_inactive = RGB(255, 255, 255),
+    .client_bg = RGB(0, 0, 0), .alt_row = RGB(20, 20, 20),
+    .selection = RGB(255, 255, 0), .selection_text = RGB(0, 0, 0), .cursor = RGB(255, 255, 255),
+    .menu_bg = RGB(0, 0, 0), .menu_text = RGB(255, 255, 255),
+    .menu_hilite = RGB(255, 255, 0), .menu_hilite_text = RGB(0, 0, 0),
+    .placeholder = RGB(60, 60, 60),
+    .shadow_text = RGB(0, 255, 255),
+    .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
+    .corner_radius = 0, .buttons_on_hover = false,
+};
+
 ui_scheme ui_scheme_now;
+
+bool ui_scheme_use(const char *name)
+{
+    const ui_scheme *s = !strcmp(name, "classic") ? &classic : !strcmp(name, "dark") ? &dark :
+                         !strcmp(name, "high contrast") ? &high_contrast : NULL;
+    if (!s) return false;
+    /* Colours from the scheme; the System object's choices stay. */
+    double r = ui_scheme_now.corner_radius, b = ui_scheme_now.border;
+    bool h = ui_scheme_now.buttons_on_hover;
+    ui_scheme_now = *s;
+    ui_scheme_now.corner_radius = r;
+    ui_scheme_now.buttons_on_hover = h;
+    if (b >= 0) ui_scheme_now.border = b;
+    return true;
+}
+
+void ui_scheme_set_border(const char *mode)
+{
+    ui_scheme_now.border = !strcmp(mode, "none") ? 0 : !strcmp(mode, "thin") ? 1 : 4;
+}
 
 void ui_scheme_init(void)
 {

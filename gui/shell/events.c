@@ -32,7 +32,8 @@ static const char *const defaults[][2] = {
 struct entry { char name[64]; char sound[PATH_MAX]; };
 static struct entry *scheme;
 static size_t nscheme;
-static bool enabled = true;
+static bool enabled = true;       /* the scheme's own switch */
+static bool gnome_sounds = true;  /* GNOME's event-sounds switch */
 static float volume = 0.7f;
 static char theme[128] = "freedesktop";
 
@@ -83,7 +84,8 @@ static void load(void)
     char v[128];
     enabled = true;
     volume = 0.7f;
-    if (gsetting("org.gnome.desktop.sound", "event-sounds", v, sizeof v)) enabled = strcmp(v, "false") != 0;
+    gnome_sounds = true;
+    if (gsetting("org.gnome.desktop.sound", "event-sounds", v, sizeof v)) gnome_sounds = strcmp(v, "false") != 0;
     if (gsetting("org.gnome.desktop.sound", "theme-name", v, sizeof v) && *v) snprintf(theme, sizeof theme, "%s", v);
     char path[PATH_MAX], line[PATH_MAX + 128];
     config_path(path, sizeof path, "sounds.conf");
@@ -139,7 +141,7 @@ static bool find_sound(const char *name, char *out, size_t n)
 const char *events_sound_for(const char *name)
 {
     static char path[PATH_MAX];
-    if (!enabled) return NULL;
+    if (!enabled || !gnome_sounds) return NULL;
     for (size_t i = 0; i < nscheme; i++)
         if (!strcmp(scheme[i].name, name)) return find_sound(scheme[i].sound, path, sizeof path) ? path : NULL;
     return NULL;
@@ -163,6 +165,18 @@ void events_init(void)
 }
 
 void events_reload(void) { load(); }
+
+void events_setup_begin(void)
+{
+    nscheme = 0;   /* the Sound object lists every event */
+}
+
+void events_setup_set(const char *key, const char *value)
+{
+    if (!strcmp(key, "enabled")) enabled = !strcmp(value, "1");
+    else if (!strcmp(key, "volume")) { int x = atoi(value); volume = (float)(x < 0 ? 0 : x > 100 ? 100 : x) / 100.0f; }
+    else if (strchr(key, '.')) set(key, value);
+}
 
 void events_shutdown(void)
 {

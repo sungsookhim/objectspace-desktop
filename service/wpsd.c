@@ -899,6 +899,7 @@ static void strlist(const cv *a, char ***out, size_t *n)
         if (a->items[i].k == CV_TEXT) {
             const char *t = a->items[i].s;
             if (!strncmp(t, "id:", 3)) t += 3;
+            else if (!strncmp(t, "vobj:", 5)) t += 5;   /* a central object: matched by its ID too */
             (*out)[(*n)++] = strdup(t);
         }
 }
@@ -1026,6 +1027,20 @@ static const char *apply_settings(wpo_object *o, const cv *values)
         for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
         if (!f) { err = "no such setting"; break; }
         wpo_value a, r;
+        if (!strcmp(f->setter, "@")) {
+            /* A settings object's field: wpSetSetting(key, value as text). */
+            char num[32];
+            const char *txt = val->k == CV_TEXT ? val->s : NULL;
+            if (val->k == CV_INT) { snprintf(num, sizeof num, "%lld", (long long)val->i); txt = num; }
+            else if (val->k == CV_BOOL) txt = val->b ? "1" : "0";
+            if (!txt) { err = "unsupported value"; break; }
+            wpo_value args[2] = { wpo_v_string(f->key), wpo_v_string(txt) };
+            if (wpo_send(o, "wpSetSetting", args, 2, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
+            wpo_value_clear(&args[0]);
+            wpo_value_clear(&args[1]);
+            wpo_value_clear(&r);
+            continue;
+        }
         if (val->k == CV_TEXT) a = wpo_v_string(val->s);
         else if (val->k == CV_INT) a = wpo_v_int(val->i);
         else if (val->k == CV_BOOL) a = wpo_v_bool(val->b);
@@ -2032,7 +2047,140 @@ static void builtin_templates_work(void *arg)
     wps_loaded_free(&fl);
 }
 
-static void builtin_templates_done(void *arg) { (void)arg; wps_listing_invalidate(wps_templates_dir()); }
+/* ---- settings objects (System, Sound, Mouse, Scheme Palette): one of each
+ * per user, central objects in the System Setup folder
+ * ($XDG_DATA_HOME/wps/System Setup; WPS_SETUP_DIR for tests), made once and
+ * remembered by class (locator "setup:<folder ID>", class WPS, prop
+ * <class> = object ID). */
+static const char *const setup_classes[][2] = {
+    { "WPSystem", "System" }, { "WPSound", "Sound" }, { "WPMouse", "Mouse" }, { "WPSchemePalette", "Scheme Palette" },
+};
+#define NSETUP 4
+
+static void setup_dir(char *out, size_t n)
+{
+    const char *e = getenv("WPS_SETUP_DIR"), *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+    if (e && *e) snprintf(out, n, "%s", e);
+    else if (dh && *dh) snprintf(out, n, "%s/wps/System Setup", dh);
+    else snprintf(out, n, "%s/.local/share/wps/System Setup", home ? home : "");
+}
+
+static void setup_objects_work(void *arg)
+{
+    (void)arg;
+    char sd[PATH_MAX];
+    setup_dir(sd, sizeof sd);
+    if (wps_mkdirs(sd, 0700) != 0) return;
+    wps_loaded fl;
+    wps_load(sd, true, &fl);
+    if (fl.err || !fl.id[0]) { wps_loaded_free(&fl); return; }
+    wps_props known;
+    wps_props_init(&known);
+    char sloc[WPS_ID_LEN + 8];
+    snprintf(sloc, sizeof sloc, "setup:%s", fl.id);   /* by the folder: one set per System Setup folder */
+    wps_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    for (size_t i = 0; i < NSETUP; i++) {
+        char *id = NULL, vol[WPS_VOLID_MAX];
+        if (wps_props_str(&known, setup_classes[i][0], &id) && id && wps_db_vobj_vol(db, id, vol, sizeof vol)) { free(id); continue; }
+        free(id);
+        char nid[WPS_ID_LEN + 1], key[256];
+        if (wps_central_create(fl.vol, fl.id, setup_classes[i][0], setup_classes[i][1], NULL, nid)) continue;
+        wps_db_key(key, sizeof key, sloc, "WPS", setup_classes[i][0]);
+        wps_db_put(db, fl.vol, key, 's', nid, WPS_ID_LEN);
+    }
+    wps_props_free(&known);
+    wps_loaded_free(&fl);
+}
+
+static void builtin_templates_done(void *arg)
+{
+    (void)arg;
+    wps_listing_invalidate(wps_templates_dir());
+    wpo_defer(loop, "settings objects", setup_objects_work, NULL, NULL);
+}
+
+/* {op:"setup"} -> {folder, objects:{<class>:{address, settings:{key:value}}}} */
+struct setup_req {
+    struct client *c;
+    int64_t id;
+    char folder[PATH_MAX];
+    wps_loaded ld[NSETUP];
+};
+
+static void setup_req_work(void *arg)
+{
+    struct setup_req *r = arg;
+    setup_dir(r->folder, sizeof r->folder);
+    wps_loaded fl;
+    wps_load(r->folder, false, &fl);
+    wps_props known;
+    wps_props_init(&known);
+    char sloc[WPS_ID_LEN + 8];
+    snprintf(sloc, sizeof sloc, "setup:%s", fl.id);
+    if (!fl.err && fl.id[0]) wps_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    for (size_t i = 0; i < NSETUP; i++) {
+        char *id = NULL, loc[WPS_ID_LEN + 8];
+        r->ld[i].err = ENOENT;
+        if (wps_props_str(&known, setup_classes[i][0], &id) && id) {
+            snprintf(loc, sizeof loc, "vobj:%s", id);
+            wps_load(loc, false, &r->ld[i]);
+        }
+        free(id);
+    }
+    wps_props_free(&known);
+    wps_loaded_free(&fl);
+}
+
+static void setup_req_done(void *arg)
+{
+    struct setup_req *r = arg;
+    if (!r->c->dead) {
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, r->id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result");
+        cb_map(&b, 2);
+        cb_text(&b, "folder"); cb_text(&b, r->folder);
+        size_t n = 0;
+        wpo_object *objs[NSETUP] = { 0 };
+        for (size_t i = 0; i < NSETUP; i++)
+            if (!r->ld[i].err && (objs[i] = wps_object_from_loaded(&r->ld[i]))) n++;
+        cb_text(&b, "objects");
+        cb_map(&b, n);
+        for (size_t i = 0; i < NSETUP; i++) {
+            if (!objs[i]) continue;
+            char *text = NULL;
+            wpo_value rv;
+            if (wpo_send(objs[i], "wpQuerySettings", NULL, 0, &rv) == WPO_OK && rv.type == 's') { text = rv.u.s; rv.u.s = NULL; }
+            wpo_value_clear(&rv);
+            if (!text) text = strdup("");
+            size_t nk = 0;
+            for (const char *p = text; *p; p++) nk += *p == '\n';
+            cb_text(&b, setup_classes[i][0]);
+            cb_map(&b, 2);
+            char addr[WPS_ID_LEN + 8];
+            snprintf(addr, sizeof addr, "vobj:%s", WPObject_data(objs[i])->id);
+            cb_text(&b, "address"); cb_text(&b, addr);
+            cb_text(&b, "settings");
+            cb_map(&b, nk);
+            for (char *line = text, *nl; (nl = strchr(line, '\n')); line = nl + 1) {
+                *nl = 0;   /* key TAB value */
+                char *tab = strchr(line, '\t');
+                if (tab) *tab = 0;
+                cb_text(&b, line);
+                cb_text(&b, tab ? tab + 1 : "");
+            }
+            free(text);
+        }
+        send_frame(r->c, &b);
+        cb_free(&b);
+    }
+    for (size_t i = 0; i < NSETUP; i++) wps_loaded_free(&r->ld[i]);
+    client_unref(r->c);
+    free(r);
+}
 
 struct shadow_reply { struct simple *s; char link[PATH_MAX]; };
 
@@ -2133,6 +2281,11 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
+    } else if (strcmp(op, "setup") == 0) {
+        struct setup_req *r = calloc(1, sizeof *r);
+        r->c = c; c->refs++;
+        r->id = id;
+        wpo_defer(loop, "settings objects", setup_req_work, setup_req_done, r);
     } else if (strcmp(op, "vdelete") == 0) {
         const char *t = cv_text(msg, "target");
         if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN) {

@@ -1,0 +1,4 @@
+# The System object: windows' look, confirmations.
+class WPSystem : WPSetup
+version 1.0
+classoverride wpclsQueryTitle

@@ -49,6 +49,11 @@ typedef struct {
 } ui_scheme;
 
 extern ui_scheme ui_scheme_now;
+/* Switch the colours to a scheme ("classic", "dark", "high contrast"),
+ * keeping the window options (corners, buttons, border); false if unknown. */
+bool ui_scheme_use(const char *name);
+/* The frame border: "visible" (4 px), "thin" (1 px) or "none". */
+void ui_scheme_set_border(const char *mode);
 /* "classic" (default), "dark"; WPS_UI_SCHEME, WPS_UI_CORNER_RADIUS and
  * WPS_UI_BUTTONS=hover override until the scheme objects exist (G3). */
 void ui_scheme_init(void);
@@ -110,6 +115,10 @@ typedef struct {
     int double_click_ms;
     double wheel_speed;        /* lines per wheel step */
 } ui_mouse_config;
+/* One mouse setting by name (an action's chord, left_handed,
+ * double_click_ms, wheel_speed), as from the Mouse object; false when the
+ * value cannot be used. */
+bool ui_mouse_set(const char *key, const char *value);
 extern ui_mouse_config ui_mouse;
 void ui_mouse_load(void);
 bool ui_mouse_parse_chord(const char *s, ui_chord *out);

@@ -264,6 +264,23 @@ void svc_subscribe_folder(const char *folder, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+void svc_subscribe_objects(const char *const *targets, size_t n, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("subscribe", 1, &id);
+    cb_text(&o->b, "objects");
+    cb_array(&o->b, n);
+    for (size_t i = 0; i < n; i++) cb_text(&o->b, targets[i]);
+    send_req(o, id, fn, arg);
+}
+
+void svc_setup(svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("setup", 0, &id);
+    send_req(o, id, fn, arg);
+}
+
 static void ignore(void *arg, const cv *reply) { (void)arg; (void)reply; }
 
 void svc_unsubscribe(int64_t sub)
@@ -294,7 +311,7 @@ void svc_settings(const char *target, svc_fn fn, void *arg)
 void svc_settings_set(const char *target, const char *key, const cv *value, int64_t expect, svc_fn fn, void *arg)
 {
     int64_t id;
-    struct out *o = begin("settings_set", 3, &id);
+    struct out *o = begin("settings_set", expect >= 0 ? 3 : 2, &id);   /* expect < 0: no check */
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "values");
     cb_map(&o->b, 1);
@@ -302,7 +319,7 @@ void svc_settings_set(const char *target, const char *key, const cv *value, int6
     if (value->k == CV_TEXT) cb_text(&o->b, value->s);
     else if (value->k == CV_BOOL) cb_bool(&o->b, value->b);
     else cb_int(&o->b, value->i);
-    cb_text(&o->b, "expect"); cb_int(&o->b, expect);
+    if (expect >= 0) { cb_text(&o->b, "expect"); cb_int(&o->b, expect); }
     send_req(o, id, fn, arg);
 }
 

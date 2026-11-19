@@ -184,6 +184,8 @@ static void *page_arg(struct folder *f, bool shadow)
 }
 
 static void request_more(struct folder *f, bool shadow);
+static bool setup_event(const cv *ev);
+static char setup_ids[4][64];   /* the settings objects (see below) */
 static void rename_new_now(struct folder *f);
 static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
@@ -599,6 +601,7 @@ static void on_event(void *arg, const cv *ev)
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
+    if (setup_event(ev)) return;
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
@@ -3334,6 +3337,63 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "setup")) {
+        /* The settings objects, live: the Scheme Palette to dark, System's
+         * corners and delete confirmation, a Sound event; then a delete
+         * that is not asked about. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete || !setup_ids[0][0]) return; t0 = now; }
+        double t = now - t0;
+        const char *sys = NULL, *snd = NULL, *pal = NULL;
+        for (int i = 0; i < 4; i++) {
+            /* the order is the service's: System, Sound, Mouse, Scheme Palette */
+            if (i == 0) sys = setup_ids[i];
+            if (i == 1) snd = setup_ids[i];
+            if (i == 3) pal = setup_ids[i];
+        }
+        if (step == 0) {
+            fprintf(stderr, "selftest: at start: scheme %s, corners %.0f, confirm delete %d, window.open sound %s\n",
+                    ui_scheme_now.name, ui_scheme_now.corner_radius, confirm_delete, events_sound_for("window.open") ? "yes" : "none");
+            cv one = { .k = CV_INT, .i = 1 }, three = { .k = CV_INT, .i = 3 }, no = { .k = CV_BOOL, .b = false },
+               bell = { .k = CV_TEXT, .s = (char *)"bell", .len = 4 };
+            svc_settings_set(pal, "scheme", &one, -1, ignore_reply, NULL);
+            svc_settings_set(sys, "corner_radius", &three, -1, ignore_reply, NULL);
+            svc_settings_set(sys, "confirm_delete", &no, -1, ignore_reply, NULL);
+            svc_settings_set(snd, "window.open", &bell, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            fprintf(stderr, "selftest: after the notebooks' changes: scheme %s, corners %.0f, confirm delete %d, window.open sound %s\n",
+                    ui_scheme_now.name, ui_scheme_now.corner_radius, confirm_delete,
+                    events_sound_for("window.open") ? strrchr(events_sound_for("window.open"), '/') + 1 : "none");
+            ssize_t ai = model_find(&f->m, "a.txt");
+            last_dialog = NULL;
+            if (ai >= 0) delete_request(f, (size_t)ai, false);
+            fprintf(stderr, "selftest: Delete asked: %s\n", last_dialog ? "yes" : "no");
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            fprintf(stderr, "selftest: a.txt shown %d\n", model_find(&f->m, "a.txt") >= 0);
+            const char *shot = getenv("WPS_SHELL_SHOT");   /* the window in the dark scheme (WPS_UI_NO_LAYER=1) */
+            if (shot) {
+                cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ui_surface_width(s), (int)ui_surface_height(s));
+                cairo_t *icr = cairo_create(img);
+                win_draw(s, icr, (ui_rect){ 0, 0, ui_surface_width(s), ui_surface_height(s) });
+                cairo_destroy(icr);
+                cairo_surface_write_to_png(img, shot);
+                cairo_surface_destroy(img);
+            }
+            step++;
+        } else if (step == 3) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -3437,6 +3497,88 @@ static void got_title(void *arg, const cv *reply)
 
 static void notify_in_use(const char *path);
 
+/* ------------------------------------------------------- settings objects */
+
+/* The System, Sound, Mouse and Scheme Palette objects (G3): read at start
+ * and whenever one changes (their notebooks), applied at once. */
+static char setup_ids[4][64];
+static int64_t setup_sub;
+static char scheme_name[32] = "classic";
+static void apply_scheme(void);
+
+static void got_setup(void *arg, const cv *reply);
+static void desktop_setup_shadow(const char *folder);
+static void got_setup_sub(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (res && res->k == CV_INT) setup_sub = res->i;
+}
+
+static void apply_setup_object(const char *cls, const cv *settings)
+{
+    if (!settings || settings->k != CV_MAP) return;
+    if (!strcmp(cls, "WPSound")) events_setup_begin();
+    for (size_t i = 0; i < settings->n; i++) {
+        const cv *k = &settings->items[2 * i], *v = &settings->items[2 * i + 1];
+        if (k->k != CV_TEXT || v->k != CV_TEXT) continue;
+        const char *key = k->s, *val = v->s;
+        if (!strcmp(cls, "WPSound")) events_setup_set(key, val);
+        else if (!strcmp(cls, "WPMouse")) ui_mouse_set(key, val);
+        else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
+        else if (!strcmp(cls, "WPSystem")) {
+            if (!strcmp(key, "corner_radius")) ui_scheme_now.corner_radius = atof(val);
+            else if (!strcmp(key, "buttons")) ui_scheme_now.buttons_on_hover = !strcmp(val, "on hover");
+            else if (!strcmp(key, "border")) ui_scheme_set_border(val);
+            else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
+            else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
+        }
+    }
+}
+
+static void got_setup(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *objs = res ? cv_get(res, "objects") : NULL;
+    if (!objs || objs->k != CV_MAP) return;
+    const char *ids[4];
+    size_t n = 0;
+    for (size_t i = 0; i < objs->n && i < 4; i++) {
+        const cv *cls = &objs->items[2 * i], *o = &objs->items[2 * i + 1];
+        if (cls->k != CV_TEXT) continue;
+        apply_setup_object(cls->s, cv_get(o, "settings"));
+        const char *a = cv_text(o, "address");
+        if (a) { snprintf(setup_ids[n], sizeof setup_ids[n], "%s", a); ids[n] = setup_ids[n]; n++; }
+    }
+    apply_scheme();
+    for (struct folder *f = folders; f; f = f->next) if (!f->closing) ui_surface_damage_all(f->win);
+    if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
+    const char *folder = cv_text(res, "folder");
+    if (folder) desktop_setup_shadow(folder);
+}
+
+/* The Scheme Palette's scheme: colours for every window; the desktop's
+ * picture is GNOME's either way. */
+static void apply_scheme(void)
+{
+    if (!ui_scheme_use(scheme_name)) ui_scheme_use("classic");
+    for (struct folder *f = folders; f; f = f->next) {
+        if (f->closing) continue;
+        layout(f);   /* border and title sizes may have changed */
+        ui_container_layout_changed(f->cont);
+        ui_surface_damage_all(f->win);
+    }
+}
+
+/* Is this event about one of the settings objects? Then read them again. */
+static bool setup_event(const cv *ev)
+{
+    int64_t sub;
+    if (!setup_sub || !cv_int(ev, "sub", &sub) || sub != setup_sub) return false;
+    svc_setup(got_setup, NULL);
+    return true;
+}
+
 /* What the toolkit reports (minimize, maximize, restore, menus). */
 static void toolkit_action(const char *name, ui_surface *s, ui_rect at)
 {
@@ -3505,6 +3647,25 @@ static void desktop_first_start(const char *desk)
     mkdir(p, 0700);
     FILE *m = fopen(marker, "w");
     if (m) { fputs("The desktop was set up (a shadow of the Templates folder).\n", m); fclose(m); }
+}
+
+/* The System Setup folder on the desktop, once (as OS/2's desktop had it). */
+static void desktop_setup_shadow(const char *folder)
+{
+    struct folder *desk = NULL;
+    for (struct folder *o = folders; o && !desk; o = o->next) if (o->desktop && !o->closing) desk = o;
+    if (!desk) return;
+    char cfgdir[PATH_MAX], marker[PATH_MAX + 32];
+    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (cfg && *cfg) snprintf(cfgdir, sizeof cfgdir, "%s", cfg);
+    else if (xdg && *xdg) snprintf(cfgdir, sizeof cfgdir, "%s/wps", xdg);
+    else snprintf(cfgdir, sizeof cfgdir, "%s/.config/wps", home ? home : "");
+    snprintf(marker, sizeof marker, "%s/desktop-setup-made", cfgdir);
+    if (access(marker, F_OK) == 0) return;
+    svc_shadow(folder, desk->path, ignore_reply, NULL);
+    mkdir(cfgdir, 0700);
+    FILE *m = fopen(marker, "w");
+    if (m) { fputs("The desktop has a shadow of System Setup.\n", m); fclose(m); }
 }
 
 static struct folder *open_desktop(const char *path)
@@ -3645,6 +3806,7 @@ int main(int argc, char **argv)
     }
     svc_on_event(on_event, NULL);
     svc_subscribe_jobs(ignore_reply, NULL);
+    svc_setup(got_setup, NULL);
     if (desk) {
         /* --desktop FOLDER: that folder as the desktop (tests) */
         struct folder *f = open_desktop(i < argc ? argv[i++] : NULL);

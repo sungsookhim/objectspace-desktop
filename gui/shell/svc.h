@@ -55,6 +55,9 @@ void svc_settings_set(const char *target, const char *key, const cv *value, int6
  * to svc_subscribe carries the subscription ID in "result". */
 void svc_on_event(svc_fn fn, void *arg);
 void svc_subscribe_folder(const char *folder, svc_fn fn, void *arg);
+void svc_subscribe_objects(const char *const *targets, size_t n, svc_fn fn, void *arg);
+/* The settings objects' values: {folder, objects:{<class>:{address, settings}}}. */
+void svc_setup(svc_fn fn, void *arg);
 void svc_unsubscribe(int64_t sub);
 
 #endif

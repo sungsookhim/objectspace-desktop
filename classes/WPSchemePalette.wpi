@@ -1,0 +1,4 @@
+# The Scheme Palette: the colour scheme.
+class WPSchemePalette : WPSetup
+version 1.0
+classoverride wpclsQueryTitle
