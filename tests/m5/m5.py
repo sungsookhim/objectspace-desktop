@@ -770,6 +770,72 @@ def stp1():
                 f"an ordinary file is not a template: {not refused.get('ok')}", f"after deleting Folder and restarting: {again}"]
 
 
+# ------------------------------------------------------------- big folders
+
+@scenario("B1", "A big folder follows changes entry by entry: versions step by one, nothing read again, no half-copied items listed")
+def sb1():
+    d = fresh("ext4", "b1")
+    big = d / "big"
+    big.mkdir()
+    for i in range(20000):
+        (big / f"f{i:05}").write_bytes(b"")
+    src = d / "src"
+    src.mkdir()
+    for i in range(200):
+        (src / f"c{i:03}").write_bytes(b"x" * 65536)
+    me = Service("me").start()
+    c = Conn(me)
+    def page(off, n=10):
+        return c.request(op="list", target=str(big), offset=off, count=n).get("result", {})
+    first = wait_for(lambda: (lambda r: r if r.get("complete") else None)(page(0, 1)), timeout=20) or {}
+    total0, v0 = first.get("total"), first.get("version")
+    c.request(op="subscribe", folders=[str(big)])
+    out, ok = [], True
+
+    def event(kind):
+        evs = c.events(3, until=lambda e: e["event"] == kind)
+        e = [x for x in evs if x["event"] == kind]
+        return e[-1] if e else {}
+
+    t0 = time.time()
+    (big / "new-one").write_bytes(b"")
+    a = event("content_added")
+    tail = page(total0, 5)
+    t_add = time.time() - t0
+    names = [i["name"] for i in page(0, total0 + 1).get("items", [])]
+    idx = names.index("f00010")   # directory order, not sorted
+    os.rename(big / "f00010", big / "renamed")
+    m = event("object_moved")
+    at10 = page(idx, 1).get("items", [{}])[0].get("name")
+    os.unlink(big / "f00020")
+    r = event("content_removed")
+    after = page(0, 1)
+    ok = v0 and a.get("version") == v0 + 1 and a.get("type") == "file" and [i["name"] for i in tail.get("items", [])] == ["new-one"] and \
+        tail.get("version") == v0 + 1 and m.get("version") == v0 + 2 and at10 == "renamed" and \
+        r.get("version") == v0 + 3 and after.get("total") == total0 and after.get("version") == v0 + 3
+    out.append(f"{total0} entries, version {v0}; added: event version {a.get('version')} type {a.get('type')}, "
+               f"listed at the end {[i['name'] for i in tail.get('items', [])]} after {t_add * 1000:.0f} ms")
+    out.append(f"renamed: event version {m.get('version')}, still at index {idx} as {at10!r}; "
+               f"removed: version {r.get('version')}, total {after.get('total')}")
+    # a copy into the folder: its temporary names are never listed
+    seen_tmp = False
+    sel = c.request(op="select", folder=str(src), all=True, **{"except": []})["result"]
+    jid = c.request(op="copy", selection=sel, dest=str(big))["result"]
+    end = time.time() + 20
+    while time.time() < end:
+        res = page(total0, 400)
+        seen_tmp |= any(i["name"].startswith(".wps-tmp-") for i in res.get("items", []))
+        st = c.request(op="job", job=jid).get("result") or {}
+        if st.get("state") == "done":
+            break
+    final = page(0, 1)
+    c.close()
+    me.stop()
+    ok = ok and not seen_tmp and final.get("total") == total0 + 200
+    out.append(f"copy of 200 items in: half-copied names listed {seen_tmp}; total now {final.get('total')} (version {final.get('version')})")
+    return ok, out
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

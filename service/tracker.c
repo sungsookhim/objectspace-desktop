@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/inotify.h>
 #include <sys/socket.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <sys/un.h>
@@ -808,6 +809,27 @@ static void apply(const tev *e)
      * is that name appearing. */
     bool tmp_path = e->path[0] && strstr(e->path, "/" WPS_SHADOW_TMP);
     bool tmp_old = e->from[0] && strstr(e->from, "/" WPS_SHADOW_TMP);
+    /* Cached folder listings follow the change first (entry by entry), so
+     * the events below can carry their new versions. Changes to contents
+     * or attributes need nothing: details are read at each request. */
+    if (e->k == E_CREATE || e->k == E_DELETE || e->k == E_MOVE) {
+        char d[PATH_MAX], d2[PATH_MAX];
+        unsigned char type = DT_UNKNOWN;
+        struct stat st;
+        if (e->path[0] && lstat(e->path, &st) == 0)
+            type = S_ISDIR(st.st_mode) ? DT_DIR : S_ISLNK(st.st_mode) ? DT_LNK : S_ISREG(st.st_mode) ? DT_REG : DT_UNKNOWN;
+        else if (e->isdir) type = DT_DIR;
+        const char *nn = e->path[0] ? strrchr(e->path, '/') + 1 : "", *on = e->from[0] ? strrchr(e->from, '/') + 1 : "";
+        if (e->path[0]) dir_of(e->path, d, sizeof d);
+        if (e->from[0]) dir_of(e->from, d2, sizeof d2);
+        if (e->k == E_CREATE) wps_listing_apply(d, 'c', nn, NULL, type);
+        else if (e->k == E_DELETE) wps_listing_apply(d, 'd', nn, NULL, type);
+        else if (e->path[0] && e->from[0] && !strcmp(d, d2)) wps_listing_apply(d, 'r', on, nn, type);
+        else {
+            if (e->from[0]) wps_listing_apply(d2, 'd', on, NULL, type);
+            if (e->path[0]) wps_listing_apply(d, 'c', nn, NULL, type);
+        }
+    }
     if (wps_on_fs_event && !tmp_path) {
         if (e->k == E_CREATE) wps_on_fs_event('c', "", e->path);
         else if (e->k == E_DELETE) wps_on_fs_event('d', "", e->path);
@@ -815,11 +837,10 @@ static void apply(const tev *e)
         else if (e->k == E_MOVE) wps_on_fs_event('m', e->from, e->path);
     }
     if (!tmp_path && (e->k == E_CREATE || e->k == E_MOVE)) wps_shadows_file_seen(e->path);   /* only .wpobj files */
-    /* A folder listing that saw this change is stale now. */
-    if (e->k != E_OVERFLOW) {
-        char d[PATH_MAX];
-        if (e->path[0]) { dir_of(e->path, d, sizeof d); wps_listing_invalidate(d); }
-        if (e->from[0]) { dir_of(e->from, d, sizeof d); wps_listing_invalidate(d); }
+    /* A folder that was itself moved or deleted: its own listing is gone. */
+    if ((e->k == E_DELETE || e->k == E_MOVE) && e->isdir) {
+        if (e->from[0]) wps_listing_invalidate(e->from);
+        if (e->k == E_DELETE && e->path[0]) wps_listing_invalidate(e->path);
     }
     if (trace) {
         static const char *k[] = { "CREATE", "DELETE", "MOVE", "ATTRIB", "WRITE", "OVERFLOW" };

@@ -52,9 +52,14 @@ Known problems and gaps found while building and trying G2, as of 2026-11-19. Ea
 - **No "New" cascade** in folder menus listing the templates (XWorkplace had one; GNOME Files has "New Document").
 - **Titles of new data files include the extension** when made by Create another ("New Data File.txt").
 
+## Big folders (built 2026-11-19)
+
+- Each batch of changes still costs the window time in proportion to the folder (moving rows after a removal, matching icon spots by name); a batch of more than 64 changes reads the folder again instead. Fine at 200,000 entries; a million-entry folder under constant change would want a cheaper structure.
+- The selection survives a change by name only when at most 256 items are selected (as with reading the folder again).
+
 ## Remaining G2 work
 
-- Incremental live updates for very large folders (a burst of changes now costs at most two re-reads of the folder).
+G2's planned items are all built. What remains are the issues above.
 
 ## Tests
 

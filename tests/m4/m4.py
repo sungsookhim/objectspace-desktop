@@ -4,6 +4,7 @@
 usage: tests/m4/m4.py [--mode inotify|watchd] [scenario ...]
 Needs the test bed (proto/m0/testbed.sh up); uses sudo.
 """
+import json
 import os
 import shutil
 import subprocess
@@ -166,11 +167,13 @@ def s35():
     fixed = wait_for(lambda: link_of(link) == str(d / "done" / "spec.txt"))
     b.stop()
     a.start()                                  # A logs in again
-    t = obj(a, link).get("target") or {}
+    r = a.ctl("resolve", link)
+    t = (r.get("result") or {}).get("target") or {}
     works = t.get("path") == str(d / "done" / "spec.txt")
     a.stop()
     return bool(fixed) and works, [f"B updated A's shadow: {bool(fixed)} -> {link_of(link)}",
-                                   f"A's shadow resolves to it after logging in: {t.get('path')}"]
+                                   f"A's shadow resolves to it after logging in: {t.get('path')}" +
+                                   ("" if works else f" (A answered {json.dumps(r)[:400]})")]
 
 
 @scenario("T1", "Trash: the object keeps its identity; its shadow follows and comes back on restore")

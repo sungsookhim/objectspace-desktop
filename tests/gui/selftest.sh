@@ -5,7 +5,7 @@
 #   tests/gnome/with-gnome.sh -- tests/gui/selftest.sh live 'echo a > a.txt'
 # Settings: SHELL_ARGS (before <D>, e.g. --desktop), TEMPLATES=1 (<D>/Templates
 # is the templates folder, opened as a second window), WPS_WALLPAPER,
-# WPS_SHELL_SHOT=file.png (with WPS_UI_NO_LAYER=1).
+# WPS_SHELL_SHOT=file.png (with WPS_UI_NO_LAYER=1), KEEP=1 (keep <D> and the logs).
 # Modes and their set-ups: see the self-tests in gui/shell/wps-shell.c.
 #
 # usage: tests/gui/selftest.sh MODE [SETUP]
@@ -13,6 +13,9 @@ set -e
 cd "$(dirname "$0")/../.."
 W=$(mktemp -d "${TMPDIR:-/tmp}/wps-selftest-$1-XXXX")
 RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-st-XXXX")
+# Remove the folder at the end (KEEP=1 keeps it, with the logs): big
+# self-tests make hundreds of thousands of files.
+[ -n "$KEEP" ] || trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/d" "$W/xdg/config" "$W/xdg/data/applications" "$W/xdg/sys"
 printf '#!/bin/sh\nsleep 2\n' > "$W/hold.sh"; chmod +x "$W/hold.sh"
 printf '[Desktop Entry]\nType=Application\nName=Hold\nExec=%s %%f\n' "$W/hold.sh" > "$W/xdg/data/applications/wps-hold.desktop"

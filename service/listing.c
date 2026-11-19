@@ -31,6 +31,8 @@ struct listing {
     size_t n, cap;
     bool complete, loading, stale;
     int err;
+    uint64_t version;        /* bumped by each edit; a new, unused one for each read */
+    long last_index;         /* where the last edit was (see wps_listing_last_index) */
     unsigned gen;            /* bumped when re-read; chunks of an old read are dropped */
     struct waiter *waiters;
 };
@@ -209,7 +211,8 @@ static void detail_done(void *arg)
 /* Answer a waiter whose range is available (or the folder is complete). */
 static void answer(struct listing *l, struct waiter *w)
 {
-    wps_page pg = { .err = l->err, .total = l->n, .complete = l->complete, .offset = w->offset };
+    wps_page pg = { .err = l->err, .total = l->n, .complete = l->complete, .offset = w->offset,
+                    .version = l->complete && !l->stale ? l->version : 0 };
     size_t end = w->offset + w->count;
     if (end > l->n) end = l->n;
     pg.n = w->offset < end ? end - w->offset : 0;
@@ -345,6 +348,7 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     struct dirent *de;
     while ((de = readdir(d))) {
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+        if (!strncmp(de->d_name, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) continue;   /* a job's half-made item */
         c->names[c->n] = strdup(de->d_name);
         c->types[c->n] = de->d_type;
         if (++c->n == size) {
@@ -370,10 +374,13 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
 }
 
+static uint64_t versions;   /* never reused: a client cannot mistake one read for another */
+
 static void start_read(struct listing *l)
 {
     clear(l);
     l->gen++;
+    l->version = ++versions << 20;   /* room for a million edits before the next read's */
     l->complete = l->stale = false;
     l->err = 0;
     l->loading = true;
@@ -412,6 +419,81 @@ void wps_listing_invalidate(const char *folder)
 {
     struct listing *l = find(folder);
     if (l) l->stale = true;
+}
+
+uint64_t wps_listing_version(const char *folder)
+{
+    struct listing *l = find(folder);
+    return l && l->complete && !l->loading && !l->stale && !l->err ? l->version : 0;
+}
+
+static ssize_t index_of(struct listing *l, const char *name)
+{
+    for (size_t i = 0; i < l->n; i++)
+        if (!strcmp(l->names[i], name)) return (ssize_t)i;
+    return -1;
+}
+
+static void remove_at(struct listing *l, size_t i)
+{
+    free(l->names[i]);
+    memmove(l->names + i, l->names + i + 1, (l->n - i - 1) * sizeof *l->names);
+    memmove(l->types + i, l->types + i + 1, l->n - i - 1);
+    l->n--;
+    l->version++;
+}
+
+void wps_listing_apply(const char *folder, char kind, const char *name, const char *newname, unsigned char type)
+{
+    struct listing *l = find(folder);
+    if (!l) return;
+    /* Mid-read, the reader may or may not have seen it: read again. */
+    l->last_index = -1;
+    if (!l->complete || l->loading || l->err) { l->stale = true; return; }
+    if (l->stale) return;
+    bool tmp = !strncmp(name, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP));
+    if (kind == 'r' && tmp) { kind = 'c'; name = newname; tmp = false; }   /* a job's item finished */
+    if (kind == 'r' && !strncmp(newname, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) kind = 'd';
+    if (tmp) return;
+    ssize_t i = index_of(l, name);
+    if (kind == 'c') {
+        if (i >= 0) return;
+        if (l->n == l->cap) {
+            size_t ncap = l->cap ? l->cap * 2 : 64;
+            char **nn = realloc(l->names, ncap * sizeof *nn);
+            unsigned char *nt = nn ? realloc(l->types, ncap) : NULL;
+            if (nn) l->names = nn;
+            if (!nn || !nt) { l->stale = true; return; }
+            l->types = nt;
+            l->cap = ncap;
+        }
+        l->last_index = (long)l->n;
+        l->names[l->n] = strdup(name);
+        l->types[l->n++] = type;
+        l->version++;
+    } else if (kind == 'd') {
+        if (i >= 0) { l->last_index = (long)i; remove_at(l, (size_t)i); }
+    } else if (kind == 'r') {
+        ssize_t over = index_of(l, newname);   /* renamed over another: that one goes */
+        if (over >= 0 && over != i) {
+            remove_at(l, (size_t)over);
+            if (over < i) i--;
+        }
+        if (i < 0) {
+            wps_listing_apply(folder, 'c', newname, NULL, type);
+            return;
+        }
+        free(l->names[i]);
+        l->names[i] = strdup(newname);
+        l->last_index = (long)i;
+        l->version++;
+    }
+}
+
+long wps_listing_last_index(const char *folder)
+{
+    struct listing *l = find(folder);
+    return l ? l->last_index : -1;
 }
 
 void wps_listing_init(wpo_loop *l) { loop = l; }

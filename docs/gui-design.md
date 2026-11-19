@@ -187,6 +187,8 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 - **Templates** (2026-11-19, as in OS/2 Warp 4). The templates folder is the XDG templates folder (`~/Templates`, the one GNOME's "New Document" uses): anything in it is a template, besides objects marked as one. The service adds three built-in templates there once, Folder, Data File and Program, kept centrally so other programs do not see them (deleting one is final). Templates are drawn on a pad of paper. Dragging a template (moving or copying it) makes a new object where it is dropped, with its name ready to edit; a folder template brings a copy of what it holds. Create another, in every object's menu, makes a new, empty object of the same kind beside it (a data file of the same type), its name ready to edit. Double-clicking a built-in template opens its settings; a file template opens like the file. The desktop gets a shadow of the templates folder on its first start.
 
+- **Big folders follow changes** (2026-11-19). A window applies each change event to its rows as the service did to its listing (by position, so a million-entry folder whose names are mostly unread follows too), keeping selection, cursor and a name being edited. Events that come together are applied as one batch; a batch of more than 64 changes, or one that does not follow on from the rows (version check), is cheaper as one read of the folder, as before. Only the rows on screen have their details read again.
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.

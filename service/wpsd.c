@@ -300,6 +300,22 @@ static void prepare_work(void *arg)    /* worker */
         char t[WPS_ID_LEN + 4];
         snprintf(t, sizeof t, "id:%s", r->tgt.shadow_of);
         wps_load(t, false, &r->shadow_target);   /* fails if its volume is not mounted */
+        /* Not where it was last seen (moved while this user was away, say):
+         * the shadow file's hint, if the object there is the right one;
+         * and remember where it is now. */
+        char tid[WPS_ID_LEN + 1], hint[PATH_MAX];
+        if (r->shadow_target.err && r->tgt.path[0] && wps_shadow_read(r->tgt.path, tid, hint, sizeof hint) && hint[0] &&
+            !strcmp(tid, r->tgt.shadow_of)) {
+            wps_loaded alt;
+            wps_load(hint, false, &alt);
+            if (!alt.err && !strcmp(alt.id, r->tgt.shadow_of)) {
+                wps_loaded_free(&r->shadow_target);
+                r->shadow_target = alt;
+                wps_db_set_location(db, alt.id, alt.vol, alt.rel);
+            } else {
+                wps_loaded_free(&alt);
+            }
+        }
     }
     for (int i = 0; i < r->nobj; i++) wps_load(r->objpath[i], true, &r->objs[i]);
 }
@@ -785,7 +801,7 @@ static void on_central_change(const char *folder, const char *id, char kind)
 {
     char p[PATH_MAX + 64];
     snprintf(p, sizeof p, "%s/\x01vobj:%s", folder, id);
-    wps_listing_invalidate(folder);
+    wps_listing_apply(folder, kind == 'c' ? 'c' : 'd', p + strlen(folder) + 1, NULL, DT_UNKNOWN);
     on_fs_event(kind, "", p);
 }
 
@@ -799,17 +815,28 @@ static void on_fs_event(char kind, const char *from, const char *path)
             bool in_new = path[0] && in_folder(path, f), in_old = from[0] && in_folder(from, f);
             if (!in_new && !in_old) continue;
             cbuf b;
+            /* version: the folder's listing after this change (0: read it again) */
+            uint64_t ver = wps_listing_version(f);
             if (kind == 'm' && in_new && in_old) {
-                event_head(&b, "object_moved", x->id, 3);
+                event_head(&b, "object_moved", x->id, 5);
                 cb_text(&b, "folder"); cb_text(&b, f);
                 cb_text(&b, "from"); cb_text(&b, strrchr(from, '/') + 1);
                 cb_text(&b, "to"); cb_text(&b, strrchr(path, '/') + 1);
+                cb_text(&b, "version"); cb_uint(&b, ver);
+                cb_text(&b, "index"); cb_int(&b, wps_listing_last_index(f));   /* where it is, by position */
             } else {
                 bool added = kind == 'c' || (kind == 'm' && in_new);
                 const char *p = added ? path : (kind == 'm' ? from : path);
-                event_head(&b, added ? "content_added" : "content_removed", x->id, 2);
+                const char *nm = strrchr(p, '/') + 1;
+                event_head(&b, added ? "content_added" : "content_removed", x->id, 5);
                 cb_text(&b, "folder"); cb_text(&b, f);
-                cb_text(&b, "name"); cb_text(&b, strrchr(p, '/') + 1);
+                cb_text(&b, "name"); cb_text(&b, nm);
+                cb_text(&b, "version"); cb_uint(&b, ver);
+                cb_text(&b, "index"); cb_int(&b, wps_listing_last_index(f));   /* where, by position (added: at the end) */
+                struct stat st;   /* added: its type, as a listing gives it */
+                cb_text(&b, "type");
+                cb_text(&b, !added ? "" : nm[0] == '\x01' ? "object" : lstat(p, &st) != 0 ? "other" : S_ISDIR(st.st_mode) ? "folder" :
+                            S_ISLNK(st.st_mode) ? "link" : S_ISREG(st.st_mode) ? "file" : "other");
             }
             send_frame(x->c, &b);
             cb_free(&b);
@@ -1132,7 +1159,8 @@ static void list_reply(void *arg, const wps_page *pg)
             cb_text(&b, "id"); cb_int(&b, r->id);
             cb_text(&b, "ok"); cb_bool(&b, true);
             cb_text(&b, "result");
-            cb_map(&b, 4);
+            cb_map(&b, 5);
+            cb_text(&b, "version"); cb_uint(&b, pg->version);
             cb_text(&b, "total"); cb_uint(&b, pg->total);
             cb_text(&b, "complete"); cb_bool(&b, pg->complete);
             cb_text(&b, "offset"); cb_uint(&b, pg->offset);

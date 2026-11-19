@@ -7,6 +7,7 @@
  *   JSON, and exit (WPS_UI_SCALE and WPS_SHELL_SIZE=WxH help measure).
  */
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -33,9 +34,13 @@ struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow,
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
+/* A content event, kept until the batch it came in is applied. */
+struct change { char kind; char *name, *to, *type; uint64_t version; int64_t index; };
+
 struct model {
     struct page **pages;
     size_t npages, total;
+    uint64_t version;        /* the service's listing version these rows match (0: unknown) */
     bool complete, growing;
     int pending;             /* detail pages still awaited before a swap */
 };
@@ -61,6 +66,9 @@ struct folder {
     unsigned tgen;           /* replies for a freed tree are dropped */
     char pending_open[PATH_MAX];   /* the program asked about, if any */
     char rename_new[NAME_MAX + 64];  /* a new object made here: edit its name once it is listed */
+    struct change *changes;          /* content events not yet applied (applied together, next turn) */
+    size_t nchanges, capchanges;
+    bool changes_posted;
     ui_view pending_view;          /* how to open a folder the service names */
     icon_layout *lay;        /* icon view: where each icon is */
     bool lay_started;        /* its grid width is set */
@@ -172,6 +180,7 @@ static void *page_arg(struct folder *f, bool shadow)
 
 static void request_more(struct folder *f, bool shadow);
 static void rename_new_now(struct folder *f);
+static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
@@ -192,9 +201,11 @@ static double since_start(void)
 /* Store a reply's rows; returns whether they had details. */
 static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out)
 {
-    int64_t off = 0, tot = 0;
+    int64_t off = 0, tot = 0, ver = 0;
     cv_int(res, "offset", &off);
     cv_int(res, "total", &tot);
+    cv_int(res, "version", &ver);
+    m->version = (uint64_t)ver;
     const cv *cmp = cv_get(res, "complete"), *items = cv_get(res, "items");
     size_t n = items && items->k == CV_ARRAY ? items->n : 0;
     bool details = false;
@@ -245,52 +256,205 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
 
 /* The re-read model replaces the one on screen, keeping the scroll
  * position, the selection and the cursor (by name). */
-static void swap(struct folder *f)
+/* What the user has in a window (selection, cursor, a name being edited),
+ * kept by name across a change of its rows. */
+struct keep { char **sel; size_t k; char *cur, *ren; size_t ren_i; };
+
+static void keep_take(struct folder *f, struct keep *kp)
 {
-    struct model *old = &f->m, *nm = f->sh;
+    struct model *m = &f->m;
+    memset(kp, 0, sizeof *kp);
     size_t nsel = ui_container_selected_count(f->cont), cur = ui_container_cursor(f->cont);
-    char **sel = NULL, *curname = NULL;
-    size_t k = 0;
     if (nsel && nsel <= 256) {
-        sel = calloc(nsel, sizeof *sel);
-        for (size_t i = 0; i < old->total && k < nsel; i++)
-            if (ui_container_is_selected(f->cont, i) && model_name(old, i)) sel[k++] = strdup(model_name(old, i));
+        kp->sel = calloc(nsel, sizeof *kp->sel);
+        for (size_t i = 0; i < m->total && kp->k < nsel; i++)
+            if (ui_container_is_selected(f->cont, i) && model_name(m, i)) kp->sel[kp->k++] = strdup(model_name(m, i));
     }
-    if (cur != SIZE_MAX && model_name(old, cur)) curname = strdup(model_name(old, cur));
-    size_t ren = ui_container_rename_item(f->cont);
-    char *renname = ren != SIZE_MAX && model_name(old, ren) ? strdup(model_name(old, ren)) : NULL;
+    if (cur != SIZE_MAX && model_name(m, cur)) kp->cur = strdup(model_name(m, cur));
+    kp->ren_i = ui_container_rename_item(f->cont);
+    kp->ren = kp->ren_i != SIZE_MAX && model_name(m, kp->ren_i) ? strdup(model_name(m, kp->ren_i)) : NULL;
+}
+
+static void keep_put(struct folder *f, struct keep *kp)
+{
     size_t ren_new = SIZE_MAX;
-    model_free(old);
-    f->m = *nm;
-    free(nm);
-    f->sh = NULL;
-    f->gen++;
     ui_container_select_none(f->cont);
     ui_container_reset(f->cont);
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);   /* spots stay with names */
     svc_layout(f->path, got_layout, as_arg(f));                     /* positions may have changed too */
-    if (k || curname || renname)
+    if (kp->k || kp->cur || kp->ren)
         for (size_t i = 0; i < f->m.total; i++) {
             const char *n = model_name(&f->m, i);
             if (!n) continue;
-            for (size_t j = 0; j < k; j++)
-                if (sel[j] && !strcmp(sel[j], n)) { ui_container_select(f->cont, i); free(sel[j]); sel[j] = NULL; }
-            if (curname && !strcmp(curname, n)) { ui_container_set_cursor(f->cont, i); free(curname); curname = NULL; }
-            if (renname && !strcmp(renname, n)) ren_new = i;
+            for (size_t j = 0; j < kp->k; j++)
+                if (kp->sel[j] && !strcmp(kp->sel[j], n)) { ui_container_select(f->cont, i); free(kp->sel[j]); kp->sel[j] = NULL; }
+            if (kp->cur && !strcmp(kp->cur, n)) { ui_container_set_cursor(f->cont, i); free(kp->cur); kp->cur = NULL; }
+            if (kp->ren && !strcmp(kp->ren, n)) ren_new = i;
         }
-    else if (renname)
-        for (size_t i = 0; i < f->m.total && ren_new == SIZE_MAX; i++)
-            if (model_name(&f->m, i) && !strcmp(renname, model_name(&f->m, i))) ren_new = i;
-    if (ren != SIZE_MAX) ui_container_rename_moved(f->cont, ren_new);   /* gone: cancelled */
-    if (ren == SIZE_MAX) rename_new_now(f);
-    free(renname);
-    for (size_t j = 0; j < k; j++) free(sel[j]);
-    free(sel);
-    free(curname);
+    if (kp->ren_i != SIZE_MAX) ui_container_rename_moved(f->cont, ren_new);   /* gone: cancelled */
+    else rename_new_now(f);
+    free(kp->ren);
+    for (size_t j = 0; j < kp->k; j++) free(kp->sel[j]);
+    free(kp->sel);
+    free(kp->cur);
     damage_status(f);
+}
+
+static void swap(struct folder *f)
+{
+    struct keep kp;
+    keep_take(f, &kp);
+    model_free(&f->m);
+    f->m = *f->sh;
+    free(f->sh);
+    f->sh = NULL;
+    f->gen++;
+    keep_put(f, &kp);
     if (f->reload_again) {
         f->reload_again = false;
         reload(f);
+    }
+}
+
+/* ------------------------------------------------- following a big folder */
+
+/* One change, applied to the rows as the service applied it to its
+ * listing (new names at the end, gone ones taken out, renamed ones in
+ * place), so a folder of any size follows without being read again. */
+static ssize_t model_find(struct model *m, const char *name)
+{
+    for (size_t i = 0; i < m->total; i++) {
+        const char *n = model_name(m, i);
+        if (n && !strcmp(n, name)) return (ssize_t)i;
+    }
+    return -1;
+}
+
+static struct row *row_ptr(struct model *m, size_t i) { return &page_at(m, i / PAGE)->rows[i % PAGE]; }
+
+/* Its details must be read again (when it is on screen). */
+static void row_stale(struct model *m, size_t i)
+{
+    struct page *pg = page_at(m, i / PAGE);
+    if (pg->state == P_DETAILED) pg->state = P_NAMES;
+    pg->requested = false;
+}
+
+static void model_append(struct model *m, const char *name, const char *type)
+{
+    size_t i = m->total++;
+    struct row *r = row_ptr(m, i);
+    free(r->name); free(r->title); free(r->target);
+    memset(r, 0, sizeof *r);
+    r->name = strdup(name);
+    r->kind = kind_of(type, name);
+    r->link = type && !strcmp(type, "link");
+    row_stale(m, i);
+}
+
+static void model_remove(struct model *m, size_t i)
+{
+    struct row *r = row_ptr(m, i);
+    free(r->name); free(r->title); free(r->target);
+    for (size_t j = i; j + 1 < m->total; j++) *row_ptr(m, j) = *row_ptr(m, j + 1);   /* details move with their rows */
+    memset(row_ptr(m, m->total - 1), 0, sizeof(struct row));
+    m->total--;
+    /* Each later page took its first row from the next one, which may not
+     * have been read: read them again when shown. */
+    for (size_t p = i / PAGE; p < m->npages; p++) {
+        struct page *pg = m->pages[p];
+        if (!pg) continue;
+        if (pg->state == P_DETAILED) pg->state = P_NAMES;
+        pg->requested = false;
+    }
+}
+
+/* Changes in a batch beyond this are cheaper as one read of the folder. */
+#define MAX_FOLLOW 64
+
+static void changes_clear(struct folder *f)
+{
+    for (size_t i = 0; i < f->nchanges; i++) { free(f->changes[i].name); free(f->changes[i].to); free(f->changes[i].type); }
+    f->nchanges = 0;
+}
+
+/* One change to the rows; false when it does not follow on from them.
+ * Gone and renamed entries are found by position (the service's index):
+ * a big folder's window has read only the names it has shown. */
+static bool apply_change(struct model *m, const struct change *c)
+{
+    if (c->version == m->version) return true;   /* already in */
+    if (c->version != m->version + 1) return false;
+    if (c->kind == 'c') {
+        model_append(m, c->name, c->type);
+    } else {
+        if (c->index < 0 || (size_t)c->index >= m->total) return false;
+        size_t i = (size_t)c->index;
+        const char *was = model_name(m, i);
+        if (was && strcmp(was, c->name)) return false;   /* not what the service had there */
+        if (c->kind == 'd') {
+            model_remove(m, i);
+        } else {
+            struct row *r = row_ptr(m, i);
+            free(r->name);
+            r->name = strdup(c->to);
+            free(r->title);
+            r->title = NULL;   /* the title may follow the name: read again */
+            if (!was) r->kind = kind_of(NULL, c->to);
+            row_stale(m, i);
+        }
+    }
+    m->version = c->version;
+    return true;
+}
+
+/* The batch of changes that came together: applied in one go (the
+ * window's selection and icon spots fixed up once), or, when there are too
+ * many or they do not follow on from the rows, one read of the folder. */
+static void apply_changes(void *arg)
+{
+    struct folder *f = from_arg(arg);
+    if (!f) return;
+    f->changes_posted = false;
+    if (!f->nchanges || f->closing) { changes_clear(f); return; }
+    struct model *m = &f->m;
+    bool ok = f->nchanges <= MAX_FOLLOW && m->version && m->complete && !f->sh && !is_tree(f);
+    for (size_t i = 0; ok && i < f->nchanges; i++) ok = f->changes[i].version != 0;
+    if (!ok) { changes_clear(f); reload(f); return; }
+    struct keep kp;
+    keep_take(f, &kp);
+    for (size_t i = 0; ok && i < f->nchanges; i++) ok = apply_change(m, &f->changes[i]);
+    changes_clear(f);
+    /* Replies in flight were for the old rows: drop them, ask again. */
+    f->gen++;
+    for (size_t p = 0; p < m->npages; p++) if (m->pages[p]) m->pages[p]->requested = false;
+    m->pending = 0;
+    ui_container_count_changed(f->cont);
+    keep_put(f, &kp);
+    ui_container_layout_changed(f->cont);
+    if (!ok) { reload(f); return; }   /* partly applied: the read puts it right */
+    fetch_visible(f, f->vis_first, f->vis_last);
+}
+
+/* A content event: kept for the batch applied on the next turn. */
+static void queue_change(struct folder *f, const char *event, const cv *ev)
+{
+    int64_t v = 0, index = -1;
+    cv_int(ev, "version", &v);
+    cv_int(ev, "index", &index);
+    const char *name = cv_text(ev, "name"), *from = cv_text(ev, "from"), *to = cv_text(ev, "to"), *type = cv_text(ev, "type");
+    char kind = !strcmp(event, "content_added") ? 'c' : !strcmp(event, "content_removed") ? 'd' : 'r';
+    if (kind == 'r') name = from;
+    if (!name || (kind == 'r' && !to)) { reload(f); return; }
+    if (f->nchanges == f->capchanges) {
+        f->capchanges = f->capchanges ? f->capchanges * 2 : 16;
+        f->changes = realloc(f->changes, f->capchanges * sizeof *f->changes);
+    }
+    f->changes[f->nchanges++] = (struct change){ kind, strdup(name), to ? strdup(to) : NULL, type && *type ? strdup(type) : NULL,
+                                                 (uint64_t)v, index };
+    if (!f->changes_posted) {
+        f->changes_posted = true;
+        ui_app_post(app, apply_changes, as_arg(f));
     }
 }
 
@@ -309,6 +473,18 @@ static void got_page(void *arg, const cv *reply)
     }
     struct model *m = shadow ? f->sh : &f->m;
     if (!m || gen != (shadow ? f->sgen : f->gen)) return;   /* for a model replaced since */
+    {
+        /* A page from before a change this window has already followed. */
+        const cv *r0 = reply ? cv_get(reply, "result") : NULL;
+        int64_t pv = 0;
+        if (!shadow && r0 && m->complete && m->version && cv_int(r0, "version", &pv) && pv && (uint64_t)pv < m->version) {
+            int64_t off = 0;
+            cv_int(r0, "offset", &off);
+            if ((size_t)off / PAGE < m->npages && m->pages[(size_t)off / PAGE]) m->pages[(size_t)off / PAGE]->requested = false;
+            fetch_visible(f, f->vis_first, f->vis_last);
+            return;
+        }
+    }
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) {
         const char *msg = reply ? cv_text(reply, "message") : NULL;   /* {ok:false, error, message} */
@@ -321,6 +497,7 @@ static void got_page(void *arg, const cv *reply)
     size_t off, n;
     bool was_complete = m->complete;
     bool details = store(m, res, &off, &n);
+    bool clear_error = !details;   /* reading names again clears an old read error, not a message */
     if (shadow) {
         if (details) { if (--m->pending == 0) swap(f); return; }
         if (!m->complete) { request_more(f, true); return; }
@@ -334,7 +511,7 @@ static void got_page(void *arg, const cv *reply)
         if (!m->pending) swap(f);
         return;
     }
-    f->error[0] = 0;
+    if (clear_error) f->error[0] = 0;
     ui_container_count_changed(f->cont);
     if (n) ui_container_changed(f->cont, off, off + n - 1);
     if (!details || m->complete != was_complete) layout_follow(f, false);
@@ -367,8 +544,11 @@ static void fetch_visible(struct folder *f, size_t first, size_t last)
 
 /* The folder changed: read it again in the background. Changes during the
  * re-read start one more when it is done, so bursts cost two reads. */
+static int reloads;   /* full re-reads (self-tests) */
+
 static void reload(struct folder *f)
 {
+    reloads++;
     if (f->sh) { f->reload_again = true; return; }
     f->sh = calloc(1, sizeof *f->sh);
     f->sgen++;
@@ -417,10 +597,21 @@ static void on_event(void *arg, const cv *ev)
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
-        if (f->sub == sub && !f->closing &&
-            (!strcmp(name, "content_added") || !strcmp(name, "content_removed") || !strcmp(name, "object_moved") ||
-             !strcmp(name, "object_changed")))
-            reload(f);
+        if (f->sub != sub || f->closing) continue;
+        if (!strcmp(name, "content_added") || !strcmp(name, "content_removed") || !strcmp(name, "object_moved")) {
+            queue_change(f, name, ev);
+        } else if (!strcmp(name, "object_changed")) {
+            /* One object's details: its row is read again, not the folder. */
+            const cv *o = cv_get(ev, "object");
+            const char *p = o ? cv_text(o, "path") : NULL, *sl = p ? strrchr(p, '/') : NULL;
+            ssize_t i = sl && !is_tree(f) && f->m.complete ? model_find(&f->m, sl + 1) : -1;
+            if (i >= 0) {
+                row_stale(&f->m, (size_t)i);
+                fetch_visible(f, f->vis_first, f->vis_last);
+            } else if (!o || !p) {
+                reload(f);
+            }
+        }
     }
 }
 
@@ -1648,10 +1839,12 @@ static void landed(void *arg, const cv *reply);
 /* The new object made here, once listed: selected, its name being edited. */
 static void rename_new_now(struct folder *f)
 {
-    if (!f->rename_new[0] || ui_container_rename_item(f->cont) != SIZE_MAX) return;
+    if (!f->rename_new[0]) return;
     for (size_t i = 0; i < f->m.total; i++)
         if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), f->rename_new)) {
             f->rename_new[0] = 0;
+            /* The object just asked for takes over from a name still open. */
+            if (ui_container_rename_item(f->cont) != SIZE_MAX) ui_container_rename_moved(f->cont, SIZE_MAX);
             ui_container_select_none(f->cont);
             ui_container_select(f->cont, i);
             ui_container_set_cursor(f->cont, i);
@@ -2207,6 +2400,8 @@ static void free_folder(struct folder *f)
     for (struct folder **pp = &folders; *pp; pp = &(*pp)->next)
         if (*pp == f) { *pp = f->next; break; }
     if (f->sub) svc_unsubscribe(f->sub);
+    changes_clear(f);
+    free(f->changes);
     tree_free(f);
     layout_free(f->lay);
     model_free(&f->m);
@@ -2998,6 +3193,65 @@ static void win_frame(ui_surface *s, double now)
                 cairo_surface_write_to_png(img, shot);
                 cairo_surface_destroy(img);
             }
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "follow")) {
+        /* A 3000-entry folder follows changes without being read again:
+         * 40 new files, 20 renamed, 20 deleted; the selection stays. */
+        static double t0;
+        static int step;
+        char p[PATH_MAX + 64], q[PATH_MAX + 64];
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0 && t > 500) {
+            /* a row on screen (a big folder's window has read only those) */
+            ssize_t keep = f->vis_first + 5 < f->m.total && model_name(&f->m, f->vis_first + 5) ? (ssize_t)(f->vis_first + 5) : -1;
+            static char kept[NAME_MAX + 1];
+            if (keep >= 0) {
+                snprintf(kept, sizeof kept, "%s", model_name(&f->m, (size_t)keep));
+                ui_container_select(f->cont, (size_t)keep);
+                ui_container_set_cursor(f->cont, (size_t)keep);
+            }
+            setenv("WPS_SELFTEST_KEPT", kept, 1);
+            reloads = 0;
+            int adds = getenv("FOLLOW_ADD") ? atoi(getenv("FOLLOW_ADD")) : 40;   /* a burst, for timing */
+            for (int i = 0; i < adds; i++) { snprintf(p, sizeof p, "%s/new-%04d", f->path, i); FILE *x = fopen(p, "w"); if (x) fclose(x); }
+            for (int i = 0; i < 20; i++) {
+                snprintf(p, sizeof p, "%s/file-%04d", f->path, i * 7);
+                snprintf(q, sizeof q, "%s/moved-%02d", f->path, i);
+                rename(p, q);
+            }
+            for (int i = 0; i < 20; i++) { snprintf(p, sizeof p, "%s/file-%04d", f->path, 2000 + i); unlink(p); }
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > (getenv("FOLLOW_WAIT") ? atof(getenv("FOLLOW_WAIT")) : 2500)) {
+            /* the rows against the folder itself */
+            /* every row read so far exists, and the count is the folder's */
+            size_t on_disk = 0, wrong = 0, loaded = 0;
+            DIR *d = opendir(f->path);
+            struct dirent *de;
+            while (d && (de = readdir(d))) on_disk += de->d_name[0] != '.';
+            if (d) closedir(d);
+            for (size_t i = 0; i < f->m.total; i++) {
+                const char *n = model_name(&f->m, i);
+                if (!n) continue;
+                loaded++;
+                snprintf(p, sizeof p, "%s/%s", f->path, n);
+                if (access(p, F_OK) != 0) wrong++;
+            }
+            const char *kept = getenv("WPS_SELFTEST_KEPT");
+            ssize_t k = kept && *kept ? model_find(&f->m, kept) : -1;
+            fprintf(stderr, "selftest: on disk %zu, in the window %zu (%zu names read, %zu not on disk); full re-reads %d; "
+                    "%s still selected %d\n", on_disk, f->m.total, loaded, wrong, reloads, kept ? kept : "?",
+                    k >= 0 && ui_container_is_selected(f->cont, (size_t)k));
+            step++;
+        } else if (step == 2) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
             step++;
         }

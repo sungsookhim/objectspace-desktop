@@ -45,6 +45,7 @@ typedef struct {
     bool complete;           /* the whole folder has been read */
     size_t offset, n;
     wps_entry *items;
+    uint64_t version;        /* the listing's version (0: being read again) */
 } wps_page;
 
 typedef void (*wps_page_fn)(void *arg, const wps_page *page);
@@ -56,8 +57,26 @@ void wps_listing_shutdown(void);
 void wps_listing_request(const char *folder, size_t offset, size_t count, bool details,
                          wps_page_fn reply, void *arg);
 
-/* Something changed in this folder (from the tracker). */
+/* Something changed in this folder that cannot be followed entry by
+ * entry: read it again at the next request for the first page. */
 void wps_listing_invalidate(const char *folder);
+
+/* Loop thread: an entry of `folder` appeared ('c', name, its type),
+ * went ('d', name) or was renamed in place ('r', name to newname). The
+ * cached listing follows it: new entries at the end, gone ones taken out,
+ * renamed ones in their place; each change adds one to its version, so a
+ * client that applies the same edits stays in step without reading the
+ * folder again (design: Scale). Temporary names are never listed. */
+void wps_listing_apply(const char *folder, char kind, const char *name, const char *newname, unsigned char type);
+
+/* The cached listing's version: 0 when there is none, or it is being
+ * read or must be read again (clients then read it again too). */
+uint64_t wps_listing_version(const char *folder);
+
+/* Where the last change to the folder's listing happened (the index of
+ * the entry removed or renamed, before the change), or -1: events send
+ * it, so a client that has not read every name still follows. */
+long wps_listing_last_index(const char *folder);
 
 size_t wps_listing_count(void);
 
