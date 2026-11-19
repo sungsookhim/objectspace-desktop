@@ -40,6 +40,8 @@ struct ui_container {
     double b2x, b2y;
     size_t vis_first, vis_last;
     ui_layer *layer;          /* rows are drawn here; NULL: on the surface */
+    ui_entry *rename;         /* in-place rename, if active */
+    size_t rename_i;
 };
 
 /* -------------------------------------------------------------- geometry */
@@ -99,6 +101,21 @@ static ui_rect window_crect(ui_container *c)
 {
     ui_rect l = list_rect(c);
     return (ui_rect){ l.x, c->scroll, l.w, l.h };
+}
+
+static void columns(ui_container *c, double *x);
+
+/* Where the rename entry sits: over the title (details: the Title column;
+ * icons: the label), content coordinates. */
+static ui_rect rename_crect(ui_container *c, size_t i)
+{
+    ui_rect r = item_crect(c, i);
+    if (c->view == UI_VIEW_DETAILS) {
+        double x[6];
+        columns(c, x);
+        return (ui_rect){ x[1] - 3, r.y, x[2] - x[1] - 3, ROW_H };
+    }
+    return (ui_rect){ r.x + 2, r.y + ICON + 6, r.w - 4, ROW_H + 2 };
 }
 
 /* Damage content (content coordinates). */
@@ -315,6 +332,60 @@ static void draw_icon_paths(cairo_t *cr, ui_kind k, double x, double y, double s
     cairo_restore(cr);
 }
 
+/* ----------------------------------------------------------------- rename */
+
+static void damage_rename(ui_container *c)
+{
+    if (c->rename) damage_content(c, rename_crect(c, c->rename_i));
+}
+
+static void end_rename(ui_container *c, bool apply)
+{
+    if (!c->rename) return;
+    damage_rename(c);
+    damage_item(c, c->rename_i);
+    char *name = apply ? strdup(ui_entry_text(c->rename)) : NULL;
+    size_t i = c->rename_i;
+    ui_entry_free(c->rename);
+    c->rename = NULL;
+    if (name && *name && c->src->rename) c->src->rename(c->ctx, i, name);
+    free(name);
+}
+
+void ui_container_begin_rename(ui_container *c, size_t i)
+{
+    if (i >= c->count || !c->src->rename) return;
+    end_rename(c, true);
+    ui_item it = { 0 };
+    c->src->item(c->ctx, i, &it);
+    if (!it.loaded) return;
+    c->rename = ui_entry_new(it.title ? it.title : it.name);
+    if (it.kind == UI_KIND_FOLDER) ui_entry_select_all(c->rename);
+    else ui_entry_select_stem(c->rename);
+    c->rename_i = i;
+    ensure_visible(c, i);
+    damage_rename(c);
+}
+
+bool ui_container_renaming(ui_container *c) { return c->rename != NULL; }
+size_t ui_container_rename_item(ui_container *c) { return c->rename ? c->rename_i : SIZE_MAX; }
+
+void ui_container_rename_moved(ui_container *c, size_t i)
+{
+    if (!c->rename) return;
+    if (i >= c->count) { end_rename(c, false); return; }
+    c->rename_i = i;
+    damage_rename(c);
+}
+
+/* The entry's rectangle in surface coordinates, for pointer events. */
+static ui_rect rename_rect(ui_container *c)
+{
+    ui_rect r = rename_crect(c, c->rename_i);
+    r.y += list_rect(c).y - c->scroll;
+    return r;
+}
+
 /* ---------------------------------------------------------------- drawing */
 
 static const char *heads[] = { "", "Title", "Name", "Size", "Last write" };
@@ -448,6 +519,10 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
             else draw_icon_cell(c, cr, i, r);
         }
     }
+    if (c->rename && c->rename_i < c->count) {
+        ui_rect er = rename_crect(c, c->rename_i);
+        if (ui_rect_meets(er, clip)) ui_entry_draw(c->rename, cr, er, true);
+    }
     if (c->band) {
         double bx = fmin(c->bx0, c->bx1), by = fmin(c->by0, c->by1);
         double bw = fabs(c->bx1 - c->bx0), bh = fabs(c->by1 - c->by0);
@@ -537,6 +612,18 @@ static void band_update(ui_container *c)
 bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
 {
     ui_rect sb = sb_rect(c), l = list_rect(c);
+    if (c->rename) {
+        ui_rect er = rename_rect(c);
+        if (e->kind == UI_PRESS && ui_rect_has(er, e->x, e->y)) {
+            if (ui_entry_pointer(c->rename, e, er) != UI_ENTRY_NONE) damage_rename(c);
+            return true;
+        }
+        if (e->kind == UI_MOTION || e->kind == UI_RELEASE) {
+            if (ui_entry_pointer(c->rename, e, er) != UI_ENTRY_NONE) damage_rename(c);
+        } else if (e->kind == UI_PRESS) {
+            end_rename(c, true);   /* a click elsewhere applies it, as in OS/2 */
+        }
+    }
     if (e->kind == UI_WHEEL) {
         ui_container_scroll_by(c, e->wheel);
         return true;
@@ -603,6 +690,11 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         }
         return true;
     }
+    if (e->mods & UI_MOD_ALT) {   /* Alt+click edits the title, as in OS/2 */
+        move_cursor(c, i, 0);
+        ui_container_begin_rename(c, i);
+        return true;
+    }
     if (e->clicks == 2) {
         move_cursor(c, i, 0);
         if (c->src->activate) c->src->activate(c->ctx, i);
@@ -624,7 +716,20 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
 
 bool ui_container_key(ui_container *c, const ui_key_event *e)
 {
+    if (c->rename) {
+        switch (ui_entry_key(c->rename, e)) {
+        case UI_ENTRY_COMMIT: end_rename(c, true); break;
+        case UI_ENTRY_CANCEL: end_rename(c, false); break;
+        case UI_ENTRY_NONE: break;
+        default: damage_rename(c); break;
+        }
+        return true;
+    }
     if (!c->count) return false;
+    if (e->sym == XKB_KEY_F2) {
+        if (c->has_cursor) ui_container_begin_rename(c, c->cursor);
+        return true;
+    }
     size_t cur = c->has_cursor ? c->cursor : 0, k = cols(c);
     size_t page = (size_t)(list_rect(c).h / line_h(c)) * k;
     if (page < k) page = k;
@@ -748,6 +853,7 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
 void ui_container_free(ui_container *c)
 {
     if (!c) return;
+    ui_entry_free(c->rename);
     ui_layer_free(c->layer);
     free(c->sel);
     free(c);

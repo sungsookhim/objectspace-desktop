@@ -267,3 +267,12 @@ void svc_unsubscribe(int64_t sub)
     cb_text(&o->b, "sub"); cb_int(&o->b, sub);
     send_req(o, id, ignore, NULL);
 }
+
+void svc_rename(const char *target, const char *name, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("rename", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "name"); cb_text(&o->b, name);
+    send_req(o, id, fn, arg);
+}

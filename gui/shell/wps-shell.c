@@ -199,6 +199,9 @@ static void swap(struct folder *f)
             if (ui_container_is_selected(f->cont, i) && model_name(old, i)) sel[k++] = strdup(model_name(old, i));
     }
     if (cur != SIZE_MAX && model_name(old, cur)) curname = strdup(model_name(old, cur));
+    size_t ren = ui_container_rename_item(f->cont);
+    char *renname = ren != SIZE_MAX && model_name(old, ren) ? strdup(model_name(old, ren)) : NULL;
+    size_t ren_new = SIZE_MAX;
     model_free(old);
     f->m = *nm;
     free(nm);
@@ -206,14 +209,20 @@ static void swap(struct folder *f)
     f->gen++;
     ui_container_select_none(f->cont);
     ui_container_reset(f->cont);
-    if (k || curname)
+    if (k || curname || renname)
         for (size_t i = 0; i < f->m.total; i++) {
             const char *n = model_name(&f->m, i);
             if (!n) continue;
             for (size_t j = 0; j < k; j++)
                 if (sel[j] && !strcmp(sel[j], n)) { ui_container_select(f->cont, i); free(sel[j]); sel[j] = NULL; }
             if (curname && !strcmp(curname, n)) { ui_container_set_cursor(f->cont, i); free(curname); curname = NULL; }
+            if (renname && !strcmp(renname, n)) ren_new = i;
         }
+    else if (renname)
+        for (size_t i = 0; i < f->m.total && ren_new == SIZE_MAX; i++)
+            if (model_name(&f->m, i) && !strcmp(renname, model_name(&f->m, i))) ren_new = i;
+    if (ren != SIZE_MAX) ui_container_rename_moved(f->cont, ren_new);   /* gone: cancelled */
+    free(renname);
     for (size_t j = 0; j < k; j++) free(sel[j]);
     free(sel);
     free(curname);
@@ -485,7 +494,35 @@ static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     svc_menu(t, got_menu, m);
 }
 
-static const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu };
+static void renamed(void *arg, const cv *reply)
+{
+    struct folder *f = from_arg(arg);
+    if (!f) return;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (ok && ok->k == CV_BOOL && ok->b) {
+        const cv *res = cv_get(reply, "result");
+        if (res && res->k == CV_BOOL && !res->b)
+            snprintf(f->error, sizeof f->error, "No permission to rename the file: the new name is kept as its title");
+        else f->error[0] = 0;
+    } else {
+        const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
+        snprintf(f->error, sizeof f->error, "Cannot rename: %s", msg ? msg : "refused");
+    }
+    damage_status(f);
+    reload(f);   /* events follow too; this covers a title-only change */
+}
+
+static void src_rename(void *ctx, size_t i, const char *name)
+{
+    struct folder *f = ctx;
+    char t[PATH_MAX];
+    target_of(f, i, t, sizeof t);
+    const char *old = row_name(f, i);
+    if (old && !strcmp(old, name)) return;
+    svc_rename(t, name, renamed, as_arg(f));
+}
+
+static const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu, src_rename };
 
 /* ------------------------------------------------------------------ window */
 
@@ -699,6 +736,42 @@ static void win_frame(ui_surface *s, double now)
             menu_chosen(mc, WPS_MI_VIEW_DETAILS);
             fprintf(stderr, "selftest: View > Details view: %s -> %s\n", before == UI_VIEW_ICON ? "icon" : "details",
                     ui_container_view(f->cont) == UI_VIEW_ICON ? "icon" : "details");
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "rename")) {
+        /* F2 on old-name.txt, type "renamed", Enter: the file is renamed and
+         * the window shows the new name. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        if (step == 0) {
+            size_t i = SIZE_MAX;
+            for (size_t k = 0; k < f->m.total; k++)
+                if (model_name(&f->m, k) && !strcmp(model_name(&f->m, k), "old-name.txt")) i = k;
+            if (i == SIZE_MAX) { fprintf(stderr, "selftest: old-name.txt not found\n"); ui_app_quit(app); return; }
+            ui_container_set_cursor(f->cont, i);
+            ui_key_event k = { .sym = XKB_KEY_F2 };
+            win_key(s, &k);
+            fprintf(stderr, "selftest: F2 starts a rename: %d\n", ui_container_renaming(f->cont));
+            for (const char *p = "renamed"; *p; p++) {
+                ui_key_event c = { .sym = (uint32_t)*p };
+                c.utf8[0] = *p;
+                win_key(s, &c);
+            }
+            ui_key_event ret = { .sym = XKB_KEY_Return };
+            win_key(s, &ret);
+            step++;
+        } else if (step == 1 && now - t0 > 1500) {
+            char p[PATH_MAX + 32];
+            snprintf(p, sizeof p, "%s/renamed.txt", f->path);
+            bool on_disk = access(p, F_OK) == 0;
+            bool shown = false;
+            for (size_t k = 0; k < f->m.total; k++)
+                if (model_name(&f->m, k) && !strcmp(model_name(&f->m, k), "renamed.txt")) shown = true;
+            fprintf(stderr, "selftest: renamed.txt on disk %d, in the window %d, status '%s'\n", on_disk, shown, f->error);
             ui_app_quit(app);
             step++;
         }

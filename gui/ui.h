@@ -209,6 +209,22 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
 void ui_menu_items_free(ui_menu_item *items, size_t n);
 bool ui_menu_is_open(void);
 
+/* ---------------------------------------------------------------- entries */
+
+/* A one-line text entry: draws into a rectangle; the owner routes keys and
+ * pointer events to it and redraws on anything but UI_ENTRY_NONE. */
+typedef struct ui_entry ui_entry;
+typedef enum { UI_ENTRY_NONE, UI_ENTRY_REDRAW, UI_ENTRY_CHANGED, UI_ENTRY_COMMIT, UI_ENTRY_CANCEL } ui_entry_result;
+ui_entry *ui_entry_new(const char *text);
+void ui_entry_free(ui_entry *e);
+const char *ui_entry_text(ui_entry *e);
+void ui_entry_set_text(ui_entry *e, const char *text);
+void ui_entry_select_all(ui_entry *e);
+void ui_entry_select_stem(ui_entry *e);     /* up to the last dot: a file's name without extension */
+void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused);
+ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k);
+ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect r);
+
 /* ------------------------------------------------------------- containers */
 
 typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
@@ -231,6 +247,8 @@ typedef struct {
     void (*activate)(void *ctx, size_t i);
     /* Button 2 click: on item i, or on the background (i == SIZE_MAX). */
     void (*menu)(void *ctx, size_t i, double x, double y, uint32_t serial);
+    /* In-place rename finished with a new name (NULL: not supported). */
+    void (*rename)(void *ctx, size_t i, const char *name);
 } ui_container_src;
 
 typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS } ui_view;
@@ -256,5 +274,12 @@ size_t ui_container_cursor(ui_container *c);          /* SIZE_MAX: none */
 void ui_container_set_cursor(ui_container *c, size_t i);
 /* The whole model was replaced (same scroll position): redraw all. */
 void ui_container_reset(ui_container *c);
+/* In-place rename of item i (F2 or Alt+click start it too). */
+void ui_container_begin_rename(ui_container *c, size_t i);
+bool ui_container_renaming(ui_container *c);
+size_t ui_container_rename_item(ui_container *c);           /* SIZE_MAX: none */
+/* After ui_container_reset: the item being renamed is now at i, or gone
+ * (SIZE_MAX cancels the rename). */
+void ui_container_rename_moved(ui_container *c, size_t i);
 
 #endif
