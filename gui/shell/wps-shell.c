@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -173,6 +174,19 @@ static void fetch_visible(struct folder *f, size_t first, size_t last);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
 
+/* WPS_DEBUG_TIMING: when the desktop's start-up steps happen. */
+static double since_start(void)
+{
+    static double t0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    double now = ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+    if (!t0) t0 = now;
+    return now - t0;
+}
+#define TIMING(f, fmt, ...) do { if ((f)->desktop && getenv("WPS_DEBUG_TIMING")) \
+    fprintf(stderr, "timing: %7.0f ms: " fmt "\n", since_start(), ##__VA_ARGS__); } while (0)
+
 /* Store a reply's rows; returns whether they had details. */
 static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out)
 {
@@ -281,6 +295,11 @@ static void got_page(void *arg, const cv *reply)
     unsigned gen = pc->gen;
     free(pc);
     if (!f) return;
+    if (f->desktop && getenv("WPS_DEBUG_TIMING")) {
+        const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
+        bool det = items && items->k == CV_ARRAY && items->n && cv_get(&items->items[0], "mtime");
+        TIMING(f, "page: %zu items%s%s", items && items->k == CV_ARRAY ? items->n : 0, det ? " with details" : "", shadow ? " (re-read)" : "");
+    }
     struct model *m = shadow ? f->sh : &f->m;
     if (!m || gen != (shadow ? f->sgen : f->gen)) return;   /* for a model replaced since */
     const cv *res = reply ? cv_get(reply, "result") : NULL;
@@ -1559,7 +1578,7 @@ static int drop_how(uint32_t action, uint32_t start_action, unsigned mods)
     return 0;
 }
 
-static void win_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
+static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
                      uint32_t start_action, unsigned mods)
 {
     (void)len;
@@ -1574,7 +1593,7 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     int how = w == 2 ? DROP_SHADOW : w == 1 ? DROP_COPY : DROP_MOVE;
     if (how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
         reposition(f, x, y))
-        return;
+        return UI_DND_MOVE;
     if (w < 0) {
         struct ask_ctx *a = calloc(1, sizeof *a);
         a->folder = f->id;
@@ -1590,11 +1609,12 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
             { 99, "Cancel", true, false, NULL, 0 },
         };
         ui_menu_popup(s, items, 5, x, y, 0, ask_chosen, a);
-        return;
+        return UI_DND_COPY;   /* decided later in the menu: the source must not remove anything */
     }
     if (getenv("WPS_DEBUG_DND"))
         fprintf(stderr, "dnd: dropping as %s\n", how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
     do_drop(f, dest, mime, data, how, at);
+    return how == DROP_MOVE ? UI_DND_MOVE : UI_DND_COPY;
 }
 
 /* A shadow or central object made or moved by a drop: place it where it
@@ -1964,6 +1984,11 @@ static const ui_container_src folder_src = { src_count, src_item, src_visible, s
 static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     struct folder *f = ui_surface_data(s);
+    {
+        static bool first_empty, first_items;
+        if (!first_empty) { first_empty = true; TIMING(f, "first frame (%zu objects)", f->m.total); }
+        if (!first_items && f->m.total) { first_items = true; TIMING(f, "first frame with objects"); }
+    }
     const ui_scheme *k = &ui_scheme_now;
     char t[400];
     snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
@@ -2856,6 +2881,7 @@ static void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip) { (void)ctx; wal
 static void desk_wallpaper_changed(void *ctx)
 {
     struct folder *f = from_arg(ctx);
+    if (f) TIMING(f, "background: %s", wallpaper_showing());
     if (f) ui_container_layout_changed(f->cont);   /* redraws the whole list area */
 }
 
@@ -2948,6 +2974,7 @@ int main(int argc, char **argv)
         else { fprintf(stderr, "usage: wps-shell [--desktop [FOLDER]] [--details] [--bench SECONDS] [FOLDER...]\n"); return 2; }
     }
     if (i >= argc) desk = true;   /* no folder: the desktop */
+    since_start();
     app = ui_app_new();
     load_system_conf();
     if (!app) return 1;

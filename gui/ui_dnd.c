@@ -319,9 +319,17 @@ static void incoming_read(void *arg, int fd, short rev)
     /* The surface may have closed meanwhile. */
     bool alive = false;
     for (ui_surface *s = in->app->surfaces; s; s = s->next) alive |= s == in->s;
+    uint32_t done = 0;
     if (alive && in->s->ops->drop)
-        in->s->ops->drop(in->s, in->x, in->y, in->mime, in->data, in->len, in->action, in->start_action, in->mods);
-    if (in->f && in->app->ddm_version >= 3) wl_data_offer_finish(in->f->o);
+        done = in->s->ops->drop(in->s, in->x, in->y, in->mime, in->data, in->len, in->action, in->start_action, in->mods);
+    if (in->f && in->app->ddm_version >= 3 && done && in->action) {
+        /* An "ask" drop (GNOME makes every drag with the right button one)
+         * is final only once the target says what it chose; finishing
+         * before that is a protocol error, which ends the connection. */
+        if (in->action == WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK) wl_data_offer_set_actions(in->f->o, done, done);
+        wl_data_offer_finish(in->f->o);
+    }
+    /* Otherwise destroying the offer (below) cancels it. */
     offer_free(in->f);
     free(in->mime);
     free(in->data);

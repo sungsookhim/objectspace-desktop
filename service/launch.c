@@ -150,7 +150,7 @@ void wps_launch_shutdown(void)
     on_changed = NULL;
 }
 
-static pid_t spawn(char **argv, const char *cwd)
+static pid_t spawn(char **argv, const char *cwd, const char *display)
 {
     posix_spawnattr_t at;
     posix_spawn_file_actions_t fa;
@@ -167,17 +167,29 @@ static pid_t spawn(char **argv, const char *cwd)
     posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
     if (cwd) posix_spawn_file_actions_addchdir_np(&fa, cwd);
     extern char **environ;
+    /* The environment, with the asking GUI's display in place of ours. */
+    size_t ne = 0;
+    while (environ[ne]) ne++;
+    char **env = calloc(ne + 2, sizeof *env), wl[4200];
+    size_t k = 0;
+    if (env && display && *display) {
+        snprintf(wl, sizeof wl, "WAYLAND_DISPLAY=%s", display);
+        env[k++] = wl;
+    }
+    for (size_t i = 0; env && i < ne; i++)
+        if (!(display && *display && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16))) env[k++] = environ[i];
     pid_t pid = -1;
-    int e = posix_spawnp(&pid, argv[0], &fa, &at, argv, environ);
+    int e = posix_spawnp(&pid, argv[0], &fa, &at, argv, env ? env : environ);
+    free(env);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&at);
     if (e) { errno = e; return -1; }
     return pid;
 }
 
-pid_t wps_launch(char **argv, const char *path, const char *cwd)
+pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display)
 {
-    pid_t pid = spawn(argv, cwd);
+    pid_t pid = spawn(argv, cwd, display);
     if (pid < 0 || !path || !*path) return pid;
     struct use *u = NULL;
     for (struct use *x = uses; x && !u; x = x->next)

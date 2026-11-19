@@ -159,8 +159,11 @@ typedef struct {
     /* `start_action` is what the compositor chose when the drag began:
      * keys pressed during a drag reach only the compositor (GNOME), so a
      * change of its choice is the only sign of them. */
-    void (*drop)(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
-                 uint32_t action, uint32_t start_action, unsigned mods);
+    /* Returns what it did, for the source: UI_DND_MOVE, UI_DND_COPY (a
+     * copy, a shadow, or a choice still to be made in a menu), or 0 for
+     * nothing (the drop is cancelled). */
+    uint32_t (*drop)(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
+                     uint32_t action, uint32_t start_action, unsigned mods);
     /* Each frame, before drawing (animations, benchmarks). */
     void (*frame)(ui_surface *s, double now_ms);
 } ui_surface_ops;

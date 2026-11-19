@@ -8,6 +8,9 @@
 #   SELFTEST=desktop   the desktop runs WPS_SHELL_SELFTEST=desktop
 #   KILLTEST=1         the desktop is killed once: the extension restarts it
 #   WLDEBUG=1          the desktop's Wayland traffic goes to the log
+#   DESKENV=NAME=VALUE one more setting for the desktop (e.g. WPS_DEBUG_DND=1)
+#   PROBE_MODE=interact  a virtual pointer double-clicks and drags desktop
+#                      icons (no folder window; set SECS=14 for the time it needs)
 # usage: tests/gnome/run.sh   (after make && make gui)
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 T=$(mktemp -d "${TMPDIR:-/tmp}/wps-gnome-XXXX")
@@ -20,6 +23,8 @@ if [ -n "$SELFTEST" ]; then   # the desktop runs a self-test (its output in shel
   printf '{"command": ["env", "WPS_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "%s", "--desktop", "%s"]}\n' "$SELFTEST" "$T/cache" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
 elif [ -n "$WLDEBUG" ]; then
   printf '{"command": ["env", "WAYLAND_DEBUG=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
+elif [ -n "$DESKENV" ]; then   # e.g. DESKENV=WPS_DEBUG_DND=1
+  printf '{"command": ["env", "%s", "%s", "--desktop", "%s"]}\n' "$DESKENV" "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
 else
   printf '{"command": ["%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
 fi
@@ -38,15 +43,15 @@ dbus-run-session -- sh -c "
   gnome-shell --headless --wayland --no-x11 --virtual-monitor 1280x800 --wayland-display wps-hl > '$T/shell.log' 2>&1 &
   SH=\$!
   sleep 5
-  WAYLAND_DISPLAY=wps-hl '$REPO/build/wps-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
+  [ -n \"\$PROBE_MODE\" ] || WAYLAND_DISPLAY=wps-hl '$REPO/build/wps-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
   if [ -n \"\$KILLTEST\" ]; then sleep 1; pkill -KILL -f -- 'wps-shell --deskto[p]'; fi
   sleep 4
   echo late > '$T/desk/added-later.txt'
-  sleep 9
+  sleep ${SECS:-9}
   kill \$SH; sleep 1; kill -9 \$SH 2>/dev/null
 " 
 "$REPO/build/wpsctl" shutdown >/dev/null 2>&1; wait $WP 2>/dev/null
-grep -E "wps:|probe:|selftest:|JS ERROR|ERROR: AddressSanitizer|runtime error" "$T/shell.log" | grep -v "^$" | head -40
+grep -E "wps:|probe:|selftest:|dnd:|timing:|JS ERROR|ERROR: AddressSanitizer|runtime error|wps-ui" "$T/shell.log" | grep -v "^$" | head -40
 ls -la "$T/shot.png" 2>/dev/null
 echo "T=$T"
 # anything of this session still running, and its mounts

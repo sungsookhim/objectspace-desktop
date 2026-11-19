@@ -242,9 +242,15 @@ void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg)
 void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
 {
     int64_t id;
-    struct out *o = begin("open", 2, &id);
+    /* What opens appears on this GUI's display (wpsd may have been
+     * started elsewhere, e.g. before the session's compositor). */
+    char disp[4096] = "";
+    const char *wd = getenv("WAYLAND_DISPLAY"), *rt = getenv("XDG_RUNTIME_DIR");
+    if (wd && *wd) snprintf(disp, sizeof disp, "%s%s%s", wd[0] == '/' || !rt ? "" : rt, wd[0] == '/' || !rt ? "" : "/", wd);
+    struct out *o = begin("open", disp[0] ? 3 : 2, &id);
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
+    if (disp[0]) { cb_text(&o->b, "display"); cb_text(&o->b, disp); }
     send_req(o, id, fn, arg);
 }
 

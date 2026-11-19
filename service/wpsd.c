@@ -1294,7 +1294,11 @@ static void do_open(struct req *r, wpo_object *o)
         wpo_unref(orig);
         return;
     }
-    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL);   /* as this user, in this user's session */
+    /* On the asking GUI's display: a socket path that is this user's. */
+    const char *disp = cv_text(&r->msg, "display");
+    struct stat ds;
+    if (disp && (disp[0] != '/' || stat(disp, &ds) != 0 || !S_ISSOCK(ds.st_mode) || ds.st_uid != geteuid())) disp = NULL;
+    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     cbuf b;
     cb_init(&b);

@@ -1,37 +1,98 @@
+// Test probe for tests/gnome/run.sh (never installed for real use).
+//
+// PROBE_MODE unset: after 14 s, log what GNOME sees (Alt+Tab list,
+// stacking, window types and sizes, monitors) and take a screenshot to
+// $PROBE_SHOT.
+// PROBE_MODE=interact: drive a virtual pointer like a user: double-click
+// the desktop's notes.txt and Projects, then drag notes.txt with button 2
+// (the right button, OS/2's drag button), with screenshots before, during
+// and after ($PROBE_SHOT-<n>.png), logging the windows as it goes.
+
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+function shoot(path) {
+    const shot = new Shell.Screenshot();
+    const stream = Gio.File.new_for_path(path).replace(null, false, Gio.FileCreateFlags.NONE, null);
+    shot.screenshot(false, stream, (o, res) => {
+        try {
+            o.screenshot_finish(res);
+            console.log(`probe: screenshot ${path}`);
+        } catch (e) {
+            console.log(`probe: screenshot failed ${e.message}`);
+        }
+        stream.close(null);
+    });
+}
+
+function windows(tag) {
+    const all = global.display.list_all_windows();
+    const tab = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null).map(w => w.get_title());
+    console.log(`probe: [${tag}] tab list: ${JSON.stringify(tab)}`);
+    console.log(`probe: [${tag}] stacking bottom to top: ${JSON.stringify(global.display.sort_windows_by_stacking(all).map(w => `${w.get_title()}[type ${w.get_window_type()}]`))}`);
+    for (const w of all) {
+        const r = w.get_frame_rect();
+        console.log(`probe: [${tag}] window "${w.get_title()}" app ${w.get_wm_class()} type ${w.get_window_type()} all-ws ${w.is_on_all_workspaces()} skip-taskbar ${w.is_skip_taskbar()} ${r.width}x${r.height}+${r.x}+${r.y}`);
+    }
+}
+
 export default class Probe {
     enable() {
-        GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 4, () => { Main.overview.hide(); return GLib.SOURCE_REMOVE; });
-        this._id = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 14, () => {
-            const ws = global.workspace_manager.get_active_workspace();
-            const tab = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null).map(w => w.get_title());
-            const all = global.display.list_all_windows();
-            const stack = global.display.sort_windows_by_stacking(all).map(w => `${w.get_title()}[type ${w.get_window_type()}]`);
-            console.log(`probe: tab list: ${JSON.stringify(tab)}`);
-            console.log(`probe: stacking bottom to top: ${JSON.stringify(stack)}`);
-            for (const w of all) {
-                const r = w.get_frame_rect();
-                console.log(`probe: window "${w.get_title()}" app ${w.get_wm_class()} type ${w.get_window_type()} all-ws ${w.is_on_all_workspaces()} skip-taskbar ${w.is_skip_taskbar()} ${r.width}x${r.height}+${r.x}+${r.y}`);
-            }
-            // switch workspace: the desktop must still be there
-            const n = global.workspace_manager.get_n_workspaces();
-            console.log(`probe: workspaces ${n}`);
-            console.log(`probe: monitors ${JSON.stringify(Main.layoutManager.monitors.map(m => `${m.width}x${m.height}+${m.x}+${m.y}`))}, primary ${Main.layoutManager.primaryIndex}`);
-            const out = GLib.getenv('PROBE_SHOT');
-            if (out) {
-                const shot = new Shell.Screenshot();
-                const stream = Gio.File.new_for_path(out).replace(null, false, Gio.FileCreateFlags.NONE, null);
-                shot.screenshot(false, stream, (o, res) => {
-                    try { o.screenshot_finish(res); console.log('probe: screenshot saved'); } catch (e) { console.log(`probe: screenshot failed ${e.message}`); }
-                    stream.close(null);
-                });
-            }
+        this._ids = [];
+        const at = (secs, fn) => this._ids.push(GLib.timeout_add(GLib.PRIORITY_DEFAULT, secs * 1000, () => {
+            fn();
             return GLib.SOURCE_REMOVE;
-        });
+        }));
+        const out = GLib.getenv('PROBE_SHOT');
+        // Leave the overview GNOME starts in (asking again: a request during
+        // its opening animation is ignored).
+        for (const t of [3, 4, 4.5, 5, 5.5])
+            at(t, () => { if (Main.overview.visible) Main.overview.hide(); });
+        at(5.8, () => console.log(`probe: overview visible ${Main.overview.visible}`));
+        if (GLib.getenv('PROBE_MODE') !== 'interact') {
+            at(14, () => {
+                windows('end');
+                console.log(`probe: workspaces ${global.workspace_manager.get_n_workspaces()}`);
+                console.log(`probe: monitors ${JSON.stringify(Main.layoutManager.monitors.map(m => `${m.width}x${m.height}+${m.x}+${m.y}`))}, primary ${Main.layoutManager.primaryIndex}`);
+                if (out) shoot(out);
+            });
+            return;
+        }
+        const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+        const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        this._dev = dev;
+        const now = () => GLib.get_monotonic_time();
+        const move = (x, y) => dev.notify_absolute_motion(now(), x, y);
+        const button = (b, down) => dev.notify_button(now(), b, down ? Clutter.ButtonState.PRESSED : Clutter.ButtonState.RELEASED);
+        const click = b => { button(b, true); button(b, false); };
+        // Desktop icons (the desktop starts below the 32-pixel top bar):
+        // Projects at x 54, notes.txt at x 154; icon centres at y 32 + 24.
+        const notes = [154, 56], projects = [54, 56];
+        // Where the drag ends: PROBE_DROP=x,y (default: inside the folder window that opened)
+        const dropAt = (GLib.getenv('PROBE_DROP') ?? '400,450').split(',').map(Number);
+        at(2, () => move(640, 400));   // away from the hot corner at 0,0 (it opens the overview)
+        at(6, () => { move(...notes); click(Clutter.BUTTON_PRIMARY); });            // select
+        at(6.5, () => { if (out) shoot(`${out}-1-start.png`); windows('start'); });
+        at(7, () => { move(...notes); click(Clutter.BUTTON_PRIMARY); click(Clutter.BUTTON_PRIMARY); console.log('probe: double-clicked notes.txt'); });
+        at(9, () => { move(...projects); click(Clutter.BUTTON_PRIMARY); click(Clutter.BUTTON_PRIMARY); console.log('probe: double-clicked Projects'); });
+        at(11, () => { windows('after opening'); if (out) shoot(`${out}-2-opened.png`); });
+        // Drag notes.txt with button 2 to (400, 450), in steps.
+        at(12, () => { move(...notes); button(Clutter.BUTTON_SECONDARY, true); console.log('probe: drag starts'); });
+        for (let k = 1; k <= 10; k++)
+            at(12 + k * 0.05, () => move(notes[0] + (dropAt[0] - notes[0]) * k / 10, notes[1] + (dropAt[1] - notes[1]) * k / 10));
+        at(13, () => { if (out) shoot(`${out}-3-dragging.png`); });
+        at(13.5, () => { button(Clutter.BUTTON_SECONDARY, false); console.log('probe: dropped'); });
+        at(13.8, () => { if (out) shoot(`${out}-4-dropped.png`); });
+        at(16, () => { if (out) shoot(`${out}-5-later.png`); windows('end'); });
     }
-    disable() { GLib.source_remove(this._id); }
+
+    disable() {
+        for (const id of this._ids) GLib.source_remove(id);
+        this._ids = [];
+        this._dev = null;
+    }
 }
