@@ -182,7 +182,8 @@ static void menu_pointer(ui_surface *s, const ui_pointer_event *e)
         else if (i >= 0) close_child(m);
         break;
     case UI_RELEASE:
-        if (i >= 0 && (e->button == UI_BTN1 || e->button == UI_BTN2)) choose(m, i, e->serial);
+        if (i >= 0 && (e->button == ui_mouse_button(UI_ACT_SELECT) || e->button == ui_mouse_button(UI_ACT_POPUP)))
+            choose(m, i, e->serial);
         break;
     default:
         break;

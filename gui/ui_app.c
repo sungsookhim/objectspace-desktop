@@ -488,11 +488,12 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
     a->last_serial = serial;
     int b = button == BTN_LEFT ? UI_BTN1 : button == BTN_RIGHT ? UI_BTN2 : button == BTN_MIDDLE ? UI_BTN3 : 0;
     if (!b) return;
+    if (ui_mouse.left_handed && b != UI_BTN3) b = b == UI_BTN1 ? UI_BTN2 : UI_BTN1;
     ui_pointer_event e = { .kind = state == WL_POINTER_BUTTON_STATE_PRESSED ? UI_PRESS : UI_RELEASE,
                            .button = b, .clicks = 1, .serial = serial };
     if (e.kind == UI_PRESS) {
         double now = ui_now_ms();
-        if (b == a->last_button && now - a->last_click_t < 400 && fabs(a->px - a->last_click_x) < 4 &&
+        if (b == a->last_button && now - a->last_click_t < ui_mouse.double_click_ms && fabs(a->px - a->last_click_x) < 4 &&
             fabs(a->py - a->last_click_y) < 4)
             e.clicks = 2;
         a->last_button = e.clicks == 2 ? 0 : b;   /* a third click starts again */
@@ -517,7 +518,7 @@ static void p_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t axis, wl_
     (void)p; (void)t;
     ui_app *a = d;
     if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
-    double k = a->axis_source == WL_POINTER_AXIS_SOURCE_WHEEL ? 3.0 : 1.0;
+    double k = a->axis_source == WL_POINTER_AXIS_SOURCE_WHEEL ? ui_mouse.wheel_speed : 1.0;
     ui_pointer_event e = { .kind = UI_WHEEL, .wheel = wl_fixed_to_double(v) * k };
     send_ptr(a, &e);
 }
@@ -662,6 +663,7 @@ ui_app *ui_app_new(void)
 {
     ui_scheme_init();
     ui_text_init();
+    ui_mouse_load();
     ui_app *a = calloc(1, sizeof *a);
     a->dpy = wl_display_connect(NULL);
     if (!a->dpy) { fprintf(stderr, "wps-ui: no Wayland display\n"); free(a); return NULL; }

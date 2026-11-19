@@ -649,7 +649,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         c->thumb_drag = false;
         if (c->arrow_down) { c->arrow_down = 0; damage_sb(c); }
         if (c->band) { c->band = false; damage_list(c); }
-        if (e->button == UI_BTN2 && c->b2_down) {
+        if (e->button == ui_mouse_button(UI_ACT_POPUP) && c->b2_down) {
             c->b2_down = false;
             if (fabs(e->x - c->b2x) < 5 && fabs(e->y - c->b2y) < 5 && c->src->menu) {
                 size_t i = item_at(c, e->x, e->y);
@@ -662,7 +662,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     }
     if (e->kind != UI_PRESS || !ui_rect_has(c->r, e->x, e->y)) return false;
     if (ui_rect_has(sb, e->x, e->y)) {
-        if (e->button != UI_BTN1) return true;
+        if (e->button != ui_mouse_button(UI_ACT_SELECT)) return true;
         double ty, th;
         thumb(c, &ty, &th);
         if (e->y < sb.y + SB_W) { c->arrow_down = -1; ui_container_scroll_by(c, -line_h(c)); damage_sb(c); }
@@ -674,13 +674,25 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     }
     if (!ui_rect_has(l, e->x, e->y)) return true;
     size_t i = item_at(c, e->x, e->y);
-    if (e->button == UI_BTN2) {
-        c->b2_down = true;
+    /* The mapped actions, most specific first (edit title before select,
+     * open before select). */
+    if (i != SIZE_MAX && ui_mouse_is(UI_ACT_EDIT_TITLE, e)) {
+        move_cursor(c, i, 0);
+        ui_container_begin_rename(c, i);
+        return true;
+    }
+    if (i != SIZE_MAX && e->clicks == 2 && ui_mouse_is(UI_ACT_OPEN, e)) {
+        move_cursor(c, i, 0);
+        if (c->src->activate) c->src->activate(c->ctx, i);
+        return true;
+    }
+    if (e->button == ui_mouse_button(UI_ACT_POPUP) && !ui_mouse_is(UI_ACT_SELECT, e)) {
+        c->b2_down = true;   /* a click (press and release in place) opens the menu */
         c->b2x = e->x;
         c->b2y = e->y;
         return true;
     }
-    if (e->button != UI_BTN1) return true;
+    if (!ui_mouse_is(UI_ACT_SELECT, e)) return true;
     if (i == SIZE_MAX) {
         if (!(e->mods & UI_MOD_CTRL)) sel_clear(c);
         if (c->view == UI_VIEW_ICON) {
@@ -688,16 +700,6 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
             c->bx0 = c->bx1 = e->x;
             c->by0 = c->by1 = e->y - l.y + c->scroll;
         }
-        return true;
-    }
-    if (e->mods & UI_MOD_ALT) {   /* Alt+click edits the title, as in OS/2 */
-        move_cursor(c, i, 0);
-        ui_container_begin_rename(c, i);
-        return true;
-    }
-    if (e->clicks == 2) {
-        move_cursor(c, i, 0);
-        if (c->src->activate) c->src->activate(c->ctx, i);
         return true;
     }
     if (e->mods & UI_MOD_CTRL) {

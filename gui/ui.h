@@ -97,6 +97,24 @@ typedef struct {
     bool repeat;
 } ui_key_event;
 
+/* Mouse mappings, as on OS/2's Mouse object (ui_mouse.c; <config>/mouse.conf).
+ * Every mouse action in the GUI goes through these. */
+typedef enum {
+    UI_ACT_SELECT, UI_ACT_OPEN, UI_ACT_POPUP, UI_ACT_EDIT_TITLE, UI_ACT_DRAG, UI_ACT_WINDOW_LIST, UI_ACT_COUNT
+} ui_mouse_action;
+typedef struct { int button; unsigned mods; int clicks; } ui_chord;   /* clicks: 1, or 2 for a double click */
+typedef struct {
+    ui_chord act[UI_ACT_COUNT];
+    bool left_handed;          /* buttons 1 and 2 swapped */
+    int double_click_ms;
+    double wheel_speed;        /* lines per wheel step */
+} ui_mouse_config;
+extern ui_mouse_config ui_mouse;
+void ui_mouse_load(void);
+bool ui_mouse_parse_chord(const char *s, ui_chord *out);
+bool ui_mouse_is(ui_mouse_action a, const ui_pointer_event *e);
+int ui_mouse_button(ui_mouse_action a);
+
 ui_app *ui_app_new(void);
 void ui_app_run(ui_app *a);            /* until ui_app_quit or no windows remain */
 void ui_app_quit(ui_app *a);

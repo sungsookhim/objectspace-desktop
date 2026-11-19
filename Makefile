@@ -200,7 +200,7 @@ g0: $(G0)/folderview $(G0)/soundlat
 
 # The GUI: libwpsui (gui/ui_*.c) and wps-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
-UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c
+UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c
 SHELLSRC := gui/shell/wps-shell.c gui/shell/svc.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon
 UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h
@@ -217,12 +217,17 @@ $(TV)/test_ui_entry: tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c gui/ui.h
 	@mkdir -p $(TV)
 	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) -Itests -o $@ tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c $(UILIBS)
 
-gui: $(B)/wps-shell $(B)/wps-shell-asan $(TV)/test_ui_entry
+$(TV)/test_ui_mouse: tests/test_ui_mouse.c gui/ui_mouse.c gui/ui.h
+	@mkdir -p $(TV)
+	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) -Itests -o $@ tests/test_ui_mouse.c gui/ui_mouse.c $(UILIBS)
+
+gui: $(B)/wps-shell $(B)/wps-shell-asan $(TV)/test_ui_entry $(TV)/test_ui_mouse
 
 # GUI unit tests (need the GUI's -devel packages, unlike make test)
 gui-test: gui
 	$(TV)/test_ui_damage
 	$(TV)/test_ui_entry
+	$(TV)/test_ui_mouse
 
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)

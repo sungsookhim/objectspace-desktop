@@ -1,6 +1,6 @@
 # WPS for Linux: GUI Design
 
-Version 0.4 · 2026-11-18 · Direction, session model and toolkit decided; architecture accepted; G0 and G1 done.
+Version 0.5 · 2026-11-18 · Direction, session model and toolkit decided; architecture accepted; G0 and G1 done.
 
 The GUI sits on top of the object core ([object-core-design.md](object-core-design.md)). It talks to `wpsd` only through the service API: events, menus and settings as data, streaming listings, jobs. It never makes a synchronous call to `wpsd` from its input or drawing threads (object core: Requirements carried to the GUI design).
 
@@ -47,6 +47,28 @@ Rounded corners waste pixels, and window controls that appear only on hover are 
 | Scheme | Classic | Classic, dark, high contrast, user-made |
 
 These settings are objects themselves: a Scheme Palette and a System settings object, with settings notebooks, like the originals.
+
+### Every mouse action is configurable, as on OS/2's Mouse object (decided 2026-11-18)
+
+No mouse action is fixed in the code: the GUI asks the mapping for each one. The defaults are OS/2's.
+
+| Action | Default | |
+| --- | --- | --- |
+| Select | button 1 | Ctrl and Shift still extend or toggle a selection |
+| Open | button 1, double click | |
+| Pop-up menu | button 2 click | the system menu icon opens with select or pop-up |
+| Edit title | Alt + button 1 | in-place rename |
+| Drag | button 2 | used from the drag-and-drop step |
+| Window list | button 3 | used from G4 |
+
+Also left-handed (buttons 1 and 2 swapped), double-click time and wheel speed. Each action is a chord: modifiers, a button, and click or double click. Until the Mouse settings object exists (G3, with its notebook pages Mappings and Setup), they are read from `<config>/mouse.conf`:
+
+```
+popup_menu  = button3
+edit_title  = shift+button1
+left_handed = yes
+double_click_ms = 500
+```
 
 ### Every action is an event: sounds now, animation hooks for later
 
@@ -157,6 +179,7 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.5 | 2026-11-18 | Decided: every mouse action configurable as on OS/2's Mouse object; mouse.conf until the settings object (G3). Renaming an icon renames the file (object core v0.14) |
 | 0.4 | 2026-11-18 | G1 done: libwpsui (frames, icon and details views, menus), wps-shell folder windows; scroll layers; findings listed under G1 |
 | 0.3 | 2026-11-18 | Architecture accepted. G0 done: 60 fps over a million entries; damage-based drawing required for 2× full screen; sound written within 5 ms |
 | 0.2 | 2026-11-18 | Decided: both modes in stages (inside GNOME first, then a WPS session), settings shared with GNOME; our own drawing. Proposed: libraries, processes, threads, widget set, drag and drop, milestones G0–G5 |

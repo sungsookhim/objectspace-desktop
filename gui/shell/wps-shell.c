@@ -718,7 +718,7 @@ static void win_frame(ui_surface *s, double now)
         static int step;
         if (!t0) { if (!f->m.complete) return; t0 = now; }
         ui_rect c = ui_frame_client(s);
-        ui_pointer_event e = { .x = c.x + c.w - 60, .y = c.y + c.h - 60, .button = UI_BTN2, .clicks = 1, .serial = 4242 };
+        ui_pointer_event e = { .x = c.x + c.w - 60, .y = c.y + c.h - 60, .button = ui_mouse_button(UI_ACT_POPUP), .clicks = 1, .serial = 4242 };
         if (step == 0) { e.kind = UI_PRESS; win_pointer(s, &e); e.kind = UI_RELEASE; win_pointer(s, &e); step++; }
         else if (step == 1 && now - t0 > 700) { fprintf(stderr, "selftest: right click on background: menu open %d\n", ui_menu_is_open()); step++; }
         else if (step == 2) {

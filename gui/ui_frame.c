@@ -237,7 +237,7 @@ bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e)
         ui_set_cursor(s->app, h == UI_HIT_BORDER ? edge_cursor(edges_at(s, e->x, e->y)) : "default");
         return h != UI_HIT_CLIENT;
     }
-    if (e->kind == UI_PRESS && e->button == UI_BTN1) {
+    if (e->kind == UI_PRESS && e->button == ui_mouse_button(UI_ACT_SELECT)) {
         switch (h) {
         case UI_HIT_TITLE:
             if (e->clicks == 2) ui_window_toggle_maximize(s);
@@ -261,7 +261,7 @@ bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e)
     }
     /* The system menu icon opens its menu with either button (OS/2); the
      * rest of the title bar has no button 2 menu. */
-    if (e->kind == UI_PRESS && e->button == UI_BTN2 && h == UI_HIT_SYSMENU) {
+    if (e->kind == UI_PRESS && e->button == ui_mouse_button(UI_ACT_POPUP) && h == UI_HIT_SYSMENU) {
         system_menu(s, e->serial);
         return true;
     }
