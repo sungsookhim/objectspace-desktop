@@ -602,10 +602,12 @@ static void k_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uin
     ui_app *a = d;
     if (!a->kstate) return;
     xkb_state_update_mask(a->kstate, dep, lat, lock, 0, 0, grp);
+    unsigned before = a->mods;
     a->mods = 0;
     if (xkb_state_mod_name_is_active(a->kstate, XKB_MOD_NAME_SHIFT, XKB_STATE_MODS_EFFECTIVE) > 0) a->mods |= UI_MOD_SHIFT;
     if (xkb_state_mod_name_is_active(a->kstate, XKB_MOD_NAME_CTRL, XKB_STATE_MODS_EFFECTIVE) > 0) a->mods |= UI_MOD_CTRL;
     if (xkb_state_mod_name_is_active(a->kstate, XKB_MOD_NAME_ALT, XKB_STATE_MODS_EFFECTIVE) > 0) a->mods |= UI_MOD_ALT;
+    if (a->mods != before && a->drag_offer) ui_dnd_renegotiate(a);   /* Ctrl pressed mid-drag: copy, at once */
 }
 static void k_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay)
 {
@@ -642,6 +644,8 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     if (!strcmp(iface, wl_compositor_interface.name)) {
         a->comp_version = ver < 6 ? (int)ver : 6;
         a->comp = wl_registry_bind(r, name, &wl_compositor_interface, (uint32_t)a->comp_version);
+    } else if (!strcmp(iface, xdg_activation_v1_interface.name)) {
+        a->activation = wl_registry_bind(r, name, &xdg_activation_v1_interface, 1);
     } else if (!strcmp(iface, wl_data_device_manager_interface.name)) {
         a->ddm_version = ver < 3 ? (int)ver : 3;
         a->ddm = wl_registry_bind(r, name, &wl_data_device_manager_interface, (uint32_t)a->ddm_version);
@@ -800,4 +804,33 @@ size_t ui_surface_verify(ui_surface *s, const char *png_prefix)
 void ui_surface_send_key(ui_surface *s, const ui_key_event *e)
 {
     if (s && s->ops->key) s->ops->key(s, e);
+}
+
+/* ------------------------------------------------------------ activation */
+
+struct act { struct xdg_activation_token_v1 *tok; ui_app *app; struct wl_surface *target; ui_surface *s; };
+
+static void token_done(void *data, struct xdg_activation_token_v1 *t, const char *token)
+{
+    struct act *x = data;
+    for (ui_surface *s = x->app->surfaces; s; s = s->next)
+        if (s == x->s) xdg_activation_v1_activate(x->app->activation, token, s->wl);   /* still there */
+    xdg_activation_token_v1_destroy(t);
+    free(x);
+}
+static const struct xdg_activation_token_v1_listener token_listener = { token_done };
+
+void ui_window_activate(ui_surface *s)
+{
+    ui_app *a = s->app;
+    if (!a->activation) return;
+    struct act *x = calloc(1, sizeof *x);
+    x->app = a;
+    x->s = s;
+    x->tok = xdg_activation_v1_get_activation_token(a->activation);
+    xdg_activation_token_v1_add_listener(x->tok, &token_listener, x);
+    if (a->last_serial) xdg_activation_token_v1_set_serial(x->tok, a->last_serial, a->seat);
+    ui_surface *from = a->key_focus ? a->key_focus : a->ptr_focus;
+    if (from) xdg_activation_token_v1_set_surface(x->tok, from->wl);
+    xdg_activation_token_v1_commit(x->tok);
 }

@@ -10,6 +10,7 @@
 #include "ui.h"
 #include "ui_damage.h"
 #include "viewporter-client-protocol.h"
+#include "xdg-activation-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #define UI_BUFFERS 3
@@ -64,6 +65,7 @@ struct ui_app {
     int comp_version;
     struct wl_shm *shm;
     struct wl_subcompositor *subcomp;
+    struct xdg_activation_v1 *activation;
     struct wl_data_device_manager *ddm;
     int ddm_version;
     struct wl_data_device *ddev;
@@ -112,6 +114,7 @@ void ui_menu_forget_surface(ui_surface *s);   /* before s is destroyed */
 /* Draw the layer's changes; -1 if no buffer is free yet. */
 double ui_layer_render(ui_layer *l);
 void ui_dnd_init(ui_app *a);
+void ui_dnd_renegotiate(ui_app *a);
 struct pollfd;
 size_t ui_watch_fill(struct pollfd *pf, size_t max);
 void ui_watch_dispatch(const struct pollfd *pf, size_t n);

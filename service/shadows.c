@@ -1,6 +1,8 @@
+/* Shadows as WPS object files (decided 2026-11-18; see shadows.h). */
 #define _GNU_SOURCE
 #include "shadows.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -8,10 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
-#include "WPFolder.h"
 #include "WPObject.h"
+#include "attrs.h"
+#include "volumes.h"
 #include "wps_state.h"
 
 static wpo_loop *loop;
@@ -28,35 +32,13 @@ bool wps_in_trash(const char *path)
     return strstr(path, "/.local/share/Trash/files/") || strstr(path, "/.Trash-") || strstr(path, "/.Trash/");
 }
 
-static void split_path(const char *path, char *dir, size_t dn, const char **name)
+static bool ends_with(const char *s, const char *suf)
 {
-    snprintf(dir, dn, "%s", path);
-    char *slash = strrchr(dir, '/');
-    if (slash && slash != dir) *slash = 0;
-    else if (slash) dir[1] = 0;
-    const char *n = strrchr(path, '/');
-    *name = n ? n + 1 : path;
+    size_t a = strlen(s), b = strlen(suf);
+    return a >= b && strcmp(s + a - b, suf) == 0;
 }
 
-/* Replace (or create) the symlink at `link` so it points to `target`,
- * atomically: a new symlink under a temporary name, renamed over. */
-static int write_symlink(const char *link, const char *target, bool replace)
-{
-    char dir[PATH_MAX], tmp[PATH_MAX + 64];
-    const char *name;
-    split_path(link, dir, sizeof dir, &name);
-    char id[WPS_ID_LEN + 1];
-    wps_new_id(id);
-    snprintf(tmp, sizeof tmp, "%s/" WPS_SHADOW_TMP "%.8s", dir, id);
-    if (symlink(target, tmp) < 0) return -1;
-    int rc = replace ? rename(tmp, link) : renameat2(AT_FDCWD, tmp, AT_FDCWD, link, RENAME_NOREPLACE);
-    int e = errno;
-    if (rc < 0) unlink(tmp);
-    errno = e;
-    return rc;
-}
-
-static bool link_path(const char *vol, const char *rel, char *out, size_t n)
+static bool file_path(const char *vol, const char *rel, char *out, size_t n)
 {
     wps_volume v;
     if (!wps_volume_for_uuid(vol, &v)) return false;
@@ -64,12 +46,90 @@ static bool link_path(const char *vol, const char *rel, char *out, size_t n)
     return true;
 }
 
+/* Read a shadow file: its target's ID and last known path. */
+bool wps_shadow_read(const char *path, char id[WPS_ID_LEN + 1], char *target_path, size_t tn)
+{
+    char buf[4096];
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0) return false;
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n <= 0) return false;
+    buf[n] = 0;
+    if (!strstr(buf, "[WPS Object]")) return false;
+    const char *cls = strstr(buf, "\nClass=WPShadow"), *t = strstr(buf, "\nTarget="), *tp = strstr(buf, "\nTargetPath=");
+    if (!cls || !t) return false;
+    t += 8;
+    size_t l = strcspn(t, "\r\n");
+    if (l != WPS_ID_LEN) return false;
+    memcpy(id, t, WPS_ID_LEN);
+    id[WPS_ID_LEN] = 0;
+    if (target_path) {
+        target_path[0] = 0;
+        if (tp) {
+            tp += 12;
+            snprintf(target_path, tn, "%.*s", (int)strcspn(tp, "\r\n"), tp);
+        }
+    }
+    return true;
+}
+
+static int write_shadow(int fd, const char *id, const char *target_path)
+{
+    char buf[PATH_MAX + 256];
+    int n = snprintf(buf, sizeof buf, "[WPS Object]\nVersion=1\nClass=WPShadow\nTarget=%s\nTargetPath=%s\n", id, target_path);
+    if (lseek(fd, 0, SEEK_SET) != 0 || write(fd, buf, (size_t)n) != n) return -1;
+    return ftruncate(fd, n);
+}
+
+/* Whoever can write a folder may maintain the shadows in it (design:
+ * Shadows maintained by any user): a shadow file we cannot write is
+ * replaced by a new one, renamed over it, with its WPS settings copied. */
+static int replace_shadow(const char *file, const char *id, const char *target_path)
+{
+    char dir[PATH_MAX], tmp[PATH_MAX + 64], nid[WPS_ID_LEN + 1];
+    snprintf(dir, sizeof dir, "%s", file);
+    char *sl = strrchr(dir, '/');
+    if (!sl) return -1;
+    *sl = 0;
+    if (access(dir, W_OK) != 0) return -1;   /* another user who can write the folder will */
+    wps_new_id(nid);
+    snprintf(tmp, sizeof tmp, "%s/" WPS_SHADOW_TMP "%.8s", dir, nid);
+    int out = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0664);
+    if (out < 0) return -1;
+    int rc = write_shadow(out, id, target_path);
+    int in = open(file, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    char names[8192];
+    ssize_t nl = in >= 0 ? flistxattr(in, names, sizeof names) : -1;
+    for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
+        if (strncmp(names + o, "user.wps.", 9)) continue;
+        char v[65536];
+        ssize_t vl = fgetxattr(in, names + o, v, sizeof v);
+        if (vl >= 0) fsetxattr(out, names + o, v, (size_t)vl, 0);
+    }
+    if (in >= 0) close(in);
+    close(out);
+    if (rc == 0) rc = rename(tmp, file);
+    if (rc != 0) unlink(tmp);
+    return rc;
+}
+
+/* Remember a shadow file in this service's index (from any thread). */
+static void index_put(const char *shadow, const char *id)
+{
+    wps_volume sv;
+    char tv[WPS_VOLID_MAX] = "", tr[PATH_MAX] = "";
+    if (!wps_volume_for_path(shadow, &sv)) return;
+    wps_db_get_location(db, id, tv, sizeof tv, tr, sizeof tr);
+    wps_db_shadow_put(db, sv.uuid, wps_volume_relpath(&sv, shadow), id, tv, tr);
+}
+
 /* ------------------------------------------------------------ creating */
 
 struct create_job {
     char target[PATH_MAX], folder[PATH_MAX];
-    wps_loaded tld, fld;            /* the target and the folder, loaded */
-    char link[PATH_MAX];
+    wps_loaded tld;
+    char file[PATH_MAX];
     char error[128];
     void (*done)(void *, const char *, const char *);
     void *arg;
@@ -78,48 +138,39 @@ struct create_job {
 static void create_work(void *arg)
 {
     struct create_job *j = arg;
-    wps_load(j->target, true, &j->tld);   /* a shadow stores something about its target: it needs an ID */
-    wps_load(j->folder, false, &j->fld);
-    if (j->tld.err || j->fld.err) { snprintf(j->error, sizeof j->error, "%s", strerror(j->tld.err ? j->tld.err : j->fld.err)); return; }
-    if (!S_ISDIR(j->fld.st.st_mode)) { snprintf(j->error, sizeof j->error, "not a folder"); return; }
+    wps_load(j->target, true, &j->tld);   /* a shadow stores its target's ID: it needs one */
+    struct stat fs;
+    if (j->tld.err) { snprintf(j->error, sizeof j->error, "%s", strerror(j->tld.err)); return; }
+    if (stat(j->folder, &fs) < 0 || !S_ISDIR(fs.st_mode)) { snprintf(j->error, sizeof j->error, "not a folder"); return; }
     if (!j->tld.id[0]) { snprintf(j->error, sizeof j->error, "target has no ID (excluded path?)"); return; }
     const char *slash = strrchr(j->tld.path, '/');
     const char *base = slash ? slash + 1 : j->tld.path;
-    /* Never overwrite: "name", then "name (2)", "name (3)", ... */
-    for (int k = 1; k < 100; k++) {
-        if (k == 1) snprintf(j->link, sizeof j->link, "%s/%s", j->fld.path, base);
-        else snprintf(j->link, sizeof j->link, "%s/%s (%d)", j->fld.path, base, k);
-        if (write_symlink(j->link, j->tld.path, false) == 0) {
-            wps_volume v;
-            if (wps_volume_for_path(j->link, &v))
-                wps_db_shadow_put(db, v.uuid, wps_volume_relpath(&v, j->link), j->tld.id, j->tld.vol, j->tld.rel);
-            return;
-        }
-        if (errno != EEXIST) { snprintf(j->error, sizeof j->error, "%s", strerror(errno)); j->link[0] = 0; return; }
+    char stem[NAME_MAX - 24];
+    snprintf(stem, sizeof stem, "%s", base);
+    if (ends_with(stem, ".wpobj")) stem[strlen(stem) - 6] = 0;   /* a shadow of an abstract object */
+    /* Never overwrite: "name.wpobj", then "name (2).wpobj", ... */
+    for (int k = 1; k < 1000; k++) {
+        if (k == 1) snprintf(j->file, sizeof j->file, "%s/%s.wpobj", j->folder, stem);
+        else snprintf(j->file, sizeof j->file, "%s/%s (%d).wpobj", j->folder, stem, k);
+        int fd = open(j->file, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+        if (fd < 0 && errno == EEXIST) continue;
+        if (fd < 0) { snprintf(j->error, sizeof j->error, "%s", strerror(errno)); j->file[0] = 0; return; }
+        int rc = write_shadow(fd, j->tld.id, j->tld.path);
+        close(fd);
+        if (rc < 0) { unlink(j->file); snprintf(j->error, sizeof j->error, "cannot write the shadow"); j->file[0] = 0; return; }
+        index_put(j->file, j->tld.id);
+        return;
     }
     snprintf(j->error, sizeof j->error, "no free name");
-    j->link[0] = 0;
+    j->file[0] = 0;
 }
 
 static void create_done(void *arg)
 {
     struct create_job *j = arg;
-    if (!j->error[0] && j->link[0]) {
-        /* The record on the folder, so other users' services can maintain it. */
-        wpo_object *folder = wps_object_from_loaded(&j->fld);
-        if (folder) {
-            const char *name = strrchr(j->link, '/') + 1;
-            char key[NAME_MAX + 16];
-            snprintf(key, sizeof key, "shadow:%s", name);
-            wps_state_put_str(folder, "WPFolder", key, j->tld.id);
-            WPObject_wpSaveDeferred(folder);
-        }
-        j->done(j->arg, j->link, NULL);
-    } else {
-        j->done(j->arg, NULL, j->error[0] ? j->error : "failed");
-    }
+    if (!j->error[0] && j->file[0]) j->done(j->arg, j->file, NULL);
+    else j->done(j->arg, NULL, j->error[0] ? j->error : "failed");
     wps_loaded_free(&j->tld);
-    wps_loaded_free(&j->fld);
     free(j);
 }
 
@@ -136,56 +187,57 @@ void wps_shadow_create(const char *target, const char *folder,
 
 /* -------------------------------------------------- following targets */
 
-enum skind { S_MOVED, S_PREFIX, S_DELETED, S_LEARN };
+enum skind { S_MOVED, S_PREFIX, S_DELETED, S_LEARN, S_SCAN };
 
 struct sjob {
     enum skind kind;
     char id[WPS_ID_LEN + 1];
-    char a[PATH_MAX], b[PATH_MAX];      /* new path; or old and new prefix; or the folder */
-    char (*names)[NAME_MAX + 1];        /* S_LEARN: link names */
-    char (*ids)[WPS_ID_LEN + 1];        /* S_LEARN: their targets */
-    size_t n;
+    char a[PATH_MAX], b[PATH_MAX];      /* new path; old and new prefix; or a shadow file (S_LEARN) */
 };
 
 struct rewrite_ctx { struct sjob *j; int done; };
 
+/* One indexed shadow file: bring its target hint up to date, or remove it
+ * if its target is gone. The ID inside the file is what makes it a shadow;
+ * the hint only saves a lookup and helps other computers. */
 static void rewrite_one(const char *lv, const char *lr, const char *tid, const char *tv, const char *tr, void *user)
 {
     struct rewrite_ctx *c = user;
     struct sjob *j = c->j;
-    char link[PATH_MAX], newtarget[PATH_MAX];
-    if (!link_path(lv, lr, link, sizeof link)) return;   /* its volume is not mounted */
+    char file[PATH_MAX], newtarget[PATH_MAX];
+    if (!file_path(lv, lr, file, sizeof file)) return;   /* its volume is not mounted */
+    char fid[WPS_ID_LEN + 1], hint[PATH_MAX];
+    if (!wps_shadow_read(file, fid, hint, sizeof hint) || strcmp(fid, tid) != 0) {
+        wps_db_shadow_del(db, lv, lr);   /* moved away or no longer a shadow of this: learnt again when seen */
+        return;
+    }
+    if (j->kind == S_DELETED) {
+        unlink(file);   /* the original is really gone (not in the trash): its shadows go too */
+        wps_db_shadow_del(db, lv, lr);
+        c->done++;
+        return;
+    }
     if (j->kind == S_PREFIX) {
         char oldtarget[PATH_MAX];
-        if (!link_path(tv, tr, oldtarget, sizeof oldtarget)) return;
+        if (!file_path(tv, tr, oldtarget, sizeof oldtarget)) return;
         size_t l = strlen(j->a);
         if (strncmp(oldtarget, j->a, l) != 0) return;
         snprintf(newtarget, sizeof newtarget, "%s%s", j->b, oldtarget + l);
     } else {
         snprintf(newtarget, sizeof newtarget, "%s", j->a);
     }
-    struct stat st;
-    if (lstat(link, &st) < 0 || !S_ISLNK(st.st_mode)) { wps_db_shadow_del(db, lv, lr); return; }
-    char cur[PATH_MAX];
-    ssize_t n = readlink(link, cur, sizeof cur - 1);
-    cur[n < 0 ? 0 : n] = 0;
-    if (j->kind == S_DELETED) {
-        /* Only a managed shadow is removed, and only if it still points
-         * where the target was (the user may have repointed it). */
-        if (n > 0 && access(cur, F_OK) != 0) unlink(link);
-        wps_db_shadow_del(db, lv, lr);
-        c->done++;
-        return;
+    if (strcmp(hint, newtarget) == 0) return;
+    int rc = -1;
+    int fd = open(file, O_WRONLY | O_NOFOLLOW | O_CLOEXEC);   /* in place: the same inode keeps any settings */
+    if (fd >= 0) {
+        rc = write_shadow(fd, tid, newtarget);
+        close(fd);
+    } else {
+        rc = replace_shadow(file, tid, newtarget);   /* someone else's file in a folder we may write */
     }
-    if (strcmp(cur, newtarget) == 0) return;
-    char dir[PATH_MAX];
-    const char *name;
-    split_path(link, dir, sizeof dir, &name);
-    if (access(dir, W_OK) != 0) return;   /* another user who can write the folder will */
-    if (write_symlink(link, newtarget, true) == 0) {
+    if (rc == 0) {
         wps_volume v;
-        if (wps_volume_for_path(newtarget, &v))
-            wps_db_shadow_put(db, lv, lr, tid, v.uuid, wps_volume_relpath(&v, newtarget));
+        if (wps_volume_for_path(newtarget, &v)) wps_db_shadow_put(db, lv, lr, tid, v.uuid, wps_volume_relpath(&v, newtarget));
         c->done++;
     }
 }
@@ -195,16 +247,21 @@ static void sjob_work(void *arg)
     struct sjob *j = arg;
     struct rewrite_ctx c = { j, 0 };
     if (j->kind == S_LEARN) {
-        wps_volume fv;
-        if (!wps_volume_for_path(j->a, &fv)) return;
-        for (size_t i = 0; i < j->n; i++) {
-            char link[PATH_MAX + NAME_MAX + 2], tv[WPS_VOLID_MAX] = "", tr[PATH_MAX] = "";
-            snprintf(link, sizeof link, "%s/%s", j->a, j->names[i]);
-            struct stat st;
-            if (lstat(link, &st) < 0 || !S_ISLNK(st.st_mode)) continue;   /* stale record */
-            wps_db_get_location(db, j->ids[i], tv, sizeof tv, tr, sizeof tr);
-            wps_db_shadow_put(db, fv.uuid, wps_volume_relpath(&fv, link), j->ids[i], tv, tr);
+        char id[WPS_ID_LEN + 1];
+        if (wps_shadow_read(j->a, id, NULL, 0)) index_put(j->a, id);
+        return;
+    }
+    if (j->kind == S_SCAN) {   /* a folder in view: the shadows in it, whoever made them */
+        DIR *d = opendir(j->a);
+        struct dirent *de;
+        while (d && (de = readdir(d))) {
+            if (de->d_type != DT_REG && de->d_type != DT_UNKNOWN) continue;
+            if (!ends_with(de->d_name, ".wpobj")) continue;
+            char p[PATH_MAX + NAME_MAX + 2], id[WPS_ID_LEN + 1];
+            snprintf(p, sizeof p, "%s/%s", j->a, de->d_name);
+            if (wps_shadow_read(p, id, NULL, 0)) index_put(p, id);
         }
+        if (d) closedir(d);
         return;
     }
     if (j->kind == S_PREFIX) {
@@ -216,15 +273,7 @@ static void sjob_work(void *arg)
     wps_db_shadows_for(db, j->id, rewrite_one, &c);
 }
 
-static void sjob_done(void *arg)
-{
-    struct sjob *j = arg;
-    free(j->names);
-    free(j->ids);
-    free(j);
-}
-
-static void start(struct sjob *j) { wpo_defer(loop, "maintain shadows", sjob_work, sjob_done, j); }
+static void start(struct sjob *j) { wpo_defer(loop, "maintain shadows", sjob_work, free, j); }
 
 void wps_shadows_target_moved(const char *id, const char *newpath)
 {
@@ -254,26 +303,19 @@ void wps_shadows_target_deleted(const char *id)
     start(j);
 }
 
-void wps_shadows_folder_loaded(const char *folder, const wps_loaded *ld)
+void wps_shadows_folder_seen(const char *folder)
 {
-    for (int c = 0; c < ld->nc; c++) {
-        if (strcmp(ld->c[c].cls, "WPFolder") != 0) continue;
-        const wps_props *p = &ld->c[c].props;
-        struct sjob *j = NULL;
-        for (size_t i = 0; i < p->n; i++) {
-            if (strncmp(p->p[i].key, "shadow:", 7) != 0 || p->p[i].type != 's' || p->p[i].len != WPS_ID_LEN) continue;
-            if (!j) {
-                j = calloc(1, sizeof *j);
-                j->kind = S_LEARN;
-                snprintf(j->a, sizeof j->a, "%s", folder);
-                j->names = calloc(p->n, sizeof *j->names);
-                j->ids = calloc(p->n, sizeof *j->ids);
-            }
-            snprintf(j->names[j->n], NAME_MAX + 1, "%s", p->p[i].key + 7);
-            memcpy(j->ids[j->n], p->p[i].val, WPS_ID_LEN);
-            j->ids[j->n][WPS_ID_LEN] = 0;
-            j->n++;
-        }
-        if (j) start(j);
-    }
+    struct sjob *j = calloc(1, sizeof *j);
+    j->kind = S_SCAN;
+    snprintf(j->a, sizeof j->a, "%s", folder);
+    start(j);
+}
+
+void wps_shadows_file_seen(const char *path)
+{
+    if (!ends_with(path, ".wpobj") || strstr(path, "/" WPS_SHADOW_TMP)) return;
+    struct sjob *j = calloc(1, sizeof *j);
+    j->kind = S_LEARN;
+    snprintf(j->a, sizeof j->a, "%s", path);
+    start(j);
 }

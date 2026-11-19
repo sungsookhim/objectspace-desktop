@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#include "shadows.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -79,9 +80,6 @@ static void detail_work(void *arg)
 {
     struct detail_slice *sl = arg;
     struct detail_job *j = sl->j;
-    /* Managed shadows are recorded on their folder (shadow:<name>). */
-    wps_props fps;
-    bool have_fps = wps_attr_read(j->folder, "WPFolder", &fps) == WPS_A_OK;
     for (size_t i = sl->from; i < sl->to; i++) {
         wps_entry *e = &j->page.items[i];
         char p[PATH_MAX + NAME_MAX + 2];
@@ -100,30 +98,34 @@ static void detail_work(void *arg)
             free(t);
             wps_props_free(&ps);
         }
-        if (e->type == DT_LNK && have_fps) {
-            char key[NAME_MAX + 16];
-            snprintf(key, sizeof key, "shadow:%s", e->name);
-            if (wps_props_get(&fps, key)) {
-                /* A shadow shows its target: its title (or name) and kind. */
-                e->shadow = true;
-                struct stat ts;
-                if (stat(p, &ts) == 0) e->target_type = S_ISDIR(ts.st_mode) ? DT_DIR : DT_REG;
-                char tp[PATH_MAX];
-                if (realpath(p, tp)) {
-                    char tid[WPS_ID_LEN + 1];
-                    t = NULL;
-                    if (wps_attr_get_id(tp, tid) && wps_attr_read(tp, "WPObject", &ps) == WPS_A_OK) {
-                        if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
-                        free(t);
-                        wps_props_free(&ps);
-                    }
-                    if (!e->title[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tp, '/') ? strrchr(tp, '/') + 1 : tp);
+        size_t nl = strlen(e->name);
+        char tid[WPS_ID_LEN + 1];
+        if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".wpobj") &&
+            wps_shadow_read(p, tid, e->target_path, sizeof e->target_path)) {
+            /* A shadow shows its target: its title (or name), kind and path. */
+            e->shadow = true;
+            wps_shadows_file_seen(p);
+            char hid[WPS_ID_LEN + 1];
+            struct stat ts;
+            if (e->target_path[0] && wps_attr_get_id(e->target_path, hid) && !strcmp(hid, tid) && stat(e->target_path, &ts) == 0) {
+                e->target_type = S_ISDIR(ts.st_mode) ? DT_DIR : DT_REG;
+                t = NULL;
+                if (wps_attr_read(e->target_path, "WPObject", &ps) == WPS_A_OK) {
+                    if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+                    free(t);
+                    wps_props_free(&ps);
                 }
+            } else {
+                e->target_type = DT_UNKNOWN;   /* not where it was: the service finds it by ID when opened */
+            }
+            if (!e->title[0] && e->target_path[0]) {
+                const char *b = strrchr(e->target_path, '/');
+                snprintf(e->title, sizeof e->title, "%s", b ? b + 1 : e->target_path);
             }
         }
     }
-    if (have_fps) wps_props_free(&fps);
 }
+
 
 static void detail_done(void *arg)
 {

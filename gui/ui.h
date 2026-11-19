@@ -170,6 +170,9 @@ void ui_window_minimize(ui_surface *s);
 void ui_window_toggle_maximize(ui_surface *s);
 bool ui_window_maximized(ui_surface *s);
 bool ui_window_active(ui_surface *s);
+/* Bring a window forward, in answer to the user's latest click or key
+ * (Wayland lets a program do so only then: xdg-activation). */
+void ui_window_activate(ui_surface *s);
 
 /* A popup at (x, y) of `parent`, `w` x `h`, grabbing input. */
 ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
@@ -316,6 +319,7 @@ typedef struct {
     const char *title, *name;  /* valid until the next call */
     int64_t size, mtime;
     bool shadow;               /* a shadow of another object: drawn as one */
+    bool in_use;               /* a folder with a window open: drawn open, with in-use emphasis (OS/2) */
     /* Tree view only. */
     int depth;
     bool expandable, expanded;

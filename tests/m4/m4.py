@@ -39,15 +39,22 @@ def tracked(svc, path, title):
 
 
 def link_of(path):
+    """Where a shadow points: a shadow file's TargetPath (shadows are WPS
+    object files, decided 2026-11-18), or a plain symlink's target."""
     try:
-        return os.readlink(path)
+        if os.path.islink(path):
+            return os.readlink(path)
+        for line in Path(path).read_text().splitlines():
+            if line.startswith("TargetPath="):
+                return line[len("TargetPath="):]
     except OSError:
-        return None
+        pass
+    return None
 
 
 # ------------------------------------------------------------------ shadows
 
-@scenario(3, "A shadow follows its target to another folder; reading through it works")
+@scenario(3, "A shadow follows its target to another folder, and stays a shadow when it is moved itself")
 def s3():
     me = Service("me").start()
     d = fresh("ext4", "s3")
@@ -59,13 +66,21 @@ def s3():
     link = Path(r.get("result", ""))
     os.rename(d / "docs" / "report.txt", d / "archive" / "report.txt")
     ok_link = wait_for(lambda: link_of(link) == str(d / "archive" / "report.txt"))
-    content = link.read_text() if ok_link else None
+    hint = link_of(link)
     sh = obj(me, link)
+    # The shadow itself moved, by another program: still a shadow of the same object.
+    (d / "elsewhere").mkdir()
+    moved = d / "elsewhere" / link.name
+    os.rename(link, moved)
+    sh2 = obj(me, moved)
     me.stop()
-    ok = r.get("ok") and bool(ok_link) and content == "quarterly numbers\n" and \
-        sh.get("class") == "WPShadow" and (sh.get("target") or {}).get("title") == "Report"
-    return ok, [f"shadow created at {link.name!r} in desk/", f"after the move it points to {link_of(link)}",
-                f"reading through it: {content!r}", f"resolves as {sh.get('class')} of {(sh.get('target') or {}).get('title')!r}"]
+    t, t2 = sh.get("target") or {}, sh2.get("target") or {}
+    ok = r.get("ok") and link.name.endswith(".wpobj") and bool(ok_link) and sh.get("class") == "WPShadow" and \
+        t.get("title") == "Report" and t.get("path") == str(d / "archive" / "report.txt") and \
+        sh2.get("class") == "WPShadow" and t2.get("path") == str(d / "archive" / "report.txt")
+    return ok, [f"shadow created as {link.name!r} in desk/ (a WPS object file)", f"after the target moved its hint is {hint}",
+                f"resolves as {sh.get('class')} of {t.get('title')!r} at {t.get('path')}",
+                f"moved by mv into elsewhere/: still {sh2.get('class')} of {t2.get('title')!r}"]
 
 
 @scenario("4s", "A target moved while the service was stopped: its shadow is fixed at the next start")
@@ -140,10 +155,11 @@ def s35():
     fixed = wait_for(lambda: link_of(link) == str(d / "done" / "spec.txt"))
     b.stop()
     a.start()                                  # A logs in again
-    works = run(["cat", str(link)], user=60001).stdout == "spec\n"
+    t = obj(a, link).get("target") or {}
+    works = t.get("path") == str(d / "done" / "spec.txt")
     a.stop()
-    return bool(fixed) and works, [f"B rewrote A's shadow: {bool(fixed)} -> {link_of(link)}",
-                                   f"A reads through it after logging in: {works}"]
+    return bool(fixed) and works, [f"B updated A's shadow: {bool(fixed)} -> {link_of(link)}",
+                                   f"A's shadow resolves to it after logging in: {t.get('path')}"]
 
 
 @scenario("T1", "Trash: the object keeps its identity; its shadow follows and comes back on restore")
@@ -253,7 +269,7 @@ def sa3():
     sh = obj(me, link)
     me.stop()
     ok = p1.name == "Terminal.desktop" and p2.name == "Terminal (2).desktop" and ini(p1, "Exec") == "ptyxis" and \
-        sh.get("class") == "WPShadow" and (sh.get("target") or {}).get("class") == "WPProgram"
+        sh.get("class") == "WPShadow" and (sh.get("target") or {}).get("class") == "WPProgram" and link.name.endswith(".wpobj")
     return ok, [f"first: {p1.name!r}, second: {p2.name!r} (Exec of the first still {ini(p1, 'Exec')!r})",
                 f"shadow in menu/ resolves to a {(sh.get('target') or {}).get('class')}"]
 

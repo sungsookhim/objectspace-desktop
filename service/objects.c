@@ -265,6 +265,11 @@ static void read_object_file(wps_loaded *ld)
         ini_value(buf, "[Desktop Entry]", "Exec", ld->desk_exec, sizeof ld->desk_exec);
     } else if (!ini_value(buf, "[WPS Object]", "Class", ld->obj_class, sizeof ld->obj_class)) {
         snprintf(ld->obj_class, sizeof ld->obj_class, "WPAbstract");
+    } else if (!strcmp(ld->obj_class, "WPShadow")) {
+        char id[WPS_ID_LEN + 8] = "";
+        ini_value(buf, "[WPS Object]", "Target", id, sizeof id);
+        if (strlen(id) == WPS_ID_LEN) memcpy(ld->shadow_of, id, WPS_ID_LEN + 1);
+        ini_value(buf, "[WPS Object]", "TargetPath", ld->link_target, sizeof ld->link_target);
     }
 }
 
@@ -355,24 +360,9 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
     ld->owned = ld->st.st_uid == geteuid();
     ld->writable = access(ld->path, W_OK) == 0 && !v.ro;
     if (S_ISREG(ld->st.st_mode)) read_object_file(ld);
-    if (S_ISLNK(ld->st.st_mode)) {
+    if (S_ISLNK(ld->st.st_mode)) {   /* a plain file-system link (shadows are .wpobj files) */
         ssize_t n = readlink(ld->path, ld->link_target, sizeof ld->link_target - 1);
         ld->link_target[n < 0 ? 0 : n] = 0;
-        /* A managed shadow is recorded on its folder: shadow:<name> = target ID. */
-        char dir[PATH_MAX];
-        snprintf(dir, sizeof dir, "%s", ld->path);
-        char *slash = strrchr(dir, '/');
-        if (slash && slash != dir) {
-            *slash = 0;
-            wps_props fp;
-            char key[NAME_MAX + 16], *tid = NULL;
-            snprintf(key, sizeof key, "shadow:%s", slash + 1);
-            if (wps_attr_read(dir, "WPFolder", &fp) == WPS_A_OK && wps_props_str(&fp, key, &tid) &&
-                strlen(tid) == WPS_ID_LEN)
-                memcpy(ld->shadow_of, tid, WPS_ID_LEN + 1);
-            free(tid);
-            wps_props_free(&fp);
-        }
     }
 
     /* Does the filesystem take user attributes? Probe the user namespace
@@ -429,7 +419,6 @@ static wpo_class *class_for(const wps_loaded *ld)
 {
     mode_t m = ld->st.st_mode;
     if (S_ISDIR(m)) return WPFolderClass;
-    if (S_ISLNK(m) && ld->shadow_of[0]) return WPShadowClass;
     if (S_ISREG(m) && ld->obj_class[0]) {
         wpo_class *c = wpo_find_class(ld->obj_class);
         return c && !c->is_meta && wpo_subclass_of(c, WPAbstractClass) ? c : WPAbstractClass;
@@ -472,7 +461,6 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
         if (s) { s->dev = ld->st.st_dev; s->ino = ld->st.st_ino; }
     }
     if (s) {
-        if (S_ISDIR(ld->st.st_mode)) wps_shadows_folder_loaded(ld->path, ld);
         /* Changed on disk since we read it (another process or user)? Reload,
          * unless we have unsaved changes of our own; our save merges then. */
         bool changed = s->ctime.tv_sec != ld->st.st_ctim.tv_sec || s->ctime.tv_nsec != ld->st.st_ctim.tv_nsec ||
@@ -506,8 +494,9 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     if (slash && slash != dir) { *slash = 0; wps_tracker_watch(dir); }
     if (S_ISDIR(ld->st.st_mode)) {
         wps_tracker_watch(ld->path);
-        wps_shadows_folder_loaded(ld->path, ld);
+        wps_shadows_folder_seen(ld->path);   /* the shadows in it, so they follow their targets */
     }
+    if (ld->shadow_of[0]) wps_shadows_file_seen(ld->path);   /* index it */
     wps_tracker_object_at(ld->path);
     return s->o;
 }

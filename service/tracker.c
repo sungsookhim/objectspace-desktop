@@ -814,6 +814,7 @@ static void apply(const tev *e)
         else if (e->k == E_MOVE && tmp_old) wps_on_fs_event('c', "", e->path);
         else if (e->k == E_MOVE) wps_on_fs_event('m', e->from, e->path);
     }
+    if (!tmp_path && (e->k == E_CREATE || e->k == E_MOVE)) wps_shadows_file_seen(e->path);   /* only .wpobj files */
     /* A folder listing that saw this change is stale now. */
     if (e->k != E_OVERFLOW) {
         char d[PATH_MAX];

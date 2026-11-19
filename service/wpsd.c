@@ -1074,7 +1074,7 @@ static void list_reply(void *arg, const wps_page *pg)
             for (size_t i = 0; i < pg->n; i++) {
                 const wps_entry *e = &pg->items[i];
                 const char *t = e->type == DT_DIR ? "folder" : e->type == DT_LNK ? "link" : e->type == DT_REG ? "file" : "other";
-                cb_map(&b, e->detailed ? (e->shadow ? 8 : 6) : 2);
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : 6) : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -1085,6 +1085,7 @@ static void list_reply(void *arg, const wps_page *pg)
                     if (e->shadow) {
                         cb_text(&b, "shadow"); cb_bool(&b, true);
                         cb_text(&b, "target"); cb_text(&b, e->target_type == DT_DIR ? "folder" : "file");
+                        cb_text(&b, "target_path"); cb_text(&b, e->target_path);
                     }
                 }
             }
@@ -1149,18 +1150,59 @@ static pid_t spawn(char **argv)
     return pid;
 }
 
+static void reply_folder(struct req *r, const char *path)
+{
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 3);
+    cb_text(&b, "id"); cb_int(&b, r->id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    cb_map(&b, 1);
+    cb_text(&b, "folder"); cb_text(&b, path);   /* the GUI opens a folder window */
+    send_frame(r->c, &b);
+    cb_free(&b);
+}
+
 static void do_open(struct req *r, wpo_object *o)
 {
     const cv *cf = cv_get(&r->msg, "confirm");
     bool confirmed = cf && cf->k == CV_BOOL && cf->b;
     char buf[4096], *argv[64];
     const char *what;
+    const char *path = r->tgt.path;
+    const struct stat *st = &r->tgt.st;
+    wpo_object *orig = NULL;
+    /* A shadow opens its original, wherever that is now. */
+    if (wpo_is_a(o, WPShadowClass)) {
+        orig = WPShadow_wpQueryTarget(o);
+        if (!orig || r->shadow_target.err || !r->shadow_target.path[0]) {
+            wpo_unref(orig);
+            reply_error(r->c, r->id, "unavailable", "the original is not available (on a volume that is not mounted, or gone)");
+            return;
+        }
+        o = orig;
+        path = r->shadow_target.path;
+        st = &r->shadow_target.st;
+    }
+    if (wpo_is_a(o, WPFolderClass)) { reply_folder(r, path); wpo_unref(orig); return; }
+    /* A plain file-system link opens what it points to. */
+    struct stat ts;
+    char real[PATH_MAX];
+    if (S_ISLNK(st->st_mode) && stat(path, &ts) == 0 && realpath(path, real)) {
+        if (S_ISDIR(ts.st_mode)) { reply_folder(r, real); wpo_unref(orig); return; }
+        argv[0] = "xdg-open";
+        argv[1] = real;
+        argv[2] = NULL;
+        what = "xdg-open";
+        goto launch;
+    }
     if (wpo_is_a(o, WPProgramClass)) {
         const char *cmd = WPProgram_data(o)->command;
         if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); return; }
         /* A program another user (not root) owns asks first: nobody can
          * plant something that runs when another user opens it. */
-        uid_t owner = r->tgt.st.st_uid;
+        uid_t owner = st->st_uid;
         if (owner != geteuid() && owner != 0 && !confirmed) {
             cbuf b;
             cb_init(&b);
@@ -1174,21 +1216,24 @@ static void do_open(struct req *r, wpo_object *o)
             cb_text(&b, "owner_uid"); cb_int(&b, (int64_t)owner);
             send_frame(r->c, &b);
             cb_free(&b);
+            wpo_unref(orig);
             return;
         }
-        if (split_exec(cmd, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); return; }
+        if (split_exec(cmd, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
         what = cmd;
     } else if (wpo_is_a(o, WPDataFileClass)) {
         argv[0] = "xdg-open";
-        argv[1] = r->tgt.path;
+        argv[1] = (char *)path;
         argv[2] = NULL;
         what = "xdg-open";
     } else {
-        reply_error(r->c, r->id, "bad request", "folders and other objects open in the GUI");
+        reply_error(r->c, r->id, "bad request", "this kind of object opens in the GUI");
+        wpo_unref(orig);
         return;
     }
+launch:;
     pid_t pid = spawn(argv);   /* as this user, in this user's session */
-    if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); return; }
+    if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     cbuf b;
     cb_init(&b);
     cb_map(&b, 3);
@@ -1200,6 +1245,7 @@ static void do_open(struct req *r, wpo_object *o)
     cb_text(&b, "command"); cb_text(&b, what);
     send_frame(r->c, &b);
     cb_free(&b);
+    wpo_unref(orig);   /* after the reply: `what` may be the original's command */
 }
 
 /* ---- from_template: a new object copied from a template */

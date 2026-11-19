@@ -364,3 +364,5 @@ void ui_dnd_init(ui_app *a)
     a->ddev = wl_data_device_manager_get_data_device(a->ddm, a->seat);
     wl_data_device_add_listener(a->ddev, &device_listener, a);
 }
+
+void ui_dnd_renegotiate(ui_app *a) { negotiate(a, a->drag_serial); }

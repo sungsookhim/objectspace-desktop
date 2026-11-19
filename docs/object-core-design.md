@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.14 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.15 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -402,23 +402,21 @@ Running WPS as root is supported but discouraged, because root's service could s
 
 ## Links
 
-A WPS shadow of a file or folder is a **managed symlink**: a real symlink on disk that the service rewrites whenever its target moves. Every Linux program can follow it, unlike OS/2 shadows, which only WPS could see. Symlinks and hard links made by other tools keep their Linux meaning.
+A WPS shadow is a **WPS object file**, as in OS/2, where a shadow was a WPS object and not a file-system link (decided 2026-11-18; until then shadows were managed symlinks, which became plain symlinks when moved to another folder). Symlinks and hard links made by other tools keep their Linux meaning.
 
 | Kind | On disk | When the target moves | When the target is deleted | WPS shows it as |
 | --- | --- | --- | --- | --- |
-| Shadow of a file or folder | A symlink + a record in its folder's `user.wps.shadows` | The service rewrites the symlink | The service removes the shadow | Shadow (italic title, as in OS/2) |
-| Shadow of an abstract object | A managed symlink to the object's file | The service rewrites the symlink | The service removes the shadow | Shadow |
-| Symlink made by the user (`ln -s`) | A symlink only | Left alone; may dangle | Left alone | Link, with a badge; "Track target" turns it into a shadow |
+| Shadow (of a file, folder or abstract object) | `<name>.wpobj`: `Class=WPShadow`, the target's object ID, and its last known path | The service updates the path hint; the ID does not change | The service removes the shadow (a move to the trash is not a deletion) | The target's title and icon, with a link mark and the title in the shadow colour |
+| Symlink made by the user (`ln -s`) | A symlink only | Left alone; may dangle | Left alone | Link; opening it opens what it points to |
 | Hard link (`ln`) | Another name for the same inode | Not affected | The file lives while any name remains | The same object, shown in each folder |
 
-### Managed symlinks
+### Shadow files
 
-- Linux refuses `user.*` extended attributes on symlinks, so a shadow's record (its target's object ID) is stored on the folder that holds it, in `user.wps.shadows`. Any user who can write that folder can therefore maintain it (see Multiple logged-in users). On filesystems without extended attributes, the record goes to the creating user's database.
-- The symlink holds an **absolute** path, so moving the shadow itself does not break it.
-- When a target is renamed, the service rewrites every symlink pointing to that object ID. The rewrite is atomic: write a new symlink beside the old one, then rename it over the old one. When a whole folder moves, shadows pointing into it are found through an index on target path prefix and rewritten as a job.
-- If the target is on a volume that is not mounted, the symlink is left as it is, and WPS shows the shadow as unavailable.
-- Shadows of abstract objects point to the object's file, so they are symlinks like any other shadow.
-- A user can create a managed shadow only in a folder they can write; the kernel enforces this.
+- The target's **object ID** is what makes a file a shadow, so a shadow stays a shadow wherever it is moved or copied, by WPS or by any other program, and on another computer that sees the same volume.
+- The **path hint** (`TargetPath`) saves a lookup and lets a listing show the target's title and kind at once. When it is stale, opening the shadow finds the target by ID.
+- Each service keeps an index of the shadow files it has seen: those it created, loaded, listed, found in a folder it loads, or saw appear in a watched folder. When a target moves, every indexed shadow's hint is updated: in place when the user can write the file (so the shadow's own settings stay), otherwise by writing a new file and renaming it over, which any user who can write the folder may do (see Multiple logged-in users).
+- If the target is on a volume that is not mounted, the shadow shows as unavailable.
+- Other programs and the terminal see a small text file, not a link they can follow. That is the price of shadows that survive any move.
 
 ### Symlinks made by the user
 
@@ -433,8 +431,8 @@ A user-made symlink may deliberately point at a path, such as whatever is mounte
 ### Safety rules
 
 - Never follow symlinks in tree walks, scans, recursive copies or folder size calculations. Use `O_NOFOLLOW` and `AT_SYMLINK_NOFOLLOW`, and treat a symlink as a leaf object. A symlink to a parent directory would otherwise loop.
-- Deleting a shadow deletes the symlink, never the target.
-- Removing shadows when a target is deleted applies only to managed symlinks.
+- Deleting a shadow deletes the shadow file, never the target.
+- Removing shadows when a target is deleted applies only to shadow files, never to symlinks made by users.
 
 ## Change tracking
 
@@ -754,6 +752,7 @@ These follow from the principles above but need not be designed in full before M
 - [x] Backup names: decided 2026-11-18. A setting, off by default (`backup-names` in the configuration folder). When on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save at once.
 - [x] Duplicate IDs: decided 2026-11-18. No timer. A file that appears with another file's ID shares it until either file is changed (content or WPS settings), which makes it a copy with a new ID, or until the original is deleted, which makes it a move.
 - [x] Plug-ins in-process: decided 2026-11-18. Never. Every third-party class runs in a plug-in host; only the built-in classes run inside `wpsd`.
+- [x] Shadows: decided 2026-11-18. WPS object files (`.wpobj`, `Class=WPShadow`, the target's ID and a path hint), as in OS/2, replacing managed symlinks, which lost their shadow record when moved to another folder.
 - [x] Renaming a file's or folder's icon: decided 2026-11-18. As in OS/2, it renames the file or folder itself (never replacing another), and its title then follows the name. Without permission to rename, the new name becomes its title, shared or private by the usual rules. Programs and abstract objects only have titles. Service request `rename`.
 - [x] Plug-in sandbox: decided 2026-11-18. Plug-in hosts run sandboxed: no network, no new privileges, and (Landlock) filesystem access only to the plug-in's own files and data folder. File work goes through the service, which applies the user's permissions.
 
@@ -761,6 +760,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.15 | 2026-11-18 | Decided: shadows are WPS object files carrying their target's ID, not managed symlinks (Links rewritten) |
 | 0.14 | 2026-11-18 | Decided: renaming an icon renames the file or folder (as in OS/2); `rename` request |
 | 0.13 | 2026-11-18 | M5 done: events, menus and settings as data, opening programs, system programs, templates, file types, root sessions, sandboxed plug-in hosts; findings listed under M5 |
 | 0.12 | 2026-11-18 | Decided: plug-ins never run in-process; plug-in hosts are sandboxed |

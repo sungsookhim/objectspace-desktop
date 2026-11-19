@@ -27,7 +27,7 @@
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow; char *target; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -57,6 +57,7 @@ struct folder {
     size_t ntvis, captvis;
     unsigned tgen;           /* replies for a freed tree are dropped */
     char pending_open[PATH_MAX];   /* the program asked about, if any */
+    ui_view pending_view;          /* how to open a folder the service names */
     icon_layout *lay;        /* icon view: where each icon is */
     bool lay_started;        /* its grid width is set */
     bool arranged_by_name;   /* the first, unstored arrangement was done */
@@ -111,7 +112,11 @@ static void model_free(struct model *m)
 {
     for (size_t p = 0; p < m->npages; p++) {
         if (!m->pages[p]) continue;
-        for (size_t r = 0; r < PAGE; r++) { free(m->pages[p]->rows[r].name); free(m->pages[p]->rows[r].title); }
+        for (size_t r = 0; r < PAGE; r++) {
+            free(m->pages[p]->rows[r].name);
+            free(m->pages[p]->rows[r].title);
+            free(m->pages[p]->rows[r].target);
+        }
         free(m->pages[p]);
     }
     free(m->pages);
@@ -181,6 +186,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
         const char *nm = cv_text(it, "name"), *ti = cv_text(it, "title"), *ty = cv_text(it, "type");
         free(dst->name);
         free(dst->title);
+        free(dst->target);
+        dst->target = NULL;
         dst->name = strdup(nm ? nm : "?");
         dst->title = ti && *ti ? strdup(ti) : NULL;
         dst->kind = kind_of(ty, nm);
@@ -190,8 +197,11 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             cv_int(it, "mtime", &dst->mtime);
             const cv *sh = cv_get(it, "shadow");
             dst->shadow = sh && sh->k == CV_BOOL && sh->b;
-            const char *tt = cv_text(it, "target");
-            if (dst->shadow) dst->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_of("file", nm);
+            const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
+            if (dst->shadow) {
+                dst->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_of("file", tp ? tp : nm);
+                dst->target = tp && *tp ? strdup(tp) : NULL;
+            }
         }
     }
     for (size_t p = (size_t)off / PAGE; n && p <= ((size_t)off + n - 1) / PAGE; p++) {
@@ -569,6 +579,27 @@ static bool is_tree(struct folder *f) { return ui_container_view(f->cont) == UI_
 
 /* ----------------------------------------------------------- container src */
 static void src_item(void *ctx, size_t i, ui_item *out);
+
+/* A folder's window opened or closed: windows showing its icon redraw it. */
+static void notify_in_use(const char *path)
+{
+    char parent[PATH_MAX];
+    snprintf(parent, sizeof parent, "%s", path);
+    char *sl = strrchr(parent, '/');
+    if (!sl) return;
+    const char *name = sl + 1;
+    if (sl == parent) parent[1] = 0;
+    else *sl = 0;
+    for (struct folder *o = folders; o; o = o->next) {
+        if (o->closing) continue;
+        if (o->troot) ui_container_layout_changed(o->cont);   /* a tree may show it anywhere */
+        if (strcmp(o->path, parent)) continue;
+        for (size_t i = 0; i < o->m.total; i++) {
+            const char *n = model_name(&o->m, i);
+            if (n && !strcmp(n, name)) { ui_container_changed(o->cont, i, i); break; }
+        }
+    }
+}
 static void target_of(struct folder *f, size_t i, char *out, size_t n);
 
 static size_t src_count(void *ctx)
@@ -590,6 +621,8 @@ static void src_item(void *ctx, size_t i, ui_item *out)
         out->depth = n->depth;
         out->expanded = n->expanded;
         out->expandable = !n->loaded || n->nkids > 0;   /* unknown until read */
+        for (struct folder *o = folders; o && !out->in_use; o = o->next)
+            out->in_use = o != f && !o->closing && !strcmp(o->path, n->path);
         out->last_child = !n->parent || n->parent->kids[n->parent->nkids - 1] == n;
         for (struct tnode *a = n->parent; a && a->parent; a = a->parent)
             if (a->parent->kids[a->parent->nkids - 1] != a) out->open_levels |= 1u << a->depth;
@@ -606,6 +639,12 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->size = r->size;
     out->mtime = r->mtime;
     out->shadow = r->shadow;
+    if (r->kind == UI_KIND_FOLDER && !r->shadow) {
+        char p[PATH_MAX];
+        snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
+        for (struct folder *o = folders; o && !out->in_use; o = o->next)
+            out->in_use = !o->closing && !strcmp(o->path, p);
+    }
 }
 
 static void src_visible(void *ctx, size_t first, size_t last)
@@ -673,6 +712,12 @@ static void opened(void *arg, const cv *reply)
         confirm_program(f, res);
         return;
     }
+    if (res && cv_text(res, "folder")) {   /* a shadow of a folder, or a link to one */
+        open_folder(cv_text(res, "folder"), f->pending_view);
+        f->error[0] = 0;
+        damage_status(f);
+        return;
+    }
     else if (!res && msg)
         snprintf(f->error, sizeof f->error, "%s", msg);
     else
@@ -680,8 +725,25 @@ static void opened(void *arg, const cv *reply)
     damage_status(f);
 }
 
+static struct row *row_at(struct folder *f, size_t i)
+{
+    if (is_tree(f) || i == SIZE_MAX || i / PAGE >= f->m.npages || !f->m.pages[i / PAGE]) return NULL;
+    return &f->m.pages[i / PAGE]->rows[i % PAGE];
+}
+
 static void open_item(struct folder *f, size_t i, ui_view view)
 {
+    struct row *rw = row_at(f, i);
+    if (rw && (rw->shadow || rw->kind == UI_KIND_LINK)) {
+        /* A shadow opens its original, a link what it points to; the
+         * service finds them (a shadow by ID) and says if it is a folder. */
+        char t[PATH_MAX];
+        target_of(f, i, t, sizeof t);
+        snprintf(f->pending_open, sizeof f->pending_open, "%s", t);
+        f->pending_view = view;
+        svc_open(t, false, opened, as_arg(f));
+        return;
+    }
     char t[PATH_MAX];
     target_of(f, i, t, sizeof t);
     struct page *pg = is_tree(f) || i == SIZE_MAX || i / PAGE >= f->m.npages ? NULL : f->m.pages[i / PAGE];
@@ -1244,7 +1306,9 @@ static void drop_dest(struct folder *f, double x, double y, char *out, size_t n,
     ui_item it = { 0 };
     if (i != SIZE_MAX) src_item(f, i, &it);
     if (i != SIZE_MAX && it.loaded && it.kind == UI_KIND_FOLDER) {
-        target_of(f, i, out, n);
+        struct row *rw = row_at(f, i);
+        if (rw && rw->shadow && rw->target) snprintf(out, n, "%s", rw->target);   /* into the original */
+        else target_of(f, i, out, n);
         *item = i;
     } else {
         snprintf(out, n, "%s", f->path);
@@ -1685,7 +1749,11 @@ static void report(struct folder *f);
 static void close_later(void *arg)
 {
     struct folder *f = from_arg(arg);
-    if (f) free_folder(f);
+    if (!f) return;
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s", f->path);
+    free_folder(f);
+    notify_in_use(path);   /* its icon elsewhere is no longer open */
 }
 
 static void win_close(ui_surface *s)
@@ -2078,6 +2146,70 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "shadows")) {
+        static double t0;
+        static int step;
+        static struct folder *home;
+        if (!home) { if (!f->m.complete) return; home = f; t0 = now; }
+        if (f != home) return;
+        double t = now - t0;
+        char data[PATH_MAX];
+        size_t si = SIZE_MAX, ti = SIZE_MAX, li = SIZE_MAX;
+        for (size_t i = 0; i < f->m.total; i++) {
+            const char *n = model_name(&f->m, i);
+            if (!n) continue;
+            if (!strcmp(n, "T.wpobj")) si = i;
+            if (!strcmp(n, "T")) ti = i;
+            if (!strcmp(n, "link-to-T")) li = i;
+        }
+        int nT = 0;
+        char tpath[PATH_MAX];
+        snprintf(tpath, sizeof tpath, "%s/T", f->path);
+        for (struct folder *o = folders; o; o = o->next) nT += !o->closing && !strcmp(o->path, tpath);
+        if (step == 0) {
+            snprintf(data, sizeof data, "%s/T\n", f->path);
+            ui_rect c = ui_frame_client(s);   /* on the background, away from the icons */
+            win_drop(s, c.x + c.w - 60, c.y + c.h - 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL | UI_MOD_SHIFT);
+            step++;
+        } else if (step == 1 && t > 1500 && si != SIZE_MAX) {
+            ui_item it;
+            src_item(f, si, &it);
+            fprintf(stderr, "selftest: shadow row: shadow %d, a folder %d, title '%s'\n", it.shadow, it.kind == UI_KIND_FOLDER, it.title);
+            src_activate(f, si);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1200) {
+            fprintf(stderr, "selftest: windows on T after opening the shadow: %d\n", nT);
+            src_activate(f, si);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1200) {
+            ui_item it;
+            src_item(f, ti, &it);
+            fprintf(stderr, "selftest: after opening it again: %d window(s); T shown in use: %d\n", nT, it.in_use);
+            for (struct folder *o = folders; o; o = o->next)
+                if (!strcmp(o->path, tpath)) win_close(o->win);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 800) {
+            ui_item it;
+            src_item(f, ti, &it);
+            fprintf(stderr, "selftest: T window closed: in use %d\n", it.in_use);
+            if (li != SIZE_MAX) src_activate(f, li);
+            step++;
+            t0 = now;
+        } else if (step == 5 && t > 1200) {
+            fprintf(stderr, "selftest: a plain link to T opened T: %d window(s)\n", nT);
+            step++;
+        } else if (step == 6) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -2179,8 +2311,17 @@ static void got_title(void *arg, const cv *reply)
     update_title(f);
 }
 
+static void notify_in_use(const char *path);
+
 static struct folder *open_folder(const char *path, ui_view view)
 {
+    char real0[PATH_MAX];
+    const char *want = realpath(path, real0) ? real0 : path;
+    for (struct folder *o = folders; o; o = o->next)
+        if (!o->closing && !strcmp(o->path, want) && ui_container_view(o->cont) == view) {
+            ui_window_activate(o->win);   /* already open in this view: switch to it, as OS/2 did */
+            return o;
+        }
     struct folder *f = calloc(1, sizeof *f);
     f->id = next_folder_id++;
     char real[PATH_MAX];
@@ -2199,6 +2340,7 @@ static struct folder *open_folder(const char *path, ui_view view)
     update_title(f);
     layout(f);
     svc_resolve(f->path, got_title, as_arg(f));
+    notify_in_use(f->path);
     svc_subscribe_folder(f->path, got_sub, as_arg(f));
     svc_layout(f->path, got_layout, as_arg(f));
     request_more(f, false);
