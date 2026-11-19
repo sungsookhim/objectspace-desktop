@@ -63,6 +63,6 @@ build/wpsd &                                  # socket in $XDG_RUNTIME_DIR/wps.s
 build/wpsctl call ~/notes.txt wpSetTitle "My notes"
 build/wpsctl resolve ~/notes.txt
 getfattr -d -m user.wps ~/notes.txt           # the title travels with the file
-build/wps-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 details)
+build/wps-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 tree, Ctrl+3 details)
 build/wpsctl shutdown
 ```

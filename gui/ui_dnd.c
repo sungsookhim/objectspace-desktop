@@ -235,6 +235,10 @@ static void negotiate(ui_app *a, uint32_t serial)
     const char *mime = NULL;
     uint32_t act = s->ops->drag_motion ? s->ops->drag_motion(s, a->drag_x, a->drag_y, (const char *const *)f->mimes, f->n,
                                                               f->src_actions, a->mods, &mime) : 0;
+    if (getenv("WPS_DEBUG_DND"))
+        fprintf(stderr, "dnd: motion at %.0f,%.0f mods %s%s%s, source offers %u, compositor chose %u, we answer %u\n",
+                a->drag_x, a->drag_y, a->mods & UI_MOD_CTRL ? "ctrl " : "", a->mods & UI_MOD_SHIFT ? "shift " : "",
+                a->mods & UI_MOD_ALT ? "alt" : "", f->src_actions, f->action, act);
     wl_data_offer_accept(f->o, serial, act ? mime : NULL);
     if (a->ddm_version >= 3)
         wl_data_offer_set_actions(f->o, act ? (WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY | WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE |
@@ -337,6 +341,9 @@ static void d_drop(void *x, struct wl_data_device *dd)
     in->y = a->drag_y;
     in->action = f->action;
     in->mods = a->mods;
+    if (getenv("WPS_DEBUG_DND"))
+        fprintf(stderr, "dnd: drop, compositor's action %u (1 copy, 2 move, 4 ask), mods %s%s%s\n", f->action,
+                a->mods & UI_MOD_CTRL ? "ctrl " : "", a->mods & UI_MOD_SHIFT ? "shift " : "", a->mods & UI_MOD_ALT ? "alt" : "");
     wl_data_offer_receive(f->o, in->mime, p[1]);
     close(p[1]);
     fcntl(p[0], F_SETFL, O_NONBLOCK);

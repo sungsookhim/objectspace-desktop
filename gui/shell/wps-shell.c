@@ -931,8 +931,8 @@ static void got_menu(void *arg, const cv *reply)
         ui_view v = ui_container_view(f->cont);
         ui_menu_item *views = calloc(3, sizeof *views);
         views[0] = (ui_menu_item){ WPS_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON, NULL, 0 };
-        views[1] = (ui_menu_item){ WPS_MI_VIEW_TREE, "Tree view\tCtrl+3", true, v == UI_VIEW_TREE, NULL, 0 };
-        views[2] = (ui_menu_item){ WPS_MI_VIEW_DETAILS, "Details view\tCtrl+2", true, v == UI_VIEW_DETAILS, NULL, 0 };
+        views[1] = (ui_menu_item){ WPS_MI_VIEW_TREE, "Tree view\tCtrl+2", true, v == UI_VIEW_TREE, NULL, 0 };
+        views[2] = (ui_menu_item){ WPS_MI_VIEW_DETAILS, "Details view\tCtrl+3", true, v == UI_VIEW_DETAILS, NULL, 0 };
         items = realloc(items, (n + 1) * sizeof *items);
         size_t at = n ? 1 : 0;
         memmove(items + at + 1, items + at, (n - at) * sizeof *items);
@@ -1239,6 +1239,23 @@ static char *uri_path(const char *u)
     return out;
 }
 
+enum { DROP_MOVE, DROP_COPY, DROP_SHADOW };
+
+static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how);
+
+/* The compositor said "ask" (Alt in GNOME): a menu at the drop point. */
+struct ask_ctx { long folder; char dest[PATH_MAX]; char *mime, *data; };
+
+static void ask_chosen(void *arg, int64_t id)
+{
+    struct ask_ctx *a = arg;
+    struct folder *f = folder_by_id(a->folder);
+    if (f && id >= DROP_MOVE && id <= DROP_SHADOW) do_drop(f, a->dest, a->mime, a->data, (int)id);
+    free(a->mime);
+    free(a->data);
+    free(a);
+}
+
 static void win_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
                      unsigned mods)
 {
@@ -1248,8 +1265,32 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     char dest[PATH_MAX];
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    bool shadow = shadow_mods(mods);
-    const char *kind = (action == UI_DND_COPY || (mods & UI_MOD_CTRL)) ? "copy" : "move";
+    int how = shadow_mods(mods) ? DROP_SHADOW : (action == UI_DND_COPY || (mods & UI_MOD_CTRL)) ? DROP_COPY : DROP_MOVE;
+    if (action == UI_DND_ASK && !shadow_mods(mods)) {
+        struct ask_ctx *a = calloc(1, sizeof *a);
+        a->folder = f->id;
+        snprintf(a->dest, sizeof a->dest, "%s", dest);
+        a->mime = strdup(mime);
+        a->data = strdup(data);
+        ui_menu_item items[] = {
+            { DROP_MOVE, "Move here", true, false, NULL, 0 },
+            { DROP_COPY, "Copy here", true, false, NULL, 0 },
+            { DROP_SHADOW, "Create shadow here", true, false, NULL, 0 },
+            { -1, "-", false, false, NULL, 0 },
+            { 99, "Cancel", true, false, NULL, 0 },
+        };
+        ui_menu_popup(s, items, 5, x, y, 0, ask_chosen, a);
+        return;
+    }
+    if (getenv("WPS_DEBUG_DND"))
+        fprintf(stderr, "dnd: dropping as %s\n", how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
+    do_drop(f, dest, mime, data, how);
+}
+
+static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how)
+{
+    bool shadow = how == DROP_SHADOW;
+    const char *kind = how == DROP_COPY ? "copy" : "move";
     /* Paths, grouped by the folder they come from (a job per folder). */
     char *copy = strdup(data), *save = NULL;
     struct xfer *groups[64];
@@ -1420,8 +1461,9 @@ static void win_key(ui_surface *s, const ui_key_event *e)
     size_t before = ui_container_selected_count(f->cont);
     if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_w || e->sym == XKB_KEY_W)) { win_close(s); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_1) { set_view(f, UI_VIEW_ICON); return; }
-    if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_DETAILS); return; }
-    if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_3) { set_view(f, UI_VIEW_TREE); return; }
+    /* In the order the View menu lists them (OS/2's): icon, tree, details. */
+    if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
+    if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_3) { set_view(f, UI_VIEW_DETAILS); return; }
     ui_container_key(f->cont, e);
     if (ui_container_selected_count(f->cont) != before) damage_status(f);
 }
@@ -1678,7 +1720,7 @@ static void win_frame(ui_surface *s, double now)
             snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s%*s%s%s", i ? " | " : "", it.depth, "", it.name,
                      it.expandable ? (it.expanded ? "[-]" : "[+]") : "");
         }
-        if (step == 0) { ui_key_event k3 = { .sym = XKB_KEY_3, .mods = UI_MOD_CTRL }; win_key(s, &k3); step++; }
+        if (step == 0) { ui_key_event k2 = { .sym = XKB_KEY_2, .mods = UI_MOD_CTRL }; win_key(s, &k2); step++; }
         else if (step == 1 && t > 600) {
             fprintf(stderr, "selftest: tree: %s\n", rows);
             ui_container_set_cursor(f->cont, 0);
