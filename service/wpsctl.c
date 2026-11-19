@@ -15,7 +15,7 @@
  *   wpsctl job_decide ID skip|rename [all]
  *   wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET | settings_set TARGET KEY=VALUE...
  *   wpsctl watch [folder PATH]... [object TARGET]... [jobs]
- *   wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE
+ *   wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -52,7 +52,7 @@ static int usage(void)
             "       wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET\n"
             "       wpsctl settings_set TARGET KEY=VALUE...\n"
             "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
-            "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE\n");
+            "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n");
     return 2;
 }
 
@@ -173,6 +173,13 @@ int main(int argc, char **argv)
         cb_text(&b, "op"); cb_text(&b, "open");
         cb_text(&b, "target"); cb_text(&b, argv[2]);
         cb_text(&b, "confirm"); cb_bool(&b, argc == 4 && !strcmp(argv[3], "confirm"));
+    } else if (!strcmp(op, "rename")) {
+        if (argc != 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "name"); cb_text(&b, argv[3]);
     } else if (!strcmp(op, "from_template")) {
         if (argc != 5) return usage();
         cb_map(&b, 5);

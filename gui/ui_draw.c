@@ -128,6 +128,7 @@ struct run {
     int font;
     unsigned n;
     unsigned *glyphs;
+    unsigned *clusters; /* byte offset in the string where each glyph starts */
     double *x;          /* pen position of each glyph, then the total width */
     uint64_t used;
 };
@@ -157,6 +158,7 @@ static struct run *shape(ui_font font, const char *s)
     struct run *r = &cache[victim];
     free(r->s);
     free(r->glyphs);
+    free(r->clusters);
     free(r->x);
     hb_buffer_t *b = hb_buffer_create();
     hb_buffer_add_utf8(b, s, -1, 0, -1);
@@ -169,10 +171,12 @@ static struct run *shape(ui_font font, const char *s)
     r->font = (int)font;
     r->n = n;
     r->glyphs = malloc((n ? n : 1) * sizeof *r->glyphs);
+    r->clusters = malloc((n ? n : 1) * sizeof *r->clusters);
     r->x = malloc((n + 1) * sizeof *r->x);
     double pen = 0;
     for (unsigned i = 0; i < n; i++) {
         r->glyphs[i] = gi[i].codepoint;
+        r->clusters[i] = gi[i].cluster;
         r->x[i] = pen + gp[i].x_offset / 64.0;
         pen += gp[i].x_advance / 64.0;
     }
@@ -239,4 +243,24 @@ double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const cha
         w += e->x[1];
     }
     return w;
+}
+
+/* Caret and hit testing (left-to-right text): the x of the caret before
+ * byte `at`, and the byte offset nearest to x. */
+double ui_text_caret_x(ui_font f, const char *s, size_t at)
+{
+    struct run *r = shape(f, s);
+    for (unsigned i = 0; i < r->n; i++)
+        if (r->clusters[i] >= at) return r->x[i];
+    return r->x[r->n];
+}
+
+size_t ui_text_hit(ui_font f, const char *s, double x)
+{
+    struct run *r = shape(f, s);
+    for (unsigned i = 0; i < r->n; i++) {
+        double mid = (r->x[i] + r->x[i + 1]) / 2;
+        if (x < mid) return r->clusters[i];
+    }
+    return strlen(s);
 }

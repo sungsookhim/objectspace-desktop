@@ -367,6 +367,40 @@ def ssb():
     return ok, [f"sandbox: {sb}", f"probe from inside the plug-in: {probe}"]
 
 
+# ------------------------------------------------------------------- rename
+
+@scenario("R1", "Renaming a file's icon renames the file; without permission it becomes a private title")
+def sr1():
+    a = Service("A", user=60001).start()
+    b = Service("B", user=60002).start()
+    d = fresh("ext4", "r1", user=60001)
+    run(["sh", "-c", f"echo hi > {d}/draft.txt && echo x > {d}/taken.txt && chmod 755 {d}"], user=60001, check=True)
+    a.call(d / "draft.txt", "wpSetTitle", "Old title")
+    a.ctl("flush")
+    id0 = obj(a, d / "draft.txt").get("id")
+    r = a.ctl("rename", d / "draft.txt", "final.txt")
+    a.ctl("flush")
+    after = obj(a, d / "final.txt")
+    clash = a.ctl("rename", d / "final.txt", "taken.txt")
+    taken = (d / "taken.txt").read_text()
+    # B cannot write A's folder: the new name stays B's title only
+    rb = b.ctl("rename", d / "final.txt", "Bs name.txt")
+    b.ctl("flush")
+    seen_b, seen_a = obj(b, d / "final.txt").get("title"), obj(a, d / "final.txt").get("title")
+    p = Path(a.ctl("create", d, "WPProgram", "Tool", "true").get("result", {}).get("path", ""))
+    rp = a.ctl("rename", p, "My tool")
+    a.ctl("flush")
+    a.stop(); b.stop()
+    ok = r.get("ok") and r.get("result") is True and not (d / "draft.txt").exists() and after.get("id") == id0 and \
+        after.get("title") == "final.txt" and not clash.get("ok") and taken == "x\n" and \
+        rb.get("ok") and rb.get("result") is False and (d / "final.txt").exists() and seen_b == "Bs name.txt" and \
+        seen_a == "final.txt" and rp.get("ok") and p.exists() and rp.get("object", {}).get("title") == "My tool"
+    return ok, [f"renamed: draft.txt -> final.txt, same ID {after.get('id') == id0}, title follows the name: {after.get('title')!r}",
+                f"onto an existing name: refused ({clash.get('message')!r}), taken.txt untouched: {taken == 'x' + chr(10)}",
+                f"B without permission: file kept its name; B sees {seen_b!r}, A sees {seen_a!r}",
+                f"a program object: only its title changes ({rp.get('object', {}).get('title')!r}), file kept"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

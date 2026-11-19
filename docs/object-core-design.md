@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.13 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.14 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -754,12 +754,14 @@ These follow from the principles above but need not be designed in full before M
 - [x] Backup names: decided 2026-11-18. A setting, off by default (`backup-names` in the configuration folder). When on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save at once.
 - [x] Duplicate IDs: decided 2026-11-18. No timer. A file that appears with another file's ID shares it until either file is changed (content or WPS settings), which makes it a copy with a new ID, or until the original is deleted, which makes it a move.
 - [x] Plug-ins in-process: decided 2026-11-18. Never. Every third-party class runs in a plug-in host; only the built-in classes run inside `wpsd`.
+- [x] Renaming a file's or folder's icon: decided 2026-11-18. As in OS/2, it renames the file or folder itself (never replacing another), and its title then follows the name. Without permission to rename, the new name becomes its title, shared or private by the usual rules. Programs and abstract objects only have titles. Service request `rename`.
 - [x] Plug-in sandbox: decided 2026-11-18. Plug-in hosts run sandboxed: no network, no new privileges, and (Landlock) filesystem access only to the plug-in's own files and data folder. File work goes through the service, which applies the user's permissions.
 
 ## Change log
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.14 | 2026-11-18 | Decided: renaming an icon renames the file or folder (as in OS/2); `rename` request |
 | 0.13 | 2026-11-18 | M5 done: events, menus and settings as data, opening programs, system programs, templates, file types, root sessions, sandboxed plug-in hosts; findings listed under M5 |
 | 0.12 | 2026-11-18 | Decided: plug-ins never run in-process; plug-in hosts are sandboxed |
 | 0.11 | 2026-11-18 | M4 done: shadows, trash, abstract objects as files, streaming listings, selections and jobs; findings listed under M4 |

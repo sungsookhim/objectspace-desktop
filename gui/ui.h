@@ -63,6 +63,8 @@ double ui_text_width(ui_font f, const char *s);
  * runs are cached, so redrawing the same strings costs little. */
 double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const char *s, double max_w);
 double ui_text_ascent(void);    /* for centring text in a row */
+double ui_text_caret_x(ui_font f, const char *s, size_t at);   /* x before byte `at` */
+size_t ui_text_hit(ui_font f, const char *s, double x);        /* byte nearest to x */
 
 /* --------------------------------------------------------------- drawing */
 

@@ -24,6 +24,10 @@
  *   {op:"open", target, confirm}   start a program (as this user) or open a file;
  *                      a program owned by another user (not root) needs confirm
  *   {op:"from_template", target, folder, title}
+ *   {op:"rename", target, name}   rename a file or folder in its folder (never
+ *                      replacing); its title then follows the name. Without
+ *                      permission to rename, the name becomes its title
+ *                      (shared or private, as titles are). Others: title.
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"stats"}
@@ -50,6 +54,8 @@
 #include <sys/un.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <linux/fs.h>
+#include <sys/syscall.h>
 #include <spawn.h>
 #include <sys/xattr.h>
 
@@ -126,6 +132,7 @@ static void put_settings(cbuf *b, const char *text);
 struct req;
 static void do_open(struct req *r, wpo_object *o);
 static void do_from_template(struct req *r, wpo_object *o);
+static void do_rename(struct req *r, wpo_object *o);
 
 static void client_close(struct client *c)
 {
@@ -490,6 +497,7 @@ static void prepare_done(void *arg)    /* loop */
              !strcmp(r->op, "menu_select")) do_menus(r, o);
     else if (!strcmp(r->op, "open")) do_open(r, o);
     else if (!strcmp(r->op, "from_template")) do_from_template(r, o);
+    else if (!strcmp(r->op, "rename")) do_rename(r, o);
     else if (do_call(r, o)) return;   /* the reply comes from the plug-in */
     req_free(r);
 }
@@ -1256,6 +1264,74 @@ static void tmpl_done(void *arg)
     free(j);
 }
 
+/* ---- rename: the file or folder itself (decided 2026-11-18, as in OS/2) */
+
+struct rename_job {
+    struct client *c;
+    int64_t id;
+    char path[PATH_MAX], newpath[PATH_MAX + NAME_MAX + 2], name[NAME_MAX + 1];
+    int err;
+    bool as_title;          /* no permission to rename: keep it as a title */
+    wps_loaded ld;
+};
+
+static void rename_work(void *arg)
+{
+    struct rename_job *j = arg;
+    char dir[PATH_MAX];
+    snprintf(dir, sizeof dir, "%s", j->path);
+    char *slash = strrchr(dir, '/');
+    if (!slash) { j->err = EINVAL; return; }
+    *slash = 0;
+    snprintf(j->newpath, sizeof j->newpath, "%s/%s", dir[0] ? dir : "", j->name);
+    if (strcmp(j->newpath, j->path) != 0 &&
+        syscall(SYS_renameat2, AT_FDCWD, j->path, AT_FDCWD, j->newpath, RENAME_NOREPLACE) != 0) {
+        if (errno == EACCES || errno == EPERM || errno == EROFS) j->as_title = true;
+        else { j->err = errno; return; }
+    }
+    wps_load(j->as_title ? j->path : j->newpath, false, &j->ld);
+}
+
+static void rename_done(void *arg)
+{
+    struct rename_job *j = arg;
+    if (!j->c->dead) {
+        wpo_object *o = j->err || j->ld.err ? NULL : wps_object_from_loaded(&j->ld);
+        if (!o && j->err == EEXIST) reply_error(j->c, j->id, "exists", "an object with that name is already there");
+        else if (!o) reply_error(j->c, j->id, "failed", strerror(j->err ? j->err : j->ld.err));
+        else {
+            if (j->as_title) WPObject_wpSetTitle(o, j->name);
+            else if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);   /* the title follows the name */
+            struct req fake = { .c = j->c, .id = j->id };
+            wpo_value v = wpo_v_bool(!j->as_title);   /* result: was the file renamed? */
+            reply_ok_object(&fake, o, &v);
+        }
+    }
+    wps_loaded_free(&j->ld);
+    client_unref(j->c);
+    free(j);
+}
+
+static void do_rename(struct req *r, wpo_object *o)
+{
+    const char *name = cv_text(&r->msg, "name");
+    if (!name || !*name || strchr(name, '/') || !strcmp(name, ".") || !strcmp(name, "..") || strlen(name) > NAME_MAX) {
+        reply_error(r->c, r->id, "bad request", "a name must be non-empty, without '/', and not . or ..");
+        return;
+    }
+    if (!wpo_is_a(o, WPFileSystemClass)) {   /* programs and abstract objects: the title */
+        WPObject_wpSetTitle(o, name);
+        reply_ok_object(r, o, NULL);
+        return;
+    }
+    struct rename_job *j = calloc(1, sizeof *j);
+    j->c = r->c; r->c->refs++;
+    j->id = r->id;
+    snprintf(j->path, sizeof j->path, "%s", r->tgt.path);
+    snprintf(j->name, sizeof j->name, "%s", name);
+    wpo_defer(loop, "rename", rename_work, rename_done, j);
+}
+
 static void do_from_template(struct req *r, wpo_object *o)
 {
     const char *folder = cv_text(&r->msg, "folder"), *title = cv_text(&r->msg, "title");
@@ -1459,7 +1535,7 @@ static void handle(struct client *c, cv *msg)
         else reply_error(c, id, "not found", "no such subscription");
     } else if (strcmp(op, "resolve") == 0 || strcmp(op, "call") == 0 || strcmp(op, "menu") == 0 ||
                strcmp(op, "menu_select") == 0 || strcmp(op, "settings") == 0 || strcmp(op, "settings_set") == 0 ||
-               strcmp(op, "open") == 0 || strcmp(op, "from_template") == 0) {
+               strcmp(op, "open") == 0 || strcmp(op, "from_template") == 0 || strcmp(op, "rename") == 0) {
         const char *target = cv_text(msg, "target");
         if (!target) { reply_error(c, id, "bad request", "missing target"); cv_free(msg); return; }
         struct req *r = calloc(1, sizeof *r);

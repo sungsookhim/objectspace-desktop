@@ -236,8 +236,7 @@ static void got_page(void *arg, const cv *reply)
     if (!m || gen != (shadow ? f->sgen : f->gen)) return;   /* for a model replaced since */
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) {
-        const cv *e = reply ? cv_get(reply, "error") : NULL;
-        const char *msg = e ? cv_text(e, "message") : NULL;
+        const char *msg = reply ? cv_text(reply, "message") : NULL;   /* {ok:false, error, message} */
         snprintf(f->error, sizeof f->error, "%s", msg ? msg : reply ? "the folder cannot be read" : "lost the connection to wpsd");
         m->growing = false;
         if (shadow) { model_free(f->sh); free(f->sh); f->sh = NULL; }
@@ -360,11 +359,11 @@ static void opened(void *arg, const cv *reply)
     struct folder *f = from_arg(arg);
     if (!f) return;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
-    const cv *e = reply ? cv_get(reply, "error") : NULL;
+    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
     if (res && cv_get(res, "needs_confirmation"))
         snprintf(f->error, sizeof f->error, "This program belongs to another user; confirming comes with dialogs (G2)");
-    else if (e)
-        snprintf(f->error, sizeof f->error, "%s", cv_text(e, "message") ? cv_text(e, "message") : "cannot open");
+    else if (!res && msg)
+        snprintf(f->error, sizeof f->error, "%s", msg);
     else
         f->error[0] = 0;
     damage_status(f);
