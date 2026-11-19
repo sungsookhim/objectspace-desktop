@@ -343,7 +343,9 @@ static struct row *row_ptr(struct model *m, size_t i) { return &page_at(m, i / P
 static void row_stale(struct model *m, size_t i)
 {
     struct page *pg = page_at(m, i / PAGE);
-    if (pg->state == P_DETAILED) pg->state = P_NAMES;
+    /* Its name is known (so it shows, and can be renamed); details are
+     * read when it is on screen. */
+    if (pg->state == P_DETAILED || pg->state == P_NONE) pg->state = P_NAMES;
     pg->requested = false;
 }
 
@@ -594,6 +596,38 @@ static void on_in_use_event(const cv *ev)
     }
 }
 
+static void got_sub(void *arg, const cv *reply);
+static void update_title(struct folder *f);
+static void got_title(void *arg, const cv *reply);
+static void tree_start(struct folder *f);
+static void notify_in_use(const char *path);
+
+/* A folder was renamed or moved: windows on it, or inside it, follow:
+ * their path, their title, and what they watch. */
+static void folder_moved(const char *from, const char *to)
+{
+    if (!from || !to) return;
+    size_t fl = strlen(from);
+    for (struct folder *f = folders; f; f = f->next) {
+        if (f->closing || strncmp(f->path, from, fl) || (f->path[fl] && f->path[fl] != '/')) continue;
+        char np[PATH_MAX];
+        snprintf(np, sizeof np, "%s%s", to, f->path + fl);
+        snprintf(f->path, sizeof f->path, "%s", np);
+        if (!f->desktop) {
+            const char *base = strrchr(f->path, '/');
+            snprintf(f->title, sizeof f->title, "%s", base && base[1] ? base + 1 : f->path);
+            update_title(f);
+            svc_resolve(f->path, got_title, as_arg(f));   /* its own title, if it has one */
+        }
+        if (f->sub) svc_unsubscribe(f->sub);
+        f->sub = 0;
+        svc_subscribe_folder(f->path, got_sub, as_arg(f));
+        if (is_tree(f)) tree_start(f);   /* the tree's paths changed: read it again */
+        ui_surface_damage_all(f->win);
+    }
+    notify_in_use(to);   /* icons of it, now open under the new name */
+}
+
 static void on_event(void *arg, const cv *ev)
 {
     (void)arg;
@@ -602,6 +636,7 @@ static void on_event(void *arg, const cv *ev)
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     if (setup_event(ev)) return;
+    if (!strcmp(name, "folder_moved")) { folder_moved(cv_text(ev, "from"), cv_text(ev, "to")); return; }
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
@@ -1881,6 +1916,8 @@ static void rename_new_now(struct folder *f)
     for (size_t i = 0; i < f->m.total; i++)
         if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), f->rename_new)) {
             f->rename_new[0] = 0;
+            /* Typing goes to this window (the drop came from another). */
+            ui_window_activate(f->win);
             /* The object just asked for takes over from a name still open. */
             if (ui_container_rename_item(f->cont) != SIZE_MAX) ui_container_rename_moved(f->cont, SIZE_MAX);
             ui_container_select_none(f->cont);
@@ -3389,6 +3426,65 @@ static void win_frame(ui_surface *s, double now)
             size_t d = ui_surface_verify(s, NULL);
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "newfolder")) {
+        /* As reported: a folder from the Folder template, opened; a file
+         * from the Data File template dropped into its window; then the
+         * open folder renamed. */
+        static double t0;
+        static int step;
+        static struct folder *nw;
+        struct folder *tw = NULL;
+        for (struct folder *o = folders; o; o = o->next)
+            if (strlen(o->path) > 10 && !strcmp(o->path + strlen(o->path) - 10, "/Templates")) tw = o;
+        if (f == tw || !tw || (nw && f == nw)) return;
+        if (!t0) { if (!f->m.complete || !tw->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char tf[PATH_MAX] = "", td[PATH_MAX] = "", data[PATH_MAX + 32], p[PATH_MAX + 32];
+        for (size_t i = 0; i < tw->m.total; i++) {
+            struct row *r = row_at(tw, i);
+            if (!r || !r->name || !r->tpl || r->name[0] != '\x01') continue;
+            if (r->kind == UI_KIND_FOLDER) target_of(tw, i, tf, sizeof tf);
+            if (r->kind == UI_KIND_FILE) target_of(tw, i, td, sizeof td);
+        }
+        if (step == 0 && tf[0] && td[0]) {
+            snprintf(data, sizeof data, "%s\ttemplate\n", tf);
+            win_drop(s, 200, 150, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            if (ui_container_rename_item(f->cont) != SIZE_MAX) ui_surface_send_key(s, &esc);
+            snprintf(p, sizeof p, "%s/Folder", f->path);
+            nw = open_folder(p, UI_VIEW_ICON);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500 && nw && nw->m.complete) {
+            snprintf(data, sizeof data, "%s\ttemplate\n", td);
+            win_drop(nw->win, 150, 120, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 2000) {
+            snprintf(p, sizeof p, "%s/Folder/Data File", f->path);
+            fprintf(stderr, "selftest: in the new folder: Data File on disk %d, in its window %d (window %zu objects, rename open %d)\n",
+                    access(p, F_OK) == 0, model_find(&nw->m, "Data File") >= 0, nw->m.total, ui_container_rename_item(nw->cont) != SIZE_MAX);
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            if (ui_container_rename_item(nw->cont) != SIZE_MAX) ui_surface_send_key(nw->win, &esc);
+            /* rename the open folder (as its icon's rename does) */
+            snprintf(p, sizeof p, "%s/Folder", f->path);
+            svc_rename(p, "Renamed", ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 2000) {
+            snprintf(p, sizeof p, "%s/Renamed", f->path);
+            ssize_t ri = model_find(&f->m, "Renamed");
+            ui_item it = { 0 };
+            if (ri >= 0) src_item(f, (size_t)ri, &it);
+            fprintf(stderr, "selftest: after renaming the open folder: its window shows %s; its icon in use %d\n", nw->path, it.in_use);
             ui_app_quit(app);
             step++;
         }

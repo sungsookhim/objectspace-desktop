@@ -808,6 +808,19 @@ static void on_central_change(const char *folder, const char *id, char kind)
 static void on_fs_event(char kind, const char *from, const char *path)
 {
     if (kind == 'm') wps_launch_moved(from, path);
+    /* A folder moved or renamed: windows open on it (or inside it) follow,
+     * wherever they are, so every subscriber hears it. */
+    struct stat dst;
+    if (kind == 'm' && from[0] && path[0] && lstat(path, &dst) == 0 && S_ISDIR(dst.st_mode))
+        for (struct sub *x = subs; x; x = x->next) {
+            if (x->c->dead || (!x->nfolders && !x->ntargets)) continue;
+            cbuf b;
+            event_head(&b, "folder_moved", x->id, 2);
+            cb_text(&b, "from"); cb_text(&b, from);
+            cb_text(&b, "to"); cb_text(&b, path);
+            send_frame(x->c, &b);
+            cb_free(&b);
+        }
     for (struct sub *x = subs; x; x = x->next) {
         if (x->c->dead) continue;
         for (size_t i = 0; i < x->nfolders; i++) {
