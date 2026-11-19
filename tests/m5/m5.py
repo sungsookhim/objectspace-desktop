@@ -5,6 +5,7 @@ file types, root sessions, the plug-in host.
 usage: tests/m5/m5.py [scenario ...]      (needs the test bed; uses sudo)
 """
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -509,6 +510,84 @@ def sc2():
     me.stop()
     ok = lay.get("a (2).txt") == (333, 44) and "a.txt" not in lay
     return ok, [f"copied under a clash, renamed: positions {lay}"]
+
+
+# ------------------------------------------------------------------- in use
+
+@scenario("U1", "In use: files opened from WPS show as open while their program runs; lock files mark files opened elsewhere")
+def su1():
+    d = fresh("ext4", "u1")
+    xdg = WORK / "u1-xdg"
+    shutil.rmtree(xdg, ignore_errors=True)
+    apps = xdg / "data" / "applications"
+    apps.mkdir(parents=True)
+    (xdg / "config").mkdir()
+    (xdg / "sys").mkdir()
+    log = xdg / "args"
+    hold, fork = xdg / "hold.sh", xdg / "fork.sh"
+    # One viewer holds the file for 2 s; one forks a child that does, and exits at once.
+    hold.write_text(f'#!/bin/sh\necho "$@" >> {log}\nsleep 2\n')
+    fork.write_text('#!/bin/sh\n( sleep 2 ) &\nexit 0\n')
+    for f in (hold, fork):
+        f.chmod(0o755)
+    (apps / "wps-hold.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Hold\nExec={hold} --view %f\n")
+    (apps / "wps-fork.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Fork\nExec={fork} %U\n")
+    (xdg / "config" / "mimeapps.list").write_text(
+        "[Default Applications]\ntext/plain=missing.desktop;wps-hold.desktop;\nimage/png=wps-fork.desktop\n")
+    me = Service("me", extra_env={"XDG_CONFIG_HOME": str(xdg / "config"), "XDG_DATA_HOME": str(xdg / "data"),
+                                  "XDG_CONFIG_DIRS": str(xdg / "sys")}).start()
+    for n in ("doc.txt", "pic.png", "sheet.ods"):
+        (d / n).write_text("x")
+    c = Conn(me)
+    c.request(op="subscribe", folders=[str(d)])
+
+    def in_use(name):
+        items = c.request(op="list", target=str(d), offset=0, count=100, details=True).get("result", {}).get("items", [])
+        return {i["name"]: i.get("in_use", False) for i in items}.get(name)
+
+    def ev_for(name, value, timeout):
+        evs = c.events(timeout, until=lambda e: e["event"] == "in_use" and e["path"].endswith("/" + name) and e["in_use"] == value)
+        return any(e["event"] == "in_use" and e["path"].endswith("/" + name) and e["in_use"] == value for e in evs)
+
+    out = []
+    r = c.request(op="open", target=str(d / "doc.txt")).get("result", {})
+    on = ev_for("doc.txt", True, 2)
+    listed_on = in_use("doc.txt")
+    os.rename(d / "doc.txt", d / "moved.txt")              # renamed while open: still open under the new name
+    moved_on = wait_for(lambda: in_use("moved.txt"), timeout=2)
+    off = ev_for("moved.txt", False, 4)
+    listed_off = in_use("moved.txt")
+    args = log.read_text().split() if log.exists() else []
+    out += [f"doc.txt opened with {r.get('command')!r}, args {args}", f"in use: event {on}, listed {listed_on}; "
+            f"after renaming, moved.txt listed {moved_on}", f"program ended: event {off}, listed {listed_off}"]
+    ok = r.get("command") == str(hold) and args == ["--view", str(d / "doc.txt")] and on and listed_on and moved_on and \
+        off and listed_off is False
+
+    t0 = time.time()
+    c.request(op="open", target=str(d / "pic.png"))
+    fon = ev_for("pic.png", True, 2)
+    still = (time.sleep(0.8), in_use("pic.png"))[1]           # the opener exited; its child holds it
+    foff = ev_for("pic.png", False, 4)
+    held = time.time() - t0
+    out.append(f"a program that forks and exits: in use {fon}, after its parent exited {still}, "
+               f"released after {held:.1f} s ({foff})")
+    ok = ok and fon and still and foff and held >= 1.8
+
+    (d / ".~lock.sheet.ods#").write_text("x")
+    locked = in_use("sheet.ods")
+    (d / ".~lock.sheet.ods#").unlink()
+    unlocked = in_use("sheet.ods")
+    (d / ".doc2.txt.swp").write_text("x")
+    (d / "doc2.txt").write_text("x")
+    vim = in_use("doc2.txt")
+    os.symlink("user@host.1234", d / ".#notes.org")
+    (d / "notes.org").write_text("x")
+    emacs = in_use("notes.org")
+    out.append(f"lock files: LibreOffice {locked} (gone: {unlocked}), vim {vim}, Emacs {emacs}")
+    ok = ok and locked and unlocked is False and vim and emacs
+    c.close()
+    me.stop()
+    return ok, out
 
 
 # ------------------------------------------------------------------- driver

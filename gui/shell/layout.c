@@ -125,7 +125,7 @@ void layout_reset(icon_layout *l, int cols)
     map_free(&l->slots);
     map_free(&l->placed);
     l->cols = cols < 1 ? 1 : cols;
-    memset(l->spot_taken, 0, l->nspots);
+    if (l->spot_taken) memset(l->spot_taken, 0, l->nspots);
     l->next_spot = 0;
 }
 

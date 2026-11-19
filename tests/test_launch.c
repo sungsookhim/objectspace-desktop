@@ -1,0 +1,126 @@
+/* Tests for starting files with their default application: Exec lines,
+ * the handler lookup, and lock files. */
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "check.h"
+#include "launch.h"
+
+/* What launch.c uses from the rest of the service. */
+bool wps_plugins_is_host(pid_t pid) { (void)pid; return false; }
+const char *wps_mime_for_name(const char *name)
+{
+    const char *dot = strrchr(name, '.');
+    return dot && !strcmp(dot, ".txt") ? "text/plain" : dot && !strcmp(dot, ".png") ? "image/png" : NULL;
+}
+int wpo_loop_watch_fd(wpo_loop *l, int fd, short ev, wpo_fd_fn fn, void *arg) { (void)l; (void)fd; (void)ev; (void)fn; (void)arg; return 0; }
+void wpo_loop_unwatch_fd(wpo_loop *l, int fd) { (void)l; (void)fd; }
+
+static char dir[4096];
+
+static void put(const char *rel, const char *text)
+{
+    char p[4200];
+    snprintf(p, sizeof p, "%s/%s", dir, rel);
+    for (char *s = p + strlen(dir) + 1; (s = strchr(s, '/')); s++) { *s = 0; mkdir(p, 0755); *s = '/'; }
+    FILE *f = fopen(p, "w");
+    fputs(text, f);
+    fclose(f);
+}
+
+static char *joined(char **argv)
+{
+    static char out[4096];
+    out[0] = 0;
+    for (int i = 0; argv[i]; i++) {
+        if (i) strcat(out, "|");
+        strcat(out, argv[i]);
+    }
+    return out;
+}
+
+TEST(exec_lines)
+{
+    char buf[1024], *argv[16];
+    CHECK(wps_split_exec("gedit %U", "/a b/c.txt", buf, sizeof buf, argv, 16) == 2);
+    CHECK_STR(joined(argv), "gedit|/a b/c.txt");
+    wps_split_exec("app --file=%f -x", "/f", buf, sizeof buf, argv, 16);
+    CHECK_STR(joined(argv), "app|--file=/f|-x");
+    wps_split_exec("viewer", "/f", buf, sizeof buf, argv, 16);        /* no field code: appended */
+    CHECK_STR(joined(argv), "viewer|/f");
+    wps_split_exec("prog %u", NULL, buf, sizeof buf, argv, 16);       /* a program object: no file */
+    CHECK_STR(joined(argv), "prog");
+    wps_split_exec("prog %i %c %k --x", "/f", buf, sizeof buf, argv, 16);
+    CHECK_STR(joined(argv), "prog|--x|/f");
+    wps_split_exec("sh -c \"echo 100%% done\" \"\"", NULL, buf, sizeof buf, argv, 16);
+    CHECK_STR(joined(argv), "sh|-c|echo 100% done|");
+    wps_split_exec("flatpak run --file-forwarding org.x.App @@u %U @@", "/f", buf, sizeof buf, argv, 16);
+    CHECK_STR(joined(argv), "flatpak|run|--file-forwarding|org.x.App|@@u|/f|@@");
+}
+
+TEST(default_handler)
+{
+    char e[4300];
+    snprintf(e, sizeof e, "%s/config", dir); setenv("XDG_CONFIG_HOME", e, 1);
+    snprintf(e, sizeof e, "%s/sys", dir); setenv("XDG_CONFIG_DIRS", e, 1);
+    snprintf(e, sizeof e, "%s/data", dir); setenv("XDG_DATA_HOME", e, 1);
+    snprintf(e, sizeof e, "%s/share", dir); setenv("XDG_DATA_DIRS", e, 1);
+    setenv("XDG_CURRENT_DESKTOP", "Test:GNOME", 1);
+    put("sys/x", "");
+    put("data/applications/plain.desktop", "[Desktop Entry]\nExec=plain %f\n");
+    put("data/applications/mine.desktop", "[Desktop Entry]\nName=Mine\nExec=mine --open %F\n");
+    put("share/applications/vendor/img.desktop", "[Desktop Entry]\nExec=img %u\n");
+    put("share/applications/term.desktop", "[Desktop Entry]\nExec=vim %f\nTerminal=true\n");
+    put("config/mimeapps.list", "[Default Applications]\ntext/plain=plain.desktop\n");
+    /* the desktop-specific list comes first; a missing app is skipped */
+    put("config/gnome-mimeapps.list", "[Added Associations]\ntext/plain=x.desktop\n[Default Applications]\ntext/plain=gone.desktop;mine.desktop\n");
+    put("share/applications/mimeinfo.cache", "[MIME Cache]\nimage/png=vendor-img.desktop;\n");
+    char buf[1024], *argv[16];
+    CHECK(wps_handler_argv("/d/a.txt", buf, sizeof buf, argv, 16) == 3);
+    CHECK_STR(joined(argv), "mine|--open|/d/a.txt");
+    CHECK(wps_handler_argv("/d/a.png", buf, sizeof buf, argv, 16) == 2);   /* from the cache, in a vendor folder */
+    CHECK_STR(joined(argv), "img|/d/a.png");
+    CHECK(wps_handler_argv("/d/a.unknown", buf, sizeof buf, argv, 16) == 0);
+    put("config/gnome-mimeapps.list", "[Default Applications]\ntext/plain=term.desktop\n");
+    CHECK(wps_handler_argv("/d/a.txt", buf, sizeof buf, argv, 16) == 0);    /* a terminal program: xdg-open */
+}
+
+TEST(lock_files)
+{
+    char p[4200];
+    put("l/report.ods", "x");
+    snprintf(p, sizeof p, "%s/l/report.ods", dir);
+    CHECK(!wps_lock_file_present(p));
+    put("l/.~lock.report.ods#", "x");
+    CHECK(wps_lock_file_present(p));
+    put("l/notes.txt", "x");
+    put("l/.notes.txt.swp", "x");
+    snprintf(p, sizeof p, "%s/l/notes.txt", dir);
+    CHECK(wps_lock_file_present(p));
+    put("l/a.org", "x");
+    snprintf(p, sizeof p, "%s/l/.#a.org", dir);
+    CHECK(symlink("me@host.1:1", p) == 0);
+    snprintf(p, sizeof p, "%s/l/a.org", dir);
+    CHECK(wps_lock_file_present(p));
+    put("l/~$port.docx", "x");   /* Office drops two characters of long names */
+    snprintf(p, sizeof p, "%s/l/Report.docx", dir);
+    CHECK(wps_lock_file_present(p));
+    CHECK(wps_is_lock_file(".~lock.report.ods#") && wps_is_lock_file(".notes.txt.swp") && wps_is_lock_file(".#a.org"));
+    CHECK(!wps_is_lock_file("report.ods") && !wps_is_lock_file(".bashrc") && !wps_is_lock_file(".swp"));
+}
+
+int main(int argc, char **argv)
+{
+    snprintf(dir, sizeof dir, "%s", argc > 1 ? argv[1] : "/tmp/wps-test-launch");
+    char cmd[4200];
+    snprintf(cmd, sizeof cmd, "rm -rf '%s' && mkdir -p '%s'", dir, dir);
+    if (system(cmd) != 0) return 2;
+    RUN(exec_lines);
+    RUN(default_handler);
+    RUN(lock_files);
+    return CHECK_SUMMARY();
+}

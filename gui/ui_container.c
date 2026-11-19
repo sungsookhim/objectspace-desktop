@@ -357,7 +357,7 @@ static void draw_icon_paths(cairo_t *cr, ui_kind k, double x, double y, double s
 static void shadow_mark(cairo_t *cr, double x, double y, double size);
 
 /* In-use emphasis (OS/2): diagonal hatching behind the icon of an object
- * whose window is open, and the folder drawn open. */
+ * whose window is open, or a file a program has open. */
 static void in_use(cairo_t *cr, double x, double y, double size)
 {
     cairo_save(cr);
@@ -530,6 +530,16 @@ static void columns(ui_container *c, double *x)
     x[5] = l.x + l.w;
 }
 
+
+/* An item's icon: in use, it has the hatching behind it, and a folder is
+ * drawn open (OS/2). */
+static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double sz)
+{
+    if (it->in_use) in_use(cr, x, y, sz);
+    if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
+    else draw_icon(cr, it->kind, x, y, sz);
+}
+
 static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, double *x)
 {
     const ui_scheme *k = &ui_scheme_now;
@@ -541,8 +551,7 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
     if (!it.loaded) {
         ui_fill(cr, (ui_rect){ x[1], r.y + 6, 140, 8 }, k->placeholder);
     } else {
-        if (it.in_use) { in_use(cr, x[0], r.y + 2, 16); open_folder_icon(cr, x[0], r.y + 2, 16); }
-        else draw_icon(cr, it.kind, x[0], r.y + 2, 16);
+        item_icon(cr, &it, x[0], r.y + 2, 16);
         if (it.shadow) shadow_mark(cr, x[0], r.y + 2, 16);
         ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, it.title ? it.title : "", x[2] - x[1] - 6);
@@ -624,8 +633,7 @@ static void draw_tree_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
         cairo_stroke(cr);
     }
     double ix = ex + INDENT;
-    if (it.in_use) { in_use(cr, ix, r.y + 2, 16); open_folder_icon(cr, ix, r.y + 2, 16); }
-    else draw_icon(cr, it.kind, ix, r.y + 2, 16);
+    item_icon(cr, &it, ix, r.y + 2, 16);
     const char *t = it.title ? it.title : "";
     double tx = ix + 20, tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.x + r.w - tx - 4;
     if (tw > maxw) tw = maxw;
@@ -686,8 +694,7 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
         ui_fill(cr, (ui_rect){ r.x + 20, r.y + ICON + 12, r.w - 40, 8 }, k->placeholder);
         return;
     }
-    if (it.in_use) { in_use(cr, ix, iy, ICON); open_folder_icon(cr, ix, iy, ICON); }
-    else draw_icon(cr, it.kind, ix, iy, ICON);
+    item_icon(cr, &it, ix, iy, ICON);
     if (it.shadow) shadow_mark(cr, ix, iy, ICON);
     const char *t = it.title ? it.title : "";
     double tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.w - 8;

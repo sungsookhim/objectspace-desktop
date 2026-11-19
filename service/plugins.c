@@ -77,6 +77,13 @@ static wpo_status apply_unavailable(wpo_fn fn, wpo_object *self, const wpo_value
 
 static void impl_unavailable(void) {}
 
+bool wps_plugins_is_host(pid_t pid)
+{
+    for (int h = 0; h < nhosts; h++)
+        if (hosts[h].pid == pid) return true;
+    return false;
+}
+
 static struct host *host_of_class(const char *cls)
 {
     for (int h = 0; h < nhosts; h++)

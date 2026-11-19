@@ -27,7 +27,7 @@
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow; char *target; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use; char *target; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -196,8 +196,9 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             details = true;
             cv_int(it, "size", &dst->size);
             cv_int(it, "mtime", &dst->mtime);
-            const cv *sh = cv_get(it, "shadow");
+            const cv *sh = cv_get(it, "shadow"), *iu = cv_get(it, "in_use");
             dst->shadow = sh && sh->k == CV_BOOL && sh->b;
+            dst->in_use = iu && iu->k == CV_BOOL && iu->b;   /* a program has it open */
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
             if (dst->shadow) {
                 dst->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_of("file", tp ? tp : nm);
@@ -344,6 +345,38 @@ static void reload(struct folder *f)
     request_more(f, true);
 }
 
+static bool is_tree(struct folder *f);
+
+/* A program WPS started opened or closed a file: the file's row, and
+ * shadows of it, in every window. (Sent once per subscription; rows
+ * already right are left alone.) */
+static void on_in_use_event(const cv *ev)
+{
+    const char *path = cv_text(ev, "path");
+    const cv *v = cv_get(ev, "in_use");
+    if (!path || !v || v->k != CV_BOOL) return;
+    const char *slash = strrchr(path, '/');
+    if (!slash) return;
+    size_t dl = (size_t)(slash - path);
+    for (struct folder *f = folders; f; f = f->next) {
+        if (f->closing || is_tree(f)) continue;
+        bool here = strlen(f->path) == (dl ? dl : 1) && !strncmp(f->path, dl ? path : "/", dl ? dl : 1), changed = false;
+        for (size_t p = 0; p < f->m.npages; p++) {
+            struct page *pg = f->m.pages[p];
+            if (!pg || pg->state != P_DETAILED) continue;
+            for (size_t k = 0; k < PAGE; k++) {
+                struct row *r = &pg->rows[k];
+                if (!r->name || r->in_use == v->b) continue;
+                if ((here && !strcmp(r->name, slash + 1)) || (r->shadow && r->target && !strcmp(r->target, path))) {
+                    r->in_use = v->b;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) ui_container_layout_changed(f->cont);
+    }
+}
+
 static void on_event(void *arg, const cv *ev)
 {
     (void)arg;
@@ -351,6 +384,7 @@ static void on_event(void *arg, const cv *ev)
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
+    if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
         if (f->sub == sub && !f->closing &&
@@ -466,7 +500,7 @@ static void got_kids(void *arg, const cv *reply)
     if (res && !(cmp && cmp->k == CV_BOOL && cmp->b)) { tree_load(f, n, offset + cnt); return; }
     /* All read: the new subfolders, keeping nodes (and their expansion)
      * that are still there. */
-    qsort(n->pending, n->npending, sizeof *n->pending, cmp_names);
+    if (n->npending) qsort(n->pending, n->npending, sizeof *n->pending, cmp_names);
     struct tnode **kids = calloc(n->npending ? n->npending : 1, sizeof *kids);
     for (size_t i = 0; i < n->npending; i++) {
         struct tnode *old = NULL;
@@ -628,6 +662,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->size = r->size;
     out->mtime = r->mtime;
     out->shadow = r->shadow;
+    out->in_use = r->in_use;
     if (r->kind == UI_KIND_FOLDER) {
         /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];
@@ -2352,6 +2387,44 @@ static void win_frame(ui_surface *s, double now)
                 if (n && !strcmp(n, "f (2).txt"))
                     fprintf(stderr, "selftest: copy 'f (2).txt' at %.0f,%.0f (dropped at %.0f,%.0f)\n", x, y, lcx, lcy);
             }
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "inuse")) {
+        /* a.txt opened with a program that holds it for 2 s (the runner sets
+         * up the default application); then a lock file marks b.txt. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        size_t ai = SIZE_MAX, bi = SIZE_MAX;
+        for (size_t i = 0; i < f->m.total; i++) {
+            const char *n = model_name(&f->m, i);
+            if (n && !strcmp(n, "a.txt")) ai = i;
+            if (n && !strcmp(n, "b.txt")) bi = i;
+        }
+        ui_item ia, ib;
+        if (ai != SIZE_MAX) src_item(f, ai, &ia);
+        if (bi != SIZE_MAX) src_item(f, bi, &ib);
+        if (step == 0 && ai != SIZE_MAX) { src_activate(f, ai); step++; t0 = now; }
+        else if (step == 1 && t > 800) { fprintf(stderr, "selftest: a.txt open: in use %d\n", ia.in_use); step++; }
+        else if (step == 2 && t > 3200) {
+            fprintf(stderr, "selftest: its program ended: in use %d\n", ia.in_use);
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/.~lock.b.txt#", f->path);
+            FILE *lf = fopen(p, "w");
+            if (lf) fclose(lf);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1500) {
+            fprintf(stderr, "selftest: b.txt with a lock file: in use %d\n", bi != SIZE_MAX && ib.in_use);
+            step++;
+        } else if (step == 4) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
             step++;
         }

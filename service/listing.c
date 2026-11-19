@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#include "launch.h"
 #include "objects.h"
 #include "shadows.h"
 
@@ -141,8 +142,10 @@ static void detail_work(void *arg)
         }
         if (e->name[0] == '\x01') {   /* a central object */
             central_details(e);
+            if (e->shadow && e->target_type == DT_REG) e->locked = wps_lock_file_present(e->target_path);
             continue;
         }
+        if (e->type == DT_REG || e->type == DT_LNK) e->locked = wps_lock_file_present(p);
         size_t nl = strlen(e->name);
         char tid[WPS_ID_LEN + 1];
         if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".wpobj") &&
@@ -163,6 +166,7 @@ static void detail_work(void *arg)
             } else {
                 e->target_type = DT_UNKNOWN;   /* not where it was: the service finds it by ID when opened */
             }
+            e->locked = e->target_type == DT_REG && wps_lock_file_present(e->target_path);
             if (!e->title[0] && e->target_path[0]) {
                 const char *b = strrchr(e->target_path, '/');
                 snprintf(e->title, sizeof e->title, "%s", b ? b + 1 : e->target_path);

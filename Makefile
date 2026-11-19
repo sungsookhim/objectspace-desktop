@@ -32,7 +32,7 @@ CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GE
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
 TV      := $(B)/tests
 
-all: $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor $(TV)/test_ui_damage plugins
+all: $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor $(TV)/test_launch $(TV)/test_ui_damage plugins
 
 $(GEN)/.stamp: $(WPI) tools/wpoc.py
 	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
@@ -66,11 +66,15 @@ $(TV)/test_ui_damage: tests/test_ui_damage.c gui/ui_damage.c gui/ui_damage.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Igui -Itests -o $@ tests/test_ui_damage.c gui/ui_damage.c
 
+$(TV)/test_launch: tests/test_launch.c service/launch.c service/launch.h
+	@mkdir -p $(TV)
+	$(CC) $(CFLAGS) $(SAN) $(INC) -Itests -o $@ tests/test_launch.c service/launch.c
+
 $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_cbor.c service/cbor.c
 
-SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/jobs.c service/plugins.c service/db.c service/env.c service/volumes.c service/cbor.c
+SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/launch.c service/jobs.c service/plugins.c service/db.c service/env.c service/volumes.c service/cbor.c
 
 $(B)/wpsd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
 	@mkdir -p $(B)
@@ -127,6 +131,7 @@ test: all
 	$(TV)/test_attrs $(TV)/attrs-tmp
 	$(TV)/test_db $(TV)/db-tmp
 	$(TV)/test_cbor
+	$(TV)/test_launch $(TV)/launch-tmp
 	$(TV)/test_ui_damage
 
 # Everything that must stay true: the unit tests (with ASan/UBSan when

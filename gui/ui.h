@@ -322,7 +322,7 @@ typedef struct {
     const char *title, *name;  /* valid until the next call */
     int64_t size, mtime;
     bool shadow;               /* a shadow of another object: drawn as one */
-    bool in_use;               /* a folder with a window open: drawn open, with in-use emphasis (OS/2) */
+    bool in_use;               /* in-use emphasis (OS/2): a folder with a window open (drawn open), or a file open in a program */
     /* Tree view only. */
     int depth;
     bool expandable, expanded;

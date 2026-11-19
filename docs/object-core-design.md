@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.16 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.17 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -581,6 +581,15 @@ Length-prefixed messages, encoded in CBOR (compact binary JSON, with small C lib
 | `object_unavailable`, `object_available` | Its volume was unmounted or mounted again |
 | `result_ready` | A pending result from `call` is complete |
 | `job_progress`, `job_paused`, `job_done`, `job_failed` | A job advanced, needs a decision, or ended |
+| `in_use` | A program WPS started opened or closed a file (`path`, `in_use`); every subscriber gets it, since shadows of the file may be anywhere |
+
+### In-use emphasis for files
+
+Decided 2026-11-18; built after M5. A file or program shows as open (OS/2's hatched in-use emphasis) in two cases. Folder listings carry `in_use: true` for such entries, and for shadows of them.
+
+- **Started from WPS.** A data file opens with its type's default application, read from `mimeapps.list` (desktop-specific lists first, in the XDG order) or else `mimeinfo.cache`, and started directly rather than through `xdg-open`, which hands the file over and exits at once. The started process stands for the open file; it is watched through a pidfd. The service is a child subreaper, so a program that forks and lets its first process exit is adopted and still counted. A file renamed or moved while open stays marked under its new name. Program objects show as open while their program runs.
+- **Lock files** next to the file: LibreOffice (`.~lock.NAME#`), vim (`.NAME.swp`), Emacs (`.#NAME`) and Microsoft Office (`~$NAME`). These also mark files opened outside WPS, in any folder WPS lists; the lock file's appearance is an ordinary folder change, so windows update.
+- **Limits.** There is no system-wide monitoring. An application that passes the file to an instance already running (most single-window GNOME apps, Firefox) exits at once, so the file shows as open only for a moment, unless the application writes a lock file. Types with no default application, and applications that run in a terminal (`Terminal=true`), still open through `xdg-open`, untracked.
 
 ### Menus and settings pages as data
 
@@ -762,6 +771,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.17 | 2026-11-18 | In-use emphasis for files built: default applications started directly and tracked by pidfd (with subreaping), lock files, `in_use` in listings and events |
 | 0.16 | 2026-11-18 | Decided: WPS-only objects kept centrally (local files optional, and preferred); in-use emphasis for files WPS opens and lock files |
 | 0.15 | 2026-11-18 | Decided: shadows are WPS object files carrying their target's ID, not managed symlinks (Links rewritten) |
 | 0.14 | 2026-11-18 | Decided: renaming an icon renames the file or folder (as in OS/2); `rename` request |

@@ -67,6 +67,7 @@
 #include "env.h"
 #include "objects.h"
 #include "jobs.h"
+#include "launch.h"
 #include "listing.h"
 #include "plugins.h"
 #include "shadows.h"
@@ -786,6 +787,7 @@ static void on_central_change(const char *folder, const char *id, char kind)
 
 static void on_fs_event(char kind, const char *from, const char *path)
 {
+    if (kind == 'm') wps_launch_moved(from, path);
     for (struct sub *x = subs; x; x = x->next) {
         if (x->c->dead) continue;
         for (size_t i = 0; i < x->nfolders; i++) {
@@ -808,6 +810,21 @@ static void on_fs_event(char kind, const char *from, const char *path)
             send_frame(x->c, &b);
             cb_free(&b);
         }
+    }
+}
+
+/* Programs WPS started opened or closed `path`: every window may show it
+ * (directly, or as a shadow), so every subscription hears it. */
+static void on_in_use(const char *path, bool in_use)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead || (!x->nfolders && !x->ntargets)) continue;
+        cbuf b;
+        event_head(&b, "in_use", x->id, 2);
+        cb_text(&b, "path"); cb_text(&b, path);
+        cb_text(&b, "in_use"); cb_bool(&b, in_use);
+        send_frame(x->c, &b);
+        cb_free(&b);
     }
 }
 
@@ -1089,7 +1106,7 @@ static bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
 
 /* ---- list: a page of a folder's entries */
 
-struct list_req { struct client *c; int64_t id; };
+struct list_req { struct client *c; int64_t id; char folder[PATH_MAX]; };
 
 static void list_reply(void *arg, const wps_page *pg)
 {
@@ -1114,7 +1131,15 @@ static void list_reply(void *arg, const wps_page *pg)
                 const wps_entry *e = &pg->items[i];
                 const char *t = e->name[0] == '\x01' ? "object" : e->type == DT_DIR ? "folder" : e->type == DT_LNK ? "link" :
                                 e->type == DT_REG ? "file" : "other";
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : 6) : 2);
+                bool iu = false;
+                if (e->detailed) {
+                    /* In use: a lock file says so, or a program WPS started has it open. */
+                    char fp[PATH_MAX + NAME_MAX + 2];
+                    snprintf(fp, sizeof fp, "%s/%s", strcmp(r->folder, "/") ? r->folder : "", e->name);
+                    iu = e->locked || (e->name[0] != '\x01' && wps_launch_in_use(fp)) ||
+                         (e->shadow && e->target_path[0] && wps_launch_in_use(e->target_path));
+                }
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : 6) + iu : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -1127,6 +1152,7 @@ static void list_reply(void *arg, const wps_page *pg)
                         cb_text(&b, "target"); cb_text(&b, e->target_type == DT_DIR ? "folder" : "file");
                         cb_text(&b, "target_path"); cb_text(&b, e->target_path);
                     }
+                    if (iu) { cb_text(&b, "in_use"); cb_bool(&b, true); }
                 }
             }
             send_frame(r->c, &b);
@@ -1138,57 +1164,6 @@ static void list_reply(void *arg, const wps_page *pg)
 }
 
 /* ---- open: start a program (as this user), or open a file */
-
-/* Split a .desktop Exec line into arguments: double quotes and backslash
- * escapes, field codes (%f %u ...) dropped, %% kept as %. */
-static int split_exec(const char *exec, char *buf, size_t n, char **argv, int max)
-{
-    int argc = 0;
-    size_t o = 0;
-    const char *p = exec;
-    while (*p && argc < max - 1) {
-        while (*p == ' ' || *p == '\t') p++;
-        if (!*p) break;
-        argv[argc] = buf + o;
-        bool quoted = false, any = false;
-        for (; *p && (quoted || (*p != ' ' && *p != '\t')); p++) {
-            if (*p == '"') { quoted = !quoted; any = true; continue; }
-            if (*p == '\\' && p[1]) { p++; }
-            else if (*p == '%' && p[1]) {
-                p++;
-                if (*p != '%') continue;   /* a field code: no files are passed */
-            }
-            if (o + 1 < n) buf[o++] = *p;
-            any = true;
-        }
-        if (o + 1 < n) buf[o++] = 0;
-        if (any && argv[argc][0]) argc++;
-        else if (any && quoted == false && argv[argc][0] == 0) argc++;
-    }
-    argv[argc] = NULL;
-    return argc;
-}
-
-static pid_t spawn(char **argv)
-{
-    posix_spawnattr_t at;
-    posix_spawn_file_actions_t fa;
-    posix_spawnattr_init(&at);
-    posix_spawnattr_setflags(&at, POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGMASK);
-    sigset_t none;
-    sigemptyset(&none);
-    posix_spawnattr_setsigmask(&at, &none);
-    posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-    extern char **environ;
-    pid_t pid = -1;
-    if (posix_spawnp(&pid, argv[0], &fa, &at, argv, environ) != 0) pid = -1;
-    posix_spawn_file_actions_destroy(&fa);
-    posix_spawnattr_destroy(&at);
-    return pid;
-}
 
 static void reply_folder(struct req *r, const char *path)
 {
@@ -1208,8 +1183,9 @@ static void do_open(struct req *r, wpo_object *o)
 {
     const cv *cf = cv_get(&r->msg, "confirm");
     bool confirmed = cf && cf->k == CV_BOOL && cf->b;
-    char buf[4096], *argv[64];
+    char buf[8192], *argv[64];
     const char *what;
+    const char *tracked;   /* what shows as in use while it runs */
     const char *path = r->tgt.path;
     const struct stat *st = &r->tgt.st;
     wpo_object *orig = NULL;
@@ -1231,6 +1207,8 @@ static void do_open(struct req *r, wpo_object *o)
     char real[PATH_MAX];
     if (S_ISLNK(st->st_mode) && stat(path, &ts) == 0 && realpath(path, real)) {
         if (S_ISDIR(ts.st_mode)) { reply_folder(r, real); wpo_unref(orig); return; }
+        tracked = real;
+        if (wps_handler_argv(real, buf, sizeof buf, argv, 64) > 0) { what = argv[0]; goto launch; }
         argv[0] = "xdg-open";
         argv[1] = real;
         argv[2] = NULL;
@@ -1259,20 +1237,28 @@ static void do_open(struct req *r, wpo_object *o)
             wpo_unref(orig);
             return;
         }
-        if (split_exec(cmd, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
+        if (wps_split_exec(cmd, NULL, buf, sizeof buf, argv, 64) == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
         what = cmd;
+        tracked = path;
     } else if (wpo_is_a(o, WPDataFileClass)) {
-        argv[0] = "xdg-open";
-        argv[1] = (char *)path;
-        argv[2] = NULL;
-        what = "xdg-open";
+        /* Its type's default application, started directly so that its
+         * process stands for the open file (xdg-open hands over and exits). */
+        tracked = path;
+        if (wps_handler_argv(path, buf, sizeof buf, argv, 64) > 0) {
+            what = argv[0];
+        } else {
+            argv[0] = "xdg-open";
+            argv[1] = (char *)path;
+            argv[2] = NULL;
+            what = "xdg-open";
+        }
     } else {
         reply_error(r->c, r->id, "bad request", "this kind of object opens in the GUI");
         wpo_unref(orig);
         return;
     }
 launch:;
-    pid_t pid = spawn(argv);   /* as this user, in this user's session */
+    pid_t pid = wps_launch(argv, tracked);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     cbuf b;
     cb_init(&b);
@@ -1881,6 +1867,7 @@ static void handle(struct client *c, cv *msg)
         struct list_req *r = calloc(1, sizeof *r);
         r->c = c; c->refs++;
         r->id = id;
+        snprintf(r->folder, sizeof r->folder, "%s", folder);
         wps_listing_request(folder, (size_t)off, (size_t)cnt, det && det->k == CV_BOOL && det->b, list_reply, r);
     } else if (strcmp(op, "create") == 0) {
         const char *folder = cv_text(msg, "folder"), *clsname = cv_text(msg, "class");
@@ -2133,6 +2120,7 @@ int main(void)
     wps_shadows_init(loop, db);
     wps_listing_init(loop);
     wps_jobs_init(loop, db, env.identity);
+    wps_launch_init(loop, on_in_use);
     wps_plugins_init(loop, &env);
     wps_on_central_change = on_central_change;
     wps_on_job_placed = job_placed;
@@ -2154,6 +2142,7 @@ int main(void)
     /* The jobs' last progress events (no subscribers remain to hear them). */
     wpo_loop_run_until_idle(loop, 1000);
     wps_plugins_shutdown();
+    wps_launch_shutdown();
     wps_tracker_shutdown();
     wps_listing_shutdown();
     unlink(sock_path);

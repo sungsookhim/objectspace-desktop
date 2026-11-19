@@ -15,6 +15,7 @@
 #define WPS_PLUGINS_H
 
 #include <stdbool.h>
+#include <sys/types.h>
 
 #include "cbor.h"
 #include "env.h"
@@ -23,6 +24,9 @@
 
 void wps_plugins_init(wpo_loop *loop, const wps_env *env);
 void wps_plugins_shutdown(void);
+
+/* Whether `pid` is a plug-in host this service started (and reaps). */
+bool wps_plugins_is_host(pid_t pid);
 
 /* Is `method` on `o` implemented by a plug-in (so it must go remote)? */
 bool wps_plugin_routes(wpo_object *o, const char *method);

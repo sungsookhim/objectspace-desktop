@@ -34,6 +34,7 @@ typedef struct {
     bool shadow;             /* a shadow: title and type are its target's */
     unsigned char target_type;
     char target_path[PATH_MAX];
+    bool locked;             /* a lock file next to it (or its target) says it is open */
 } wps_entry;
 
 typedef struct {
