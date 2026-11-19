@@ -24,6 +24,9 @@
  *   {op:"open", target, confirm}   start a program (as this user) or open a file;
  *                      a program owned by another user (not root) needs confirm
  *   {op:"from_template", target, folder, title}
+ *   {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}}   icon positions
+ *   {op:"place", folder, items:[{target, x, y}]} -> [ID...]  set positions
+ *   {op:"arrange", target:FOLDER}   forget the folder's positions
  *   {op:"rename", target, name}   rename a file or folder in its folder (never
  *                      replacing); its title then follows the name. Without
  *                      permission to rename, the name becomes its title
@@ -133,6 +136,9 @@ struct req;
 static void do_open(struct req *r, wpo_object *o);
 static void do_from_template(struct req *r, wpo_object *o);
 static void do_rename(struct req *r, wpo_object *o);
+static void do_layout(struct req *r, wpo_object *o);
+static void do_arrange(struct req *r, wpo_object *o);
+static void start_place(struct client *c, int64_t id, const cv *msg);
 
 static void client_close(struct client *c)
 {
@@ -498,6 +504,8 @@ static void prepare_done(void *arg)    /* loop */
     else if (!strcmp(r->op, "open")) do_open(r, o);
     else if (!strcmp(r->op, "from_template")) do_from_template(r, o);
     else if (!strcmp(r->op, "rename")) do_rename(r, o);
+    else if (!strcmp(r->op, "layout")) do_layout(r, o);
+    else if (!strcmp(r->op, "arrange")) do_arrange(r, o);
     else if (do_call(r, o)) return;   /* the reply comes from the plug-in */
     req_free(r);
 }
@@ -1264,6 +1272,138 @@ static void tmpl_done(void *arg)
     free(j);
 }
 
+
+/* ---- icon positions: layout, place, arrange (G2: free placement) */
+
+/* {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}} */
+static void do_layout(struct req *r, wpo_object *o)
+{
+    if (!wpo_is_a(o, WPFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
+    wps_state *st = WPObject_data(o)->state;
+    wps_cstate *cs = st ? wps_state_class(&st, "WPFolder", false) : NULL;
+    size_t n = 0;
+    for (size_t i = 0; cs && i < cs->props.n; i++) n += !strncmp(cs->props.p[i].key, "pos:", 4);
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 3);
+    cb_text(&b, "id"); cb_int(&b, r->id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    cb_map(&b, 1);
+    cb_text(&b, "positions");
+    cb_map(&b, n);
+    for (size_t i = 0; cs && i < cs->props.n; i++) {
+        const wps_prop *p = &cs->props.p[i];
+        if (strncmp(p->key, "pos:", 4)) continue;
+        cb_text(&b, p->key + 4);
+        cb_textn(&b, (const char *)p->val, p->len);
+    }
+    send_frame(r->c, &b);
+    cb_free(&b);
+}
+
+/* {op:"arrange", target:FOLDER}: forget the stored positions; the GUI
+ * arranges the icons (and may place them again). */
+static void do_arrange(struct req *r, wpo_object *o)
+{
+    if (!wpo_is_a(o, WPFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
+    wps_state *st = WPObject_data(o)->state;
+    wps_cstate *cs = st ? wps_state_class(&st, "WPFolder", false) : NULL;
+    char **keys = NULL;
+    size_t n = 0;
+    for (size_t i = 0; cs && i < cs->props.n; i++)
+        if (!strncmp(cs->props.p[i].key, "pos:", 4)) {
+            keys = realloc(keys, (n + 1) * sizeof *keys);
+            keys[n++] = strdup(cs->props.p[i].key);
+        }
+    for (size_t i = 0; i < n; i++) { wps_state_remove(o, "WPFolder", keys[i]); free(keys[i]); }
+    free(keys);
+    if (n) { WPObject_wpSaveDeferred(o); WPObject_wpObjectChanged(o); }
+    wpo_value v = wpo_v_int((int64_t)n);
+    reply_ok_object(r, o, &v);
+}
+
+/* {op:"place", folder, items:[{target, x, y}]}: set icon positions. Items
+ * get object IDs if they have none (positions are kept by ID). Replies with
+ * the IDs, in order. */
+struct place_job {
+    struct client *c;
+    int64_t id;
+    char folder[PATH_MAX];
+    size_t n;
+    char **targets;
+    int64_t *x, *y;
+    wps_loaded fld, *items;
+};
+
+static void place_work(void *arg)
+{
+    struct place_job *j = arg;
+    wps_load(j->folder, false, &j->fld);
+    for (size_t i = 0; i < j->n; i++) wps_load(j->targets[i], true, &j->items[i]);
+}
+
+static void place_done(void *arg)
+{
+    struct place_job *j = arg;
+    wpo_object *f = j->fld.err ? NULL : wps_object_from_loaded(&j->fld);
+    if (!j->c->dead) {
+        if (!f || !wpo_is_a(f, WPFolderClass)) reply_error(j->c, j->id, "failed", "the folder cannot be loaded");
+        else {
+            cbuf b;
+            cb_init(&b);
+            cb_map(&b, 3);
+            cb_text(&b, "id"); cb_int(&b, j->id);
+            cb_text(&b, "ok"); cb_bool(&b, true);
+            cb_text(&b, "result");
+            cb_array(&b, j->n);
+            for (size_t i = 0; i < j->n; i++) {
+                wpo_object *o = j->items[i].err ? NULL : wps_object_from_loaded(&j->items[i]);
+                bool ok = o && WPFolder_wpSetIconPos(f, o, j->x[i], j->y[i]);
+                if (ok) cb_text(&b, WPObject_data(o)->id);
+                else cb_null(&b);
+            }
+            send_frame(j->c, &b);
+            cb_free(&b);
+        }
+    }
+    wps_loaded_free(&j->fld);
+    for (size_t i = 0; i < j->n; i++) { wps_loaded_free(&j->items[i]); free(j->targets[i]); }
+    free(j->items);
+    free(j->targets);
+    free(j->x);
+    free(j->y);
+    client_unref(j->c);
+    free(j);
+}
+
+static void start_place(struct client *c, int64_t id, const cv *msg)
+{
+    const char *folder = cv_text(msg, "folder");
+    const cv *items = cv_get(msg, "items");
+    if (!folder || !items || items->k != CV_ARRAY || items->n > 100000) {
+        reply_error(c, id, "bad request", "place needs a folder and up to 100000 items");
+        return;
+    }
+    struct place_job *j = calloc(1, sizeof *j);
+    j->c = c; c->refs++;
+    j->id = id;
+    snprintf(j->folder, sizeof j->folder, "%s", folder);
+    j->targets = calloc(items->n ? items->n : 1, sizeof *j->targets);
+    j->x = calloc(items->n ? items->n : 1, sizeof *j->x);
+    j->y = calloc(items->n ? items->n : 1, sizeof *j->y);
+    j->items = calloc(items->n ? items->n : 1, sizeof *j->items);
+    for (size_t i = 0; i < items->n; i++) {
+        const char *t = cv_text(&items->items[i], "target");
+        if (!t) continue;
+        j->targets[j->n] = strdup(t);
+        cv_int(&items->items[i], "x", &j->x[j->n]);
+        cv_int(&items->items[i], "y", &j->y[j->n]);
+        j->n++;
+    }
+    wpo_defer(loop, "place icons", place_work, place_done, j);
+}
+
 /* ---- rename: the file or folder itself (decided 2026-11-18, as in OS/2) */
 
 struct rename_job {
@@ -1505,6 +1645,8 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
+    } else if (strcmp(op, "place") == 0) {
+        start_place(c, id, msg);
     } else if (strcmp(op, "subscribe") == 0) {
         struct sub *x = calloc(1, sizeof *x);
         x->id = next_sub++;
@@ -1535,7 +1677,8 @@ static void handle(struct client *c, cv *msg)
         else reply_error(c, id, "not found", "no such subscription");
     } else if (strcmp(op, "resolve") == 0 || strcmp(op, "call") == 0 || strcmp(op, "menu") == 0 ||
                strcmp(op, "menu_select") == 0 || strcmp(op, "settings") == 0 || strcmp(op, "settings_set") == 0 ||
-               strcmp(op, "open") == 0 || strcmp(op, "from_template") == 0 || strcmp(op, "rename") == 0) {
+               strcmp(op, "open") == 0 || strcmp(op, "from_template") == 0 || strcmp(op, "rename") == 0 ||
+               strcmp(op, "layout") == 0 || strcmp(op, "arrange") == 0) {
         const char *target = cv_text(msg, "target");
         if (!target) { reply_error(c, id, "bad request", "missing target"); cv_free(msg); return; }
         struct req *r = calloc(1, sizeof *r);

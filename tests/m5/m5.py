@@ -401,6 +401,35 @@ def sr1():
                 f"a program object: only its title changes ({rp.get('object', {}).get('title')!r}), file kept"]
 
 
+# --------------------------------------------------------------- positions
+
+@scenario("L1", "Icon positions: placed by ID, kept across restarts, personal in others' folders, cleared by Arrange")
+def sl1():
+    a = Service("A", user=60001).start()
+    b = Service("B", user=60002).start()
+    d = fresh("ext4", "l1", user=60001)
+    run(["sh", "-c", f"touch {d}/one.txt {d}/two.txt && chmod 755 {d}"], user=60001, check=True)
+    pl = a.ctl("place", d, d / "one.txt", 40, 30, d / "two.txt", 200, 90)
+    ids = pl.get("result") or []
+    a.ctl("flush")
+    a.stop(); a.start()
+    lay_a = a.ctl("layout", d).get("result", {}).get("positions", {})
+    # B cannot write A's folder: B's placement stays B's
+    b.ctl("place", d, d / "one.txt", 500, 500)
+    b.ctl("flush")
+    lay_b = b.ctl("layout", d).get("result", {}).get("positions", {})
+    lay_a2 = a.ctl("layout", d).get("result", {}).get("positions", {})
+    ar = a.ctl("arrange", d)
+    a.ctl("flush")
+    lay_a3 = a.ctl("layout", d).get("result", {}).get("positions", {})
+    a.stop(); b.stop()
+    ok = len(ids) == 2 and all(ids) and lay_a.get(ids[0]) == "40,30" and lay_a.get(ids[1]) == "200,90" and \
+        lay_b.get(ids[0]) == "500,500" and lay_a2.get(ids[0]) == "40,30" and ar.get("result") == 2 and lay_a3 == {}
+    return ok, [f"placed with IDs {ids}", f"after a restart A sees {lay_a}",
+                f"B (not the folder's owner) sees one.txt at {lay_b.get(ids[0]) if ids else None}; A still at {lay_a2.get(ids[0]) if ids else None}",
+                f"Arrange cleared {ar.get('result')} positions: now {lay_a3}"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

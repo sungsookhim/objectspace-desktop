@@ -52,7 +52,8 @@ static int usage(void)
             "       wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET\n"
             "       wpsctl settings_set TARGET KEY=VALUE...\n"
             "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
-            "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n");
+            "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n"
+            "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n");
     return 2;
 }
 
@@ -173,6 +174,27 @@ int main(int argc, char **argv)
         cb_text(&b, "op"); cb_text(&b, "open");
         cb_text(&b, "target"); cb_text(&b, argv[2]);
         cb_text(&b, "confirm"); cb_bool(&b, argc == 4 && !strcmp(argv[3], "confirm"));
+    } else if (!strcmp(op, "layout") || !strcmp(op, "arrange")) {
+        if (argc != 3) return usage();
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "place")) {
+        if (argc < 6 || (argc - 3) % 3) return usage();
+        size_t n = (size_t)(argc - 3) / 3;
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "folder"); cb_text(&b, argv[2]);
+        cb_text(&b, "items");
+        cb_array(&b, n);
+        for (size_t i = 0; i < n; i++) {
+            cb_map(&b, 3);
+            cb_text(&b, "target"); cb_text(&b, argv[3 + 3 * i]);
+            cb_text(&b, "x"); cb_int(&b, atoll(argv[4 + 3 * i]));
+            cb_text(&b, "y"); cb_int(&b, atoll(argv[5 + 3 * i]));
+        }
     } else if (!strcmp(op, "rename")) {
         if (argc != 4) return usage();
         cb_map(&b, 4);
