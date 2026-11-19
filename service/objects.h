@@ -128,6 +128,10 @@ int wps_central_create(const char *vol, const char *folder_id, const char *cls, 
 bool wps_folder_keeps_files(const wps_loaded *folder);
 /* Worker: the central objects in a folder (by the folder's ID). */
 int wps_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user);
+/* Worker: delete a central object (all its rows). 0, or an errno value. */
+int wps_central_delete(const char *id);
+/* Loop thread: drop a deleted central object from memory. */
+void wps_central_forget(const char *id);
 /* Worker: move a central object to another folder, or copy it (a new ID). */
 int wps_central_move(const char *id, const char *dest_vol, const char *dest_folder_id, bool copy, char new_id[WPS_ID_LEN + 1]);
 

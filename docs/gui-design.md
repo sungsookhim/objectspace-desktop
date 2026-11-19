@@ -180,6 +180,8 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 - **Central objects in the GUI** (2026-11-18): shadows made by dragging (and other WPS-only objects) are kept centrally unless the folder is set to keep files (its View page: "Keep objects as files here"). Windows list them after the files, address them as `vobj:<id>`, and move or copy them through the service. Anything dropped on a window's background in icon view lands where it was dropped, each item keeping its offset in the drag: shadows and central objects as soon as they exist, copied and moved files once they have their final names (after any renaming).
 
+- **Delete** (2026-11-18): Delete... in every object's menu and the Delete key move the selection (or the item) to the trash; Shift+Delete deletes for good. Both ask first, as OS/2 does; the trash confirmation can be turned off in `<config>/system.conf` (`confirm_delete`, `confirm_folder_delete`, as on OS/2's System object Confirmations page, until that object exists); deleting for good always asks. Items no trash can take are asked about again. Windows of deleted folders close.
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.

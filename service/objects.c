@@ -1021,3 +1021,16 @@ bool wps_folder_keeps_files(const wps_loaded *folder)
     }
     return false;
 }
+
+int wps_central_delete(const char *id)
+{
+    char vol[WPS_VOLID_MAX];
+    if (!wps_db_vobj_vol(db, id, vol, sizeof vol)) return ENOENT;
+    return wps_db_vobj_delete(db, vol, id) < 0 ? EIO : 0;
+}
+
+void wps_central_forget(const char *id)
+{
+    sobj *s = by_central(id);
+    if (s) wps_sobj_forget(s);
+}

@@ -30,7 +30,11 @@ void wps_shadows_init(wpo_loop *l, wps_db *d)
 
 bool wps_in_trash(const char *path)
 {
-    return strstr(path, "/.local/share/Trash/files/") || strstr(path, "/.Trash-") || strstr(path, "/.Trash/");
+    if (strstr(path, "/.local/share/Trash/files/") || strstr(path, "/.Trash-") || strstr(path, "/.Trash/")) return true;
+    const char *dh = getenv("XDG_DATA_HOME");   /* the home trash, wherever it is */
+    if (!dh || !*dh) return false;
+    size_t l = strlen(dh);
+    return !strncmp(path, dh, l) && !strncmp(path + l, "/Trash/files/", 13);
 }
 
 static bool ends_with(const char *s, const char *suf)

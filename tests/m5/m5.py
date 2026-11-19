@@ -109,7 +109,7 @@ def ss1():
     me.stop()
     fl = [i["label"] for i in folder]
     dl = [i["label"] for i in data]
-    ok = fl == ["Open", "Properties", "Arrange"] and dl == ["Open", "Properties", "Open With"] and sel.get("ok")
+    ok = fl == ["Open", "Properties", "Delete...", "Arrange"] and dl == ["Open", "Properties", "Delete...", "Open With"] and sel.get("ok")
     return ok, [f"folder menu: {fl}", f"data file menu: {dl}", f"selecting Properties: ok={sel.get('ok')}"]
 
 
@@ -270,7 +270,7 @@ def s17():
     plugins_ready(me)
     t = obj(me, d / "projects").get("title")
     me.stop()
-    ok = o.get("class") == "TestFolder" and m == ["Open", "Properties", "Arrange", "From the plug-in"] and \
+    ok = o.get("class") == "TestFolder" and m == ["Open", "Properties", "Delete...", "Arrange", "From the plug-in"] and \
         st.get("plugin") and t == "Stamped by the plug-in"
     return ok, [f"plug-ins: {[(p['name'], p['ready']) for p in ps]}", f"new folder is a {o.get('class')}; menu {m}",
                 f"a setting changed in the host is saved by the service: {t!r}"]
@@ -316,7 +316,7 @@ def s19():
     me.stop()
     pings.sort()
     p99 = pings[int(len(pings) * 0.99)] if pings else None
-    ok = m == ["Open", "Properties", "Arrange"] and 1.8 < took < 4 and p99 is not None and p99 < 20
+    ok = m == ["Open", "Properties", "Delete...", "Arrange"] and 1.8 < took < 4 and p99 is not None and p99 < 20
     return ok, [f"menu came back after {took:.1f} s with the parent's items: {m}",
                 f"pings meanwhile: {len(pings)}, 99th percentile {p99:.2f} ms"]
 
@@ -347,7 +347,7 @@ def s20():
     again = labels(me.ctl("menu", d / "fast"))
     wpsd_alive = me.proc.poll() is None
     me.stop()
-    ok = res.get("menu") == ["Open", "Properties", "Arrange"] and res.get("took", 9) < 1.5 and tf.get("ready") and \
+    ok = res.get("menu") == ["Open", "Properties", "Delete...", "Arrange"] and res.get("took", 9) < 1.5 and tf.get("ready") and \
         tf.get("pid") != pid0 and tf.get("restarts") == 1 and again and again[-1] == "From the plug-in" and wpsd_alive
     return ok, [f"menu during the crash: {res.get('menu')} after {res.get('took', 0):.2f} s",
                 f"host restarted: pid {pid0} -> {tf.get('pid')}, restarts {tf.get('restarts')}",
@@ -646,6 +646,73 @@ def su2():
     return ok, [f"in the terminal: {tl}", f"links listed as: {links}", f"link to a folder opens it: {folder.get('folder')}",
                 f"tool.sh ran: {ran.get('command')!r}, in {ranin}", f"another user's script asks first: {asked.get('needs_confirmation')}",
                 f"README and a link to doc.txt opened with the text default: {text.get('command') == str(hold)}, {via.get('command') == str(hold)}, args {args}"]
+
+
+# ------------------------------------------------------------------- delete
+
+@scenario("D1", "Delete: items go to the freedesktop trash of their filesystem, keeping their identity; for good from the trash; central objects deleted")
+def sd1():
+    d, b = fresh("ext4", "d1"), fresh("btrfs", "d1")
+    home = MNT["ext4"] / "d1-home"
+    run(["sudo", "rm", "-rf", str(home)])
+    home.mkdir()
+    uid = os.getuid()
+    btrash = MNT["btrfs"] / f".Trash-{uid}"
+    for n in ("info/c.txt.trashinfo", "info/c.txt.2.trashinfo", "files/c.txt", "files/c.txt.2"):
+        run(["rm", "-rf", str(btrash / n)])
+    me = Service("me", extra_env={"XDG_DATA_HOME": str(home)}).start()
+    (d / "a.txt").write_text("a")
+    (d / "sub").mkdir()
+    (d / "sub" / "inner.txt").write_text("i")
+    me.call(d / "a.txt", "wpSetTitle", "Letter A")
+    me.ctl("flush")
+    aid = obj(me, d / "a.txt").get("id")
+    (b / "c.txt").write_text("c")
+    c = Conn(me)
+
+    def job(kind, folder, names):
+        sel = c.request(op="select", folder=str(folder), all=False, items=names)["result"]
+        jid = c.request(op=kind, selection=sel).get("result")
+        st = {}
+        def done():
+            nonlocal st
+            st = c.request(op="job", job=jid).get("result") or {}
+            return st.get("state") in ("done", "failed", "cancelled")
+        wait_for(done, timeout=10)
+        return st
+
+    st1 = job("trash", d, ["a.txt", "sub"])
+    ht = home / "Trash"
+    info_a = ini(ht / "info" / "a.txt.trashinfo", "Path") if (ht / "info" / "a.txt.trashinfo").exists() else None
+    moved = (ht / "files" / "a.txt").exists() and (ht / "files" / "sub" / "inner.txt").exists() and not (d / "a.txt").exists()
+    me.ctl("flush")
+    same = obj(me, ht / "files" / "a.txt")
+    (b / "c.txt.new").write_text("c2")
+    st2 = job("trash", b, ["c.txt"])
+    os.rename(b / "c.txt.new", b / "c.txt")
+    st3 = job("trash", b, ["c.txt"])                       # a second c.txt: c.txt.2
+    info_c = ini(btrash / "info" / "c.txt.trashinfo", "Path") if (btrash / "info" / "c.txt.trashinfo").exists() else None
+    two = (btrash / "files" / "c.txt").exists() and (btrash / "files" / "c.txt.2").exists()
+    st4 = job("trash", btrash / "files", ["c.txt.2"])     # already in the trash: no trash takes it
+    st5 = job("delete", btrash / "files", ["c.txt.2"])    # for good, with its info file
+    gone = not (btrash / "files" / "c.txt.2").exists() and not (btrash / "info" / "c.txt.2.trashinfo").exists()
+    # a central shadow is deleted outright; its original stays
+    (d / "orig.txt").write_text("o")
+    addr = me.ctl("shadow", d / "orig.txt", d).get("result", "")
+    vd = c.request(op="vdelete", target=addr)
+    left = [i["name"] for i in c.request(op="list", target=str(d), offset=0, count=50).get("result", {}).get("items", [])]
+    c.close()
+    me.stop()
+    ok = st1.get("state") == "done" and moved and info_a == str(d / "a.txt") and same.get("id") == aid and \
+        same.get("title") == "Letter A" and same.get("trashed") is True and \
+        st2.get("state") == st3.get("state") == "done" and two and info_c == "d1/c.txt" and \
+        st4.get("not_trashed") == ["c.txt.2"] and st5.get("state") == "done" and gone and \
+        vd.get("ok") and addr.startswith("vobj:") and left == ["orig.txt"]
+    return ok, [f"home filesystem: moved {moved}, Path {info_a!r}; same object {same.get('id') == aid}, "
+                f"title {same.get('title')!r}, trashed {same.get('trashed')}",
+                f"other filesystem: {btrash.name}, Path {info_c!r}, a second c.txt kept as c.txt.2: {two}",
+                f"in the trash already: not_trashed {st4.get('not_trashed')}; deleted for good with its info: {gone}",
+                f"central shadow deleted: {vd.get('ok')}, folder now {left}"]
 
 
 # ------------------------------------------------------------------- driver

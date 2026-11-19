@@ -583,6 +583,15 @@ Length-prefixed messages, encoded in CBOR (compact binary JSON, with small C lib
 | `job_progress`, `job_paused`, `job_done`, `job_failed` | A job advanced, needs a decision, or ended |
 | `in_use` | A program WPS started opened or closed a file (`path`, `in_use`); every subscriber gets it, since shadows of the file may be anywhere |
 
+### Deleting
+
+Built after M5. `trash` and `delete` are jobs on a selection, like move and copy, with progress and cancel.
+
+- **Trash** follows the freedesktop.org Trash specification, so GNOME's Trash and other file managers show and restore what WPS put there. An item on the home filesystem goes to `$XDG_DATA_HOME/Trash`; one elsewhere to `$topdir/.Trash/$uid` (an administrator's sticky `.Trash`) or `$topdir/.Trash-$uid`. The info file is written first, without replacing; the item moves by one rename without replacing (a second item of the same name becomes `name.2`), so it keeps its object ID, settings and shadows, and comes back with them when restored.
+- Items no trash can take (already in a trash, or on a drive where none can be made) are listed in the job's `not_trashed`; the GUI asks before deleting them for good.
+- **Delete** removes items for good, with their info files when they are in a trash.
+- **Central objects** (`vdelete`) are deleted outright: deleting a shadow never touches its original, as in OS/2.
+
 ### In-use emphasis for files
 
 Decided 2026-11-18; built after M5. A file or program shows as open (OS/2's hatched in-use emphasis) in two cases. Folder listings carry `in_use: true` for such entries, and for shadows of them.

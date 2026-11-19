@@ -1105,6 +1105,7 @@ static void free_converted(ui_menu_item *m, size_t n)
 }
 
 static void selected_done(void *arg, const cv *reply) { opened(arg, reply); }
+static void delete_request(struct folder *f, size_t i, bool permanent);
 
 static void menu_chosen(void *arg, int64_t id)
 {
@@ -1132,6 +1133,7 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
         case WPS_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
         case WPS_MI_ARRANGE: arrange(f); break;
+        case WPS_MI_DELETE: delete_request(f, m->item, false); break;
         default: svc_menu_select(t, id, selected_done, as_arg(f)); break;
         }
     }
@@ -1702,6 +1704,200 @@ static void decided(void *arg, int choice)
     free(d);
 }
 
+/* ---------------------------------------------------------------- delete */
+
+/* Confirmations, as on OS/2's System object (Confirmations page); read
+ * from <config>/system.conf until that object exists. Deleting for good
+ * always asks. */
+static bool confirm_delete = true, confirm_folder_delete = true;
+
+static void load_system_conf(void)
+{
+    char path[4096];
+    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (cfg && *cfg) snprintf(path, sizeof path, "%s/system.conf", cfg);
+    else if (xdg && *xdg) snprintf(path, sizeof path, "%s/wps/system.conf", xdg);
+    else snprintf(path, sizeof path, "%s/.config/wps/system.conf", home ? home : "");
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+    char line[256];
+    while (fgets(line, sizeof line, fp)) {
+        char k[64], v[64];
+        if (line[0] == '#' || sscanf(line, " %63[a-z_] = %63s", k, v) != 2) continue;
+        bool on = !strcasecmp(v, "yes") || !strcasecmp(v, "true") || !strcmp(v, "1");
+        if (!strcmp(k, "confirm_delete")) confirm_delete = on;
+        else if (!strcmp(k, "confirm_folder_delete")) confirm_folder_delete = on;
+        else fprintf(stderr, "wps-shell: %s: unknown setting \"%s\"\n", path, k);
+    }
+    fclose(fp);
+}
+
+struct del {
+    long folder;
+    bool permanent;
+    char parent[PATH_MAX];   /* the folder the files are in */
+    char **names;            /* files and folders there */
+    size_t n;
+    char **vobjs;            /* central objects ("vobj:ID"): deleted outright */
+    size_t nv;
+};
+
+static void del_free(struct del *d)
+{
+    for (size_t i = 0; i < d->n; i++) free(d->names[i]);
+    for (size_t i = 0; i < d->nv; i++) free(d->vobjs[i]);
+    free(d->names);
+    free(d->vobjs);
+    free(d);
+}
+
+static void push(char ***v, size_t *n, const char *s)
+{
+    *v = realloc(*v, (*n + 1) * sizeof **v);
+    (*v)[(*n)++] = strdup(s);
+}
+
+static void vdeleted(void *arg, const cv *reply)
+{
+    long folder = (long)(intptr_t)arg;
+    if (!reply || !cv_get(reply, "result")) {
+        char m[300];
+        snprintf(m, sizeof m, "Cannot delete: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        set_status(folder, m);
+    }
+}
+
+static void start_deletion(struct del *d)
+{
+    for (size_t i = 0; i < d->nv; i++) svc_vdelete(d->vobjs[i], vdeleted, (void *)(intptr_t)d->folder);
+    if (d->n) {
+        struct xfer *x = calloc(1, sizeof *x);
+        x->folder = d->folder;
+        snprintf(x->kind, sizeof x->kind, "%s", d->permanent ? "delete" : "trash");
+        snprintf(x->from, sizeof x->from, "%s", d->parent);
+        x->names = d->names;
+        x->n = d->n;
+        d->names = NULL;
+        d->n = 0;
+        svc_select(x->from, (const char *const *)x->names, x->n, got_sel, x);
+    }
+    del_free(d);
+}
+
+static void delete_confirmed(void *arg, int choice)
+{
+    struct del *d = arg;
+    last_dialog = NULL;
+    if (choice == 0) start_deletion(d);
+    else del_free(d);
+}
+
+/* Delete item i (the folder itself for SIZE_MAX): the selection if i is in
+ * it, else i alone (OS/2). Into the trash, or for good. */
+static void delete_request(struct folder *f, size_t i, bool permanent)
+{
+    struct del *d = calloc(1, sizeof *d);
+    d->folder = f->id;
+    d->permanent = permanent;
+    bool any_folder = false;
+    char first[PATH_MAX] = "";
+    size_t total = is_tree(f) ? f->ntvis : f->m.total;
+    bool whole = i != SIZE_MAX && !is_tree(f) && ui_container_is_selected(f->cont, i);
+    for (size_t k = whole ? 0 : i; whole ? k < total : k == i; k++) {
+        if (whole && !ui_container_is_selected(f->cont, k)) continue;
+        char t[PATH_MAX];
+        target_of(f, k, t, sizeof t);
+        struct row *rw = row_at(f, k);
+        const char *title = rw && rw->title ? rw->title : NULL;
+        char p[PATH_MAX];   /* outlives the branches: title may point into it */
+        if (!strncmp(t, "vobj:", 5)) {
+            push(&d->vobjs, &d->nv, t);
+        } else {
+            /* the item's own path, not a shadow's or link's target */
+            if (is_tree(f) || k == SIZE_MAX || !rw) snprintf(p, sizeof p, "%s", k == SIZE_MAX ? f->path : t);
+            else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", rw->name);
+            char *sl = strrchr(p, '/');
+            if (!sl || !sl[1] || !strcmp(p, "/")) continue;
+            snprintf(d->parent, sizeof d->parent, "%.*s", sl == p ? 1 : (int)(sl - p), p);
+            push(&d->names, &d->n, sl + 1);
+            if (!title) title = sl + 1;
+            any_folder |= k == SIZE_MAX || is_tree(f) || (rw && rw->kind == UI_KIND_FOLDER && !rw->shadow && !rw->link);
+        }
+        if (!first[0]) snprintf(first, sizeof first, "%s", title ? title : t);
+        if (k == SIZE_MAX) break;
+    }
+    size_t n = d->n + d->nv;
+    if (!n) { del_free(d); return; }
+    if (!permanent && !(any_folder ? confirm_folder_delete : confirm_delete)) { start_deletion(d); return; }
+    char msg[700], what[400];
+    if (n == 1) snprintf(what, sizeof what, "\"%s\"", first);
+    else snprintf(what, sizeof what, "these %zu objects", n);
+    if (permanent) snprintf(msg, sizeof msg, "Delete %s for good?\nThis cannot be undone.", what);
+    else if (!d->n) snprintf(msg, sizeof msg, "Delete %s?", what);   /* shadows only: their originals stay */
+    else snprintf(msg, sizeof msg, "Move %s to the trash?%s", what,
+                  any_folder ? "\nFolders go with everything in them." : "");
+    const char *buttons[] = { "Delete", "Cancel" };
+    last_dialog = ui_dialog_open(app, permanent ? "Delete for good" : "Delete", msg, buttons, 2, 0, delete_confirmed, d);
+}
+
+static void win_close(ui_surface *s);
+
+/* Folder windows on folders that are gone (deleted, or in the trash) close. */
+static void close_gone_windows(void)
+{
+    for (struct folder *o = folders; o; o = o->next)
+        if (!o->closing && (access(o->path, F_OK) != 0 || strstr(o->path, "/Trash/files/") || strstr(o->path, "/.Trash-")))
+            win_close(o->win);
+}
+
+static void forgood_confirmed(void *arg, int choice)
+{
+    struct del *d = arg;
+    last_dialog = NULL;
+    if (choice == 0) { d->permanent = true; start_deletion(d); }
+    else del_free(d);
+}
+
+/* A trash or delete job's progress; true when it has ended. */
+static bool deletion_event(struct jobtrack *t, const cv *st, const char *state, int64_t done, int64_t total)
+{
+    bool trash = !strcmp(t->kind, "trash");
+    char m[400];
+    const char *err = cv_text(st, "error"), *cur = cv_text(st, "current");
+    if (strcmp(state, "done") && strcmp(state, "failed") && strcmp(state, "cancelled")) {
+        snprintf(m, sizeof m, "%s %lld of %lld%s%s", trash ? "Moving to the trash" : "Deleting", (long long)done,
+                 (long long)total, cur && *cur ? ": " : "", cur ? cur : "");
+        set_status(t->folder, m);
+        return false;
+    }
+    const cv *nt = cv_get(st, "not_trashed"), *miss = cv_get(st, "missing");
+    size_t nn = nt && nt->k == CV_ARRAY ? nt->n : 0, nm = miss && miss->k == CV_ARRAY ? miss->n : 0;
+    long long ok = (long long)done - (long long)nn - (long long)nm;
+    if (!strcmp(state, "done"))
+        snprintf(m, sizeof m, "%s %lld object%s%s%s", trash ? "Moved to the trash:" : "Deleted", ok, ok == 1 ? "" : "s",
+                 nm ? "; some were gone already" : "", nn ? "; some cannot go to the trash" : "");
+    else if (!strcmp(state, "failed")) snprintf(m, sizeof m, "Delete failed: %s", err ? err : "unknown error");
+    else snprintf(m, sizeof m, "Delete cancelled after %lld", (long long)done);
+    set_status(t->folder, m);
+    close_gone_windows();
+    if (nn) {
+        /* No trash takes them (a drive without one, or the trash itself):
+         * ask before deleting them for good. */
+        struct del *d = calloc(1, sizeof *d);
+        d->folder = t->folder;
+        const char *from = cv_text(st, "from");
+        snprintf(d->parent, sizeof d->parent, "%s", from ? from : "");
+        for (size_t i = 0; i < nn; i++)
+            if (nt->items[i].k == CV_TEXT) push(&d->names, &d->n, nt->items[i].s);
+        char msg[700];
+        if (d->n == 1) snprintf(msg, sizeof msg, "\"%s\" cannot go to the trash (it is in the trash already, or its drive has none).\nDelete it for good?", d->names[0]);
+        else snprintf(msg, sizeof msg, "%zu objects cannot go to the trash (they are in the trash already, or their drive has none).\nDelete them for good?", d->n);
+        const char *buttons[] = { "Delete", "Cancel" };
+        last_dialog = ui_dialog_open(app, "Delete for good", msg, buttons, 2, 1, forgood_confirmed, d);
+    }
+    return true;
+}
+
 static void on_job_event(const cv *st)
 {
     int64_t id, done = 0, total = 0;
@@ -1715,6 +1911,10 @@ static void on_job_event(const cv *st)
     bool move = !strcmp(t->kind, "move");
     char m[400];
     if (!state) return;
+    if (!strcmp(t->kind, "trash") || !strcmp(t->kind, "delete")) {
+        if (deletion_event(t, st, state, done, total)) { *pp = t->next; free(t); }
+        return;
+    }
     if (!strcmp(state, "done") || !strcmp(state, "failed") || !strcmp(state, "cancelled")) {
         const cv *miss = cv_get(st, "missing"), *skip = cv_get(st, "skipped");
         size_t nm = miss && miss->k == CV_ARRAY ? miss->n : 0, ns = skip && skip->k == CV_ARRAY ? skip->n : 0;
@@ -1828,6 +2028,15 @@ static void win_key(ui_surface *s, const ui_key_event *e)
     /* In the order the View menu lists them (OS/2's): icon, tree, details. */
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_3) { set_view(f, UI_VIEW_DETAILS); return; }
+    if (e->sym == XKB_KEY_Delete && !ui_container_renaming(f->cont)) {
+        /* the selection, or the item with the cursor (Shift: for good) */
+        size_t total = is_tree(f) ? f->ntvis : f->m.total, at = SIZE_MAX;
+        for (size_t k = 0; k < total && at == SIZE_MAX; k++)
+            if (ui_container_is_selected(f->cont, k)) at = k;
+        if (at == SIZE_MAX) at = ui_container_cursor(f->cont);
+        if (at != SIZE_MAX && at < total) delete_request(f, at, (e->mods & UI_MOD_SHIFT) != 0);
+        return;
+    }
     ui_container_key(f->cont, e);
     if (ui_container_selected_count(f->cont) != before) damage_status(f);
 }
@@ -2438,6 +2647,63 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "delete")) {
+        /* a.txt and sub selected, Delete, Enter: into the trash; then b.txt,
+         * Shift+Delete, Enter: gone for good. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        size_t ai = SIZE_MAX, si = SIZE_MAX, bi = SIZE_MAX;
+        for (size_t i = 0; i < f->m.total; i++) {
+            const char *n = model_name(&f->m, i);
+            if (n && !strcmp(n, "a.txt")) ai = i;
+            if (n && !strcmp(n, "sub")) si = i;
+            if (n && !strcmp(n, "b.txt")) bi = i;
+        }
+        ui_key_event del = { .sym = XKB_KEY_Delete }, sdel = { .sym = XKB_KEY_Delete, .mods = UI_MOD_SHIFT },
+                     ret = { .sym = XKB_KEY_Return };
+        char p[PATH_MAX + 64];
+        const char *dh = getenv("WPS_SELFTEST_TRASH");
+        if (step == 0 && ai != SIZE_MAX && si != SIZE_MAX) {
+            ui_container_select_none(f->cont);
+            ui_container_select(f->cont, ai);
+            ui_container_select(f->cont, si);
+            win_key(s, &del);
+            fprintf(stderr, "selftest: Delete asks: %s\n", last_dialog ? "yes" : "no");
+            if (last_dialog) ui_surface_send_key(ui_dialog_surface(last_dialog), &ret);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            snprintf(p, sizeof p, "%s/files/a.txt", dh ? dh : "");
+            bool a_in = access(p, F_OK) == 0;
+            snprintf(p, sizeof p, "%s/files/sub", dh ? dh : "");
+            fprintf(stderr, "selftest: after Delete: a.txt shown %d, sub shown %d; in the trash: a.txt %d, sub %d; status '%s'\n",
+                    ai != SIZE_MAX, si != SIZE_MAX, a_in, access(p, F_OK) == 0, f->error);
+            if (bi != SIZE_MAX) {
+                ui_container_select_none(f->cont);
+                ui_container_select(f->cont, bi);
+                win_key(s, &sdel);
+                if (last_dialog) ui_surface_send_key(ui_dialog_surface(last_dialog), &ret);
+            }
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            snprintf(p, sizeof p, "%s/files/b.txt", dh ? dh : "");
+            char q[PATH_MAX];
+            snprintf(q, sizeof q, "%s/b.txt", f->path);
+            fprintf(stderr, "selftest: after Shift+Delete: b.txt shown %d, on disk %d, in the trash %d; status '%s'\n",
+                    bi != SIZE_MAX, access(q, F_OK) == 0, access(p, F_OK) == 0, f->error);
+            step++;
+        } else if (step == 3) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -2585,6 +2851,7 @@ int main(int argc, char **argv)
     }
     if (i >= argc) { fprintf(stderr, "usage: wps-shell [--details] [--bench SECONDS] FOLDER...\n"); return 2; }
     app = ui_app_new();
+    load_system_conf();
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

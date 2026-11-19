@@ -21,6 +21,10 @@
  *   {op:"unsubscribe", sub}
  *   {op:"menu"|"settings", target}            menus and settings pages as data
  *   {op:"menu_select", target, item}  {op:"settings_set", target, values:{key:value}, expect}
+ *   {op:"trash", selection} / {op:"delete", selection}
+ *                      a job: into the freedesktop trash (items no trash can
+ *                      take are listed as not_trashed), or deleted for good
+ *   {op:"vdelete", target:"vobj:ID"}   delete a central object
  *   {op:"open", target, confirm}   start a program (as this user) or open a file;
  *                      a program owned by another user (not root) needs confirm
  *   {op:"from_template", target, folder, title}
@@ -1079,6 +1083,13 @@ static bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
         }
         if (jid < 0) reply_error(c, id, "bad request", err[0] ? err : "move/copy needs a selection and a dest");
         else reply_int(c, id, jid);
+    } else if (!strcmp(op, "trash") || !strcmp(op, "delete")) {
+        /* trash: into the trash of each item's filesystem; delete: for good */
+        int64_t sel = -1;
+        char err[128] = "";
+        int64_t jid = cv_int(msg, "selection", &sel) ? wps_job_start(op, sel, "", err, sizeof err) : -1;
+        if (jid < 0) reply_error(c, id, "bad request", err[0] ? err : "trash/delete needs a selection");
+        else reply_int(c, id, jid);
     } else if (!strcmp(op, "job") || !strcmp(op, "jobs")) {
         cbuf val;
         cb_init(&val);
@@ -1619,7 +1630,7 @@ struct vmove_job {
     struct client *c;
     int64_t id;
     char target[64], dest[PATH_MAX], from_folder[PATH_MAX];
-    bool copy;
+    bool copy, del;         /* del: vdelete, the object is deleted */
     char new_id[WPS_ID_LEN + 1];
     int err;
 };
@@ -1629,6 +1640,19 @@ static void vmove_work(void *arg)
     struct vmove_job *j = arg;
     wps_loaded ld, dst, from;
     wps_load(j->target, false, &ld);
+    if (j->del) {
+        if (ld.err || !ld.central) j->err = ENOENT;
+        else {
+            char fid[WPS_ID_LEN + 8];
+            snprintf(fid, sizeof fid, "id:%s", ld.folder_id);
+            wps_load(fid, false, &from);
+            if (!from.err) snprintf(j->from_folder, sizeof j->from_folder, "%s", from.path);
+            wps_loaded_free(&from);
+            j->err = wps_central_delete(ld.id);
+        }
+        wps_loaded_free(&ld);
+        return;
+    }
     wps_load(j->dest, true, &dst);
     if (ld.err || !ld.central) j->err = ENOENT;
     else if (dst.err || !S_ISDIR(dst.st.st_mode) || !dst.id[0]) j->err = ENOTDIR;
@@ -1647,7 +1671,10 @@ static void vmove_work(void *arg)
 static void vmove_done(void *arg)
 {
     struct vmove_job *j = arg;
-    if (!j->err) {
+    if (!j->err && j->del) {
+        wps_central_forget(j->target + 5);
+        if (j->from_folder[0]) on_central_change(j->from_folder, j->target + 5, 'd');
+    } else if (!j->err) {
         if (!j->copy && j->from_folder[0]) on_central_change(j->from_folder, j->target + 5, 'd');
         on_central_change(j->dest, j->new_id, 'c');
     }
@@ -1655,7 +1682,7 @@ static void vmove_done(void *arg)
         if (j->err) reply_error(j->c, j->id, "failed", strerror(j->err));
         else {
             char a[WPS_ID_LEN + 8];
-            snprintf(a, sizeof a, "vobj:%s", j->new_id);
+            snprintf(a, sizeof a, "vobj:%s", j->del ? j->target + 5 : j->new_id);
             struct simple s = { .c = j->c, .id = j->id };
             j->c->refs++;
             struct simple *sp = malloc(sizeof *sp);
@@ -1927,6 +1954,19 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
+    } else if (strcmp(op, "vdelete") == 0) {
+        const char *t = cv_text(msg, "target");
+        if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN) {
+            reply_error(c, id, "bad request", "vdelete needs a central object (vobj:ID)");
+            cv_free(msg);
+            return;
+        }
+        struct vmove_job *j = calloc(1, sizeof *j);
+        j->c = c; c->refs++;
+        j->id = id;
+        j->del = true;
+        snprintf(j->target, sizeof j->target, "%s", t);
+        wpo_defer(loop, "delete central object", vmove_work, vmove_done, j);
     } else if (strcmp(op, "vmove") == 0) {
         const char *t = cv_text(msg, "target"), *dest = cv_text(msg, "folder");
         const cv *cp = cv_get(msg, "copy");

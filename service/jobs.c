@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "jobs.h"
+#include "trash.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -98,6 +99,8 @@ struct job {
     int decision_all;       /* a standing decision for the rest of the job */
     char **missing, **skipped;
     size_t nmissing, nskipped;
+    char **not_trashed;     /* a trash job: items no trash can take (the GUI may delete them for good) */
+    size_t nnot_trashed;
     char error[256];
     time_t journaled;
     uint64_t journaled_items;
@@ -411,6 +414,43 @@ static void finish(struct job *j, jstate st)
 
 static void start_queued(void);
 
+/* Trash: one rename per item into the trash of its filesystem (its ID,
+ * settings and shadows go with it); items no trash can take are listed.
+ * Delete: removed for good (with their info files, in a trash). */
+static jstate trash_or_delete(struct job *j, char **items, size_t nitems)
+{
+    bool trash = !strcmp(j->kind, "trash");
+    for (size_t i = 0; i < nitems; i++) {
+        if (!checkpoint(j)) break;
+        const char *name = items[i];
+        char src[PATH_MAX], to[PATH_MAX];
+        snprintf(src, sizeof src, "%s/%s", j->sel.folder, name);
+        pthread_mutex_lock(&mu);
+        snprintf(j->current, sizeof j->current, "%s", name);
+        pthread_mutex_unlock(&mu);
+        int rc;
+        if (trash) {
+            rc = wps_trash(src, to, sizeof to);
+        } else {
+            struct stat st;
+            rc = lstat(src, &st) < 0 ? -errno : rm_tree(src) ? -errno : 0;
+            if (rc == 0) wps_trash_forget_info(src);
+        }
+        pthread_mutex_lock(&mu);
+        if (rc == -ENOENT) push_name(&j->missing, &j->nmissing, name);
+        else if (rc == -EXDEV && trash) push_name(&j->not_trashed, &j->nnot_trashed, name);
+        else if (rc < 0) {
+            snprintf(j->error, sizeof j->error, "%s: %s", name, strerror(-rc));
+            pthread_mutex_unlock(&mu);
+            return J_FAILED;
+        }
+        j->items_done++;
+        journal(j, false);
+        pthread_mutex_unlock(&mu);
+    }
+    return J_DONE;
+}
+
 static void *job_main(void *arg)
 {
     struct job *j = arg;
@@ -434,6 +474,20 @@ static void *job_main(void *arg)
     j->items_total = nitems;
     pthread_mutex_unlock(&mu);
 
+    if (!strcmp(j->kind, "trash") || !strcmp(j->kind, "delete")) {
+        jstate r = trash_or_delete(j, items, nitems);
+        for (size_t i = 0; i < nitems; i++) free(items[i]);
+        free(items);
+        pthread_mutex_lock(&mu);
+        if (r == J_DONE && j->want_cancel) r = J_CANCELLED;
+        if (r == J_DONE && j->want_logout) r = J_LOGOUT;
+        pthread_mutex_unlock(&mu);
+        finish(j, r);
+        pthread_mutex_lock(&mu);
+        start_queued();
+        pthread_mutex_unlock(&mu);
+        return NULL;
+    }
     struct stat dst_st;
     bool move = strcmp(j->kind, "move") == 0;
     jstate result = J_DONE;
@@ -556,7 +610,10 @@ static struct job *new_job(const char *kind, const struct selection *s, const ch
 
 int64_t wps_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen)
 {
-    if (strcmp(kind, "move") != 0 && strcmp(kind, "copy") != 0) { snprintf(err, errlen, "kind is move or copy"); return -1; }
+    if (strcmp(kind, "move") && strcmp(kind, "copy") && strcmp(kind, "trash") && strcmp(kind, "delete")) {
+        snprintf(err, errlen, "kind is move, copy, trash or delete");
+        return -1;
+    }
     pthread_mutex_lock(&mu);
     struct selection *s = selections;
     while (s && s->id != selection) s = s->next;
@@ -613,7 +670,7 @@ static void put_names(cbuf *b, char **v, size_t n)
 
 static void put_job(cbuf *b, struct job *j)
 {
-    cb_map(b, 13);
+    cb_map(b, 14);
     cb_text(b, "job"); cb_int(b, j->id);
     cb_text(b, "kind"); cb_text(b, j->kind);
     cb_text(b, "state"); cb_text(b, state_names[j->state]);
@@ -626,6 +683,7 @@ static void put_job(cbuf *b, struct job *j)
     cb_text(b, "conflict"); j->conflict[0] ? cb_text(b, j->conflict) : cb_null(b);
     cb_text(b, "missing"); put_names(b, j->missing, j->nmissing);
     cb_text(b, "skipped"); put_names(b, j->skipped, j->nskipped);
+    cb_text(b, "not_trashed"); put_names(b, j->not_trashed, j->nnot_trashed);
     cb_text(b, "error"); j->error[0] ? cb_text(b, j->error) : cb_null(b);
 }
 
@@ -717,8 +775,10 @@ void wps_jobs_shutdown(bool logout)
         free(j->sel.names);
         for (size_t i = 0; i < j->nmissing; i++) free(j->missing[i]);
         for (size_t i = 0; i < j->nskipped; i++) free(j->skipped[i]);
+        for (size_t i = 0; i < j->nnot_trashed; i++) free(j->not_trashed[i]);
         free(j->missing);
         free(j->skipped);
+        free(j->not_trashed);
         for (size_t i = 0; i < j->npos; i++) free(j->pos_names[i]);
         free(j->pos_names);
         free(j->pos_x);

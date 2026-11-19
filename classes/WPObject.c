@@ -49,7 +49,7 @@ char *WPObject__wpQueryHandle(wpo_object *self)
 char *WPObject__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
     (void)self;
-    return wps_concat(menu, "1\tOpen\n2\tProperties\n");
+    return wps_concat(menu, "1\tOpen\n2\tProperties\n40\tDelete...\n");
 }
 
 char *WPObject__wpAddSettingsPages(wpo_object *self, const char *pages)
