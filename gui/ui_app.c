@@ -790,3 +790,8 @@ size_t ui_surface_verify(ui_surface *s, const char *png_prefix)
     cairo_surface_destroy(exp);
     return diff;
 }
+
+void ui_surface_send_key(ui_surface *s, const ui_key_event *e)
+{
+    if (s && s->ops->key) s->ops->key(s, e);
+}

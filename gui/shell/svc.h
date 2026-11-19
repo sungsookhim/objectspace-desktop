@@ -27,6 +27,10 @@ void svc_menu(const char *target, svc_fn fn, void *arg);
 void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg);
 void svc_open(const char *target, bool confirm, svc_fn fn, void *arg);
 void svc_rename(const char *target, const char *name, svc_fn fn, void *arg);
+void svc_settings(const char *target, svc_fn fn, void *arg);
+/* One setting; `value` is CV_TEXT, CV_INT or CV_BOOL. expect: the object's
+ * change counter as last seen (a change elsewhere since is a conflict). */
+void svc_settings_set(const char *target, const char *key, const cv *value, int64_t expect, svc_fn fn, void *arg);
 
 /* Events: {event, sub, ...}, delivered to `fn` on the UI thread. The reply
  * to svc_subscribe carries the subscription ID in "result". */

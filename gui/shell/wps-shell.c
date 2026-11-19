@@ -390,6 +390,181 @@ static void open_item(struct folder *f, size_t i, ui_view view)
 
 static void src_activate(void *ctx, size_t i) { open_item(ctx, i, UI_VIEW_ICON); }
 
+
+/* ------------------------------------------------------------ properties */
+
+/* An object's settings notebook. Replies find it by ID: it may have
+ * closed. The title field renames (the service renames files, titles the
+ * rest), so the target path can change while it is open. */
+struct props {
+    struct props *next;
+    long id;
+    char target[PATH_MAX];
+    char title[256];
+    int64_t changes;
+    ui_notebook *nb;
+};
+
+static struct props *props_open;
+static long next_props_id = 1;
+
+static struct props *props_by_id(long id)
+{
+    for (struct props *p = props_open; p; p = p->next)
+        if (p->id == id) return p;
+    return NULL;
+}
+
+/* The service's pages, as notebook pages (strings point into `res`). */
+static ui_page_desc *pages_from(const cv *res, size_t *n)
+{
+    *n = res && res->k == CV_ARRAY ? res->n : 0;
+    ui_page_desc *pages = calloc(*n ? *n : 1, sizeof *pages);
+    for (size_t i = 0; i < *n; i++) {
+        const cv *pg = &res->items[i], *fs = cv_get(pg, "fields");
+        pages[i].title = cv_text(pg, "title");
+        size_t nf = fs && fs->k == CV_ARRAY ? fs->n : 0;
+        ui_field_desc *fields = calloc(nf ? nf : 1, sizeof *fields);
+        for (size_t k = 0; k < nf; k++) {
+            const cv *fd = &fs->items[k], *v = cv_get(fd, "value"), *ch = cv_get(fd, "choices");
+            const char *type = cv_text(fd, "type");
+            ui_field_desc *d = &fields[k];
+            d->key = cv_text(fd, "key");
+            d->label = cv_text(fd, "label");
+            d->kind = !type || !strcmp(type, "text") ? UI_FIELD_TEXT : !strcmp(type, "checkbox") ? UI_FIELD_CHECKBOX
+                      : !strcmp(type, "number") ? UI_FIELD_NUMBER : UI_FIELD_CHOICE;
+            if (v && v->k == CV_TEXT) d->value.text = (char *)v->s;
+            else if (v && v->k == CV_INT) d->value.number = v->i;
+            else if (v && v->k == CV_BOOL) d->value.checked = v->b;
+            if (ch && ch->k == CV_ARRAY) {
+                const char **c = calloc(ch->n ? ch->n : 1, sizeof *c);
+                for (size_t j = 0; j < ch->n; j++) c[j] = ch->items[j].k == CV_TEXT ? ch->items[j].s : "";
+                d->choices = c;
+                d->nchoices = ch->n;
+            }
+        }
+        pages[i].fields = fields;
+        pages[i].nfields = nf;
+    }
+    return pages;
+}
+
+static void pages_free(ui_page_desc *pages, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        for (size_t k = 0; k < pages[i].nfields; k++) free((void *)pages[i].fields[k].choices);
+        free((void *)pages[i].fields);
+    }
+    free(pages);
+}
+
+static void note_object(struct props *p, const cv *reply)
+{
+    const cv *o = reply ? cv_get(reply, "object") : NULL;
+    int64_t ch;
+    if (o && cv_int(o, "changes", &ch)) p->changes = ch;
+    const char *path = o ? cv_text(o, "path") : NULL;
+    if (path && *path) snprintf(p->target, sizeof p->target, "%s", path);   /* renamed */
+}
+
+static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_value *v);
+
+static void props_refreshed(void *arg, const cv *reply)
+{
+    struct props *p = props_by_id((long)(intptr_t)arg);
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!p || !res || !p->nb) return;
+    note_object(p, reply);
+    size_t n;
+    ui_page_desc *pages = pages_from(res, &n);
+    ui_notebook_update(p->nb, pages, n);
+    pages_free(pages, n);
+}
+
+static void props_refresh(struct props *p) { svc_settings(p->target, props_refreshed, (void *)(intptr_t)p->id); }
+
+static void props_applied(void *arg, const cv *reply)
+{
+    struct props *p = props_by_id((long)(intptr_t)arg);
+    if (!p || !p->nb) return;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (ok && ok->k == CV_BOOL && ok->b) {
+        note_object(p, reply);
+        const cv *res = cv_get(reply, "result");
+        if (res && res->k == CV_BOOL && !res->b)   /* a rename without permission */
+            ui_notebook_set_status(p->nb, "No permission to rename the file: the new name is kept as its title");
+        else ui_notebook_set_status(p->nb, "");
+        props_refresh(p);
+        return;
+    }
+    const char *code = reply ? cv_text(reply, "error") : NULL, *msg = reply ? cv_text(reply, "message") : NULL;
+    char m[300];
+    if (code && !strcmp(code, "conflict")) snprintf(m, sizeof m, "Changed elsewhere meanwhile: these are the current values");
+    else snprintf(m, sizeof m, "Not changed: %s", msg ? msg : reply ? "refused" : "lost the connection to wpsd");
+    ui_notebook_set_status(p->nb, m);
+    props_refresh(p);
+}
+
+static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_value *v)
+{
+    struct props *p = ctx;
+    void *arg = (void *)(intptr_t)p->id;
+    if (!strcmp(key, "title") && kind == UI_FIELD_TEXT) {
+        /* Decided: a file's title is its name; the service renames it (or,
+         * without permission, keeps it as a title). */
+        svc_rename(p->target, v->text ? v->text : "", props_applied, arg);
+        return;
+    }
+    cv val = { 0 };
+    if (kind == UI_FIELD_TEXT) { val.k = CV_TEXT; val.s = v->text ? v->text : ""; val.len = strlen(val.s); }
+    else if (kind == UI_FIELD_CHECKBOX) { val.k = CV_BOOL; val.b = v->checked; }
+    else { val.k = CV_INT; val.i = v->number; }
+    svc_settings_set(p->target, key, &val, p->changes, props_applied, arg);
+}
+
+static void props_closed(void *ctx)
+{
+    struct props *p = ctx;
+    for (struct props **pp = &props_open; *pp; pp = &(*pp)->next)
+        if (*pp == p) { *pp = p->next; break; }
+    free(p);
+}
+
+static void got_settings(void *arg, const cv *reply)
+{
+    struct props *p = props_by_id((long)(intptr_t)arg);
+    if (!p) return;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!res) {
+        fprintf(stderr, "wps-shell: no settings for %s: %s\n", p->target, reply ? cv_text(reply, "message") : "no service");
+        props_closed(p);
+        return;
+    }
+    note_object(p, reply);
+    const cv *o = cv_get(reply, "object");
+    const char *t = o ? cv_text(o, "title") : NULL;
+    snprintf(p->title, sizeof p->title, "%s - Properties", t && *t ? t : p->target);
+    size_t n;
+    ui_page_desc *pages = pages_from(res, &n);
+    p->nb = ui_notebook_open(app, p->title, pages, n, props_set, props_closed, p);
+    pages_free(pages, n);
+}
+
+/* Open an object's notebook, or leave the open one (Wayland lets no program
+ * raise its own window on its own). */
+static bool open_properties(const char *target)
+{
+    for (struct props *p = props_open; p; p = p->next)
+        if (!strcmp(p->target, target)) return false;
+    struct props *p = calloc(1, sizeof *p);
+    p->id = next_props_id++;
+    snprintf(p->target, sizeof p->target, "%s", target);
+    p->next = props_open;
+    props_open = p;
+    svc_settings(target, got_settings, (void *)(intptr_t)p->id);
+    return true;
+}
+
 /* Menus: the service gives the items; the GUI carries out the well-known
  * ones and sends the rest back. */
 struct menu_ctx { long folder; size_t item; double x, y; uint32_t serial; };
@@ -431,8 +606,10 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
         case WPS_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
         case WPS_MI_PROPERTIES:
-            snprintf(f->error, sizeof f->error, "The settings notebook comes in G2");
-            damage_status(f);
+            if (!open_properties(t)) {
+                snprintf(f->error, sizeof f->error, "Its settings notebook is already open");
+                damage_status(f);
+            }
             break;
         case WPS_MI_OPEN_WITH:
             snprintf(f->error, sizeof f->error, "Open With comes in G2");
@@ -772,6 +949,54 @@ static void win_frame(ui_surface *s, double now)
             for (size_t k = 0; k < f->m.total; k++)
                 if (model_name(&f->m, k) && !strcmp(model_name(&f->m, k), "renamed.txt")) shown = true;
             fprintf(stderr, "selftest: renamed.txt on disk %d, in the window %d, status '%s'\n", on_disk, shown, f->error);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "props")) {
+        /* Properties on old-name.txt, all by keyboard: Tab to Title, type,
+         * Enter (renames the file); Tab to Template, Space; Escape closes. */
+        static double t0;
+        static int step;
+        static ui_surface *nbs;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        if (step == 0) {
+            size_t i = SIZE_MAX;
+            for (size_t k = 0; k < f->m.total; k++)
+                if (model_name(&f->m, k) && !strcmp(model_name(&f->m, k), "old-name.txt")) i = k;
+            struct menu_ctx *mc = calloc(1, sizeof *mc);
+            mc->folder = f->id;
+            mc->item = i;
+            menu_chosen(mc, WPS_MI_PROPERTIES);
+            step++;
+        } else if (step == 1 && props_open && props_open->nb) {
+            nbs = ui_notebook_surface(props_open->nb);
+            fprintf(stderr, "selftest: notebook open: %s\n", props_open->title);
+            ui_key_event tab = { .sym = XKB_KEY_Tab }, ret = { .sym = XKB_KEY_Return };
+            ui_surface_send_key(nbs, &tab);
+            for (const char *p = "titled.txt"; *p; p++) {
+                ui_key_event c = { .sym = (uint32_t)*p };
+                c.utf8[0] = *p;
+                ui_surface_send_key(nbs, &c);
+            }
+            ui_surface_send_key(nbs, &ret);
+            step++;
+            t0 = now;
+        } else if (step == 2 && now - t0 > 800) {
+            ui_key_event tab = { .sym = XKB_KEY_Tab }, sp = { .sym = XKB_KEY_space, .utf8 = " " };
+            ui_surface_send_key(nbs, &tab);
+            ui_surface_send_key(nbs, &sp);
+            step++;
+            t0 = now;
+        } else if (step == 3 && now - t0 > 800) {
+            fprintf(stderr, "selftest: notebook now for %s\n", props_open ? props_open->target : "(closed)");
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            ui_surface_send_key(nbs, &esc);
+            step++;
+            t0 = now;
+        } else if (step == 4 && now - t0 > 500) {
+            fprintf(stderr, "selftest: after Escape the notebook is %s\n", props_open ? "open" : "closed");
             ui_app_quit(app);
             step++;
         }

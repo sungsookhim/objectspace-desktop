@@ -161,6 +161,9 @@ double ui_surface_width(ui_surface *s);
 double ui_surface_height(ui_surface *s);
 int ui_surface_scale(ui_surface *s);
 
+/* Deliver an event as if it came from the seat (self-tests). */
+void ui_surface_send_key(ui_surface *s, const ui_key_event *e);
+
 /* Damage: redraw `r` at the next frame. */
 void ui_surface_damage(ui_surface *s, ui_rect r);
 void ui_surface_damage_all(ui_surface *s);
@@ -242,6 +245,30 @@ void ui_entry_select_stem(ui_entry *e);     /* up to the last dot: a file's name
 void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused);
 ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k);
 ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect r);
+
+/* -------------------------------------------------------------- notebooks */
+
+/* Settings notebooks, as in Warp 4 (ui_notebook.c). Built from pages of
+ * typed fields; `set` is called as each change is made. */
+typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE } ui_field_kind;
+typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */
+typedef struct {
+    const char *key, *label;
+    ui_field_kind kind;
+    ui_value value;
+    const char *const *choices;
+    size_t nchoices;
+} ui_field_desc;
+typedef struct { const char *title; const ui_field_desc *fields; size_t nfields; } ui_page_desc;
+typedef struct ui_notebook ui_notebook;
+typedef void (*ui_notebook_set_fn)(void *ctx, const char *key, ui_field_kind kind, const ui_value *v);
+typedef void (*ui_notebook_close_fn)(void *ctx);
+ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *pages, size_t n,
+                              ui_notebook_set_fn set, ui_notebook_close_fn closed, void *ctx);
+void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n);
+void ui_notebook_set_status(ui_notebook *nb, const char *msg);
+void ui_notebook_close(ui_notebook *nb);
+ui_surface *ui_notebook_surface(ui_notebook *nb);
 
 /* ------------------------------------------------------------- containers */
 

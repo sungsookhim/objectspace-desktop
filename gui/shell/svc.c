@@ -276,3 +276,26 @@ void svc_rename(const char *target, const char *name, svc_fn fn, void *arg)
     cb_text(&o->b, "name"); cb_text(&o->b, name);
     send_req(o, id, fn, arg);
 }
+
+void svc_settings(const char *target, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("settings", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    send_req(o, id, fn, arg);
+}
+
+void svc_settings_set(const char *target, const char *key, const cv *value, int64_t expect, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("settings_set", 3, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "values");
+    cb_map(&o->b, 1);
+    cb_text(&o->b, key);
+    if (value->k == CV_TEXT) cb_text(&o->b, value->s);
+    else if (value->k == CV_BOOL) cb_bool(&o->b, value->b);
+    else cb_int(&o->b, value->i);
+    cb_text(&o->b, "expect"); cb_int(&o->b, expect);
+    send_req(o, id, fn, arg);
+}

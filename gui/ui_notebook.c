@@ -1,0 +1,606 @@
+/*
+ * Settings notebooks (gui-design.md, Widget set 4), laid out as in Warp 4:
+ * tabs across the top, the page's fields with their labels, and Undo,
+ * Default and Help at the bottom. Changes apply as they are made (text on
+ * Enter or when it loses focus); Undo puts back the values the notebook
+ * opened with.
+ */
+#define _GNU_SOURCE
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+
+#include "ui.h"
+
+#define TAB_H 24
+#define ROW_H 30
+#define FIELD_H 24
+#define LABEL_W 140
+#define MARGIN 14
+#define BUTTON_W 80
+#define BUTTON_H 24
+#define STATUS_H 20
+
+struct field {
+    char *key, *label;
+    ui_field_kind kind;
+    ui_value v, orig;        /* now, and when the notebook opened */
+    char **choices;
+    size_t nchoices;
+    ui_entry *entry;         /* text and number */
+    bool spin_down;          /* an arrow held (number) */
+};
+
+struct page {
+    char *title;
+    struct field *f;
+    size_t n;
+};
+
+struct ui_notebook {
+    ui_surface *win;
+    char title[256];
+    struct page *pages;
+    size_t npages;
+    size_t page;             /* shown */
+    int focus;               /* field on the page; -1: none; npages-relative buttons below */
+    int pressed_button;      /* 0 Undo, 1 Default, 2 Help; -1 none */
+    char status[256];
+    ui_notebook_set_fn set;
+    ui_notebook_close_fn closed;
+    void *ctx;
+    bool closing;
+};
+
+/* ------------------------------------------------------------ values */
+
+static void value_copy(ui_value *d, const ui_value *s)
+{
+    *d = *s;
+    d->text = s->text ? strdup(s->text) : NULL;
+}
+
+static void value_free(ui_value *v)
+{
+    free(v->text);
+    v->text = NULL;
+}
+
+static bool value_same(const ui_value *a, const ui_value *b)
+{
+    return a->number == b->number && a->checked == b->checked &&
+           !strcmp(a->text ? a->text : "", b->text ? b->text : "");
+}
+
+static void free_pages(struct page *p, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        for (size_t k = 0; k < p[i].n; k++) {
+            struct field *f = &p[i].f[k];
+            free(f->key);
+            free(f->label);
+            value_free(&f->v);
+            value_free(&f->orig);
+            for (size_t c = 0; c < f->nchoices; c++) free(f->choices[c]);
+            free(f->choices);
+            ui_entry_free(f->entry);
+        }
+        free(p[i].f);
+        free(p[i].title);
+    }
+    free(p);
+}
+
+static void entry_from_value(struct field *f)
+{
+    if (!f->entry) return;
+    char buf[64];
+    if (f->kind == UI_FIELD_NUMBER) {
+        snprintf(buf, sizeof buf, "%lld", (long long)f->v.number);
+        ui_entry_set_text(f->entry, buf);
+    } else {
+        ui_entry_set_text(f->entry, f->v.text ? f->v.text : "");
+    }
+}
+
+static struct page *copy_pages(const ui_page_desc *src, size_t n)
+{
+    struct page *p = calloc(n ? n : 1, sizeof *p);
+    for (size_t i = 0; i < n; i++) {
+        p[i].title = strdup(src[i].title ? src[i].title : "");
+        p[i].n = src[i].nfields;
+        p[i].f = calloc(p[i].n ? p[i].n : 1, sizeof *p[i].f);
+        for (size_t k = 0; k < p[i].n; k++) {
+            const ui_field_desc *d = &src[i].fields[k];
+            struct field *f = &p[i].f[k];
+            f->key = strdup(d->key);
+            f->label = strdup(d->label ? d->label : d->key);
+            f->kind = d->kind;
+            value_copy(&f->v, &d->value);
+            value_copy(&f->orig, &d->value);
+            f->nchoices = d->nchoices;
+            f->choices = calloc(f->nchoices ? f->nchoices : 1, sizeof *f->choices);
+            for (size_t c = 0; c < f->nchoices; c++) f->choices[c] = strdup(d->choices[c]);
+            if (f->kind == UI_FIELD_TEXT || f->kind == UI_FIELD_NUMBER) {
+                f->entry = ui_entry_new("");
+                entry_from_value(f);
+            }
+        }
+    }
+    return p;
+}
+
+/* ------------------------------------------------------------ geometry */
+
+static ui_rect tab_rect(ui_notebook *nb, size_t i)
+{
+    ui_rect c = ui_frame_client(nb->win);
+    double x = c.x + MARGIN;
+    for (size_t k = 0; k < i; k++) x += ui_text_width(UI_FONT_REGULAR, nb->pages[k].title) + 28;
+    return (ui_rect){ x, c.y + 8, ui_text_width(UI_FONT_REGULAR, nb->pages[i].title) + 24, TAB_H };
+}
+
+static ui_rect page_rect(ui_notebook *nb)
+{
+    ui_rect c = ui_frame_client(nb->win);
+    return (ui_rect){ c.x + MARGIN - 4, c.y + 8 + TAB_H, c.w - 2 * (MARGIN - 4), c.h - 8 - TAB_H - BUTTON_H - 22 - STATUS_H };
+}
+
+static ui_rect control_rect(ui_notebook *nb, size_t k)
+{
+    ui_rect p = page_rect(nb);
+    double x = p.x + MARGIN + LABEL_W, w = p.w - 2 * MARGIN - LABEL_W;
+    struct field *f = &nb->pages[nb->page].f[k];
+    if (f->kind == UI_FIELD_CHECKBOX) w = FIELD_H;
+    else if (f->kind == UI_FIELD_NUMBER) w = fmin(w, 140);
+    else if (f->kind == UI_FIELD_CHOICE) w = fmin(w, 220);
+    return (ui_rect){ x, p.y + MARGIN + (double)k * ROW_H, w, FIELD_H };
+}
+
+static ui_rect spin_rect(ui_rect r, bool up)
+{
+    return (ui_rect){ r.x + r.w - 16, up ? r.y : r.y + r.h / 2, 16, r.h / 2 };
+}
+
+static ui_rect button_rect(ui_notebook *nb, int i)
+{
+    ui_rect c = ui_frame_client(nb->win);
+    double y = c.y + c.h - STATUS_H - BUTTON_H - 10;
+    return (ui_rect){ c.x + MARGIN + i * (BUTTON_W + 8), y, BUTTON_W, BUTTON_H };
+}
+
+static ui_rect status_rect(ui_notebook *nb)
+{
+    ui_rect c = ui_frame_client(nb->win);
+    return (ui_rect){ c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
+}
+
+static void damage(ui_notebook *nb) { ui_surface_damage(nb->win, ui_frame_client(nb->win)); }
+
+/* ------------------------------------------------------------ drawing */
+
+static const char *button_labels[3] = { "Undo", "Default", "Help" };
+
+static void draw_check(cairo_t *cr, ui_rect r, bool on)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_rect b = { r.x + 4, r.y + 4, r.h - 8, r.h - 8 };
+    ui_fill(cr, b, k->client_bg);
+    ui_bevel(cr, b, false);
+    if (!on) return;
+    ui_set_color(cr, k->text);
+    cairo_set_line_width(cr, 2);
+    cairo_move_to(cr, b.x + 3, b.y + b.h / 2);
+    cairo_line_to(cr, b.x + b.w / 2 - 1, b.y + b.h - 4);
+    cairo_line_to(cr, b.x + b.w - 3, b.y + 3);
+    cairo_stroke(cr);
+}
+
+static void draw_arrow(cairo_t *cr, ui_rect r, bool up)
+{
+    double cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    if (up) { cairo_move_to(cr, cx - 3, cy + 2); cairo_line_to(cr, cx + 3, cy + 2); cairo_line_to(cr, cx, cy - 2); }
+    else { cairo_move_to(cr, cx - 3, cy - 2); cairo_line_to(cr, cx + 3, cy - 2); cairo_line_to(cr, cx, cy + 2); }
+    cairo_close_path(cr);
+    cairo_fill(cr);
+}
+
+static void focus_ring(cairo_t *cr, ui_rect r)
+{
+    ui_set_color(cr, ui_scheme_now.cursor);
+    double dash = 1;
+    cairo_set_dash(cr, &dash, 1, 0);
+    cairo_set_line_width(cr, 1);
+    cairo_rectangle(cr, r.x - 2.5, r.y - 2.5, r.w + 5, r.h + 5);
+    cairo_stroke(cr);
+    cairo_set_dash(cr, NULL, 0, 0);
+}
+
+static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+{
+    ui_notebook *nb = ui_surface_data(s);
+    const ui_scheme *k = &ui_scheme_now;
+    ui_frame_draw(s, cr, clip, nb->title);
+    ui_rect c = ui_frame_client(s);
+    if (!ui_rect_meets(clip, c)) return;
+    ui_fill(cr, c, k->face);
+    double base_off = (FIELD_H + ui_text_ascent()) / 2 - 1;
+    /* Tabs: the shown one raised and joined to the page. */
+    for (size_t i = 0; i < nb->npages; i++) {
+        ui_rect t = tab_rect(nb, i);
+        bool on = i == nb->page;
+        if (!on) { t.y += 2; t.h -= 2; }
+        ui_fill(cr, t, on ? k->face : (ui_color){ k->face.r * 0.9, k->face.g * 0.9, k->face.b * 0.9, 1 });
+        ui_bevel(cr, (ui_rect){ t.x, t.y, t.w, t.h + (on ? 2 : 0) }, true);
+        ui_set_color(cr, k->text);
+        ui_text_draw(cr, on ? UI_FONT_BOLD : UI_FONT_REGULAR, t.x + 12, t.y + (t.h + ui_text_ascent()) / 2 - 1,
+                     nb->pages[i].title, 0);
+    }
+    ui_rect p = page_rect(nb);
+    ui_bevel(cr, p, true);
+    if (nb->npages) {
+        ui_rect t = tab_rect(nb, nb->page);
+        ui_fill(cr, (ui_rect){ t.x + 1, p.y, t.w - 2, 1 }, k->face);   /* the tab opens into the page */
+    }
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    for (size_t i = 0; pg && i < pg->n; i++) {
+        struct field *f = &pg->f[i];
+        ui_rect r = control_rect(nb, i);
+        bool focused = nb->focus == (int)i;
+        ui_set_color(cr, k->text);
+        ui_text_draw(cr, UI_FONT_REGULAR, p.x + MARGIN, r.y + base_off, f->label, LABEL_W - 8);
+        switch (f->kind) {
+        case UI_FIELD_TEXT:
+            ui_entry_draw(f->entry, cr, r, focused);
+            break;
+        case UI_FIELD_NUMBER: {
+            ui_rect er = { r.x, r.y, r.w - 16, r.h };
+            ui_entry_draw(f->entry, cr, er, focused);
+            for (int up = 0; up < 2; up++) {
+                ui_rect a = spin_rect(r, up);
+                ui_fill(cr, a, k->face);
+                ui_bevel(cr, a, true);
+                ui_set_color(cr, k->text);
+                draw_arrow(cr, a, up);
+            }
+            break;
+        }
+        case UI_FIELD_CHECKBOX:
+            draw_check(cr, r, f->v.checked);
+            if (focused) focus_ring(cr, r);
+            break;
+        case UI_FIELD_CHOICE: {
+            ui_fill(cr, r, k->client_bg);
+            ui_bevel(cr, r, false);
+            const char *t = f->v.number >= 0 && (size_t)f->v.number < f->nchoices ? f->choices[f->v.number] : "";
+            ui_set_color(cr, k->text);
+            ui_text_draw(cr, UI_FONT_REGULAR, r.x + 6, r.y + base_off, t, r.w - 30);
+            ui_rect a = { r.x + r.w - 20, r.y + 2, 18, r.h - 4 };
+            ui_fill(cr, a, k->face);
+            ui_bevel(cr, a, true);
+            ui_set_color(cr, k->text);
+            draw_arrow(cr, a, false);
+            if (focused) focus_ring(cr, r);
+            break;
+        }
+        }
+    }
+    int nf = pg ? (int)pg->n : 0;
+    for (int i = 0; i < 3; i++) {
+        ui_rect b = button_rect(nb, i);
+        bool enabled = i == 0;   /* Default and Help: later */
+        bool down = nb->pressed_button == i;
+        ui_fill(cr, b, k->face);
+        ui_bevel(cr, b, !down);
+        ui_set_color(cr, enabled ? k->text : k->disabled_text);
+        double tw = ui_text_width(UI_FONT_REGULAR, button_labels[i]);
+        ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + (down ? 1 : 0), b.y + (b.h + ui_text_ascent()) / 2 - 1 + (down ? 1 : 0),
+                     button_labels[i], 0);
+        if (nb->focus == nf + i) focus_ring(cr, (ui_rect){ b.x + 3, b.y + 3, b.w - 6, b.h - 6 });
+    }
+    ui_rect st = status_rect(nb);
+    ui_fill(cr, st, k->face);
+    ui_bevel(cr, (ui_rect){ st.x + 1, st.y + 1, st.w - 2, st.h - 2 }, false);
+    ui_set_color(cr, k->text);
+    ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, nb->status, st.w - 12);
+}
+
+/* ------------------------------------------------------------ behaviour */
+
+static struct field *focused_field(ui_notebook *nb)
+{
+    if (!nb->npages) return NULL;
+    struct page *pg = &nb->pages[nb->page];
+    return nb->focus >= 0 && (size_t)nb->focus < pg->n ? &pg->f[nb->focus] : NULL;
+}
+
+static void apply(ui_notebook *nb, struct field *f)
+{
+    if (nb->set) nb->set(nb->ctx, f->key, f->kind, &f->v);
+}
+
+/* A text or number field's typing becomes its value. */
+static void commit_entry(ui_notebook *nb, struct field *f)
+{
+    if (!f || !f->entry) return;
+    const char *t = ui_entry_text(f->entry);
+    if (f->kind == UI_FIELD_NUMBER) {
+        char *end;
+        long long v = strtoll(t, &end, 10);
+        if (end == t || *end) { entry_from_value(f); damage(nb); return; }   /* not a number: put it back */
+        if (v == f->v.number) return;
+        f->v.number = v;
+    } else {
+        if (!strcmp(t, f->v.text ? f->v.text : "")) return;
+        free(f->v.text);
+        f->v.text = strdup(t);
+    }
+    apply(nb, f);
+}
+
+static void set_focus(ui_notebook *nb, int i)
+{
+    if (i == nb->focus) return;
+    commit_entry(nb, focused_field(nb));
+    nb->focus = i;
+    struct field *f = focused_field(nb);
+    if (f && f->entry) ui_entry_select_all(f->entry);
+    damage(nb);
+}
+
+static void show_page(ui_notebook *nb, size_t p)
+{
+    if (p >= nb->npages || p == nb->page) return;
+    commit_entry(nb, focused_field(nb));
+    nb->page = p;
+    nb->focus = -1;
+    damage(nb);
+}
+
+static void step_number(ui_notebook *nb, struct field *f, int d)
+{
+    commit_entry(nb, f);
+    f->v.number += d;
+    entry_from_value(f);
+    apply(nb, f);
+    damage(nb);
+}
+
+static void set_choice(ui_notebook *nb, struct field *f, int64_t c)
+{
+    if (c < 0 || (size_t)c >= f->nchoices || c == f->v.number) return;
+    f->v.number = c;
+    apply(nb, f);
+    damage(nb);
+}
+
+struct choice_ctx { ui_notebook *nb; size_t page, field; };
+
+static void choice_chosen(void *arg, int64_t id)
+{
+    struct choice_ctx *cc = arg;
+    ui_notebook *nb = cc->nb;
+    if (id >= 0 && !nb->closing && cc->page < nb->npages && cc->field < nb->pages[cc->page].n)
+        set_choice(nb, &nb->pages[cc->page].f[cc->field], id);
+    free(cc);
+}
+
+static void open_choices(ui_notebook *nb, size_t k, uint32_t serial)
+{
+    struct field *f = &nb->pages[nb->page].f[k];
+    ui_menu_item *items = calloc(f->nchoices ? f->nchoices : 1, sizeof *items);
+    for (size_t i = 0; i < f->nchoices; i++)
+        items[i] = (ui_menu_item){ (int64_t)i, f->choices[i], true, (int64_t)i == f->v.number, NULL, 0 };
+    ui_rect r = control_rect(nb, k);
+    struct choice_ctx *cc = malloc(sizeof *cc);
+    cc->nb = nb;
+    cc->page = nb->page;
+    cc->field = k;
+    ui_menu_popup(nb->win, items, f->nchoices, r.x, r.y + r.h, serial, choice_chosen, cc);
+    free(items);
+}
+
+static void undo(ui_notebook *nb)
+{
+    commit_entry(nb, focused_field(nb));
+    for (size_t p = 0; p < nb->npages; p++)
+        for (size_t k = 0; k < nb->pages[p].n; k++) {
+            struct field *f = &nb->pages[p].f[k];
+            if (value_same(&f->v, &f->orig)) continue;
+            value_free(&f->v);
+            value_copy(&f->v, &f->orig);
+            entry_from_value(f);
+            apply(nb, f);
+        }
+    damage(nb);
+}
+
+static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
+{
+    ui_notebook *nb = ui_surface_data(s);
+    if (e->kind != UI_PRESS || ui_frame_hit(s, e->x, e->y) != UI_HIT_CLIENT)
+        if (ui_frame_pointer(s, e) && e->kind == UI_PRESS) return;
+    struct field *ff = focused_field(nb);
+    if (ff && ff->entry && (e->kind == UI_MOTION || e->kind == UI_RELEASE)) {
+        ui_rect r = control_rect(nb, (size_t)nb->focus);
+        if (ff->kind == UI_FIELD_NUMBER) r.w -= 16;
+        if (ui_entry_pointer(ff->entry, e, r) != UI_ENTRY_NONE) damage(nb);
+    }
+    if (e->kind == UI_RELEASE && nb->pressed_button >= 0) {
+        int b = nb->pressed_button;
+        nb->pressed_button = -1;
+        damage(nb);
+        if (b == 0 && ui_rect_has(button_rect(nb, 0), e->x, e->y)) undo(nb);
+        return;
+    }
+    if (e->kind != UI_PRESS || e->button != ui_mouse_button(UI_ACT_SELECT)) return;
+    for (size_t i = 0; i < nb->npages; i++)
+        if (ui_rect_has(tab_rect(nb, i), e->x, e->y)) { show_page(nb, i); return; }
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    for (size_t k = 0; pg && k < pg->n; k++) {
+        ui_rect r = control_rect(nb, k);
+        if (!ui_rect_has(r, e->x, e->y)) continue;
+        struct field *f = &pg->f[k];
+        set_focus(nb, (int)k);
+        switch (f->kind) {
+        case UI_FIELD_CHECKBOX:
+            f->v.checked = !f->v.checked;
+            apply(nb, f);
+            damage(nb);
+            break;
+        case UI_FIELD_CHOICE:
+            open_choices(nb, k, e->serial);
+            break;
+        case UI_FIELD_NUMBER:
+            if (ui_rect_has(spin_rect(r, true), e->x, e->y)) { step_number(nb, f, 1); break; }
+            if (ui_rect_has(spin_rect(r, false), e->x, e->y)) { step_number(nb, f, -1); break; }
+            r.w -= 16;
+            /* fall through */
+        case UI_FIELD_TEXT:
+            if (ui_entry_pointer(f->entry, e, r) != UI_ENTRY_NONE) damage(nb);
+            break;
+        }
+        return;
+    }
+    int nf = pg ? (int)pg->n : 0;
+    if (ui_rect_has(button_rect(nb, 0), e->x, e->y)) {
+        set_focus(nb, nf);
+        nb->pressed_button = 0;
+        damage(nb);
+        return;
+    }
+    set_focus(nb, -1);   /* a click on the page: nothing focused */
+}
+
+static void nb_key(ui_surface *s, const ui_key_event *e)
+{
+    ui_notebook *nb = ui_surface_data(s);
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    int nf = pg ? (int)pg->n : 0, total = nf + 1;   /* fields, then Undo */
+    struct field *f = focused_field(nb);
+    if (e->sym == XKB_KEY_Tab || e->sym == XKB_KEY_ISO_Left_Tab) {
+        bool back = (e->mods & UI_MOD_SHIFT) || e->sym == XKB_KEY_ISO_Left_Tab;
+        int i = nb->focus < 0 ? (back ? total - 1 : 0) : (nb->focus + (back ? total - 1 : 1)) % total;
+        set_focus(nb, i);
+        return;
+    }
+    if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_Page_Down || e->sym == XKB_KEY_Page_Up)) {
+        size_t n = nb->npages;
+        if (n) show_page(nb, (nb->page + (e->sym == XKB_KEY_Page_Down ? 1 : n - 1)) % n);
+        return;
+    }
+    if (e->sym == XKB_KEY_Escape && !(f && f->entry)) {   /* Escape closes, as in OS/2 */
+        ui_notebook_close(nb);
+        return;
+    }
+    if (nb->focus == nf && (e->sym == XKB_KEY_Return || e->sym == XKB_KEY_space)) { undo(nb); return; }
+    if (!f) return;
+    switch (f->kind) {
+    case UI_FIELD_CHECKBOX:
+        if (e->sym == XKB_KEY_space) { f->v.checked = !f->v.checked; apply(nb, f); damage(nb); }
+        return;
+    case UI_FIELD_CHOICE:
+        if (e->sym == XKB_KEY_Up) set_choice(nb, f, f->v.number - 1);
+        else if (e->sym == XKB_KEY_Down && !(e->mods & UI_MOD_ALT)) set_choice(nb, f, f->v.number + 1);
+        else if (e->sym == XKB_KEY_space || e->sym == XKB_KEY_Return || e->sym == XKB_KEY_Down)
+            open_choices(nb, (size_t)nb->focus, 0);
+        return;
+    case UI_FIELD_NUMBER:
+        if (e->sym == XKB_KEY_Up) { step_number(nb, f, 1); return; }
+        if (e->sym == XKB_KEY_Down) { step_number(nb, f, -1); return; }
+        /* fall through */
+    case UI_FIELD_TEXT:
+        switch (ui_entry_key(f->entry, e)) {
+        case UI_ENTRY_COMMIT: commit_entry(nb, f); ui_entry_select_all(f->entry); damage(nb); break;
+        case UI_ENTRY_CANCEL: entry_from_value(f); ui_entry_select_all(f->entry); damage(nb); break;
+        case UI_ENTRY_NONE: break;
+        default: damage(nb); break;
+        }
+        return;
+    }
+}
+
+static void nb_resized(ui_surface *s, double w, double h)
+{
+    (void)w; (void)h;
+    ui_surface_damage_all(s);
+}
+
+static void nb_focus(ui_surface *s, bool on)
+{
+    ui_notebook *nb = ui_surface_data(s);
+    if (!on) commit_entry(nb, focused_field(nb));   /* leaving the window applies typing */
+    ui_frame_damage(s);
+}
+
+static void destroy_later(void *arg)
+{
+    ui_notebook *nb = arg;
+    if (nb->closed) nb->closed(nb->ctx);
+    free_pages(nb->pages, nb->npages);
+    ui_surface_destroy(nb->win);
+    free(nb);
+}
+
+void ui_notebook_close(ui_notebook *nb)
+{
+    if (nb->closing) return;
+    commit_entry(nb, focused_field(nb));
+    nb->closing = true;
+    ui_app_post(ui_surface_app(nb->win), destroy_later, nb);
+}
+
+static void nb_close(ui_surface *s) { ui_notebook_close(ui_surface_data(s)); }
+
+static const ui_surface_ops nb_ops = {
+    .draw = nb_draw, .pointer = nb_pointer, .key = nb_key, .resized = nb_resized, .focus = nb_focus, .close = nb_close,
+};
+
+ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *pages, size_t n,
+                              ui_notebook_set_fn set, ui_notebook_close_fn closed, void *ctx)
+{
+    ui_notebook *nb = calloc(1, sizeof *nb);
+    snprintf(nb->title, sizeof nb->title, "%s", title);
+    nb->pages = copy_pages(pages, n);
+    nb->npages = n;
+    nb->focus = -1;
+    nb->pressed_button = -1;
+    nb->set = set;
+    nb->closed = closed;
+    nb->ctx = ctx;
+    size_t most = 1;
+    for (size_t i = 0; i < n; i++) if (pages[i].nfields > most) most = pages[i].nfields;
+    double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 8 + TAB_H + 2 * MARGIN + (double)most * ROW_H +
+               BUTTON_H + 22 + STATUS_H + 20;
+    nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", 520, h < 280 ? 280 : h);
+    ui_window_set_title(nb->win, title);
+    return nb;
+}
+
+/* New values from the service (after a change elsewhere, or a refused
+ * one): fields keep their place and focus. */
+void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n)
+{
+    for (size_t p = 0; p < n && p < nb->npages; p++)
+        for (size_t k = 0; k < pages[p].nfields; k++) {
+            const ui_field_desc *d = &pages[p].fields[k];
+            for (size_t j = 0; j < nb->pages[p].n; j++) {
+                struct field *f = &nb->pages[p].f[j];
+                if (strcmp(f->key, d->key)) continue;
+                value_free(&f->v);
+                value_copy(&f->v, &d->value);
+                entry_from_value(f);
+            }
+        }
+    damage(nb);
+}
+
+void ui_notebook_set_status(ui_notebook *nb, const char *msg)
+{
+    snprintf(nb->status, sizeof nb->status, "%s", msg ? msg : "");
+    ui_surface_damage(nb->win, status_rect(nb));
+}
+
+ui_surface *ui_notebook_surface(ui_notebook *nb) { return nb->win; }
