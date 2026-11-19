@@ -34,6 +34,9 @@ void svc_job_start(const char *kind, int64_t selection, const char *dest, svc_fn
 void svc_job_decide(int64_t job, const char *decision, bool all);                                 /* "skip", "rename" */
 void svc_job_cancel(int64_t job);
 void svc_subscribe_jobs(svc_fn fn, void *arg);
+void svc_layout(const char *folder, svc_fn fn, void *arg);
+void svc_arrange(const char *folder, svc_fn fn, void *arg);
+void svc_place(const char *folder, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg);
 /* One setting; `value` is CV_TEXT, CV_INT or CV_BOOL. expect: the object's
  * change counter as last seen (a change elsewhere since is a conflict). */
 void svc_settings_set(const char *target, const char *key, const cv *value, int64_t expect, svc_fn fn, void *arg);

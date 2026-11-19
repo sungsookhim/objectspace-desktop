@@ -1,6 +1,6 @@
 # WPS for Linux: GUI Design
 
-Version 0.5 · 2026-11-18 · Direction, session model and toolkit decided; architecture accepted; G0 and G1 done.
+Version 0.6 · 2026-11-18 · Direction, session model and toolkit decided; architecture accepted; G0 and G1 done.
 
 The GUI sits on top of the object core ([object-core-design.md](object-core-design.md)). It talks to `wpsd` only through the service API: events, menus and settings as data, streaming listings, jobs. It never makes a synchronous call to `wpsd` from its input or drawing threads (object core: Requirements carried to the GUI design).
 
@@ -171,6 +171,13 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 - **A pixel check** (`WPS_SHELL_VERIFY`) rebuilds what the compositor shows and compares it with a fresh full redraw; it found the last two problems and now passes in every mode.
 - Jumps (a scroll bar drag landing somewhere new) redraw the whole list: at 2× full screen in the icon view that costs about 20 ms, one dropped frame per jump. Acceptable; GPU drawing later would remove it.
 
+### G2 progress (2026-11-18)
+
+- Done: in-place rename (F2, Alt+click; renames the file), settings notebooks, tree view, drag and drop (move, copy, shadow; jobs with progress and clash dialogs; to and from other programs), mouse mappings, icon view with icons placed anywhere.
+- **Icon view places icons anywhere, as in OS/2.** Moved icons keep their stored positions (by object ID, on the folder, personal in folders the user does not own). Other icons get a grid spot the first time their name is seen and keep it for the session, so resizing a window moves nothing, a new file takes the next free spot and a deleted one leaves a gap. A small folder without stored positions opens arranged by name. Arrange (folder menu) makes a grid that fits the window, in name order, stored for folders up to 2,000 objects. Icon view scrolls sideways when icons reach past the window.
+- Drags within an icon view move the icons, each keeping its offset from where it was grabbed. Over a million entries icon view still runs at 59–60 fps at 1× and 2× full screen, and the pixel check matches.
+- Found: GNOME chooses a drag's action from the modifiers (Shift move, Ctrl copy, Alt ask); whether the program sees Ctrl+Shift during a drag is being checked by hand (`WPS_DEBUG_DND=1`). Alt (ask) opens a Move / Copy / Create shadow menu at the drop point.
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.
@@ -179,6 +186,7 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.6 | 2026-11-18 | G2 progress: free icon placement, drag and drop, notebooks, tree view, rename; findings listed under G2 progress |
 | 0.5 | 2026-11-18 | Decided: every mouse action configurable as on OS/2's Mouse object; mouse.conf until the settings object (G3). Renaming an icon renames the file (object core v0.14) |
 | 0.4 | 2026-11-18 | G1 done: libwpsui (frames, icon and details views, menus), wps-shell folder windows; scroll layers; findings listed under G1 |
 | 0.3 | 2026-11-18 | Architecture accepted. G0 done: 60 fps over a million entries; damage-based drawing required for 2× full screen; sound written within 5 ms |

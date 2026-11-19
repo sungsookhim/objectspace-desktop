@@ -337,7 +337,16 @@ typedef struct {
     void (*expand)(void *ctx, size_t i, bool expand);
     /* The drag button was pressed on item i and moved: start a drag. */
     void (*drag)(void *ctx, size_t i, uint32_t serial);
+    /* Icon view with icons placed anywhere (as in OS/2); NULL: a grid that
+     * flows with the window. Coordinates are the list's: (0, 0) is the
+     * top left of the folder's contents. */
+    void (*item_pos)(void *ctx, size_t i, double *x, double *y);
+    size_t (*items_in)(void *ctx, ui_rect r, size_t *out, size_t max);   /* items whose cells meet r */
+    void (*content_size)(void *ctx, double *w, double *h);
 } ui_container_src;
+
+#define UI_CELL_W 100            /* an icon's cell in icon view */
+#define UI_CELL_H 70
 
 typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
 
@@ -368,6 +377,13 @@ bool ui_container_renaming(ui_container *c);
 /* Drops: the item under (x, y) (SIZE_MAX: the background), and the target
  * emphasis on one item (SIZE_MAX: on the background, i.e. none). */
 size_t ui_container_item_at(ui_container *c, double x, double y);
+/* Surface point to list coordinates (icon view placement), and where the
+ * drag that is starting was grabbed. */
+void ui_container_to_list(ui_container *c, double x, double y, double *lx, double *ly);
+void ui_container_drag_origin(ui_container *c, double *x, double *y);
+/* The free layout changed (positions, arrangement): redraw everything. */
+void ui_container_layout_changed(ui_container *c);
+double ui_container_list_width(ui_container *c);
 void ui_container_set_drop_target(ui_container *c, size_t i);
 size_t ui_container_rename_item(ui_container *c);           /* SIZE_MAX: none */
 /* After ui_container_reset: the item being renamed is now at i, or gone

@@ -355,3 +355,35 @@ void svc_subscribe_jobs(svc_fn fn, void *arg)
     cb_text(&o->b, "jobs"); cb_bool(&o->b, true);
     send_req(o, id, fn, arg);
 }
+
+void svc_layout(const char *folder, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("layout", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, folder);
+    send_req(o, id, fn, arg);
+}
+
+void svc_arrange(const char *folder, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("arrange", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, folder);
+    send_req(o, id, fn, arg);
+}
+
+void svc_place(const char *folder, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("place", 2, &id);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    cb_text(&o->b, "items");
+    cb_array(&o->b, n);
+    for (size_t i = 0; i < n; i++) {
+        cb_map(&o->b, 3);
+        cb_text(&o->b, "target"); cb_text(&o->b, targets[i]);
+        cb_text(&o->b, "x"); cb_int(&o->b, x[i]);
+        cb_text(&o->b, "y"); cb_int(&o->b, y[i]);
+    }
+    send_req(o, id, fn, arg);
+}

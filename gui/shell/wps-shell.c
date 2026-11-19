@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
+#include "layout.h"
 #include "svc.h"
 #include "ui.h"
 #include "wps_menu_ids.h"
@@ -56,6 +57,9 @@ struct folder {
     size_t ntvis, captvis;
     unsigned tgen;           /* replies for a freed tree are dropped */
     char pending_open[PATH_MAX];   /* the program asked about, if any */
+    icon_layout *lay;        /* icon view: where each icon is */
+    bool lay_started;        /* its grid width is set */
+    bool arranged_by_name;   /* the first, unstored arrangement was done */
     char error[256];
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
@@ -83,6 +87,9 @@ static struct folder *from_arg(void *arg) { return folder_by_id((long)(intptr_t)
 static struct folder *open_folder(const char *path, ui_view view);
 static bool tree_event(struct folder *f, int64_t sub);
 static void on_job_event(const cv *st);
+static const char *lay_name(void *ctx, size_t i);
+static void got_layout(void *arg, const cv *reply);
+static void layout_follow(struct folder *f, bool full);
 static void set_view(struct folder *f, ui_view v);
 
 /* ------------------------------------------------------------------ model */
@@ -220,6 +227,8 @@ static void swap(struct folder *f)
     f->gen++;
     ui_container_select_none(f->cont);
     ui_container_reset(f->cont);
+    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);   /* spots stay with names */
+    svc_layout(f->path, got_layout, as_arg(f));                     /* positions may have changed too */
     if (k || curname || renname)
         for (size_t i = 0; i < f->m.total; i++) {
             const char *n = model_name(&f->m, i);
@@ -282,6 +291,7 @@ static void got_page(void *arg, const cv *reply)
     f->error[0] = 0;
     ui_container_count_changed(f->cont);
     if (n) ui_container_changed(f->cont, off, off + n - 1);
+    if (!details || m->complete != was_complete) layout_follow(f, false);
     if (!m->complete) request_more(f, false);
     if (m->complete != was_complete || !details) damage_status(f);
 }
@@ -681,6 +691,120 @@ static void open_item(struct folder *f, size_t i, ui_view view)
 static void src_activate(void *ctx, size_t i) { open_item(ctx, i, UI_VIEW_ICON); }
 
 
+
+/* ---------------------------------------------------------- icon layout */
+
+static const char *lay_name(void *ctx, size_t i) { return model_name(&((struct folder *)ctx)->m, i); }
+
+static int cols_now(struct folder *f)
+{
+    int k = (int)(ui_container_list_width(f->cont) / UI_CELL_W);
+    return k < 1 ? 1 : k;
+}
+
+/* Names in name order (for Arrange). */
+static struct folder *sort_folder;
+static int cmp_index_name(const void *a, const void *b)
+{
+    const char *x = model_name(&sort_folder->m, *(const size_t *)a), *y = model_name(&sort_folder->m, *(const size_t *)b);
+    return strcoll(x ? x : "", y ? y : "");
+}
+
+static size_t *name_order(struct folder *f)
+{
+    size_t n = f->m.total, *o = malloc((n ? n : 1) * sizeof *o);
+    for (size_t i = 0; i < n; i++) o[i] = i;
+    sort_folder = f;
+    qsort(o, n, sizeof *o, cmp_index_name);
+    return o;
+}
+
+/* New rows from the service (or a re-read): extend or redo the layout. */
+static void layout_follow(struct folder *f, bool full)
+{
+    if (!f->lay_started) { layout_set_cols(f->lay, cols_now(f)); f->lay_started = true; }
+    /* A small folder with no stored positions opens arranged by name (not
+     * in the order the directory happens to list), once it is all read. */
+    if (f->m.complete && !f->arranged_by_name && f->m.total <= 100000) {
+        f->arranged_by_name = true;
+        layout_reset(f->lay, cols_now(f));
+        size_t *o = name_order(f);
+        layout_update(f->lay, f->m.total, lay_name, f, true, o);
+        free(o);
+        svc_layout(f->path, got_layout, as_arg(f));   /* stored positions win over it */
+    } else {
+        layout_update(f->lay, f->m.total, lay_name, f, full, NULL);
+    }
+    if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+}
+
+static void got_layout(void *arg, const cv *reply)
+{
+    struct folder *f = from_arg(arg);
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
+    if (!f || !items || items->k != CV_ARRAY) return;
+    layout_clear_placed(f->lay);
+    for (size_t i = 0; i < items->n; i++) {
+        const char *nm = cv_text(&items->items[i], "name");
+        int64_t x = 0, y = 0;
+        cv_int(&items->items[i], "x", &x);
+        cv_int(&items->items[i], "y", &y);
+        if (nm) layout_place(f->lay, nm, (int)x, (int)y);
+    }
+    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+    if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+}
+
+static void placed_reply(void *arg, const cv *reply)
+{
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (!(ok && ok->k == CV_BOOL && ok->b)) {
+        char m[300];
+        snprintf(m, sizeof m, "Positions not kept: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        struct folder *f = from_arg(arg);
+        if (f) { snprintf(f->error, sizeof f->error, "%s", m); damage_status(f); }
+    }
+}
+
+/* Arrange (folder menu): a grid that fits the window, in name order;
+ * stored for folders up to 2000 objects (larger ones are arranged for
+ * this session). */
+static void arrange(struct folder *f)
+{
+    svc_arrange(f->path, placed_reply, as_arg(f));
+    layout_reset(f->lay, cols_now(f));
+    size_t *o = name_order(f);
+    layout_update(f->lay, f->m.total, lay_name, f, true, o);
+    free(o);
+    f->arranged_by_name = true;
+    size_t n = f->m.total;
+    if (n && n <= 2000) {
+        char **t = calloc(n, sizeof *t);
+        int64_t *x = calloc(n, sizeof *x), *y = calloc(n, sizeof *y);
+        size_t k = 0;
+        for (size_t i = 0; i < n; i++) {
+            const char *nm = model_name(&f->m, i);
+            if (!nm) continue;
+            double px, py;
+            layout_pos(f->lay, i, &px, &py);
+            t[k] = malloc(strlen(f->path) + strlen(nm) + 2);
+            sprintf(t[k], "%s/%s", strcmp(f->path, "/") ? f->path : "", nm);
+            x[k] = (int64_t)px;
+            y[k] = (int64_t)py;
+            layout_place(f->lay, nm, (int)px, (int)py);
+            k++;
+        }
+        svc_place(f->path, (const char *const *)t, x, y, k, placed_reply, as_arg(f));
+        for (size_t i = 0; i < k; i++) free(t[i]);
+        free(t);
+        free(x);
+        free(y);
+    }
+    ui_container_layout_changed(f->cont);
+    snprintf(f->error, sizeof f->error, "Arranged");
+    damage_status(f);
+}
+
 /* ------------------------------------------------------------ properties */
 
 /* An object's settings notebook. Replies find it by ID: it may have
@@ -909,7 +1033,7 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_VIEW_DETAILS: set_view(f, UI_VIEW_DETAILS); break;
         case WPS_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
         case WPS_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
-        case WPS_MI_ARRANGE: break;   /* icon view is arranged in G1; free placement in G2 */
+        case WPS_MI_ARRANGE: arrange(f); break;
         default: svc_menu_select(t, id, selected_done, as_arg(f)); break;
         }
     }
@@ -1000,6 +1124,7 @@ struct dragging {
     char **paths;
     size_t n;
     char *wps, *uris;        /* the data in both formats */
+    double *dx, *dy;         /* each icon's offset from the grab point (icon view) */
 };
 static struct dragging *cur_drag;
 
@@ -1008,6 +1133,8 @@ static void dragging_free(struct dragging *d)
     if (!d) return;
     for (size_t i = 0; i < d->n; i++) free(d->paths[i]);
     free(d->paths);
+    free(d->dx);
+    free(d->dy);
     free(d->wps);
     free(d->uris);
     free(d);
@@ -1056,7 +1183,18 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
         if (whole && !ui_container_is_selected(f->cont, k)) continue;
         char t[PATH_MAX];
         target_of(f, k, t, sizeof t);
-        if (d->n == cap) { cap = cap ? cap * 2 : 16; d->paths = realloc(d->paths, cap * sizeof *d->paths); }
+        if (d->n == cap) {
+            cap = cap ? cap * 2 : 16;
+            d->paths = realloc(d->paths, cap * sizeof *d->paths);
+            d->dx = realloc(d->dx, cap * sizeof *d->dx);
+            d->dy = realloc(d->dy, cap * sizeof *d->dy);
+        }
+        double gx, gy, sx, sy, ix = 0, iy = 0;
+        ui_container_drag_origin(f->cont, &sx, &sy);
+        ui_container_to_list(f->cont, sx, sy, &gx, &gy);
+        if (!is_tree(f)) layout_pos(f->lay, k, &ix, &iy);
+        d->dx[d->n] = ix - gx;
+        d->dy[d->n] = iy - gy;
         d->paths[d->n++] = strdup(t);
     }
     size_t wl = 0, wc = 0, ul = 0, uc = 0;
@@ -1137,7 +1275,9 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
             snprintf(parent, sizeof parent, "%s", cur_drag->paths[i]);
             char *sl = strrchr(parent, '/');
             if (sl) *sl = 0;
-            if (act == UI_DND_MOVE && !shadow_mods(mods) && !strcmp(parent, dest) && cur_drag->n == 1) act = 0;   /* already there */
+            if (act == UI_DND_MOVE && !shadow_mods(mods) && !strcmp(parent, dest) && cur_drag->n == 1 &&
+                ui_container_view(f->cont) != UI_VIEW_ICON)
+                act = 0;   /* already there (in icon view: moving the icon) */
         }
     }
     ui_container_set_drop_target(f->cont, act ? item : SIZE_MAX);
@@ -1241,6 +1381,34 @@ static char *uri_path(const char *u)
 
 enum { DROP_MOVE, DROP_COPY, DROP_SHADOW };
 
+/* Icons dragged within their own folder, in icon view: they go where they
+ * were dropped, each keeping its offset from the grab point, and the
+ * places are stored. Returns false if the drag came from elsewhere. */
+static bool reposition(struct folder *f, double x, double y)
+{
+    struct dragging *d = cur_drag;
+    for (size_t i = 0; i < d->n; i++) {
+        const char *sl = strrchr(d->paths[i], '/');
+        size_t pl = sl ? (size_t)(sl - d->paths[i]) : 0;
+        if (pl != strlen(f->path) || strncmp(d->paths[i], f->path, pl)) return false;
+    }
+    double lx, ly;
+    ui_container_to_list(f->cont, x, y, &lx, &ly);
+    int64_t *px = calloc(d->n, sizeof *px), *py = calloc(d->n, sizeof *py);
+    for (size_t i = 0; i < d->n; i++) {
+        double nx = lx + d->dx[i], ny = ly + d->dy[i];
+        px[i] = nx < 0 ? 0 : (int64_t)nx;
+        py[i] = ny < 0 ? 0 : (int64_t)ny;
+        layout_place(f->lay, strrchr(d->paths[i], '/') + 1, (int)px[i], (int)py[i]);
+    }
+    svc_place(f->path, (const char *const *)d->paths, px, py, d->n, placed_reply, as_arg(f));
+    free(px);
+    free(py);
+    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+    ui_container_layout_changed(f->cont);
+    return true;
+}
+
 static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how);
 
 /* The compositor said "ask" (Alt in GNOME): a menu at the drop point. */
@@ -1266,6 +1434,9 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
     int how = shadow_mods(mods) ? DROP_SHADOW : (action == UI_DND_COPY || (mods & UI_MOD_CTRL)) ? DROP_COPY : DROP_MOVE;
+    if (how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
+        reposition(f, x, y))
+        return;
     if (action == UI_DND_ASK && !shadow_mods(mods)) {
         struct ask_ctx *a = calloc(1, sizeof *a);
         a->folder = f->id;
@@ -1390,8 +1561,17 @@ static void on_job_event(const cv *st)
     set_status(t->folder, m);
 }
 
+static void src_item_pos(void *ctx, size_t i, double *x, double *y) { layout_pos(((struct folder *)ctx)->lay, i, x, y); }
+
+static size_t src_items_in(void *ctx, ui_rect r, size_t *out, size_t max)
+{
+    return layout_items_in(((struct folder *)ctx)->lay, r.x, r.y, r.w, r.h, out, max);
+}
+
+static void src_content_size(void *ctx, double *w, double *h) { layout_size(((struct folder *)ctx)->lay, w, h); }
+
 static const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu, src_rename, src_expand,
-                                             src_drag };
+                                             src_drag, src_item_pos, src_items_in, src_content_size };
 
 /* ------------------------------------------------------------------ window */
 
@@ -1480,6 +1660,7 @@ static void free_folder(struct folder *f)
         if (*pp == f) { *pp = f->next; break; }
     if (f->sub) svc_unsubscribe(f->sub);
     tree_free(f);
+    layout_free(f->lay);
     model_free(&f->m);
     if (f->sh) { model_free(f->sh); free(f->sh); }
     ui_container_free(f->cont);
@@ -1819,6 +2000,54 @@ static void win_frame(ui_surface *s, double now)
         return;
     }
     if (st && !strcmp(st, "dnd")) return;
+    if (st && !strcmp(st, "place")) {
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char line[600] = "";
+        for (size_t i = 0; i < f->m.total; i++) {
+            double x, y;
+            layout_pos(f->lay, i, &x, &y);
+            snprintf(line + strlen(line), sizeof line - strlen(line), " %s@%.0f,%.0f", model_name(&f->m, i), x, y);
+        }
+        if (step == 0 && t > 500) {
+            fprintf(stderr, "selftest: opened:%s\n", line);
+            size_t bi = SIZE_MAX;
+            for (size_t i = 0; i < f->m.total; i++) if (!strcmp(model_name(&f->m, i), "b.txt")) bi = i;
+            /* Press the drag button on b's icon, as a real drag begins. */
+            double bx, by;
+            layout_pos(f->lay, bi, &bx, &by);
+            ui_rect c = ui_frame_client(s);
+            double sx = c.x + 4 + bx + 50, sy = c.y + 4 + by + 20;   /* on the icon */
+            ui_pointer_event pr = { .kind = UI_PRESS, .x = sx, .y = sy, .button = ui_mouse_button(UI_ACT_DRAG), .clicks = 1 };
+            win_pointer(s, &pr);
+            src_drag(f, bi, 0);
+            char data[PATH_MAX];
+            snprintf(data, sizeof data, "%s/b.txt\n", f->path);
+            win_drop(s, sx + 150, sy + 200, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0);
+            ui_pointer_event rl = { .kind = UI_RELEASE, .x = sx + 150, .y = sy + 200, .button = ui_mouse_button(UI_ACT_DRAG) };
+            win_pointer(s, &rl);
+            step++;
+        } else if (step == 1 && t > 1500) {
+            fprintf(stderr, "selftest: after moving b:%s\n", line);
+            struct menu_ctx *mc = calloc(1, sizeof *mc);
+            mc->folder = f->id;
+            mc->item = SIZE_MAX;
+            menu_chosen(mc, WPS_MI_ARRANGE);
+            step++;
+        } else if (step == 2 && t > 2500) {
+            fprintf(stderr, "selftest: after Arrange:%s\n", line);
+            step++;
+        } else if (step == 3 && t > 2800) {
+            size_t d = ui_surface_verify(s, NULL);
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -1932,6 +2161,7 @@ static struct folder *open_folder(const char *path, ui_view view)
     const char *sz = getenv("WPS_SHELL_SIZE");
     if (sz) sscanf(sz, "%lfx%lf", &w, &h);
     f->win = ui_window_new(app, &win_ops, f, "org.wps.shell", w, h);
+    f->lay = layout_new(UI_CELL_W, UI_CELL_H);
     f->cont = ui_container_new(f->win, &folder_src, f, view);
     if (view == UI_VIEW_TREE) tree_start(f);
     f->next = folders;
@@ -1940,6 +2170,7 @@ static struct folder *open_folder(const char *path, ui_view view)
     layout(f);
     svc_resolve(f->path, got_title, as_arg(f));
     svc_subscribe_folder(f->path, got_sub, as_arg(f));
+    svc_layout(f->path, got_layout, as_arg(f));
     request_more(f, false);
     return f;
 }

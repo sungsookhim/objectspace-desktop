@@ -15,8 +15,8 @@
 #define ROW_H 20
 #define HEAD_H 20
 #define SB_W 16
-#define CELL_W 100
-#define CELL_H 70
+#define CELL_W UI_CELL_W
+#define CELL_H UI_CELL_H
 #define ICON 32
 #define INDENT 20                /* tree view: per level */
 
@@ -27,6 +27,8 @@ struct ui_container {
     ui_view view;
     ui_rect r;
     double scroll;            /* whole logical pixels */
+    double hscroll;           /* free icon view only */
+    bool hthumb_drag;
     size_t count;
     uint8_t *sel;             /* selection bitmap */
     size_t selcap, nsel;
@@ -56,10 +58,37 @@ static ui_rect head_rect(ui_container *c)
     return (ui_rect){ c->r.x, c->r.y, c->r.w - SB_W, c->view == UI_VIEW_DETAILS ? HEAD_H : 0 };
 }
 
+static bool free_icons(ui_container *c) { return c->view == UI_VIEW_ICON && c->src->item_pos && c->src->items_in; }
+
+static double content_w(ui_container *c)
+{
+    double w = 0, h = 0;
+    if (free_icons(c) && c->src->content_size) c->src->content_size(c->ctx, &w, &h);
+    return w + 8;
+}
+
+/* A horizontal scroll bar when placed icons reach past the window. */
+static bool has_hsb(ui_container *c)
+{
+    return free_icons(c) && content_w(c) > c->r.w - SB_W;
+}
+
 static ui_rect list_rect(ui_container *c)
 {
     ui_rect h = head_rect(c);
-    return (ui_rect){ c->r.x, c->r.y + h.h, c->r.w - SB_W, c->r.h - h.h };
+    double hb = has_hsb(c) ? SB_W : 0;
+    return (ui_rect){ c->r.x, c->r.y + h.h, c->r.w - SB_W, c->r.h - h.h - hb };
+}
+
+static ui_rect hsb_rect(ui_container *c)
+{
+    return (ui_rect){ c->r.x, c->r.y + c->r.h - SB_W, c->r.w - SB_W, SB_W };
+}
+
+static double max_hscroll(ui_container *c)
+{
+    double m = content_w(c) - list_rect(c).w;
+    return m > 0 ? floor(m) : 0;
 }
 
 static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SB_W, c->r.y, SB_W, c->r.h }; }
@@ -75,7 +104,15 @@ static double line_h(ui_container *c) { return c->view == UI_VIEW_ICON ? CELL_H 
 
 static size_t nlines(ui_container *c) { return (c->count + cols(c) - 1) / cols(c); }
 
-static double content_h(ui_container *c) { return (double)nlines(c) * line_h(c) + (c->view == UI_VIEW_ICON ? 8 : 0); }
+static double content_h(ui_container *c)
+{
+    if (free_icons(c)) {
+        double w = 0, h = 0;
+        if (c->src->content_size) c->src->content_size(c->ctx, &w, &h);
+        return h + 8;
+    }
+    return (double)nlines(c) * line_h(c) + (c->view == UI_VIEW_ICON ? 8 : 0);
+}
 
 static double max_scroll(ui_container *c)
 {
@@ -89,6 +126,11 @@ static ui_rect item_crect(ui_container *c, size_t i)
 {
     ui_rect l = list_rect(c);
     if (c->view != UI_VIEW_ICON) return (ui_rect){ l.x, (double)i * ROW_H, l.w, ROW_H };
+    if (free_icons(c)) {
+        double x = 0, y = 0;
+        c->src->item_pos(c->ctx, i, &x, &y);
+        return (ui_rect){ l.x + 4 + x - c->hscroll, 4 + y, CELL_W, CELL_H };
+    }
     size_t k = cols(c), row = i / k, col = i % k;
     return (ui_rect){ l.x + 4 + (double)col * CELL_W, 4 + (double)row * CELL_H, CELL_W, CELL_H };
 }
@@ -150,6 +192,19 @@ static size_t item_at(ui_container *c, double x, double y)
         size_t i = (size_t)(cy / ROW_H);
         return i < c->count ? i : SIZE_MAX;
     }
+    if (free_icons(c)) {
+        /* The topmost (last drawn) item whose icon or label is under the point. */
+        double lx = x - l.x - 4 + c->hscroll, ly = cy - 4;
+        size_t found[64], n = c->src->items_in(c->ctx, (ui_rect){ lx - CELL_W, ly - CELL_H, 2 * CELL_W, 2 * CELL_H }, found, 64);
+        size_t hit = SIZE_MAX;
+        for (size_t k = 0; k < n; k++) {
+            double ix, iy;
+            c->src->item_pos(c->ctx, found[k], &ix, &iy);
+            double ox = lx - ix, oy = ly - iy;
+            if (ox >= 8 && ox <= CELL_W - 8 && oy >= 0 && oy <= CELL_H - 8 && (hit == SIZE_MAX || found[k] > hit)) hit = found[k];
+        }
+        return hit < c->count ? hit : SIZE_MAX;
+    }
     double cx = x - l.x - 4;
     cy -= 4;
     if (cx < 0 || cy < 0) return SIZE_MAX;
@@ -175,6 +230,13 @@ static void visible_range(ui_container *c, size_t *first, size_t *last)
 static void report_visible(ui_container *c)
 {
     if (!c->count || !c->src->visible) return;
+    if (free_icons(c)) {
+        ui_rect l = list_rect(c);
+        size_t found[4096], n = c->src->items_in(c->ctx, (ui_rect){ c->hscroll - 4, c->scroll - 4, l.w, l.h }, found, 4096);
+        for (size_t k = 0; k < n; k++) c->src->visible(c->ctx, found[k], found[k]);   /* the source groups them by page */
+        c->vis_first = c->vis_last = SIZE_MAX;
+        return;
+    }
     size_t f, l;
     visible_range(c, &f, &l);
     if (f == c->vis_first && l == c->vis_last) return;
@@ -246,12 +308,32 @@ static void scroll_to(ui_container *c, double y)
     report_visible(c);
 }
 
+static void damage_hsb(ui_container *c) { if (has_hsb(c)) ui_surface_damage(c->s, hsb_rect(c)); }
+
+static void hscroll_to(ui_container *c, double x)
+{
+    double m = max_hscroll(c);
+    x = floor(x < 0 ? 0 : x > m ? m : x);
+    if (x == c->hscroll) return;
+    c->hscroll = x;
+    /* The layer scrolls vertically only; a sideways move redraws the list. */
+    if (c->layer) ui_layer_damage_all(c->layer);
+    else ui_surface_damage(c->s, list_rect(c));
+    damage_hsb(c);
+    report_visible(c);
+}
+
 void ui_container_scroll_by(ui_container *c, double dy) { scroll_to(c, c->scroll + dy); }
 void ui_container_scroll_to_fraction(ui_container *c, double f) { scroll_to(c, f * max_scroll(c)); }
 
 static void ensure_visible(ui_container *c, size_t i)
 {
     ui_rect r = item_rect(c, i), l = list_rect(c);
+    if (free_icons(c)) {
+        if (r.x < l.x) hscroll_to(c, c->hscroll - (l.x - r.x) - 4);
+        else if (r.x + r.w > l.x + l.w) hscroll_to(c, c->hscroll + (r.x + r.w - (l.x + l.w)) + 4);
+        r = item_rect(c, i);
+    }
     if (r.y < l.y) scroll_to(c, c->scroll - (l.y - r.y) - (c->view == UI_VIEW_ICON ? 4 : 0));
     else if (r.y + r.h > l.y + l.h) scroll_to(c, c->scroll + (r.y + r.h - (l.y + l.h)) + (c->view == UI_VIEW_ICON ? 4 : 0));
 }
@@ -596,6 +678,18 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
     double lh = line_h(c), off = c->view == UI_VIEW_ICON ? 4 : 0;
     double r0 = floor((clip.y - off) / lh), r1 = floor((clip.y + clip.h - off) / lh);
     size_t kcols = cols(c);
+    if (free_icons(c)) {
+        ui_rect l = list_rect(c);
+        ui_rect q = { clip.x - l.x - 4 + c->hscroll, clip.y - 4, clip.w, clip.h };
+        size_t found[8192], n = c->src->items_in(c->ctx, q, found, 8192);
+        /* In index order, so overlapping icons stack the same way each time. */
+        for (size_t a = 1; a < n; a++)
+            for (size_t b = a; b > 0 && found[b - 1] > found[b]; b--) { size_t t = found[b]; found[b] = found[b - 1]; found[b - 1] = t; }
+        for (size_t k = 0; k < n; k++)
+            if (found[k] < c->count) draw_icon_cell(c, cr, found[k], item_crect(c, found[k]));
+        r0 = 1;
+        r1 = 0;   /* nothing for the grid loop below */
+    }
     for (double row = r0 < 0 ? 0 : r0; row <= r1; row++) {
         for (size_t col = 0; col < kcols; col++) {
             size_t i = (size_t)row * kcols + col;
@@ -662,6 +756,14 @@ void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip)
         cairo_restore(cr);
     }
     if (ui_rect_meets(clip, sb_rect(c))) draw_scrollbar(c, cr);
+    if (has_hsb(c) && ui_rect_meets(clip, hsb_rect(c))) {
+        ui_rect h = hsb_rect(c);
+        ui_fill(cr, h, (ui_color){ k->face.r * 0.85, k->face.g * 0.85, k->face.b * 0.85, 1 });
+        double cw = content_w(c), vw = list_rect(c).w, m = max_hscroll(c);
+        double tw = fmax(20, h.w * vw / cw), tx = h.x + (m > 0 ? (h.w - tw) * c->hscroll / m : 0);
+        ui_fill(cr, (ui_rect){ tx, h.y, tw, h.h }, k->face);
+        ui_bevel(cr, (ui_rect){ tx, h.y, tw, h.h }, true);
+    }
 }
 
 /* ------------------------------------------------------------------ input */
@@ -693,6 +795,13 @@ static void band_update(ui_container *c)
     double x0 = fmin(c->bx0, c->bx1) - l.x - 4, x1 = fmax(c->bx0, c->bx1) - l.x - 4;
     double y0 = fmin(c->by0, c->by1) - 4, y1 = fmax(c->by0, c->by1) - 4;
     sel_clear(c);
+    if (free_icons(c)) {
+        static size_t found[65536];
+        size_t n = c->src->items_in(c->ctx, (ui_rect){ x0 + c->hscroll, y0, x1 - x0, y1 - y0 }, found, 65536);
+        for (size_t i = 0; i < n; i++) sel_set(c, found[i], true);
+        damage_list(c);
+        return;
+    }
     size_t k = cols(c);
     if (x1 < 0 || y1 < 0) { damage_list(c); return; }
     size_t c0 = (size_t)fmax(0, x0 / CELL_W), c1 = (size_t)(x1 / CELL_W);
@@ -722,7 +831,24 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         }
     }
     if (e->kind == UI_WHEEL) {
-        ui_container_scroll_by(c, e->wheel);
+        if ((e->mods & UI_MOD_SHIFT) && has_hsb(c)) hscroll_to(c, c->hscroll + e->wheel);
+        else ui_container_scroll_by(c, e->wheel);
+        return true;
+    }
+    if (e->kind == UI_MOTION && c->hthumb_drag) {
+        ui_rect h = hsb_rect(c);
+        double cw = content_w(c), vw = list_rect(c).w, tw = fmax(20, h.w * vw / cw);
+        if (h.w - tw > 0) hscroll_to(c, (e->x - h.x - tw / 2) / (h.w - tw) * max_hscroll(c));
+        return true;
+    }
+    if (e->kind == UI_RELEASE && c->hthumb_drag) { c->hthumb_drag = false; return true; }
+    if (e->kind == UI_PRESS && has_hsb(c) && ui_rect_has(hsb_rect(c), e->x, e->y)) {
+        c->hthumb_drag = e->button == ui_mouse_button(UI_ACT_SELECT);
+        if (c->hthumb_drag) {
+            ui_rect h = hsb_rect(c);
+            double cw = content_w(c), vw = list_rect(c).w, tw = fmax(20, h.w * vw / cw);
+            if (h.w - tw > 0) hscroll_to(c, (e->x - h.x - tw / 2) / (h.w - tw) * max_hscroll(c));
+        }
         return true;
     }
     if (e->kind == UI_MOTION) {
@@ -875,10 +1001,36 @@ bool ui_container_key(ui_container *c, const ui_key_event *e)
     size_t page = (size_t)(list_rect(c).h / line_h(c)) * k;
     if (page < k) page = k;
     switch (e->sym) {
-    case XKB_KEY_Down: move_cursor(c, c->has_cursor ? cur + k : 0, e->mods); return true;
-    case XKB_KEY_Up: move_cursor(c, cur >= k ? cur - k : 0, e->mods); return true;
-    case XKB_KEY_Right: if (c->view == UI_VIEW_ICON) { move_cursor(c, cur + 1, e->mods); return true; } return false;
-    case XKB_KEY_Left: if (c->view == UI_VIEW_ICON) { move_cursor(c, cur ? cur - 1 : 0, e->mods); return true; } return false;
+    case XKB_KEY_Down: case XKB_KEY_Up: case XKB_KEY_Left: case XKB_KEY_Right:
+        if (free_icons(c) && c->has_cursor) {
+            int dx = e->sym == XKB_KEY_Right ? 1 : e->sym == XKB_KEY_Left ? -1 : 0;
+            int dy = e->sym == XKB_KEY_Down ? 1 : e->sym == XKB_KEY_Up ? -1 : 0;
+            double x0, y0;
+            c->src->item_pos(c->ctx, cur, &x0, &y0);
+            size_t best = SIZE_MAX;
+            double bestd = 1e18;
+            for (double reach = 2; reach <= 64 && best == SIZE_MAX; reach *= 2) {
+                ui_rect q = { x0 - reach * CELL_W, y0 - reach * CELL_H, 2 * reach * CELL_W + CELL_W, 2 * reach * CELL_H + CELL_H };
+                size_t found[4096], n = c->src->items_in(c->ctx, q, found, 4096);
+                for (size_t a = 0; a < n; a++) {
+                    if (found[a] == cur) continue;
+                    double x, y;
+                    c->src->item_pos(c->ctx, found[a], &x, &y);
+                    double ax = (x - x0) * dx + (y - y0) * dy;            /* along the arrow */
+                    double off = fabs((x - x0) * dy) + fabs((y - y0) * dx);   /* to the side */
+                    if (ax <= 0) continue;
+                    double d = ax + 2 * off;
+                    if (d < bestd) { bestd = d; best = found[a]; }
+                }
+            }
+            if (best != SIZE_MAX) move_cursor(c, best, e->mods);
+            return true;
+        }
+        if (e->sym == XKB_KEY_Down) { move_cursor(c, c->has_cursor ? cur + k : 0, e->mods); return true; }
+        if (e->sym == XKB_KEY_Up) { move_cursor(c, cur >= k ? cur - k : 0, e->mods); return true; }
+        if (c->view != UI_VIEW_ICON) return false;
+        move_cursor(c, e->sym == XKB_KEY_Right ? cur + 1 : cur ? cur - 1 : 0, e->mods);
+        return true;
     case XKB_KEY_Page_Down: move_cursor(c, cur + page, e->mods); return true;
     case XKB_KEY_Page_Up: move_cursor(c, cur >= page ? cur - page : 0, e->mods); return true;
     case XKB_KEY_Home: move_cursor(c, 0, e->mods); return true;
@@ -932,6 +1084,13 @@ void ui_container_count_changed(ui_container *c)
 
 void ui_container_changed(ui_container *c, size_t first, size_t last)
 {
+    if (free_icons(c)) {
+        /* An item's index says nothing about where it is: look at each. */
+        if (last >= c->count) last = c->count ? c->count - 1 : 0;
+        if (last - first > 512) { damage_list(c); return; }
+        for (size_t i = first; i <= last && i < c->count; i++) damage_item(c, i);
+        return;
+    }
     size_t f, l;
     visible_range(c, &f, &l);
     if (last < f || first > l) return;
@@ -1042,3 +1201,30 @@ void ui_container_set_drop_target(ui_container *c, size_t i)
 }
 
 void ui_draw_kind_icon(cairo_t *cr, ui_kind k, double x, double y, double size) { draw_icon(cr, k, x, y, size); }
+
+void ui_container_to_list(ui_container *c, double x, double y, double *lx, double *ly)
+{
+    ui_rect l = list_rect(c);
+    *lx = x - l.x - 4 + c->hscroll;
+    *ly = y - l.y - 4 + c->scroll;
+}
+
+void ui_container_drag_origin(ui_container *c, double *x, double *y)
+{
+    *x = c->drag_x;
+    *y = c->drag_y;
+}
+
+void ui_container_layout_changed(ui_container *c)
+{
+    if (c->hscroll > max_hscroll(c)) c->hscroll = max_hscroll(c);
+    if (c->scroll > max_scroll(c)) scroll_to(c, max_scroll(c));
+    ui_surface_damage(c->s, c->r);
+    if (c->layer) {
+        ui_layer_set_area(c->layer, list_rect(c));   /* a horizontal bar may have come or gone */
+        ui_layer_damage_all(c->layer);
+    }
+    report_visible(c);
+}
+
+double ui_container_list_width(ui_container *c) { return list_rect(c).w - 8; }
