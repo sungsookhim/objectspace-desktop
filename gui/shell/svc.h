@@ -28,6 +28,12 @@ void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg);
 void svc_open(const char *target, bool confirm, svc_fn fn, void *arg);
 void svc_rename(const char *target, const char *name, svc_fn fn, void *arg);
 void svc_settings(const char *target, svc_fn fn, void *arg);
+void svc_shadow(const char *target, const char *folder, svc_fn fn, void *arg);
+void svc_select(const char *folder, const char *const *names, size_t n, svc_fn fn, void *arg);
+void svc_job_start(const char *kind, int64_t selection, const char *dest, svc_fn fn, void *arg);   /* "move", "copy" */
+void svc_job_decide(int64_t job, const char *decision, bool all);                                 /* "skip", "rename" */
+void svc_job_cancel(int64_t job);
+void svc_subscribe_jobs(svc_fn fn, void *arg);
 /* One setting; `value` is CV_TEXT, CV_INT or CV_BOOL. expect: the object's
  * change counter as last seen (a change elsewhere since is a conflict). */
 void svc_settings_set(const char *target, const char *key, const cv *value, int64_t expect, svc_fn fn, void *arg);

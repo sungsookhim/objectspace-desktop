@@ -642,6 +642,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     if (!strcmp(iface, wl_compositor_interface.name)) {
         a->comp_version = ver < 6 ? (int)ver : 6;
         a->comp = wl_registry_bind(r, name, &wl_compositor_interface, (uint32_t)a->comp_version);
+    } else if (!strcmp(iface, wl_data_device_manager_interface.name)) {
+        a->ddm_version = ver < 3 ? (int)ver : 3;
+        a->ddm = wl_registry_bind(r, name, &wl_data_device_manager_interface, (uint32_t)a->ddm_version);
     } else if (!strcmp(iface, wl_subcompositor_interface.name)) {
         a->subcomp = wl_registry_bind(r, name, &wl_subcompositor_interface, 1);
     } else if (!strcmp(iface, wp_viewporter_interface.name)) {
@@ -681,6 +684,7 @@ ui_app *ui_app_new(void)
         fprintf(stderr, "wps-ui: the compositor lacks wl_compositor, wl_shm, xdg_wm_base or a seat\n");
         return NULL;
     }
+    ui_dnd_init(a);
     return a;
 }
 
@@ -709,8 +713,9 @@ void ui_app_run(ui_app *a)
     while (a->running && a->surfaces) {
         while (wl_display_prepare_read(a->dpy) != 0) wl_display_dispatch_pending(a->dpy);
         wl_display_flush(a->dpy);
-        struct pollfd pf[3] = { { wfd, POLLIN, 0 }, { a->wake_fd, POLLIN, 0 }, { a->repeat_fd, POLLIN, 0 } };
-        int r = poll(pf, 3, -1);
+        struct pollfd pf[3 + 64] = { { wfd, POLLIN, 0 }, { a->wake_fd, POLLIN, 0 }, { a->repeat_fd, POLLIN, 0 } };
+        size_t nw = ui_watch_fill(pf + 3, 64);
+        int r = poll(pf, 3 + nw, -1);
         if (r > 0 && (pf[0].revents & POLLIN)) wl_display_read_events(a->dpy);
         else wl_display_cancel_read(a->dpy);
         if (pf[0].revents & (POLLERR | POLLHUP)) { fprintf(stderr, "wps-ui: lost the display\n"); break; }
@@ -736,6 +741,7 @@ void ui_app_run(ui_app *a)
             (void)rd;
             if (a->repeat_key) send_key(a, a->repeat_key, true);
         }
+        if (nw) ui_watch_dispatch(pf + 3, nw);
         /* Draw what changed, once per turn and at most once per frame. */
         for (ui_surface *s = a->surfaces, *n; s; s = n) {
             n = s->next;

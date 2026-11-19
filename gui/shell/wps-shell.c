@@ -55,6 +55,7 @@ struct folder {
     struct tnode **tvis;     /* its visible rows */
     size_t ntvis, captvis;
     unsigned tgen;           /* replies for a freed tree are dropped */
+    char pending_open[PATH_MAX];   /* the program asked about, if any */
     char error[256];
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
@@ -81,6 +82,7 @@ static struct folder *from_arg(void *arg) { return folder_by_id((long)(intptr_t)
 
 static struct folder *open_folder(const char *path, ui_view view);
 static bool tree_event(struct folder *f, int64_t sub);
+static void on_job_event(const cv *st);
 static void set_view(struct folder *f, ui_view v);
 
 /* ------------------------------------------------------------------ model */
@@ -323,6 +325,7 @@ static void on_event(void *arg, const cv *ev)
     int64_t sub;
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
+    if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
         if (f->sub == sub && !f->closing &&
@@ -551,6 +554,8 @@ static void tree_free(struct folder *f)
 static bool is_tree(struct folder *f) { return ui_container_view(f->cont) == UI_VIEW_TREE; }
 
 /* ----------------------------------------------------------- container src */
+static void src_item(void *ctx, size_t i, ui_item *out);
+static void target_of(struct folder *f, size_t i, char *out, size_t n);
 
 static size_t src_count(void *ctx)
 {
@@ -613,14 +618,46 @@ static void target_of(struct folder *f, size_t i, char *out, size_t n)
     else snprintf(out, n, "%s", f->path);
 }
 
+static void ignore_reply(void *arg, const cv *reply) { (void)arg; (void)reply; }
+static void opened(void *arg, const cv *reply);
+
+/* A program another user owns: show its command and ask (the service
+ * never runs it unconfirmed). */
+struct confirm_ctx { long folder; char target[PATH_MAX]; };
+
+static void confirmed(void *arg, int choice)
+{
+    struct confirm_ctx *c = arg;
+    struct folder *f = folder_by_id(c->folder);
+    if (choice == 0 && f) svc_open(c->target, true, opened, as_arg(f));
+    free(c);
+}
+
+static void confirm_program(struct folder *f, const cv *res)
+{
+    const char *cmd = cv_text(res, "command");
+    int64_t uid = -1;
+    cv_int(res, "owner_uid", &uid);
+    struct confirm_ctx *c = calloc(1, sizeof *c);
+    c->folder = f->id;
+    snprintf(c->target, sizeof c->target, "%s", f->pending_open);
+    char msg[1400];
+    snprintf(msg, sizeof msg, "This program belongs to another user (user ID %lld). It would run, as you:\n%s\nRun it?",
+             (long long)uid, cmd ? cmd : "?");
+    const char *buttons[] = { "Run", "Cancel" };
+    ui_dialog_open(app, "Run a program", msg, buttons, 2, 1, confirmed, c);
+}
+
 static void opened(void *arg, const cv *reply)
 {
     struct folder *f = from_arg(arg);
     if (!f) return;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
-    if (res && cv_get(res, "needs_confirmation"))
-        snprintf(f->error, sizeof f->error, "This program belongs to another user; confirming comes with dialogs (G2)");
+    if (res && cv_get(res, "needs_confirmation")) {
+        confirm_program(f, res);
+        return;
+    }
     else if (!res && msg)
         snprintf(f->error, sizeof f->error, "%s", msg);
     else
@@ -635,7 +672,10 @@ static void open_item(struct folder *f, size_t i, ui_view view)
     struct page *pg = is_tree(f) || i == SIZE_MAX || i / PAGE >= f->m.npages ? NULL : f->m.pages[i / PAGE];
     bool is_folder = i == SIZE_MAX || is_tree(f) || (pg && pg->rows[i % PAGE].kind == UI_KIND_FOLDER);
     if (is_folder) open_folder(t, view);
-    else svc_open(t, false, opened, as_arg(f));
+    else {
+        snprintf(f->pending_open, sizeof f->pending_open, "%s", t);
+        svc_open(t, false, opened, as_arg(f));
+    }
 }
 
 static void src_activate(void *ctx, size_t i) { open_item(ctx, i, UI_VIEW_ICON); }
@@ -948,7 +988,369 @@ static void src_rename(void *ctx, size_t i, const char *name)
     svc_rename(t, name, renamed, as_arg(f));
 }
 
-static const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu, src_rename, src_expand };
+
+/* ---------------------------------------------------------- drag and drop */
+
+#define MIME_WPS "application/x-wps-objects"
+#define MIME_URIS "text/uri-list"
+
+/* What this program is dragging now (for refusing a folder dropped into
+ * itself before the data is read). */
+struct dragging {
+    char **paths;
+    size_t n;
+    char *wps, *uris;        /* the data in both formats */
+};
+static struct dragging *cur_drag;
+
+static void dragging_free(struct dragging *d)
+{
+    if (!d) return;
+    for (size_t i = 0; i < d->n; i++) free(d->paths[i]);
+    free(d->paths);
+    free(d->wps);
+    free(d->uris);
+    free(d);
+}
+
+/* Append text with %-escapes for a file: URI. */
+static void uri_append(char **buf, size_t *len, size_t *cap, const char *path)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t need = *len + strlen(path) * 3 + 16;
+    if (need > *cap) { while (*cap < need) *cap = *cap ? *cap * 2 : 1024; *buf = realloc(*buf, *cap); }
+    *len += (size_t)sprintf(*buf + *len, "file://");
+    for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || strchr("/-._~", *p))
+            (*buf)[(*len)++] = (char)*p;
+        else { (*buf)[(*len)++] = '%'; (*buf)[(*len)++] = hex[*p >> 4]; (*buf)[(*len)++] = hex[*p & 15]; }
+    }
+    (*buf)[(*len)++] = '\r';
+    (*buf)[(*len)++] = '\n';
+    (*buf)[*len] = 0;
+}
+
+static void drag_send(void *ctx, const char *mime, int fd)
+{
+    struct dragging *d = ctx;
+    const char *data = !strcmp(mime, MIME_WPS) ? d->wps : d->uris;
+    ui_app_write_async(app, fd, data, strlen(data));
+}
+
+static void drag_end(void *ctx, bool dropped, uint32_t action)
+{
+    (void)dropped; (void)action;
+    if (cur_drag == ctx) cur_drag = NULL;
+    dragging_free(ctx);
+}
+
+static void src_drag(void *ctx, size_t i, uint32_t serial)
+{
+    struct folder *f = ctx;
+    struct dragging *d = calloc(1, sizeof *d);
+    /* The selection if the item is in it, else the item alone (OS/2). */
+    size_t total = is_tree(f) ? f->ntvis : f->m.total;
+    bool whole = ui_container_is_selected(f->cont, i);
+    size_t cap = 0;
+    for (size_t k = whole ? 0 : i; k < (whole ? total : i + 1); k++) {
+        if (whole && !ui_container_is_selected(f->cont, k)) continue;
+        char t[PATH_MAX];
+        target_of(f, k, t, sizeof t);
+        if (d->n == cap) { cap = cap ? cap * 2 : 16; d->paths = realloc(d->paths, cap * sizeof *d->paths); }
+        d->paths[d->n++] = strdup(t);
+    }
+    size_t wl = 0, wc = 0, ul = 0, uc = 0;
+    for (size_t k = 0; k < d->n; k++) {
+        size_t need = wl + strlen(d->paths[k]) + 2;
+        if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->wps = realloc(d->wps, wc); }
+        wl += (size_t)sprintf(d->wps + wl, "%s\n", d->paths[k]);
+        uri_append(&d->uris, &ul, &uc, d->paths[k]);
+    }
+    if (!d->wps || !d->uris) { dragging_free(d); return; }
+    /* The drag image: the item's icon, and how many go. */
+    int sc = ui_surface_scale(f->win);
+    cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 48 * sc, 40 * sc);
+    cairo_surface_set_device_scale(img, sc, sc);
+    cairo_t *cr = cairo_create(img);
+    ui_item it = { 0 };
+    src_item(f, i, &it);
+    ui_draw_kind_icon(cr, it.loaded ? it.kind : UI_KIND_FILE, 0, 4, 32);
+    if (d->n > 1) {
+        char cnt[32];
+        snprintf(cnt, sizeof cnt, "%zu", d->n);
+        double w = ui_text_width(UI_FONT_BOLD, cnt) + 8;
+        ui_fill(cr, (ui_rect){ 46 - w, 22, w, 16 }, ui_scheme_now.selection);
+        ui_set_color(cr, ui_scheme_now.selection_text);
+        ui_text_draw(cr, UI_FONT_BOLD, 50 - w, 35, cnt, 0);
+    }
+    cairo_destroy(cr);
+    const char *mimes[] = { MIME_WPS, MIME_URIS };
+    cur_drag = d;
+    if (!ui_drag_start(f->win, serial, mimes, 2, UI_DND_COPY | UI_DND_MOVE | UI_DND_ASK, img, sc, drag_send, drag_end, d)) {
+        cur_drag = NULL;
+        dragging_free(d);
+    }
+    cairo_surface_destroy(img);
+}
+
+/* Where a drop at (x, y) goes: a folder under the pointer, else the
+ * window's folder. */
+static void drop_dest(struct folder *f, double x, double y, char *out, size_t n, size_t *item)
+{
+    size_t i = ui_container_item_at(f->cont, x, y);
+    ui_item it = { 0 };
+    if (i != SIZE_MAX) src_item(f, i, &it);
+    if (i != SIZE_MAX && it.loaded && it.kind == UI_KIND_FOLDER) {
+        target_of(f, i, out, n);
+        *item = i;
+    } else {
+        snprintf(out, n, "%s", f->path);
+        *item = SIZE_MAX;
+    }
+}
+
+static bool shadow_mods(unsigned mods) { return (mods & UI_MOD_CTRL) && (mods & UI_MOD_SHIFT); }
+
+static bool under(const char *path, const char *dir)
+{
+    size_t l = strlen(dir);
+    return !strncmp(path, dir, l) && (path[l] == '/' || path[l] == 0);
+}
+
+static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
+                                uint32_t src_actions, unsigned mods, const char **mime)
+{
+    struct folder *f = ui_surface_data(s);
+    *mime = NULL;
+    for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_WPS)) *mime = MIME_WPS;
+    for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_URIS)) *mime = MIME_URIS;
+    if (!*mime) return 0;
+    char dest[PATH_MAX];
+    size_t item;
+    drop_dest(f, x, y, dest, sizeof dest, &item);
+    uint32_t act = (mods & UI_MOD_CTRL) ? UI_DND_COPY : UI_DND_MOVE;   /* Ctrl copies; Ctrl+Shift: shadow */
+    if (!(act & src_actions)) act = src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
+    if (cur_drag) {
+        for (size_t i = 0; i < cur_drag->n; i++) {
+            if (under(dest, cur_drag->paths[i])) act = 0;   /* a folder into itself */
+            char parent[PATH_MAX];
+            snprintf(parent, sizeof parent, "%s", cur_drag->paths[i]);
+            char *sl = strrchr(parent, '/');
+            if (sl) *sl = 0;
+            if (act == UI_DND_MOVE && !shadow_mods(mods) && !strcmp(parent, dest) && cur_drag->n == 1) act = 0;   /* already there */
+        }
+    }
+    ui_container_set_drop_target(f->cont, act ? item : SIZE_MAX);
+    return act;
+}
+
+static void win_drag_leave(ui_surface *s)
+{
+    struct folder *f = ui_surface_data(s);
+    ui_container_set_drop_target(f->cont, SIZE_MAX);
+}
+
+/* Jobs started by drops: progress in the target window, decisions asked. */
+struct jobtrack {
+    struct jobtrack *next;
+    int64_t job;
+    long folder;
+    char kind[8];
+    bool asking;
+};
+static struct jobtrack *jobs;
+static ui_dialog *last_dialog;   /* for self-tests */
+
+struct xfer {
+    long folder;
+    char kind[8], dest[PATH_MAX], from[PATH_MAX];
+    char **names;
+    size_t n;
+};
+
+static void xfer_free(struct xfer *x)
+{
+    for (size_t i = 0; i < x->n; i++) free(x->names[i]);
+    free(x->names);
+    free(x);
+}
+
+static void set_status(long folder, const char *msg)
+{
+    struct folder *f = folder_by_id(folder);
+    if (!f) return;
+    snprintf(f->error, sizeof f->error, "%s", msg);
+    damage_status(f);
+}
+
+static void got_job(void *arg, const cv *reply)
+{
+    struct xfer *x = arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (res && res->k == CV_INT) {
+        struct jobtrack *t = calloc(1, sizeof *t);
+        t->job = res->i;
+        t->folder = x->folder;
+        snprintf(t->kind, sizeof t->kind, "%s", x->kind);
+        t->next = jobs;
+        jobs = t;
+    } else {
+        char m[300];
+        snprintf(m, sizeof m, "Cannot %s: %s", x->kind, reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        set_status(x->folder, m);
+    }
+    xfer_free(x);
+}
+
+static void got_sel(void *arg, const cv *reply)
+{
+    struct xfer *x = arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!res || res->k != CV_INT) { set_status(x->folder, "Cannot select the dragged objects"); xfer_free(x); return; }
+    svc_job_start(x->kind, res->i, x->dest, got_job, x);
+}
+
+static void shadowed(void *arg, const cv *reply)
+{
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (!(ok && ok->k == CV_BOOL && ok->b)) {
+        char m[300];
+        snprintf(m, sizeof m, "Cannot make a shadow: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        set_status((long)(intptr_t)arg, m);
+    }
+}
+
+/* "file:///a%20b" -> "/a b"; NULL if not a local file. */
+static char *uri_path(const char *u)
+{
+    if (strncmp(u, "file://", 7)) return NULL;
+    u += 7;
+    if (!strncmp(u, "localhost", 9)) u += 9;
+    if (*u != '/') return NULL;
+    char *out = malloc(strlen(u) + 1), *o = out;
+    for (; *u; u++) {
+        if (*u == '%' && u[1] && u[2]) {
+            char h[3] = { u[1], u[2], 0 };
+            *o++ = (char)strtol(h, NULL, 16);
+            u += 2;
+        } else *o++ = *u;
+    }
+    *o = 0;
+    return out;
+}
+
+static void win_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
+                     unsigned mods)
+{
+    (void)len;
+    struct folder *f = ui_surface_data(s);
+    ui_container_set_drop_target(f->cont, SIZE_MAX);
+    char dest[PATH_MAX];
+    size_t item;
+    drop_dest(f, x, y, dest, sizeof dest, &item);
+    bool shadow = shadow_mods(mods);
+    const char *kind = (action == UI_DND_COPY || (mods & UI_MOD_CTRL)) ? "copy" : "move";
+    /* Paths, grouped by the folder they come from (a job per folder). */
+    char *copy = strdup(data), *save = NULL;
+    struct xfer *groups[64];
+    size_t ng = 0, total = 0;
+    for (char *line = strtok_r(copy, "\r\n", &save); line; line = strtok_r(NULL, "\r\n", &save)) {
+        if (!*line || *line == '#') continue;
+        char *p = !strcmp(mime, MIME_URIS) ? uri_path(line) : strdup(line);
+        if (!p) continue;
+        total++;
+        if (shadow) { svc_shadow(p, dest, shadowed, as_arg(f)); free(p); continue; }
+        char *sl = strrchr(p, '/');
+        if (!sl || under(dest, p)) { free(p); continue; }   /* never into itself */
+        *sl = 0;
+        const char *from = p[0] ? p : "/", *name = sl + 1;
+        if (!strcmp(kind, "move") && !strcmp(from, dest)) { free(p); continue; }   /* already there */
+        struct xfer *g = NULL;
+        for (size_t k = 0; k < ng && !g; k++) if (!strcmp(groups[k]->from, from)) g = groups[k];
+        if (!g && ng < 64) {
+            g = calloc(1, sizeof *g);
+            g->folder = f->id;
+            snprintf(g->kind, sizeof g->kind, "%s", kind);
+            snprintf(g->dest, sizeof g->dest, "%s", dest);
+            snprintf(g->from, sizeof g->from, "%s", from);
+            groups[ng++] = g;
+        }
+        if (g) {
+            g->names = realloc(g->names, (g->n + 1) * sizeof *g->names);
+            g->names[g->n++] = strdup(name);
+        }
+        free(p);
+    }
+    free(copy);
+    for (size_t k = 0; k < ng; k++) svc_select(groups[k]->from, (const char *const *)groups[k]->names, groups[k]->n, got_sel, groups[k]);
+    char m[300];
+    snprintf(m, sizeof m, "%s %zu object%s...", shadow ? "Making shadows of" : !strcmp(kind, "copy") ? "Copying" : "Moving",
+             total, total == 1 ? "" : "s");
+    set_status(f->id, m);
+}
+
+struct decide_ctx { int64_t job; };
+
+static void decided(void *arg, int choice)
+{
+    struct decide_ctx *d = arg;
+    for (struct jobtrack *t = jobs; t; t = t->next)
+        if (t->job == d->job) t->asking = false;
+    switch (choice) {
+    case 0: svc_job_decide(d->job, "rename", false); break;
+    case 1: svc_job_decide(d->job, "skip", false); break;
+    case 2: svc_job_decide(d->job, "rename", true); break;
+    case 3: svc_job_decide(d->job, "skip", true); break;
+    default: svc_job_cancel(d->job); break;
+    }
+    free(d);
+}
+
+static void on_job_event(const cv *st)
+{
+    int64_t id, done = 0, total = 0;
+    if (!st || !cv_int(st, "job", &id)) return;
+    struct jobtrack *t = jobs, **pp = &jobs;
+    for (; t && t->job != id; pp = &t->next, t = t->next) {}
+    if (!t) return;   /* not one of ours */
+    cv_int(st, "items_done", &done);
+    cv_int(st, "items_total", &total);
+    const char *state = cv_text(st, "state"), *cur = cv_text(st, "current"), *err = cv_text(st, "error");
+    bool move = !strcmp(t->kind, "move");
+    char m[400];
+    if (!state) return;
+    if (!strcmp(state, "done") || !strcmp(state, "failed") || !strcmp(state, "cancelled")) {
+        const cv *miss = cv_get(st, "missing"), *skip = cv_get(st, "skipped");
+        size_t nm = miss && miss->k == CV_ARRAY ? miss->n : 0, ns = skip && skip->k == CV_ARRAY ? skip->n : 0;
+        if (!strcmp(state, "done"))
+            snprintf(m, sizeof m, "%s %lld object%s%s%s", move ? "Moved" : "Copied", (long long)(done - (int64_t)ns),
+                     done - (int64_t)ns == 1 ? "" : "s", ns ? "; some skipped" : "", nm ? "; some were gone already" : "");
+        else if (!strcmp(state, "failed")) snprintf(m, sizeof m, "%s failed: %s", move ? "Move" : "Copy", err ? err : "unknown error");
+        else snprintf(m, sizeof m, "%s cancelled after %lld", move ? "Move" : "Copy", (long long)done);
+        set_status(t->folder, m);
+        *pp = t->next;
+        free(t);
+        return;
+    }
+    if (!strcmp(state, "needs-decision") && !t->asking) {
+        const char *clash = cv_text(st, "conflict"), *to = cv_text(st, "to");
+        char msg[1200];
+        snprintf(msg, sizeof msg, "An object named \"%s\" is already in %s.\nRename the one being %s, or skip it?",
+                 clash ? clash : "?", to ? to : "the folder", move ? "moved" : "copied");
+        const char *buttons[] = { "Rename", "Skip", "Rename all", "Skip all", "Cancel" };
+        struct decide_ctx *d = malloc(sizeof *d);
+        d->job = id;
+        t->asking = true;
+        last_dialog = ui_dialog_open(app, move ? "Move" : "Copy", msg, buttons, 5, 0, decided, d);
+        return;
+    }
+    snprintf(m, sizeof m, "%s %lld of %lld%s%s", move ? "Moving" : "Copying", (long long)done, (long long)total,
+             cur && *cur ? ": " : "", cur ? cur : "");
+    set_status(t->folder, m);
+}
+
+static const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu, src_rename, src_expand,
+                                             src_drag };
 
 /* ------------------------------------------------------------------ window */
 
@@ -1310,6 +1712,71 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "dnd") && f == folders) {   /* the last window opened: <D>/sub */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char D[PATH_MAX];
+        snprintf(D, sizeof D, "%s", f->path);
+        char *sl = strrchr(D, '/');
+        *sl = 0;
+        char data[PATH_MAX * 2];
+        if (step == 0) {
+            /* What a drag from the first window offers. */
+            struct folder *src = f->next;
+            size_t i = SIZE_MAX;
+            for (size_t k = 0; k < src->m.total; k++)
+                if (model_name(&src->m, k) && !strcmp(model_name(&src->m, k), "with space.txt")) i = k;
+            src_drag(src, i, 0);
+            if (cur_drag)   /* first line of each (the test prints, it does not change them) */
+                fprintf(stderr, "selftest: drag data: wps \"%.*s\" uris \"%.*s\"\n", (int)strcspn(cur_drag->wps, "\n"),
+                        cur_drag->wps, (int)strcspn(cur_drag->uris, "\r"), cur_drag->uris);
+            /* A folder dropped into itself is refused. */
+            struct dragging fake = { 0 };
+            char *paths[1] = { f->path };
+            fake.paths = paths;
+            fake.n = 1;
+            struct dragging *was = cur_drag;
+            cur_drag = &fake;
+            const char *mime, *mimes[] = { MIME_WPS };
+            uint32_t act = win_drag_motion(s, 20, 60, mimes, 1, UI_DND_COPY | UI_DND_MOVE, 0, &mime);
+            cur_drag = was;
+            fprintf(stderr, "selftest: sub dropped into itself: action %u (0 = refused)\n", act);
+            snprintf(data, sizeof data, "%s/a.txt\n", D);
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0);                      /* move */
+            snprintf(data, sizeof data, "%s/b.txt\n", D);
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL);            /* copy */
+            snprintf(data, sizeof data, "%s/sub2\n", D);
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL | UI_MOD_SHIFT);   /* shadow */
+            data[0] = 0;
+            char *u = NULL;
+            size_t ul = 0, uc = 0;
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/with space.txt", D);
+            uri_append(&u, &ul, &uc, p);
+            win_drop(s, 20, 60, MIME_URIS, u, ul, UI_DND_MOVE, 0);                                 /* from another app */
+            free(u);
+            step++;
+        } else if (step == 1 && t > 1500) {
+            snprintf(data, sizeof data, "%s/b.txt\n", D);
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL);            /* b.txt is there now */
+            step++;
+        } else if (step == 2 && last_dialog) {
+            fprintf(stderr, "selftest: a name clash asks: dialog open\n");
+            ui_key_event r = { .sym = XKB_KEY_r, .utf8 = "r" };
+            ui_surface_send_key(ui_dialog_surface(last_dialog), &r);   /* Rename */
+            last_dialog = NULL;
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1500) {
+            fprintf(stderr, "selftest: status: %s\n", f->error);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "dnd")) return;
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -1397,6 +1864,7 @@ static void report(struct folder *f)
 
 static const ui_surface_ops win_ops = {
     .draw = win_draw, .pointer = win_pointer, .key = win_key, .resized = win_resized,
+    .drag_motion = win_drag_motion, .drag_leave = win_drag_leave, .drop = win_drop,
     .focus = win_focus, .close = win_close, .frame = win_frame,
 };
 
@@ -1448,6 +1916,7 @@ int main(int argc, char **argv)
     char err[512];
     if (!svc_start(app, err, sizeof err)) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
     svc_on_event(on_event, NULL);
+    svc_subscribe_jobs(ignore_reply, NULL);
     for (int k = i; k < argc; k++) {
         struct folder *f = open_folder(argv[k], opt_view);
         if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);   /* every window ticks */

@@ -43,6 +43,10 @@ struct ui_container {
     ui_layer *layer;          /* rows are drawn here; NULL: on the surface */
     ui_entry *rename;         /* in-place rename, if active */
     size_t rename_i;
+    size_t drag_i;            /* the drag button went down on this item */
+    double drag_x, drag_y;
+    uint32_t drag_serial;
+    size_t drop_i;            /* target emphasis, as in OS/2 */
 };
 
 /* -------------------------------------------------------------- geometry */
@@ -607,6 +611,15 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
         ui_rect er = rename_crect(c, c->rename_i);
         if (ui_rect_meets(er, clip)) ui_entry_draw(c->rename, cr, er, true);
     }
+    if (c->drop_i < c->count) {
+        ui_rect r = item_crect(c, c->drop_i);
+        if (ui_rect_meets(r, clip)) {
+            ui_set_color(cr, k->text);
+            cairo_set_line_width(cr, 2);
+            cairo_rectangle(cr, r.x + 2, r.y + 1, r.w - 4, r.h - 2);
+            cairo_stroke(cr);
+        }
+    }
     if (c->band) {
         double bx = fmin(c->bx0, c->bx1), by = fmin(c->by0, c->by1);
         double bw = fabs(c->bx1 - c->bx0), bh = fabs(c->by1 - c->by0);
@@ -713,6 +726,13 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         return true;
     }
     if (e->kind == UI_MOTION) {
+        if (c->drag_i != SIZE_MAX && (fabs(e->x - c->drag_x) > 5 || fabs(e->y - c->drag_y) > 5)) {
+            size_t i = c->drag_i;
+            c->drag_i = SIZE_MAX;
+            c->b2_down = false;   /* a drag, not a click: no menu */
+            if (c->src->drag) c->src->drag(c->ctx, i, c->drag_serial);
+            return true;
+        }
         if (c->thumb_drag) {
             double ty, th;
             thumb(c, &ty, &th);
@@ -729,6 +749,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         return ui_rect_has(c->r, e->x, e->y);
     }
     if (e->kind == UI_RELEASE) {
+        if (e->button == ui_mouse_button(UI_ACT_DRAG)) c->drag_i = SIZE_MAX;
         bool was = c->thumb_drag || c->band || c->arrow_down;
         c->thumb_drag = false;
         if (c->arrow_down) { c->arrow_down = 0; damage_sb(c); }
@@ -758,6 +779,12 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     }
     if (!ui_rect_has(l, e->x, e->y)) return true;
     size_t i = item_at(c, e->x, e->y);
+    if (i != SIZE_MAX && ui_mouse_is(UI_ACT_DRAG, e) && !(e->mods & UI_MOD_ALT)) {
+        c->drag_i = i;
+        c->drag_x = e->x;
+        c->drag_y = e->y;
+        c->drag_serial = e->serial;
+    }
     if (i != SIZE_MAX && on_expander(c, i, e->x) && ui_mouse_is(UI_ACT_SELECT, e)) {
         ui_item it = { 0 };
         c->src->item(c->ctx, i, &it);
@@ -960,6 +987,7 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
     c->view = view;
     c->focused = true;
     c->vis_first = c->vis_last = SIZE_MAX;
+    c->drag_i = c->drop_i = SIZE_MAX;
     if (!getenv("WPS_UI_NO_LAYER")) c->layer = ui_layer_new(s, layer_draw, c);
     return c;
 }
@@ -1002,3 +1030,15 @@ void ui_container_reset(ui_container *c)
     c->vis_first = c->vis_last = SIZE_MAX;
     report_visible(c);
 }
+
+size_t ui_container_item_at(ui_container *c, double x, double y) { return item_at(c, x, y); }
+
+void ui_container_set_drop_target(ui_container *c, size_t i)
+{
+    if (i == c->drop_i) return;
+    if (c->drop_i < c->count) damage_item(c, c->drop_i);
+    c->drop_i = i;
+    if (i < c->count) damage_item(c, i);
+}
+
+void ui_draw_kind_icon(cairo_t *cr, ui_kind k, double x, double y, double size) { draw_icon(cr, k, x, y, size); }

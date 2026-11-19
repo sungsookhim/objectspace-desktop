@@ -299,3 +299,59 @@ void svc_settings_set(const char *target, const char *key, const cv *value, int6
     cb_text(&o->b, "expect"); cb_int(&o->b, expect);
     send_req(o, id, fn, arg);
 }
+
+void svc_shadow(const char *target, const char *folder, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("shadow", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    send_req(o, id, fn, arg);
+}
+
+void svc_select(const char *folder, const char *const *names, size_t n, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("select", 3, &id);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    cb_text(&o->b, "all"); cb_bool(&o->b, false);
+    cb_text(&o->b, "items");
+    cb_array(&o->b, n);
+    for (size_t i = 0; i < n; i++) cb_text(&o->b, names[i]);
+    send_req(o, id, fn, arg);
+}
+
+void svc_job_start(const char *kind, int64_t selection, const char *dest, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin(kind, 2, &id);
+    cb_text(&o->b, "selection"); cb_int(&o->b, selection);
+    cb_text(&o->b, "dest"); cb_text(&o->b, dest);
+    send_req(o, id, fn, arg);
+}
+
+void svc_job_decide(int64_t job, const char *decision, bool all)
+{
+    int64_t id;
+    struct out *o = begin("job_decide", 3, &id);
+    cb_text(&o->b, "job"); cb_int(&o->b, job);
+    cb_text(&o->b, "decision"); cb_text(&o->b, decision);
+    cb_text(&o->b, "all"); cb_bool(&o->b, all);
+    send_req(o, id, ignore, NULL);
+}
+
+void svc_job_cancel(int64_t job)
+{
+    int64_t id;
+    struct out *o = begin("job_cancel", 1, &id);
+    cb_text(&o->b, "job"); cb_int(&o->b, job);
+    send_req(o, id, ignore, NULL);
+}
+
+void svc_subscribe_jobs(svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("subscribe", 1, &id);
+    cb_text(&o->b, "jobs"); cb_bool(&o->b, true);
+    send_req(o, id, fn, arg);
+}

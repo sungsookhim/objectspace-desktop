@@ -64,6 +64,14 @@ struct ui_app {
     int comp_version;
     struct wl_shm *shm;
     struct wl_subcompositor *subcomp;
+    struct wl_data_device_manager *ddm;
+    int ddm_version;
+    struct wl_data_device *ddev;
+    struct offer *drag_offer;       /* a drag over one of our surfaces */
+    ui_surface *drag_focus;
+    double drag_x, drag_y;
+    uint32_t drag_serial;
+    const char *drag_mime;
     struct wp_viewporter *viewporter;
     struct xdg_wm_base *wm;
     struct wl_seat *seat;
@@ -103,6 +111,10 @@ void ui_menu_close_all(void);
 void ui_menu_forget_surface(ui_surface *s);   /* before s is destroyed */
 /* Draw the layer's changes; -1 if no buffer is free yet. */
 double ui_layer_render(ui_layer *l);
+void ui_dnd_init(ui_app *a);
+struct pollfd;
+size_t ui_watch_fill(struct pollfd *pf, size_t max);
+void ui_watch_dispatch(const struct pollfd *pf, size_t n);
 /* For ui_surface_verify: paste the slice last shown onto `img` (device
  * pixels), and draw the same window of content afresh onto `cr`. */
 bool ui_layer_paste_shown(ui_layer *l, unsigned char *img, int stride);

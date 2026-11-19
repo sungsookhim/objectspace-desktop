@@ -118,6 +118,19 @@ int ui_mouse_button(ui_mouse_action a);
 ui_app *ui_app_new(void);
 void ui_app_run(ui_app *a);            /* until ui_app_quit or no windows remain */
 void ui_app_quit(ui_app *a);
+/* File descriptors watched by the main loop (UI thread). */
+void ui_app_watch_fd(ui_app *a, int fd, short events, void (*fn)(void *arg, int fd, short revents), void *arg);
+void ui_app_unwatch_fd(ui_app *a, int fd);
+/* Write without blocking, then close fd (a drag's data to a pipe). */
+void ui_app_write_async(ui_app *a, int fd, const char *data, size_t len);
+
+/* Drag and drop (ui_dnd.c), with Wayland's actions. */
+enum { UI_DND_COPY = 1, UI_DND_MOVE = 2, UI_DND_ASK = 4 };
+typedef void (*ui_drag_send_fn)(void *ctx, const char *mime, int fd);   /* write the data, then close */
+typedef void (*ui_drag_end_fn)(void *ctx, bool dropped, uint32_t action);
+bool ui_drag_start(ui_surface *origin, uint32_t serial, const char *const *mimes, size_t n, uint32_t actions,
+                   cairo_surface_t *icon, int icon_scale, ui_drag_send_fn send, ui_drag_end_fn end, void *ctx);
+
 /* Run fn(arg) on the UI thread, from any thread. */
 void ui_app_post(ui_app *a, void (*fn)(void *), void *arg);
 int ui_app_scale_override(void);       /* WPS_UI_SCALE, or 0 */
@@ -137,6 +150,13 @@ typedef struct {
     /* A popup the compositor closed (click elsewhere). */
     void (*dismissed)(ui_surface *s);
     void (*close)(ui_surface *s);       /* a window's close request */
+    /* Drag and drop onto this surface: which action a drop at (x, y) would
+     * take (UI_DND_*, 0 to refuse) and which offered type it would read. */
+    uint32_t (*drag_motion)(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
+                            uint32_t src_actions, unsigned mods, const char **mime);
+    void (*drag_leave)(ui_surface *s);
+    void (*drop)(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
+                 uint32_t action, unsigned mods);
     /* Each frame, before drawing (animations, benchmarks). */
     void (*frame)(ui_surface *s, double now_ms);
 } ui_surface_ops;
@@ -270,9 +290,23 @@ void ui_notebook_set_status(ui_notebook *nb, const char *msg);
 void ui_notebook_close(ui_notebook *nb);
 ui_surface *ui_notebook_surface(ui_notebook *nb);
 
+typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
+
+/* ---------------------------------------------------------------- dialogs */
+
+/* A message and a row of buttons; fn gets the chosen button's index
+ * (Escape and the close button choose the last one). */
+typedef struct ui_dialog ui_dialog;
+typedef void (*ui_dialog_fn)(void *ctx, int choice);
+ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
+                          int default_button, ui_dialog_fn fn, void *ctx);
+ui_surface *ui_dialog_surface(ui_dialog *d);
+
+/* An object kind's icon (the GUI's own, until icon objects). */
+void ui_draw_kind_icon(cairo_t *cr, ui_kind k, double x, double y, double size);
+
 /* ------------------------------------------------------------- containers */
 
-typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
 
 typedef struct {
     bool loaded;               /* false: draw a placeholder */
@@ -301,6 +335,8 @@ typedef struct {
     void (*rename)(void *ctx, size_t i, const char *name);
     /* Tree view: expand or collapse item i (expand: true). */
     void (*expand)(void *ctx, size_t i, bool expand);
+    /* The drag button was pressed on item i and moved: start a drag. */
+    void (*drag)(void *ctx, size_t i, uint32_t serial);
 } ui_container_src;
 
 typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
@@ -329,6 +365,10 @@ void ui_container_reset(ui_container *c);
 /* In-place rename of item i (F2 or Alt+click start it too). */
 void ui_container_begin_rename(ui_container *c, size_t i);
 bool ui_container_renaming(ui_container *c);
+/* Drops: the item under (x, y) (SIZE_MAX: the background), and the target
+ * emphasis on one item (SIZE_MAX: on the background, i.e. none). */
+size_t ui_container_item_at(ui_container *c, double x, double y);
+void ui_container_set_drop_target(ui_container *c, size_t i);
 size_t ui_container_rename_item(ui_container *c);           /* SIZE_MAX: none */
 /* After ui_container_reset: the item being renamed is now at i, or gone
  * (SIZE_MAX cancels the rename). */
