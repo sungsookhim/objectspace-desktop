@@ -8,6 +8,10 @@ Known problems and gaps found while building and trying G2, as of 2026-11-19. Ea
 - **The desktop has no status line**, so messages a folder window shows there ("Moved to the trash: 2 objects", errors such as "Cannot delete: ...") are not shown on the desktop. Needs a place: a transient message, or a notification.
 - **The desktop's pop-up menu is the folder's own.** OS/2's desktop menu adds Lockup now, Shut down, System setup and the like; not there yet.
 
+- **Other programs keep GNOME's look.** Programs started from WPS work, but look like GNOME, not like WPS. The goal is that they follow WPS's visual cues too. Two parts:
+  - *Window frames*: already planned for stage 2 (gui-design.md: the WPS session's compositor draws our frames for every program that accepts server-side decorations; GTK 4 / libadwaita programs draw their own title bars, left as they are by default, with a per-program setting to put our frame around them). In stage 1 (inside GNOME) GNOME draws the frames.
+  - *Contents* (controls, menus, scroll bars, icons, cursors, fonts, colours): not designed yet. Likely pieces: a WPS GTK 3 theme; a stylesheet for GTK 4 and libadwaita (which allow only limited theming: colours, accent, some CSS through `~/.config/gtk-4.0/gtk.css`); a Qt style (a Kvantum theme or a Qt style plug-in); a WPS icon theme and cursor theme; fonts and colours through the GNOME settings WPS already shares. All of it driven by the scheme objects (G3), so changing the WPS scheme changes the programs too. To be decided: how far to go with libadwaita programs, which resist theming by design.
+
 ## Desktop and GNOME (stage 1)
 
 - **Primary monitor only.** The desktop covers the primary monitor's work area; other monitors show GNOME's own background. One desktop window per monitor (or one spanning them) is needed.
