@@ -101,4 +101,17 @@ typedef void (*wps_db_job_fn)(int64_t id, const char *kind, const char *src, con
                               const char *state, int64_t items_done, int64_t bytes_done, void *user);
 int wps_db_jobs_list(wps_db *db, wps_db_job_fn fn, void *user);
 
+/* Central objects (decided 2026-11-18): WPS-only objects kept here rather
+ * than as .wpobj files. Locator "vobj:<id>"; their own rows under class
+ * "WPS": folder (the folder's object ID), class, and target (shadows). Their
+ * settings use the ordinary rows. Rows on a portable volume travel in its
+ * database like any other. */
+int wps_db_vobjs_in(wps_db *db, const char *vol, const char *folder_id,
+                    void (*fn)(const char *vol, const char *id, void *user), void *user);
+int wps_db_vobjs_shadowing(wps_db *db, const char *target_id,
+                           void (*fn)(const char *vol, const char *id, void *user), void *user);
+bool wps_db_vobj_vol(wps_db *db, const char *id, char *vol, size_t vn);
+int wps_db_vobj_copy(wps_db *db, const char *vol, const char *id, const char *new_vol, const char *new_id, bool remove);
+int wps_db_vobj_delete(wps_db *db, const char *vol, const char *id);
+
 #endif

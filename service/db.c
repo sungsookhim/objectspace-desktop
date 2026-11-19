@@ -36,6 +36,7 @@ static const char *STATE_SCHEMA =
     " synced_rev INTEGER NOT NULL DEFAULT 0, synced_writer TEXT NOT NULL DEFAULT '',"
     " PRIMARY KEY (vol, key));"
     "CREATE INDEX IF NOT EXISTS state_unpushed ON state(vol) WHERE pushed = 0;"
+    "CREATE INDEX IF NOT EXISTS state_vobj ON state(value) WHERE key GLOB 'vobj:*';"
     "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);";
 
 static const char *MAIN_SCHEMA =
@@ -728,4 +729,151 @@ int wps_db_jobs_list(wps_db *db, wps_db_job_fn fn, void *user)
     }
     free(rows);
     return (int)n;
+}
+
+/* ------------------------------------------------------- central objects */
+
+/* Rows "vobj:<id> US WPS US <prop>" (folder, class, target) whose value is
+ * `value`: the central objects in a folder, or the shadows of a target. */
+static int vobjs_where(wps_db *db, const char *vol, const char *prop, const char *value,
+                       void (*fn)(const char *vol, const char *id, void *user), void *user)
+{
+    char suffix[64];
+    snprintf(suffix, sizeof suffix, "%cWPS%c%s", WPS_KEY_SEP, WPS_KEY_SEP, prop);
+    size_t sl = strlen(suffix);
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    int n = -1;
+    const char *sql = vol ? "SELECT vol, key FROM state WHERE key GLOB 'vobj:*' AND value=? AND deleted=0 AND vol=?"
+                          : "SELECT vol, key FROM state WHERE key GLOB 'vobj:*' AND value=? AND deleted=0";
+    if (sqlite3_prepare_v2(db->h, sql, -1, &s, NULL) == SQLITE_OK) {
+        n = 0;
+        sqlite3_bind_blob(s, 1, value, (int)strlen(value), SQLITE_STATIC);
+        if (vol) sqlite3_bind_text(s, 2, vol, -1, SQLITE_STATIC);
+        char (*ids)[WPS_ID_LEN + 1] = NULL;
+        char (*vols)[WPS_VOLID_MAX] = NULL;
+        size_t cap = 0, k = 0;
+        while (sqlite3_step(s) == SQLITE_ROW) {
+            const char *key = (const char *)sqlite3_column_text(s, 1);
+            size_t kl = strlen(key);
+            if (kl != 5 + WPS_ID_LEN + sl || strcmp(key + kl - sl, suffix) != 0) continue;
+            if (k == cap) {
+                cap = cap ? cap * 2 : 16;
+                ids = realloc(ids, cap * sizeof *ids);
+                vols = realloc(vols, cap * sizeof *vols);
+            }
+            memcpy(ids[k], key + 5, WPS_ID_LEN);
+            ids[k][WPS_ID_LEN] = 0;
+            snprintf(vols[k], sizeof vols[k], "%s", (const char *)sqlite3_column_text(s, 0));
+            k++;
+        }
+        sqlite3_finalize(s);
+        pthread_mutex_unlock(&db->mu);
+        for (size_t i = 0; i < k; i++) fn(vols[i], ids[i], user);   /* unlocked: fn may use the database */
+        free(ids);
+        free(vols);
+        return (int)k;
+    }
+    pthread_mutex_unlock(&db->mu);
+    return n;
+}
+
+int wps_db_vobjs_in(wps_db *db, const char *vol, const char *folder_id,
+                    void (*fn)(const char *vol, const char *id, void *user), void *user)
+{
+    return vobjs_where(db, vol, "folder", folder_id, fn, user);
+}
+
+int wps_db_vobjs_shadowing(wps_db *db, const char *target_id,
+                           void (*fn)(const char *vol, const char *id, void *user), void *user)
+{
+    return vobjs_where(db, NULL, "target", target_id, fn, user);
+}
+
+bool wps_db_vobj_vol(wps_db *db, const char *id, char *vol, size_t vn)
+{
+    char key[128];
+    snprintf(key, sizeof key, "vobj:%s%cWPS%cclass", id, WPS_KEY_SEP, WPS_KEY_SEP);
+    pthread_mutex_lock(&db->mu);
+    sqlite3_stmt *s;
+    bool found = false;
+    if (sqlite3_prepare_v2(db->h, "SELECT vol FROM state WHERE key=? AND deleted=0 LIMIT 1", -1, &s, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, key, -1, SQLITE_STATIC);
+        if (sqlite3_step(s) == SQLITE_ROW) {
+            snprintf(vol, vn, "%s", (const char *)sqlite3_column_text(s, 0));
+            found = true;
+        }
+        sqlite3_finalize(s);
+    }
+    pthread_mutex_unlock(&db->mu);
+    return found;
+}
+
+struct vobj_rows { char **keys; char *types; void **vals; uint32_t *lens; size_t n, cap; };
+
+static void collect_row(const char *cls, const char *prop, char type, const void *val, uint32_t len, void *user)
+{
+    struct vobj_rows *r = user;
+    if (r->n == r->cap) {
+        r->cap = r->cap ? r->cap * 2 : 16;
+        r->keys = realloc(r->keys, r->cap * sizeof *r->keys);
+        r->types = realloc(r->types, r->cap);
+        r->vals = realloc(r->vals, r->cap * sizeof *r->vals);
+        r->lens = realloc(r->lens, r->cap * sizeof *r->lens);
+    }
+    char k[512];
+    snprintf(k, sizeof k, "%s%c%s", cls, WPS_KEY_SEP, prop);
+    r->keys[r->n] = strdup(k);
+    r->types[r->n] = type;
+    r->vals[r->n] = malloc(len ? len : 1);
+    memcpy(r->vals[r->n], val, len);
+    r->lens[r->n] = len;
+    r->n++;
+}
+
+/* Copy every row of central object `id` on `vol` to `new_id` on `new_vol`
+ * (a copy, or a move to another volume); then, if `remove`, delete the old. */
+int wps_db_vobj_copy(wps_db *db, const char *vol, const char *id, const char *new_vol, const char *new_id, bool remove)
+{
+    char loc[64], nloc[64], key[640];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    snprintf(nloc, sizeof nloc, "vobj:%s", new_id);
+    struct vobj_rows r = { 0 };
+    if (wps_db_get_locator(db, vol, loc, collect_row, &r) < 0) return -1;
+    for (size_t i = 0; i < r.n; i++) {
+        snprintf(key, sizeof key, "%s%c%s", nloc, WPS_KEY_SEP, r.keys[i]);
+        wps_db_put(db, new_vol, key, r.types[i], r.vals[i], r.lens[i]);
+    }
+    for (size_t i = 0; i < r.n; i++) {
+        if (remove) {
+            snprintf(key, sizeof key, "%s%c%s", loc, WPS_KEY_SEP, r.keys[i]);
+            wps_db_delete(db, vol, key);
+        }
+        free(r.keys[i]);
+        free(r.vals[i]);
+    }
+    free(r.keys);
+    free(r.types);
+    free(r.vals);
+    free(r.lens);
+    return 0;
+}
+
+int wps_db_vobj_delete(wps_db *db, const char *vol, const char *id)
+{
+    char loc[64], key[640];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    struct vobj_rows r = { 0 };
+    if (wps_db_get_locator(db, vol, loc, collect_row, &r) < 0) return -1;
+    for (size_t i = 0; i < r.n; i++) {
+        snprintf(key, sizeof key, "%s%c%s", loc, WPS_KEY_SEP, r.keys[i]);
+        wps_db_delete(db, vol, key);
+        free(r.keys[i]);
+        free(r.vals[i]);
+    }
+    free(r.keys);
+    free(r.types);
+    free(r.vals);
+    free(r.lens);
+    return 0;
 }

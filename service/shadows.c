@@ -20,6 +20,7 @@
 
 static wpo_loop *loop;
 static wps_db *db;
+void (*wps_on_central_change)(const char *folder, const char *id, char kind);
 
 void wps_shadows_init(wpo_loop *l, wps_db *d)
 {
@@ -128,8 +129,8 @@ static void index_put(const char *shadow, const char *id)
 
 struct create_job {
     char target[PATH_MAX], folder[PATH_MAX];
-    wps_loaded tld;
-    char file[PATH_MAX];
+    wps_loaded tld, fld;
+    char file[PATH_MAX];      /* the shadow file, or "vobj:<id>" for a central shadow */
     char error[128];
     void (*done)(void *, const char *, const char *);
     void *arg;
@@ -139,10 +140,20 @@ static void create_work(void *arg)
 {
     struct create_job *j = arg;
     wps_load(j->target, true, &j->tld);   /* a shadow stores its target's ID: it needs one */
-    struct stat fs;
     if (j->tld.err) { snprintf(j->error, sizeof j->error, "%s", strerror(j->tld.err)); return; }
-    if (stat(j->folder, &fs) < 0 || !S_ISDIR(fs.st_mode)) { snprintf(j->error, sizeof j->error, "not a folder"); return; }
     if (!j->tld.id[0]) { snprintf(j->error, sizeof j->error, "target has no ID (excluded path?)"); return; }
+    /* A shadow of a shadow is a shadow of its original (as in OS/2). */
+    const char *tid = j->tld.shadow_of[0] ? j->tld.shadow_of : j->tld.id;
+    wps_load(j->folder, true, &j->fld);   /* central objects are kept by their folder's ID */
+    if (j->fld.err || !S_ISDIR(j->fld.st.st_mode)) { snprintf(j->error, sizeof j->error, "not a folder"); return; }
+    if (!wps_folder_keeps_files(&j->fld) && j->fld.id[0]) {
+        char id[WPS_ID_LEN + 1];
+        int e = wps_central_create(j->fld.vol, j->fld.id, "WPShadow", NULL, tid, id);
+        if (e) { snprintf(j->error, sizeof j->error, "%s", strerror(e)); return; }
+        snprintf(j->file, sizeof j->file, "vobj:%s", id);
+        return;
+    }
+    if (j->tld.central) { snprintf(j->error, sizeof j->error, "a shadow file of a central object is not supported yet"); return; }
     const char *slash = strrchr(j->tld.path, '/');
     const char *base = slash ? slash + 1 : j->tld.path;
     char stem[NAME_MAX - 24];
@@ -155,10 +166,10 @@ static void create_work(void *arg)
         int fd = open(j->file, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
         if (fd < 0 && errno == EEXIST) continue;
         if (fd < 0) { snprintf(j->error, sizeof j->error, "%s", strerror(errno)); j->file[0] = 0; return; }
-        int rc = write_shadow(fd, j->tld.id, j->tld.path);
+        int rc = write_shadow(fd, tid, j->tld.path);
         close(fd);
         if (rc < 0) { unlink(j->file); snprintf(j->error, sizeof j->error, "cannot write the shadow"); j->file[0] = 0; return; }
-        index_put(j->file, j->tld.id);
+        index_put(j->file, tid);
         return;
     }
     snprintf(j->error, sizeof j->error, "no free name");
@@ -168,9 +179,14 @@ static void create_work(void *arg)
 static void create_done(void *arg)
 {
     struct create_job *j = arg;
-    if (!j->error[0] && j->file[0]) j->done(j->arg, j->file, NULL);
-    else j->done(j->arg, NULL, j->error[0] ? j->error : "failed");
+    if (!j->error[0] && j->file[0]) {
+        if (!strncmp(j->file, "vobj:", 5) && wps_on_central_change) wps_on_central_change(j->folder, j->file + 5, 'c');
+        j->done(j->arg, j->file, NULL);
+    } else {
+        j->done(j->arg, NULL, j->error[0] ? j->error : "failed");
+    }
     wps_loaded_free(&j->tld);
+    wps_loaded_free(&j->fld);
     free(j);
 }
 
@@ -193,7 +209,34 @@ struct sjob {
     enum skind kind;
     char id[WPS_ID_LEN + 1];
     char a[PATH_MAX], b[PATH_MAX];      /* new path; old and new prefix; or a shadow file (S_LEARN) */
+    char (*gone)[WPS_ID_LEN + 1];       /* S_DELETED: central shadows removed, and their folders */
+    char (*gone_in)[PATH_MAX];
+    size_t ngone;
 };
+
+static void central_shadow_gone(const char *vol, const char *id, void *user)
+{
+    struct sjob *j = user;
+    wps_loaded ld, fl;
+    char loc[WPS_ID_LEN + 8];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_load(loc, false, &ld);
+    char folder[PATH_MAX] = "";
+    if (!ld.err && ld.folder_id[0]) {
+        char fid[WPS_ID_LEN + 8];
+        snprintf(fid, sizeof fid, "id:%s", ld.folder_id);
+        wps_load(fid, false, &fl);
+        if (!fl.err) snprintf(folder, sizeof folder, "%s", fl.path);
+        wps_loaded_free(&fl);
+    }
+    wps_loaded_free(&ld);
+    wps_db_vobj_delete(db, vol, id);
+    j->gone = realloc(j->gone, (j->ngone + 1) * sizeof *j->gone);
+    j->gone_in = realloc(j->gone_in, (j->ngone + 1) * sizeof *j->gone_in);
+    snprintf(j->gone[j->ngone], sizeof j->gone[0], "%s", id);
+    snprintf(j->gone_in[j->ngone], sizeof j->gone_in[0], "%s", folder);
+    j->ngone++;
+}
 
 struct rewrite_ctx { struct sjob *j; int done; };
 
@@ -271,9 +314,20 @@ static void sjob_work(void *arg)
         return;
     }
     wps_db_shadows_for(db, j->id, rewrite_one, &c);
+    if (j->kind == S_DELETED) wps_db_vobjs_shadowing(db, j->id, central_shadow_gone, j);
 }
 
-static void start(struct sjob *j) { wpo_defer(loop, "maintain shadows", sjob_work, free, j); }
+static void sjob_done(void *arg)
+{
+    struct sjob *j = arg;
+    for (size_t i = 0; i < j->ngone; i++)
+        if (j->gone_in[i][0] && wps_on_central_change) wps_on_central_change(j->gone_in[i], j->gone[i], 'd');
+    free(j->gone);
+    free(j->gone_in);
+    free(j);
+}
+
+static void start(struct sjob *j) { wpo_defer(loop, "maintain shadows", sjob_work, sjob_done, j); }
 
 void wps_shadows_target_moved(const char *id, const char *newpath)
 {

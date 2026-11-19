@@ -29,6 +29,10 @@
 
 void wps_shadows_init(wpo_loop *loop, wps_db *db);
 
+/* Loop thread: a central object appeared in ('c') or left ('d') a folder
+ * (the service refreshes listings and tells subscribers). */
+extern void (*wps_on_central_change)(const char *folder, const char *id, char kind);
+
 /* Create a shadow of `target` (a path or id:ID) in `folder`. `done` gets
  * the new link's path, or NULL and an error message. */
 void wps_shadow_create(const char *target, const char *folder,

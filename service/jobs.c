@@ -102,6 +102,12 @@ struct job {
     time_t journaled;
     uint64_t journaled_items;
     bool resuming;          /* skip items already copied completely */
+    char **pos_names;       /* drop positions, by item name */
+    int64_t *pos_x, *pos_y;
+    size_t npos;
+    char **placed;          /* final paths of positioned items, and where */
+    int64_t *placed_x, *placed_y;
+    size_t nplaced;
 };
 
 static struct job *jobs;
@@ -322,13 +328,30 @@ static void alt_name(const char *dir, const char *name, int k, char *out, size_t
 
 /* Put `tmp` (or, for a same-filesystem move, the source itself) at
  * dest/name without replacing anything. Returns 0, or 1 if skipped. */
+static void note_placed(struct job *j, const char *name, const char *final)
+{
+    pthread_mutex_lock(&mu);
+    for (size_t i = 0; i < j->npos; i++)
+        if (!strcmp(j->pos_names[i], name)) {
+            j->placed = realloc(j->placed, (j->nplaced + 1) * sizeof *j->placed);
+            j->placed_x = realloc(j->placed_x, (j->nplaced + 1) * sizeof *j->placed_x);
+            j->placed_y = realloc(j->placed_y, (j->nplaced + 1) * sizeof *j->placed_y);
+            j->placed[j->nplaced] = strdup(final);
+            j->placed_x[j->nplaced] = j->pos_x[i];
+            j->placed_y[j->nplaced] = j->pos_y[i];
+            j->nplaced++;
+            break;
+        }
+    pthread_mutex_unlock(&mu);
+}
+
 static int place(struct job *j, const char *from, const char *name, bool is_tmp)
 {
     char target[PATH_MAX];
     snprintf(target, sizeof target, "%s/%s", j->dest, name);
     bool renaming = false;   /* once Rename is chosen, count up to a free name without asking again */
     for (int k = 2;; k++) {
-        if (renameat2(AT_FDCWD, from, AT_FDCWD, target, RENAME_NOREPLACE) == 0) return 0;
+        if (renameat2(AT_FDCWD, from, AT_FDCWD, target, RENAME_NOREPLACE) == 0) { note_placed(j, name, target); return 0; }
         if (errno != EEXIST) return -errno;
         if (renaming && k < 100000) { alt_name(j->dest, name, k, target, sizeof target); continue; }
         int d = decide(j, name);
@@ -346,8 +369,37 @@ static int place(struct job *j, const char *from, const char *name, bool is_tmp)
     }
 }
 
+void (*wps_on_job_placed)(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
+
+struct placed_post { char dest[PATH_MAX]; char **paths; int64_t *x, *y; size_t n; };
+
+static void placed_now(void *arg)   /* loop thread */
+{
+    struct placed_post *p = arg;
+    if (wps_on_job_placed && p->n) wps_on_job_placed(p->dest, p->paths, p->x, p->y, p->n);
+    for (size_t i = 0; i < p->n; i++) free(p->paths[i]);
+    free(p->paths);
+    free(p->x);
+    free(p->y);
+    free(p);
+}
+
 static void finish(struct job *j, jstate st)
 {
+    pthread_mutex_lock(&mu);
+    if (j->nplaced && loop) {
+        struct placed_post *p = calloc(1, sizeof *p);
+        snprintf(p->dest, sizeof p->dest, "%s", j->dest);
+        p->paths = j->placed;
+        p->x = j->placed_x;
+        p->y = j->placed_y;
+        p->n = j->nplaced;
+        j->placed = NULL;
+        j->placed_x = j->placed_y = NULL;
+        j->nplaced = 0;
+        wpo_loop_post(loop, WPO_Q_RESULTS, "place dropped items", placed_now, p);
+    }
+    pthread_mutex_unlock(&mu);
     pthread_mutex_lock(&mu);
     j->state = st;
     journal(j, true);
@@ -667,6 +719,14 @@ void wps_jobs_shutdown(bool logout)
         for (size_t i = 0; i < j->nskipped; i++) free(j->skipped[i]);
         free(j->missing);
         free(j->skipped);
+        for (size_t i = 0; i < j->npos; i++) free(j->pos_names[i]);
+        free(j->pos_names);
+        free(j->pos_x);
+        free(j->pos_y);
+        for (size_t i = 0; i < j->nplaced; i++) free(j->placed[i]);
+        free(j->placed);
+        free(j->placed_x);
+        free(j->placed_y);
         pthread_cond_destroy(&j->cv);
         free(j);
     }
@@ -676,6 +736,24 @@ void wps_jobs_shutdown(bool logout)
         for (size_t i = 0; i < s->n; i++) free(s->names[i]);
         free(s->names);
         free(s);
+    }
+    pthread_mutex_unlock(&mu);
+}
+
+void wps_job_set_positions(int64_t id, const char *const *names, const int64_t *x, const int64_t *y, size_t n)
+{
+    pthread_mutex_lock(&mu);
+    struct job *j = job_by_id(id);
+    if (j && !j->npos) {
+        j->pos_names = calloc(n ? n : 1, sizeof *j->pos_names);
+        j->pos_x = calloc(n ? n : 1, sizeof *j->pos_x);
+        j->pos_y = calloc(n ? n : 1, sizeof *j->pos_y);
+        for (size_t i = 0; i < n; i++) {
+            j->pos_names[i] = strdup(names[i]);
+            j->pos_x[i] = x[i];
+            j->pos_y[i] = y[i];
+        }
+        j->npos = n;
     }
     pthread_mutex_unlock(&mu);
 }

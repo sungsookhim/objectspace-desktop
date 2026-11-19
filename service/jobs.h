@@ -43,6 +43,11 @@ int64_t wps_select(const char *folder, bool all, const char *const *names, size_
 /* Start a move or copy of a selection into `dest`. Returns the job ID, or
  * -1 with a message. */
 int64_t wps_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen);
+/* Where the items should sit in `dest` (a drop point): by item name. Set
+ * right after wps_job_start. When the job ends, wps_on_job_placed gets the
+ * final paths (after any renaming) with their positions (loop thread). */
+void wps_job_set_positions(int64_t id, const char *const *names, const int64_t *x, const int64_t *y, size_t n);
+extern void (*wps_on_job_placed)(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
 
 /* Job control. Return false if there is no such job (or the action does
  * not apply). decision: "skip" or "rename". */

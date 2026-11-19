@@ -53,7 +53,8 @@ static int usage(void)
             "       wpsctl settings_set TARGET KEY=VALUE...\n"
             "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
             "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n"
-            "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n");
+            "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n"
+            "       wpsctl vmove vobj:ID FOLDER [copy]\n");
     return 2;
 }
 
@@ -174,6 +175,14 @@ int main(int argc, char **argv)
         cb_text(&b, "op"); cb_text(&b, "open");
         cb_text(&b, "target"); cb_text(&b, argv[2]);
         cb_text(&b, "confirm"); cb_bool(&b, argc == 4 && !strcmp(argv[3], "confirm"));
+    } else if (!strcmp(op, "vmove")) {
+        if (argc < 4 || argc > 5) return usage();
+        cb_map(&b, 5);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, "folder"); cb_text(&b, argv[3]);
+        cb_text(&b, "copy"); cb_bool(&b, argc == 5 && !strcmp(argv[4], "copy"));
     } else if (!strcmp(op, "layout") || !strcmp(op, "arrange")) {
         if (argc != 3) return usage();
         cb_map(&b, 3);

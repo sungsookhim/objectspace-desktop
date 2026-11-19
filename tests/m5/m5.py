@@ -432,6 +432,85 @@ def sl1():
                 f"by name: {named}", f"Arrange cleared {ar.get('result')} positions: now {lay_a3}"]
 
 
+# ----------------------------------------------------------- central objects
+
+def wait_for(fn, timeout=5.0, step=0.1):
+    end = time.time() + timeout
+    while time.time() < end:
+        r = fn()
+        if r:
+            return r
+        time.sleep(step)
+    return fn()
+
+
+@scenario("C1", "Central objects: shadows kept centrally by default, listed with the folder, moved, copied, placed")
+def sc1():
+    me = Service("me").start()
+    d = fresh("ext4", "c1")
+    for sub in ("docs", "desk", "other", "keepfiles"):
+        (d / sub).mkdir()
+    (d / "docs" / "report.txt").write_text("x")
+    me.call(d / "docs" / "report.txt", "wpSetTitle", "Report")
+    r = me.ctl("shadow", d / "docs" / "report.txt", d / "desk")
+    addr = r.get("result", "")
+    files_in_desk = sorted(os.listdir(d / "desk"))
+    page = me.ctl("list", d / "desk", 0, 10, "details").get("result", {}).get("items", [])
+    sh = obj(me, addr)
+    mv = me.ctl("vmove", addr, d / "other").get("result", "")
+    in_desk = me.ctl("list", d / "desk", 0, 10).get("result", {}).get("items", [])
+    in_other = me.ctl("list", d / "other", 0, 10).get("result", {}).get("items", [])
+    cp = me.ctl("vmove", mv, d / "desk", "copy").get("result", "")
+    me.ctl("place", d / "desk", cp, 120, 80)
+    me.ctl("flush")
+    lay = {i["name"]: (i["x"], i["y"]) for i in me.ctl("layout", d / "desk").get("result", {}).get("items", [])}
+    # a folder set to keep files gets a .wpobj file
+    me.call(d / "keepfiles", "wpSetLocalObjects", "true")
+    me.ctl("flush")
+    lr = me.ctl("shadow", d / "docs" / "report.txt", d / "keepfiles").get("result", "")
+    # deleting the target removes its central shadows
+    os.unlink(d / "docs" / "report.txt")
+    gone = wait_for(lambda: not me.ctl("list", d / "other", 0, 10).get("result", {}).get("items", []) and
+                    not me.ctl("list", d / "desk", 0, 10).get("result", {}).get("items", []), timeout=8)
+    me.stop()
+    entry = page[0] if page else {}
+    ok = addr.startswith("vobj:") and files_in_desk == [] and entry.get("name", "").startswith("\x01vobj:") and \
+        entry.get("shadow") is True and entry.get("title") == "Report" and sh.get("class") == "WPShadow" and \
+        (sh.get("target") or {}).get("title") == "Report" and mv == addr and in_desk == [] and len(in_other) == 1 and \
+        cp.startswith("vobj:") and cp != mv and lay.get("\x01" + cp) == (120, 80) and lr.endswith(".wpobj") and bool(gone)
+    return ok, [f"shadow made centrally: {addr[:13]}..., files in desk/: {files_in_desk}",
+                f"listed with the folder: shadow={entry.get('shadow')}, title {entry.get('title')!r}; resolves to {(sh.get('target') or {}).get('title')!r}",
+                f"moved to other/ (same ID {mv == addr}): desk lists {len(in_desk)}, other lists {len(in_other)}",
+                f"copied back to desk/ with its own ID; placed at {lay.get(chr(1) + cp)}",
+                f"in a folder set to keep files: {Path(lr).name if lr else None}",
+                f"target deleted: its central shadows gone: {bool(gone)}"]
+
+
+@scenario("C2", "Dropped copies land where they were dropped, after any renaming")
+def sc2():
+    me = Service("me").start()
+    d = fresh("ext4", "c2")
+    (d / "src").mkdir()
+    (d / "dst").mkdir()
+    (d / "src" / "a.txt").write_text("a")
+    (d / "dst" / "a.txt").write_text("taken")
+    c = Conn(me)
+    sel = c.request(op="select", folder=str(d / "src"), all=False, items=["a.txt"]).get("result")
+    job = c.request(op="copy", selection=sel, dest=str(d / "dst"), positions=[{"name": "a.txt", "x": 333, "y": 44}]).get("result")
+    def state():
+        st = c.request(op="job", job=job).get("result") or {}
+        if st.get("state") == "needs-decision":
+            c.request(op="job_decide", job=job, decision="rename", all=False)
+        return st.get("state")
+    wait_for(lambda: state() == "done", timeout=10)
+    c.close()
+    me.ctl("flush")
+    lay = {i["name"]: (i["x"], i["y"]) for i in me.ctl("layout", d / "dst").get("result", {}).get("items", [])}
+    me.stop()
+    ok = lay.get("a (2).txt") == (333, 44) and "a.txt" not in lay
+    return ok, [f"copied under a clash, renamed: positions {lay}"]
+
+
 # ------------------------------------------------------------------- driver
 
 def main():

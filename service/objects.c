@@ -100,8 +100,16 @@ void (*wps_on_saved)(sobj *s);
 
 sobj *wps_sobj_by_path(const char *path)
 {
+    if (!path || !path[0]) return NULL;   /* central objects have no path */
     for (size_t i = 0; i < nobjs; i++)
         if (strcmp(objs[i]->path, path) == 0) return objs[i];
+    return NULL;
+}
+
+static sobj *by_central(const char *id)
+{
+    for (size_t i = 0; i < nobjs; i++)
+        if (objs[i]->central && !strcmp(WPObject_data(objs[i]->o)->id, id)) return objs[i];
     return NULL;
 }
 
@@ -181,7 +189,7 @@ size_t wps_objects_pending(void)
 const char *wps_object_path(wpo_object *o)
 {
     sobj *s = by_object(o);
-    return s ? s->path : NULL;
+    return s && !s->central ? s->path : NULL;
 }
 
 /* ------------------------------------------------------- loading (worker) */
@@ -335,16 +343,40 @@ static void update_desktop_file(const char *path, const char *name, const char *
     close(fd);
 }
 
+/* A central object: its rows are all there is. */
+static void load_central(const char *id, wps_loaded *ld)
+{
+    if (strlen(id) != WPS_ID_LEN || !wps_db_vobj_vol(db, id, ld->vol, sizeof ld->vol)) { ld->err = ENOENT; return; }
+    ld->central = true;
+    memcpy(ld->id, id, WPS_ID_LEN + 1);
+    snprintf(ld->locator, sizeof ld->locator, "vobj:%s", id);
+    ld->owned = ld->writable = true;   /* this user's own rows */
+    ld->xattr_ok = false;
+    wps_db_get_locator(db, ld->vol, ld->locator, overlay_prop, ld);
+    wps_props *w = class_props(ld, "WPS");
+    char *v = NULL;
+    if (w && wps_props_str(w, "class", &v)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", v);
+    free(v);
+    v = NULL;
+    if (w && wps_props_str(w, "folder", &v) && strlen(v) == WPS_ID_LEN) memcpy(ld->folder_id, v, WPS_ID_LEN + 1);
+    free(v);
+    v = NULL;
+    if (w && wps_props_str(w, "target", &v) && strlen(v) == WPS_ID_LEN) memcpy(ld->shadow_of, v, WPS_ID_LEN + 1);
+    free(v);
+    if (!ld->obj_class[0]) ld->err = ENOENT;
+}
+
 void wps_load(const char *target, bool assign_id, wps_loaded *ld)
 {
     memset(ld, 0, sizeof *ld);
+    if (strncmp(target, "vobj:", 5) == 0) { load_central(target + 5, ld); return; }
     if (strncmp(target, "id:", 3) == 0) {
         /* An object named by ID: find where it was last seen. */
         char vol[WPS_VOLID_MAX], rel[PATH_MAX];
         wps_volume v;
         if (wps_db_get_location(db, target + 3, vol, sizeof vol, rel, sizeof rel) < 0 ||
             !wps_volume_for_uuid(vol, &v)) {
-            ld->err = ENOENT;
+            load_central(target + 3, ld);   /* or a central object */
             return;
         }
         snprintf(ld->path, sizeof ld->path, "%s%s%s", v.mnt, strcmp(v.mnt, "/") ? "/" : "", rel);
@@ -451,9 +483,47 @@ static void apply_loaded(sobj *s, wps_loaded *ld)
     s->owned = ld->owned;
 }
 
+static wpo_object *central_from_loaded(wps_loaded *ld)
+{
+    sobj *s = by_central(ld->id);
+    if (s) {
+        if (!s->queued && !s->saving && !WPObject_data(s->o)->dirty) {
+            for (int i = 0; i < ld->nc; i++) wps_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
+            WPObject_wpRestoreProperties(s->o);
+        }
+        memcpy(s->folder_id, ld->folder_id, sizeof s->folder_id);
+        return s->o;
+    }
+    if (nobjs == capobjs) {
+        size_t ncap = capobjs ? capobjs * 2 : 64;
+        sobj **n = realloc(objs, ncap * sizeof *n);
+        if (!n) return NULL;
+        objs = n;
+        capobjs = ncap;
+    }
+    wpo_class *c = wpo_find_class(ld->obj_class);
+    if (!c || c->is_meta || !wpo_subclass_of(c, WPAbstractClass)) c = WPAbstractClass;
+    s = calloc(1, sizeof *s);
+    s->o = wpo_new(c);
+    if (!s->o) { free(s); return NULL; }
+    s->central = true;
+    memcpy(s->folder_id, ld->folder_id, sizeof s->folder_id);
+    if (strcmp(c->name, ld->obj_class)) snprintf(s->declared_class, sizeof s->declared_class, "%s", ld->obj_class);
+    WPObjectData *d = WPObject_data(s->o);
+    memcpy(d->id, ld->id, sizeof d->id);
+    for (int i = 0; i < ld->nc; i++) wps_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
+    WPObject_wpRestoreProperties(s->o);
+    snprintf(s->vol, sizeof s->vol, "%s", ld->vol);
+    snprintf(s->locator, sizeof s->locator, "%s", ld->locator);
+    s->writable = s->owned = true;
+    objs[nobjs++] = s;
+    return s->o;
+}
+
 wpo_object *wps_object_from_loaded(wps_loaded *ld)
 {
     if (ld->err) return NULL;
+    if (ld->central) return central_from_loaded(ld);
     sobj *s = by_inode(ld->st.st_dev, ld->st.st_ino);
     if (!s && S_ISLNK(ld->st.st_mode)) {
         /* A shadow's symlink is replaced when it is rewritten: same object. */
@@ -590,7 +660,7 @@ static void save_work(void *arg)
             j->busy = true;
         }
     }
-    if (j->id[0]) wps_db_set_location(db, j->id, j->vol, j->rel);
+    if (j->id[0] && j->path[0]) wps_db_set_location(db, j->id, j->vol, j->rel);   /* not for central objects */
     if ((j->desk_name || j->desk_exec) && j->writable) update_desktop_file(j->path, j->desk_name, j->desk_exec);
 }
 
@@ -656,7 +726,7 @@ static void save_done(void *arg)
 static void start_save(sobj *s)
 {
     s->queued = false;
-    if (wps_path_excluded(s->path)) {
+    if (s->path[0] && wps_path_excluded(s->path)) {
         /* Excluded paths keep no WPS state (design: Excluded paths). */
         WPObject_wpSaveState(s->o);
         WPObject_data(s->o)->dirty = 0;
@@ -898,4 +968,56 @@ void wps_objects_shutdown(void)
     free(excluded);
     excluded = NULL;
     nexcluded = 0;
+}
+
+/* ------------------------------------------------------ central objects */
+
+int wps_central_create(const char *vol, const char *folder_id, const char *cls, const char *title,
+                       const char *target_id, char id[WPS_ID_LEN + 1])
+{
+    char key[PATH_MAX + 128], loc[64];
+    wps_new_id(id);
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_db_key(key, sizeof key, loc, "WPS", "folder");
+    if (wps_db_put(db, vol, key, 's', folder_id, WPS_ID_LEN) < 0) return EIO;
+    wps_db_key(key, sizeof key, loc, "WPS", "class");
+    wps_db_put(db, vol, key, 's', cls, (uint32_t)strlen(cls));
+    if (target_id && *target_id) {
+        wps_db_key(key, sizeof key, loc, "WPS", "target");
+        wps_db_put(db, vol, key, 's', target_id, WPS_ID_LEN);
+    }
+    if (title && *title) {
+        wps_db_key(key, sizeof key, loc, "WPObject", "title");
+        wps_db_put(db, vol, key, 's', title, (uint32_t)strlen(title));
+    }
+    return 0;
+}
+
+int wps_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user)
+{
+    return wps_db_vobjs_in(db, vol, folder_id, fn, user);
+}
+
+int wps_central_move(const char *id, const char *dest_vol, const char *dest_folder_id, bool copy, char new_id[WPS_ID_LEN + 1])
+{
+    char vol[WPS_VOLID_MAX], key[PATH_MAX + 128], loc[64];
+    if (!wps_db_vobj_vol(db, id, vol, sizeof vol)) return ENOENT;
+    if (copy) wps_new_id(new_id);
+    else memcpy(new_id, id, WPS_ID_LEN + 1);
+    if (copy || strcmp(vol, dest_vol)) {
+        if (wps_db_vobj_copy(db, vol, id, dest_vol, new_id, !copy) < 0) return EIO;
+    }
+    snprintf(loc, sizeof loc, "vobj:%s", new_id);
+    wps_db_key(key, sizeof key, loc, "WPS", "folder");
+    return wps_db_put(db, dest_vol, key, 's', dest_folder_id, WPS_ID_LEN) < 0 ? EIO : 0;
+}
+
+bool wps_folder_keeps_files(const wps_loaded *folder)
+{
+    for (int i = 0; i < folder->nc; i++) {
+        if (strcmp(folder->c[i].cls, "WPFolder")) continue;
+        int64_t v = 0;
+        if (wps_props_int(&folder->c[i].props, "local", &v)) return v != 0;
+    }
+    return false;
 }

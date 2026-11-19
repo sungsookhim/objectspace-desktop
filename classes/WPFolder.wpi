@@ -3,12 +3,17 @@ class WPFolder : WPFileSystem
 version 1.0
 data {
     int sort_order;
+    int local_objects;
 }
 override wpModifyPopupMenu
 override wpSaveState
 override wpRestoreProperties
 method wpQuerySortOrder() -> int
 method wpSetSortOrder(int order) -> bool
+# WPS-only objects (shadows and others) made here are kept as .wpobj files
+# in the folder, instead of centrally (decided 2026-11-18).
+method wpQueryLocalObjects() -> bool
+method wpSetLocalObjects(bool on) -> bool
 # Icon positions, stored on the folder by the child's object ID (design:
 # Persistence; per user in folders the user does not own).
 method wpSetIconPos(object child, int x, int y) -> bool

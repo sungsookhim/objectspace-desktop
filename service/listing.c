@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#include "objects.h"
 #include "shadows.h"
 
 #include <dirent.h>
@@ -76,6 +77,46 @@ struct detail_job {
 
 struct detail_slice { struct detail_job *j; size_t from, to; };
 
+static const wps_props *props_of(const wps_loaded *ld, const char *cls)
+{
+    for (int i = 0; i < ld->nc; i++)
+        if (!strcmp(ld->c[i].cls, cls)) return &ld->c[i].props;
+    return NULL;
+}
+
+static void central_details(wps_entry *e)
+{
+    wps_loaded ld;
+    wps_load(e->name + 1, false, &ld);
+    e->detailed = true;
+    e->size = e->mtime = 0;
+    if (ld.err) { wps_loaded_free(&ld); return; }
+    memcpy(e->id, ld.id, sizeof e->id);
+    const wps_props *op = props_of(&ld, "WPObject");
+    char *t = NULL;
+    if (op && wps_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+    free(t);
+    if (ld.shadow_of[0]) {
+        e->shadow = true;
+        e->target_type = DT_UNKNOWN;
+        char tl[WPS_ID_LEN + 8];
+        snprintf(tl, sizeof tl, "id:%s", ld.shadow_of);
+        wps_loaded tg;
+        wps_load(tl, false, &tg);
+        if (!tg.err) {
+            snprintf(e->target_path, sizeof e->target_path, "%s", tg.path[0] ? tg.path : tl);
+            e->target_type = S_ISDIR(tg.st.st_mode) ? DT_DIR : DT_REG;
+            const wps_props *tp = props_of(&tg, "WPObject");
+            t = NULL;
+            if (!e->title[0] && tp && wps_props_str(tp, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+            free(t);
+            if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
+        }
+        wps_loaded_free(&tg);
+    }
+    wps_loaded_free(&ld);
+}
+
 static void detail_work(void *arg)
 {
     struct detail_slice *sl = arg;
@@ -97,6 +138,10 @@ static void detail_work(void *arg)
             if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
             free(t);
             wps_props_free(&ps);
+        }
+        if (e->name[0] == '\x01') {   /* a central object */
+            central_details(e);
+            continue;
         }
         size_t nl = strlen(e->name);
         char tid[WPS_ID_LEN + 1];
@@ -218,8 +263,10 @@ static void chunk_done(void *arg)   /* loop thread */
         l->types = realloc(l->types, ncap);
         l->cap = ncap;
     }
-    memcpy(l->names + l->n, c->names, c->n * sizeof *c->names);
-    memcpy(l->types + l->n, c->types, c->n);
+    if (c->n) {   /* an empty folder's only chunk: nothing to copy, and no array yet */
+        memcpy(l->names + l->n, c->names, c->n * sizeof *c->names);
+        memcpy(l->types + l->n, c->types, c->n);
+    }
     l->n += c->n;
     if (c->last) { l->complete = true; l->loading = false; l->err = c->err; }
     free(c->names);
@@ -229,6 +276,30 @@ static void chunk_done(void *arg)   /* loop thread */
 }
 
 struct read_job { struct listing *l; unsigned gen; char path[PATH_MAX]; };
+
+/* Central objects are listed as "\x01vobj:<id>": not a file name (no file
+ * name starts with \x01), and the address to use for them. */
+struct central_add { struct chunk **c; struct read_job *j; size_t size; };
+
+static void add_central(const char *vol, const char *id, void *user)
+{
+    (void)vol;
+    struct central_add *ca = user;
+    struct chunk *c = *ca->c;
+    char name[64];
+    snprintf(name, sizeof name, "\x01vobj:%s", id);
+    c->names[c->n] = strdup(name);
+    c->types[c->n] = DT_UNKNOWN;
+    if (++c->n == CHUNK) {
+        wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
+        c = calloc(1, sizeof *c);
+        c->l = ca->j->l;
+        c->gen = ca->j->gen;
+        c->names = malloc(CHUNK * sizeof *c->names);
+        c->types = malloc(CHUNK);
+        *ca->c = c;
+    }
+}
 
 static void read_work(void *arg)   /* worker: the whole directory, posted in chunks */
 {
@@ -264,6 +335,14 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
         }
     }
     closedir(d);
+    /* Then the central objects kept for this folder (by its object ID). */
+    wps_loaded fld;
+    wps_load(j->path, false, &fld);
+    if (!fld.err && fld.id[0]) {
+        struct central_add ca = { &c, j, size };
+        wps_central_in(fld.vol, fld.id, add_central, &ca);
+    }
+    wps_loaded_free(&fld);
     c->last = true;
     wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
 }

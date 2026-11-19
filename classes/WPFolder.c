@@ -41,6 +41,8 @@ void WPFolder__wpRestoreProperties(wpo_object *self)
     WPFolder_parent_wpRestoreProperties(self);
     int64_t v = 0;
     WPFolder_data(self)->sort_order = wps_state_get_int(self, "WPFolder", "sort", &v) ? (int)v : 0;
+    v = 0;
+    WPFolder_data(self)->local_objects = wps_state_get_int(self, "WPFolder", "local", &v) ? (int)v : 0;
 }
 
 /* Positions are keyed by the child's object ID, so they survive renames and
@@ -82,8 +84,9 @@ wpo_pending *WPFolder__wpPopulate(wpo_object *self)
 char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
-    snprintf(line, sizeof line, "page\tView\nfield\tsort\tchoice\tSort by\t%d\twpSetSortOrder\tname,type,size,date\n",
-             WPFolder_data(self)->sort_order);
+    snprintf(line, sizeof line, "page\tView\nfield\tsort\tchoice\tSort by\t%d\twpSetSortOrder\tname,type,size,date\n"
+             "field\tlocal\tcheckbox\tKeep objects as files here\t%d\twpSetLocalObjects\n",
+             WPFolder_data(self)->sort_order, WPFolder_data(self)->local_objects);
     char *r = wps_concat(base, line);
     free(base);
     return r;
@@ -93,4 +96,15 @@ char *WPFolder__wpclsQueryTitle(wpo_object *self)
 {
     (void)self;
     return wps_strdup("Folder");
+}
+
+bool WPFolder__wpQueryLocalObjects(wpo_object *self) { return WPFolder_data(self)->local_objects != 0; }
+
+bool WPFolder__wpSetLocalObjects(wpo_object *self, bool on)
+{
+    WPFolder_data(self)->local_objects = on;
+    wps_state_put_int(self, "WPFolder", "local", on);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
 }

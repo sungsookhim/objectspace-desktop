@@ -52,19 +52,24 @@ typedef struct {
     char obj_class[64];
     char desk_name[256];
     char desk_exec[1024];
+    /* Central objects (decided 2026-11-18): no file; kept in the database
+     * as "vobj:<id>" rows. path is empty; folder is its folder's ID. */
+    bool central;
+    char folder_id[WPS_ID_LEN + 1];
 } wps_loaded;
 
 void wps_objects_init(const wps_env *env, wps_db *db, wpo_loop *loop, int save_delay_ms);
 void wps_objects_shutdown(void);
 
-/* Worker: stat and read everything about `target` (a path, or "id:<ID>").
+/* Worker: stat and read everything about `target` (a path, "id:<ID>", or
+ * "vobj:<ID>" for a central object).
  * With assign_id, an object without an ID gets one now. */
 void wps_load(const char *target, bool assign_id, wps_loaded *out);
 void wps_loaded_free(wps_loaded *ld);
 
 /* Loop: the object for loaded data, created or refreshed. Borrowed. */
 wpo_object *wps_object_from_loaded(wps_loaded *ld);
-const char *wps_object_path(wpo_object *o);   /* NULL if not file-backed */
+const char *wps_object_path(wpo_object *o);   /* NULL if not file-backed (central objects) */
 
 /* Loop: write all pending changes now; `done` runs when nothing is pending. */
 void wps_objects_flush(void (*done)(void *arg), void *arg);
@@ -87,6 +92,8 @@ typedef struct sobj {
     bool retry;                  /* some keys went to the overlay because the file was busy */
     bool forgotten;              /* removed while a save was running; freed when it ends */
     char declared_class[64];     /* a .wpobj's class, if it is not installed here */
+    bool central;                /* a central object: no file, rows only */
+    char folder_id[WPS_ID_LEN + 1];
     int retry_delay_ms;
 } sobj;
 
@@ -112,6 +119,18 @@ extern void (*wps_on_saved)(sobj *s);
 /* The file name for a new object of class `cls` titled `title` in `folder`
  * (".desktop" for programs, ".wpobj" for other abstract classes). */
 void wps_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len);
+/* Worker: a new central object of class `cls` in the folder with object ID
+ * `folder_id` on `vol`, with extra rows under class WPS (e.g. "target").
+ * Writes its ID into `id`. 0, or an errno value. */
+int wps_central_create(const char *vol, const char *folder_id, const char *cls, const char *title,
+                       const char *target_id, char id[WPS_ID_LEN + 1]);
+/* Worker: does this loaded folder keep its objects as files? */
+bool wps_folder_keeps_files(const wps_loaded *folder);
+/* Worker: the central objects in a folder (by the folder's ID). */
+int wps_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user);
+/* Worker: move a central object to another folder, or copy it (a new ID). */
+int wps_central_move(const char *id, const char *dest_vol, const char *dest_folder_id, bool copy, char new_id[WPS_ID_LEN + 1]);
+
 /* Write a new abstract object's file (no-replace); 0 or an errno value. */
 int wps_object_file_create(const char *path, const char *cls, const char *title);
 
