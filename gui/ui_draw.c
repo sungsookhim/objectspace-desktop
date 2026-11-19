@@ -29,6 +29,7 @@ static const ui_scheme classic = {
     .menu_bg = RGB(204, 204, 204), .menu_text = RGB(0, 0, 0),
     .menu_hilite = RGB(0, 0, 128), .menu_hilite_text = RGB(255, 255, 255),
     .placeholder = RGB(225, 225, 225),
+    .shadow_text = RGB(0, 90, 170),
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
@@ -44,6 +45,7 @@ static const ui_scheme dark = {
     .menu_bg = RGB(60, 62, 66), .menu_text = RGB(230, 230, 230),
     .menu_hilite = RGB(40, 70, 140), .menu_hilite_text = RGB(255, 255, 255),
     .placeholder = RGB(55, 56, 60),
+    .shadow_text = RGB(120, 180, 255),
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };

@@ -31,6 +31,8 @@ typedef struct {
     int64_t mtime;
     char id[WPS_ID_LEN + 1];
     char title[256];
+    bool shadow;             /* a managed shadow: title and type are its target's */
+    unsigned char target_type;
 } wps_entry;
 
 typedef struct {

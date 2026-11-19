@@ -41,6 +41,7 @@ typedef struct {
     ui_color client_bg, alt_row, selection, selection_text, cursor;
     ui_color menu_bg, menu_text, menu_hilite, menu_hilite_text;
     ui_color placeholder;
+    ui_color shadow_text;      /* titles of shadows */
     double font_px;
     double border, title_h, button_w, button_h;
     double corner_radius;      /* 0: square (the default) */
@@ -314,6 +315,7 @@ typedef struct {
     ui_kind kind;
     const char *title, *name;  /* valid until the next call */
     int64_t size, mtime;
+    bool shadow;               /* a shadow of another object: drawn as one */
     /* Tree view only. */
     int depth;
     bool expandable, expanded;

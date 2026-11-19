@@ -326,9 +326,11 @@ static int place(struct job *j, const char *from, const char *name, bool is_tmp)
 {
     char target[PATH_MAX];
     snprintf(target, sizeof target, "%s/%s", j->dest, name);
+    bool renaming = false;   /* once Rename is chosen, count up to a free name without asking again */
     for (int k = 2;; k++) {
         if (renameat2(AT_FDCWD, from, AT_FDCWD, target, RENAME_NOREPLACE) == 0) return 0;
         if (errno != EEXIST) return -errno;
+        if (renaming && k < 100000) { alt_name(j->dest, name, k, target, sizeof target); continue; }
         int d = decide(j, name);
         if (d == 1 || d == 0) {
             if (is_tmp) rm_tree(from);
@@ -339,6 +341,7 @@ static int place(struct job *j, const char *from, const char *name, bool is_tmp)
             }
             return d == 1 ? 1 : -ECANCELED;
         }
+        renaming = true;
         alt_name(j->dest, name, k, target, sizeof target);
     }
 }

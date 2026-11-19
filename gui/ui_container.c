@@ -354,6 +354,7 @@ static void thumb(ui_container *c, double *y, double *h)
 
 /* Simple vector icons of our own; real icons come with the icon objects. */
 static void draw_icon_paths(cairo_t *cr, ui_kind k, double x, double y, double sz);
+static void shadow_mark(cairo_t *cr, double x, double y, double size);
 
 /* Rendered once per kind, size and scale, then painted as images. */
 static struct { ui_kind kind; int size, scale; cairo_surface_t *img; } icon_cache[32];
@@ -506,8 +507,10 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
         ui_fill(cr, (ui_rect){ x[1], r.y + 6, 140, 8 }, k->placeholder);
     } else {
         draw_icon(cr, it.kind, x[0], r.y + 2, 16);
-        ui_set_color(cr, sel ? k->selection_text : k->text);
+        if (it.shadow) shadow_mark(cr, x[0], r.y + 2, 16);
+        ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, it.title ? it.title : "", x[2] - x[1] - 6);
+        ui_set_color(cr, sel ? k->selection_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, x[2], base, it.name ? it.name : "", x[3] - x[2] - 6);
         if (it.detailed) {
             char sz[32], dt[32];
@@ -612,6 +615,29 @@ static bool on_expander(ui_container *c, size_t i, double x)
     return x >= ex && x < ex + INDENT;
 }
 
+/* The mark on a shadow's icon: a small arrow in the corner. */
+static void shadow_mark(cairo_t *cr, double x, double y, double size)
+{
+    double u = size / 32.0;
+    cairo_save(cr);
+    cairo_translate(cr, x, y + size - 12 * u);
+    cairo_scale(cr, u, u);
+    cairo_rectangle(cr, 0, 0, 12, 12);
+    cairo_set_source_rgb(cr, 1, 1, 1);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgb(cr, 0.3, 0.3, 0.3);
+    cairo_set_line_width(cr, 1);
+    cairo_stroke(cr);
+    cairo_move_to(cr, 3, 9);
+    cairo_line_to(cr, 9, 3);
+    cairo_move_to(cr, 5, 3);
+    cairo_line_to(cr, 9, 3);
+    cairo_line_to(cr, 9, 7);
+    cairo_set_line_width(cr, 1.5);
+    cairo_stroke(cr);
+    cairo_restore(cr);
+}
+
 static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
 {
     const ui_scheme *k = &ui_scheme_now;
@@ -624,13 +650,14 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
         return;
     }
     draw_icon(cr, it.kind, ix, iy, ICON);
+    if (it.shadow) shadow_mark(cr, ix, iy, ICON);
     const char *t = it.title ? it.title : "";
     double tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.w - 8;
     if (tw > maxw) tw = maxw;
     double tx = r.x + (r.w - tw) / 2, ty = r.y + ICON + 8;
     bool sel = sel_get(c, i);
     if (sel) ui_fill(cr, (ui_rect){ tx - 2, ty, tw + 4, ROW_H - 2 }, k->selection);
-    ui_set_color(cr, sel ? k->selection_text : k->text);
+    ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
     ui_text_draw(cr, UI_FONT_REGULAR, tx, ty + (ROW_H + ui_text_ascent()) / 2 - 2, t, maxw);
     if (c->focused && c->has_cursor && c->cursor == i) {
         ui_set_color(cr, sel ? k->selection_text : k->cursor);

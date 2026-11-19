@@ -27,7 +27,7 @@
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -188,6 +188,10 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             details = true;
             cv_int(it, "size", &dst->size);
             cv_int(it, "mtime", &dst->mtime);
+            const cv *sh = cv_get(it, "shadow");
+            dst->shadow = sh && sh->k == CV_BOOL && sh->b;
+            const char *tt = cv_text(it, "target");
+            if (dst->shadow) dst->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_of("file", nm);
         }
     }
     for (size_t p = (size_t)off / PAGE; n && p <= ((size_t)off + n - 1) / PAGE; p++) {
@@ -601,6 +605,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->title = r->title ? r->title : r->name;
     out->size = r->size;
     out->mtime = r->mtime;
+    out->shadow = r->shadow;
 }
 
 static void src_visible(void *ctx, size_t first, size_t last)
@@ -1266,7 +1271,10 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
     char dest[PATH_MAX];
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    uint32_t act = (mods & UI_MOD_CTRL) ? UI_DND_COPY : UI_DND_MOVE;   /* Ctrl copies; Ctrl+Shift: shadow */
+    /* As in OS/2, from the keys held: none moves, Ctrl copies, Ctrl+Shift
+     * makes a shadow; Alt asks. GNOME's own choice is not used: for a
+     * button 2 drag it says "ask", and now and then "copy", with no key held. */
+    uint32_t act = (mods & UI_MOD_ALT) ? UI_DND_ASK : (mods & UI_MOD_CTRL) ? UI_DND_COPY : UI_DND_MOVE;
     if (!(act & src_actions)) act = src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
     if (cur_drag) {
         for (size_t i = 0; i < cur_drag->n; i++) {
@@ -1433,11 +1441,12 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     char dest[PATH_MAX];
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    int how = shadow_mods(mods) ? DROP_SHADOW : (action == UI_DND_COPY || (mods & UI_MOD_CTRL)) ? DROP_COPY : DROP_MOVE;
+    (void)action;   /* see win_drag_motion: the keys decide */
+    int how = shadow_mods(mods) ? DROP_SHADOW : (mods & UI_MOD_CTRL) ? DROP_COPY : DROP_MOVE;
     if (how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
         reposition(f, x, y))
         return;
-    if (action == UI_DND_ASK && !shadow_mods(mods)) {
+    if ((mods & UI_MOD_ALT) && !shadow_mods(mods)) {
         struct ask_ctx *a = calloc(1, sizeof *a);
         a->folder = f->id;
         snprintf(a->dest, sizeof a->dest, "%s", dest);
@@ -1994,6 +2003,27 @@ static void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 3 && t > 1500) {
             fprintf(stderr, "selftest: status: %s\n", f->error);
+            snprintf(data, sizeof data, "%s/b.txt\n", D);
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL);            /* and again */
+            step++;
+            t0 = now;
+        } else if (step == 4 && last_dialog) {
+            ui_key_event r = { .sym = XKB_KEY_r, .utf8 = "r" };
+            ui_surface_send_key(ui_dialog_surface(last_dialog), &r);
+            last_dialog = NULL;
+            step++;
+            t0 = now;
+        } else if (step == 5 && (last_dialog || t > 2000)) {
+            fprintf(stderr, "selftest: a second Rename asked again: %s\n", last_dialog ? "yes" : "no");
+            /* What the window shows, with no other change to prompt a refresh. */
+            char shown[1000] = "";
+            for (size_t i = 0; i < f->m.total; i++) {
+                struct page *pg = f->m.pages[i / PAGE];
+                struct row *r = &pg->rows[i % PAGE];
+                snprintf(shown + strlen(shown), sizeof shown - strlen(shown), " %s%s", r->name,
+                         r->shadow ? (r->kind == UI_KIND_FOLDER ? "(shadow of a folder)" : "(shadow)") : "");
+            }
+            fprintf(stderr, "selftest: the window shows:%s\n", shown);
             ui_app_quit(app);
             step++;
         }

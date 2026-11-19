@@ -1074,7 +1074,7 @@ static void list_reply(void *arg, const wps_page *pg)
             for (size_t i = 0; i < pg->n; i++) {
                 const wps_entry *e = &pg->items[i];
                 const char *t = e->type == DT_DIR ? "folder" : e->type == DT_LNK ? "link" : e->type == DT_REG ? "file" : "other";
-                cb_map(&b, e->detailed ? 6 : 2);
+                cb_map(&b, e->detailed ? (e->shadow ? 8 : 6) : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -1082,6 +1082,10 @@ static void list_reply(void *arg, const wps_page *pg)
                     cb_text(&b, "mtime"); cb_int(&b, e->mtime);
                     cb_text(&b, "id"); cb_text(&b, e->id);
                     cb_text(&b, "title"); cb_text(&b, e->title);
+                    if (e->shadow) {
+                        cb_text(&b, "shadow"); cb_bool(&b, true);
+                        cb_text(&b, "target"); cb_text(&b, e->target_type == DT_DIR ? "folder" : "file");
+                    }
                 }
             }
             send_frame(r->c, &b);

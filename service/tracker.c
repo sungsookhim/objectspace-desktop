@@ -803,10 +803,15 @@ void (*wps_on_fs_event)(char kind, const char *from, const char *path);
 static void apply(const tev *e)
 {
     stats.events++;
-    if (wps_on_fs_event && (!e->path[0] || !strstr(e->path, "/" WPS_SHADOW_TMP)) &&
-        (!e->from[0] || !strstr(e->from, "/" WPS_SHADOW_TMP))) {
+    /* Subscribers hear about real names only. A rename from one of our
+     * temporary names onto a real one (a finished copy, a rewritten shadow)
+     * is that name appearing. */
+    bool tmp_path = e->path[0] && strstr(e->path, "/" WPS_SHADOW_TMP);
+    bool tmp_old = e->from[0] && strstr(e->from, "/" WPS_SHADOW_TMP);
+    if (wps_on_fs_event && !tmp_path) {
         if (e->k == E_CREATE) wps_on_fs_event('c', "", e->path);
         else if (e->k == E_DELETE) wps_on_fs_event('d', "", e->path);
+        else if (e->k == E_MOVE && tmp_old) wps_on_fs_event('c', "", e->path);
         else if (e->k == E_MOVE) wps_on_fs_event('m', e->from, e->path);
     }
     /* A folder listing that saw this change is stale now. */
