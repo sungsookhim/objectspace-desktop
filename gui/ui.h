@@ -280,6 +280,11 @@ typedef struct {
     ui_kind kind;
     const char *title, *name;  /* valid until the next call */
     int64_t size, mtime;
+    /* Tree view only. */
+    int depth;
+    bool expandable, expanded;
+    bool last_child;           /* no sibling below it (for the joining lines) */
+    uint32_t open_levels;      /* bit d: the ancestor at depth d has siblings below */
 } ui_item;
 
 typedef struct ui_container ui_container;
@@ -294,9 +299,11 @@ typedef struct {
     void (*menu)(void *ctx, size_t i, double x, double y, uint32_t serial);
     /* In-place rename finished with a new name (NULL: not supported). */
     void (*rename)(void *ctx, size_t i, const char *name);
+    /* Tree view: expand or collapse item i (expand: true). */
+    void (*expand)(void *ctx, size_t i, bool expand);
 } ui_container_src;
 
-typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS } ui_view;
+typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
 
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view);
 void ui_container_free(ui_container *c);

@@ -18,6 +18,7 @@
 #define CELL_W 100
 #define CELL_H 70
 #define ICON 32
+#define INDENT 20                /* tree view: per level */
 
 struct ui_container {
     ui_surface *s;
@@ -61,12 +62,12 @@ static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SB
 
 static size_t cols(ui_container *c)
 {
-    if (c->view == UI_VIEW_DETAILS) return 1;
+    if (c->view != UI_VIEW_ICON) return 1;
     size_t n = (size_t)(list_rect(c).w / CELL_W);
     return n ? n : 1;
 }
 
-static double line_h(ui_container *c) { return c->view == UI_VIEW_DETAILS ? ROW_H : CELL_H; }
+static double line_h(ui_container *c) { return c->view == UI_VIEW_ICON ? CELL_H : ROW_H; }
 
 static size_t nlines(ui_container *c) { return (c->count + cols(c) - 1) / cols(c); }
 
@@ -83,7 +84,7 @@ static double max_scroll(ui_container *c)
 static ui_rect item_crect(ui_container *c, size_t i)
 {
     ui_rect l = list_rect(c);
-    if (c->view == UI_VIEW_DETAILS) return (ui_rect){ l.x, (double)i * ROW_H, l.w, ROW_H };
+    if (c->view != UI_VIEW_ICON) return (ui_rect){ l.x, (double)i * ROW_H, l.w, ROW_H };
     size_t k = cols(c), row = i / k, col = i % k;
     return (ui_rect){ l.x + 4 + (double)col * CELL_W, 4 + (double)row * CELL_H, CELL_W, CELL_H };
 }
@@ -115,6 +116,12 @@ static ui_rect rename_crect(ui_container *c, size_t i)
         columns(c, x);
         return (ui_rect){ x[1] - 3, r.y, x[2] - x[1] - 3, ROW_H };
     }
+    if (c->view == UI_VIEW_TREE) {
+        ui_item it = { 0 };
+        c->src->item(c->ctx, i, &it);
+        double x = r.x + 4 + it.depth * INDENT + INDENT + 20;
+        return (ui_rect){ x - 3, r.y, fmax(120, r.x + r.w - x - 8), ROW_H };
+    }
     return (ui_rect){ r.x + 2, r.y + ICON + 6, r.w - 4, ROW_H + 2 };
 }
 
@@ -135,7 +142,7 @@ static size_t item_at(ui_container *c, double x, double y)
     ui_rect l = list_rect(c);
     if (!ui_rect_has(l, x, y)) return SIZE_MAX;
     double cy = y - l.y + c->scroll;
-    if (c->view == UI_VIEW_DETAILS) {
+    if (c->view != UI_VIEW_ICON) {
         size_t i = (size_t)(cy / ROW_H);
         return i < c->count ? i : SIZE_MAX;
     }
@@ -443,6 +450,82 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
     }
 }
 
+/* A tree row: joining lines, the expander (+/-), a small icon, the title. */
+static void draw_tree_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_item it = { 0 };
+    c->src->item(c->ctx, i, &it);
+    bool sel = sel_get(c, i);
+    double x0 = r.x + 4, cy = floor(r.y + ROW_H / 2) + 0.5;
+    if (!it.loaded) {
+        ui_fill(cr, (ui_rect){ x0 + 30, r.y + 6, 120, 8 }, k->placeholder);
+        return;
+    }
+    /* Lines: a vertical for each open ancestor level, then this item's
+     * branch (dotted, as in OS/2). */
+    ui_set_color(cr, k->shadow);
+    double dash = 1;
+    cairo_set_dash(cr, &dash, 1, 0);
+    cairo_set_line_width(cr, 1);
+    for (int d = 0; d < it.depth; d++) {
+        double lx = floor(x0 + d * INDENT + INDENT / 2) + 0.5;
+        if (d == it.depth - 1) {
+            cairo_move_to(cr, lx, r.y);
+            cairo_line_to(cr, lx, it.last_child ? cy : r.y + r.h);
+            cairo_move_to(cr, lx, cy);
+            cairo_line_to(cr, lx + INDENT / 2 + 2, cy);
+        } else if (it.open_levels & (1u << (d + 1))) {
+            cairo_move_to(cr, lx, r.y);
+            cairo_line_to(cr, lx, r.y + r.h);
+        }
+    }
+    cairo_stroke(cr);
+    cairo_set_dash(cr, NULL, 0, 0);
+    double ex = x0 + it.depth * INDENT;
+    if (it.expandable) {
+        ui_rect b = { floor(ex + INDENT / 2 - 5), floor(cy - 5), 10, 10 };
+        ui_fill(cr, b, k->client_bg);
+        ui_set_color(cr, k->shadow);
+        cairo_rectangle(cr, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        cairo_stroke(cr);
+        ui_set_color(cr, k->text);
+        cairo_move_to(cr, b.x + 2, cy);
+        cairo_line_to(cr, b.x + b.w - 2, cy);
+        if (!it.expanded) {
+            cairo_move_to(cr, b.x + b.w / 2, b.y + 2);
+            cairo_line_to(cr, b.x + b.w / 2, b.y + b.h - 2);
+        }
+        cairo_stroke(cr);
+    }
+    double ix = ex + INDENT;
+    draw_icon(cr, it.kind, ix, r.y + 2, 16);
+    const char *t = it.title ? it.title : "";
+    double tx = ix + 20, tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.x + r.w - tx - 4;
+    if (tw > maxw) tw = maxw;
+    if (sel) ui_fill(cr, (ui_rect){ tx - 2, r.y + 1, tw + 4, ROW_H - 2 }, k->selection);
+    ui_set_color(cr, sel ? k->selection_text : k->text);
+    ui_text_draw(cr, UI_FONT_REGULAR, tx, r.y + (ROW_H + ui_text_ascent()) / 2 - 1, t, maxw);
+    if (c->focused && c->has_cursor && c->cursor == i) {
+        ui_set_color(cr, sel ? k->selection_text : k->cursor);
+        cairo_set_dash(cr, &dash, 1, 0);
+        cairo_rectangle(cr, tx - 2.5, r.y + 1.5, tw + 5, ROW_H - 3);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, NULL, 0, 0);
+    }
+}
+
+/* Where item i's expander is (surface coordinates), for clicks. */
+static bool on_expander(ui_container *c, size_t i, double x)
+{
+    if (c->view != UI_VIEW_TREE) return false;
+    ui_item it = { 0 };
+    c->src->item(c->ctx, i, &it);
+    if (!it.expandable) return false;
+    double ex = list_rect(c).x + 4 + it.depth * INDENT;
+    return x >= ex && x < ex + INDENT;
+}
+
 static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
 {
     const ui_scheme *k = &ui_scheme_now;
@@ -516,6 +599,7 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
             ui_rect r = item_crect(c, i);
             if (!ui_rect_meets(r, clip)) continue;
             if (c->view == UI_VIEW_DETAILS) draw_details_row(c, cr, i, r, x);
+            else if (c->view == UI_VIEW_TREE) draw_tree_row(c, cr, i, r);
             else draw_icon_cell(c, cr, i, r);
         }
     }
@@ -674,6 +758,13 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     }
     if (!ui_rect_has(l, e->x, e->y)) return true;
     size_t i = item_at(c, e->x, e->y);
+    if (i != SIZE_MAX && on_expander(c, i, e->x) && ui_mouse_is(UI_ACT_SELECT, e)) {
+        ui_item it = { 0 };
+        c->src->item(c->ctx, i, &it);
+        move_cursor(c, i, 0);
+        if (c->src->expand) c->src->expand(c->ctx, i, !it.expanded);
+        return true;
+    }
     /* The mapped actions, most specific first (edit title before select,
      * open before select). */
     if (i != SIZE_MAX && ui_mouse_is(UI_ACT_EDIT_TITLE, e)) {
@@ -731,6 +822,27 @@ bool ui_container_key(ui_container *c, const ui_key_event *e)
     if (e->sym == XKB_KEY_F2) {
         if (c->has_cursor) ui_container_begin_rename(c, c->cursor);
         return true;
+    }
+    if (c->view == UI_VIEW_TREE && c->has_cursor && c->src->expand) {
+        ui_item it = { 0 };
+        c->src->item(c->ctx, c->cursor, &it);
+        bool right = e->sym == XKB_KEY_Right || e->sym == XKB_KEY_plus || e->sym == XKB_KEY_KP_Add;
+        bool left = e->sym == XKB_KEY_Left || e->sym == XKB_KEY_minus || e->sym == XKB_KEY_KP_Subtract;
+        if (right) {
+            if (it.expandable && !it.expanded) c->src->expand(c->ctx, c->cursor, true);
+            else if (it.expanded && e->sym == XKB_KEY_Right) move_cursor(c, c->cursor + 1, 0);   /* first child */
+            return true;
+        }
+        if (left) {
+            if (it.expanded) { c->src->expand(c->ctx, c->cursor, false); return true; }
+            if (e->sym == XKB_KEY_Left && it.depth > 0)   /* to the parent */
+                for (size_t k = c->cursor; k-- > 0;) {
+                    ui_item p = { 0 };
+                    c->src->item(c->ctx, k, &p);
+                    if (p.depth < it.depth) { move_cursor(c, k, 0); break; }
+                }
+            return true;
+        }
     }
     size_t cur = c->has_cursor ? c->cursor : 0, k = cols(c);
     size_t page = (size_t)(list_rect(c).h / line_h(c)) * k;
@@ -798,7 +910,7 @@ void ui_container_changed(ui_container *c, size_t first, size_t last)
     if (last < f || first > l) return;
     if (first < f) first = f;
     if (last > l) last = l;
-    if (c->view == UI_VIEW_DETAILS) {
+    if (c->view != UI_VIEW_ICON) {
         ui_rect a = item_crect(c, first), b = item_crect(c, last), w = window_crect(c);
         double y0 = fmax(a.y, w.y), y1 = fmin(b.y + b.h, w.y + w.h);
         if (y1 > y0) damage_content(c, (ui_rect){ w.x, y0, w.w, y1 - y0 });

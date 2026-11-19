@@ -10,7 +10,7 @@ char *WPFolder__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
     char *base = WPFolder_parent_wpModifyPopupMenu(self, menu);
     /* "Open" becomes a cascade of the folder's views, as "Open as" in Warp 4. */
-    char *r = wps_concat(base, "11\tIcon view\t1\n12\tTree view\t1\tdisabled\n13\tDetails view\t1\n20\tArrange\n");
+    char *r = wps_concat(base, "11\tIcon view\t1\n12\tTree view\t1\n13\tDetails view\t1\n20\tArrange\n");
     free(base);
     return r;
 }
