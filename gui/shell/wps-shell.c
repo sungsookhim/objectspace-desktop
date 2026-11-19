@@ -580,25 +580,13 @@ static bool is_tree(struct folder *f) { return ui_container_view(f->cont) == UI_
 /* ----------------------------------------------------------- container src */
 static void src_item(void *ctx, size_t i, ui_item *out);
 
-/* A folder's window opened or closed: windows showing its icon redraw it. */
+/* A folder's window opened or closed: its icon, and any shadow of it, may
+ * be in any window; they redraw (this happens only on opening or closing). */
 static void notify_in_use(const char *path)
 {
-    char parent[PATH_MAX];
-    snprintf(parent, sizeof parent, "%s", path);
-    char *sl = strrchr(parent, '/');
-    if (!sl) return;
-    const char *name = sl + 1;
-    if (sl == parent) parent[1] = 0;
-    else *sl = 0;
-    for (struct folder *o = folders; o; o = o->next) {
-        if (o->closing) continue;
-        if (o->troot) ui_container_layout_changed(o->cont);   /* a tree may show it anywhere */
-        if (strcmp(o->path, parent)) continue;
-        for (size_t i = 0; i < o->m.total; i++) {
-            const char *n = model_name(&o->m, i);
-            if (n && !strcmp(n, name)) { ui_container_changed(o->cont, i, i); break; }
-        }
-    }
+    (void)path;
+    for (struct folder *o = folders; o; o = o->next)
+        if (!o->closing) ui_container_layout_changed(o->cont);
 }
 static void target_of(struct folder *f, size_t i, char *out, size_t n);
 
@@ -639,9 +627,11 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->size = r->size;
     out->mtime = r->mtime;
     out->shadow = r->shadow;
-    if (r->kind == UI_KIND_FOLDER && !r->shadow) {
+    if (r->kind == UI_KIND_FOLDER) {
+        /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];
-        snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
+        if (r->shadow) snprintf(p, sizeof p, "%s", r->target ? r->target : "");
+        else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
         for (struct folder *o = folders; o && !out->in_use; o = o->next)
             out->in_use = !o->closing && !strcmp(o->path, p);
     }
@@ -2186,7 +2176,10 @@ static void win_frame(ui_surface *s, double now)
         } else if (step == 3 && t > 1200) {
             ui_item it;
             src_item(f, ti, &it);
-            fprintf(stderr, "selftest: after opening it again: %d window(s); T shown in use: %d\n", nT, it.in_use);
+            ui_item sh;
+            src_item(f, si, &sh);
+            fprintf(stderr, "selftest: after opening it again: %d window(s); T shown in use: %d, its shadow too: %d\n", nT,
+                    it.in_use, sh.in_use);
             for (struct folder *o = folders; o; o = o->next)
                 if (!strcmp(o->path, tpath)) win_close(o->win);
             step++;

@@ -1,6 +1,6 @@
 # WPS for Linux: Object Core Design
 
-Version 0.15 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
+Version 0.16 · 2026-11-18 · Changes from earlier versions are listed in the [change log](#change-log) at the end.
 
 ## Summary
 
@@ -752,6 +752,8 @@ These follow from the principles above but need not be designed in full before M
 - [x] Backup names: decided 2026-11-18. A setting, off by default (`backup-names` in the configuration folder). When on, a rename to `name~`, `name.bak` or `name.orig` followed by a new file at the old name counts as a save at once.
 - [x] Duplicate IDs: decided 2026-11-18. No timer. A file that appears with another file's ID shares it until either file is changed (content or WPS settings), which makes it a copy with a new ID, or until the original is deleted, which makes it a move.
 - [x] Plug-ins in-process: decided 2026-11-18. Never. Every third-party class runs in a plug-in host; only the built-in classes run inside `wpsd`.
+- [x] Where WPS-only objects live: decided 2026-11-18. Centrally by default: shadows and other abstract objects (not programs, which stay `.desktop` files other desktops use) are kept in WPS's database, keyed by their folder's object ID, so a folder moved or renamed outside WPS keeps them; on a removable volume or image they go in the volume's own WPS database, which travels with it. Any folder can be set to keep local `.wpobj` files instead, and local files take precedence over central entries with the same object ID. Central objects are private to each user, like icon positions in folders the user does not own; a shared folder set to local files shares them. Orphans of folders deleted outside WPS are cleaned up by the catch-up scan.
+- [x] In-use emphasis for files: decided 2026-11-18. Files and programs WPS itself starts show as open while the started process runs (no system-wide monitoring), and lock files of common programs (LibreOffice, vim, Emacs) in folders WPS watches mark files opened elsewhere.
 - [x] Shadows: decided 2026-11-18. WPS object files (`.wpobj`, `Class=WPShadow`, the target's ID and a path hint), as in OS/2, replacing managed symlinks, which lost their shadow record when moved to another folder.
 - [x] Renaming a file's or folder's icon: decided 2026-11-18. As in OS/2, it renames the file or folder itself (never replacing another), and its title then follows the name. Without permission to rename, the new name becomes its title, shared or private by the usual rules. Programs and abstract objects only have titles. Service request `rename`.
 - [x] Plug-in sandbox: decided 2026-11-18. Plug-in hosts run sandboxed: no network, no new privileges, and (Landlock) filesystem access only to the plug-in's own files and data folder. File work goes through the service, which applies the user's permissions.
@@ -760,6 +762,7 @@ These follow from the principles above but need not be designed in full before M
 
 | Version | Date | Changes |
 | --- | --- | --- |
+| 0.16 | 2026-11-18 | Decided: WPS-only objects kept centrally (local files optional, and preferred); in-use emphasis for files WPS opens and lock files |
 | 0.15 | 2026-11-18 | Decided: shadows are WPS object files carrying their target's ID, not managed symlinks (Links rewritten) |
 | 0.14 | 2026-11-18 | Decided: renaming an icon renames the file or folder (as in OS/2); `rename` request |
 | 0.13 | 2026-11-18 | M5 done: events, menus and settings as data, opening programs, system programs, templates, file types, root sessions, sandboxed plug-in hosts; findings listed under M5 |
