@@ -55,7 +55,7 @@ make gui      # wps-shell (optimised) and wps-shell-asan
 tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private headless GNOME Shell
 ```
 
-The WPS desktop in your GNOME session: `tools/install-extension.sh` installs the `wps@wps-linux` GNOME Shell extension (which starts `wps-shell --desktop`) and a systemd user unit for `wpsd`; then log out and back in. `tools/install-extension.sh --uninstall` removes both. Without the extension, `wps-shell` with no folder shows the desktop as an ordinary full-screen window.
+The WPS desktop in your GNOME session: `tools/install-extension.sh` installs the `wps@wps-linux` GNOME Shell extension (which starts `wps-shell --desktop`) and a systemd user unit for `wpsd`; then log out and back in. `tools/install-extension.sh --uninstall` removes both. To try it first without logging out: `tools/try-desktop.sh` runs a nested GNOME Shell in a window, with the extension and private settings (needs `mutter-devkit`). Without the extension, `wps-shell` with no folder shows the desktop as an ordinary full-screen window.
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.
 
