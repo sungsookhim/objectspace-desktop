@@ -198,6 +198,7 @@ struct offer {
     char *mimes[16];
     size_t n;
     uint32_t src_actions, action;
+    uint32_t start_action;   /* the compositor's first choice, before any key */
 };
 
 static void o_offer(void *x, struct wl_data_offer *o, const char *mime)
@@ -207,7 +208,13 @@ static void o_offer(void *x, struct wl_data_offer *o, const char *mime)
     if (f->n < 16) f->mimes[f->n++] = strdup(mime);
 }
 static void o_source_actions(void *x, struct wl_data_offer *o, uint32_t a) { (void)o; ((struct offer *)x)->src_actions = a; }
-static void o_action(void *x, struct wl_data_offer *o, uint32_t a) { (void)o; ((struct offer *)x)->action = a; }
+static void o_action(void *x, struct wl_data_offer *o, uint32_t a)
+{
+    (void)o;
+    struct offer *f = x;
+    if (!f->start_action && a) f->start_action = a;
+    f->action = a;
+}
 static const struct wl_data_offer_listener offer_listener = { o_offer, o_source_actions, o_action };
 
 static void offer_free(struct offer *f)
@@ -289,7 +296,7 @@ struct incoming {
     struct offer *f;
     char *mime;
     double x, y;
-    uint32_t action;
+    uint32_t action, start_action;
     unsigned mods;
     char *data;
     size_t len, cap;
@@ -312,7 +319,8 @@ static void incoming_read(void *arg, int fd, short rev)
     /* The surface may have closed meanwhile. */
     bool alive = false;
     for (ui_surface *s = in->app->surfaces; s; s = s->next) alive |= s == in->s;
-    if (alive && in->s->ops->drop) in->s->ops->drop(in->s, in->x, in->y, in->mime, in->data, in->len, in->action, in->mods);
+    if (alive && in->s->ops->drop)
+        in->s->ops->drop(in->s, in->x, in->y, in->mime, in->data, in->len, in->action, in->start_action, in->mods);
     if (in->f && in->app->ddm_version >= 3) wl_data_offer_finish(in->f->o);
     offer_free(in->f);
     free(in->mime);
@@ -340,9 +348,11 @@ static void d_drop(void *x, struct wl_data_device *dd)
     in->x = a->drag_x;
     in->y = a->drag_y;
     in->action = f->action;
+    in->start_action = f->start_action;
     in->mods = a->mods;
     if (getenv("WPS_DEBUG_DND"))
-        fprintf(stderr, "dnd: drop, compositor's action %u (1 copy, 2 move, 4 ask), mods %s%s%s\n", f->action,
+        fprintf(stderr, "dnd: drop, compositor's action %u (it began with %u; 1 copy, 2 move, 4 ask), mods %s%s%s\n",
+                f->action, f->start_action,
                 a->mods & UI_MOD_CTRL ? "ctrl " : "", a->mods & UI_MOD_SHIFT ? "shift " : "", a->mods & UI_MOD_ALT ? "alt" : "");
     wl_data_offer_receive(f->o, in->mime, p[1]);
     close(p[1]);

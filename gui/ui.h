@@ -156,8 +156,11 @@ typedef struct {
     uint32_t (*drag_motion)(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
                             uint32_t src_actions, unsigned mods, const char **mime);
     void (*drag_leave)(ui_surface *s);
+    /* `start_action` is what the compositor chose when the drag began:
+     * keys pressed during a drag reach only the compositor (GNOME), so a
+     * change of its choice is the only sign of them. */
     void (*drop)(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
-                 uint32_t action, unsigned mods);
+                 uint32_t action, uint32_t start_action, unsigned mods);
     /* Each frame, before drawing (animations, benchmarks). */
     void (*frame)(ui_surface *s, double now_ms);
 } ui_surface_ops;

@@ -1486,8 +1486,26 @@ static void ask_chosen(void *arg, int64_t id)
     free(a);
 }
 
+/* How a drop is meant, as in OS/2: none moves, Ctrl copies, Ctrl+Shift
+ * makes a shadow, Alt asks. Keys held when the drag began reach us; keys
+ * pressed during it reach only GNOME, which then changes its choice: to
+ * copy for Ctrl, to move for Shift or Ctrl+Shift (it cannot tell them
+ * apart, so a change to move means a shadow). */
+static int drop_how(uint32_t action, uint32_t start_action, unsigned mods)
+{
+    if (mods & UI_MOD_ALT) return -1;   /* ask */
+    if ((mods & UI_MOD_CTRL) && (mods & UI_MOD_SHIFT)) return 2;
+    if (mods & UI_MOD_CTRL) return 1;
+    if (start_action && action != start_action) {
+        if (action == UI_DND_COPY) return 1;
+        if (action == UI_DND_MOVE) return 2;
+        if (action == UI_DND_ASK) return -1;
+    }
+    return 0;
+}
+
 static void win_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
-                     unsigned mods)
+                     uint32_t start_action, unsigned mods)
 {
     (void)len;
     struct folder *f = ui_surface_data(s);
@@ -1495,12 +1513,12 @@ static void win_drop(ui_surface *s, double x, double y, const char *mime, const 
     char dest[PATH_MAX];
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    (void)action;   /* see win_drag_motion: the keys decide */
-    int how = shadow_mods(mods) ? DROP_SHADOW : (mods & UI_MOD_CTRL) ? DROP_COPY : DROP_MOVE;
+    int w = drop_how(action, start_action, mods);
+    int how = w == 2 ? DROP_SHADOW : w == 1 ? DROP_COPY : DROP_MOVE;
     if (how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
         reposition(f, x, y))
         return;
-    if ((mods & UI_MOD_ALT) && !shadow_mods(mods)) {
+    if (w < 0) {
         struct ask_ctx *a = calloc(1, sizeof *a);
         a->folder = f->id;
         snprintf(a->dest, sizeof a->dest, "%s", dest);
@@ -2034,23 +2052,23 @@ static void win_frame(ui_surface *s, double now)
             cur_drag = was;
             fprintf(stderr, "selftest: sub dropped into itself: action %u (0 = refused)\n", act);
             snprintf(data, sizeof data, "%s/a.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0);                      /* move */
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);                      /* move */
             snprintf(data, sizeof data, "%s/b.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL);            /* copy */
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* copy */
             snprintf(data, sizeof data, "%s/sub2\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL | UI_MOD_SHIFT);   /* shadow */
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);   /* shadow */
             data[0] = 0;
             char *u = NULL;
             size_t ul = 0, uc = 0;
             char p[PATH_MAX];
             snprintf(p, sizeof p, "%s/with space.txt", D);
             uri_append(&u, &ul, &uc, p);
-            win_drop(s, 20, 60, MIME_URIS, u, ul, UI_DND_MOVE, 0);                                 /* from another app */
+            win_drop(s, 20, 60, MIME_URIS, u, ul, UI_DND_MOVE, 0, 0);                                 /* from another app */
             free(u);
             step++;
         } else if (step == 1 && t > 1500) {
             snprintf(data, sizeof data, "%s/b.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL);            /* b.txt is there now */
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* b.txt is there now */
             step++;
         } else if (step == 2 && last_dialog) {
             fprintf(stderr, "selftest: a name clash asks: dialog open\n");
@@ -2062,7 +2080,7 @@ static void win_frame(ui_surface *s, double now)
         } else if (step == 3 && t > 1500) {
             fprintf(stderr, "selftest: status: %s\n", f->error);
             snprintf(data, sizeof data, "%s/b.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL);            /* and again */
+            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* and again */
             step++;
             t0 = now;
         } else if (step == 4 && last_dialog) {
@@ -2113,7 +2131,7 @@ static void win_frame(ui_surface *s, double now)
             src_drag(f, bi, 0);
             char data[PATH_MAX];
             snprintf(data, sizeof data, "%s/b.txt\n", f->path);
-            win_drop(s, sx + 150, sy + 200, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0);
+            win_drop(s, sx + 150, sy + 200, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
             ui_pointer_event rl = { .kind = UI_RELEASE, .x = sx + 150, .y = sy + 200, .button = ui_mouse_button(UI_ACT_DRAG) };
             win_pointer(s, &rl);
             step++;
@@ -2159,7 +2177,7 @@ static void win_frame(ui_surface *s, double now)
         if (step == 0) {
             snprintf(data, sizeof data, "%s/T\n", f->path);
             ui_rect c = ui_frame_client(s);   /* on the background, away from the icons */
-            win_drop(s, c.x + c.w - 60, c.y + c.h - 60, MIME_WPS, data, strlen(data), UI_DND_COPY, UI_MOD_CTRL | UI_MOD_SHIFT);
+            win_drop(s, c.x + c.w - 60, c.y + c.h - 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);
             step++;
         } else if (step == 1 && t > 1500 && si != SIZE_MAX) {
             ui_item it;
@@ -2198,6 +2216,31 @@ static void win_frame(ui_surface *s, double now)
             size_t d = ui_surface_verify(s, NULL);
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "dropkeys")) {
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        static const char *names[] = { "move", "copy", "shadow" };
+        if (step == 0) {
+            int a = drop_how(UI_DND_MOVE, UI_DND_ASK, 0), b = drop_how(UI_DND_COPY, UI_DND_ASK, 0), c = drop_how(UI_DND_ASK, UI_DND_ASK, 0),
+                d = drop_how(UI_DND_MOVE, UI_DND_ASK, UI_MOD_CTRL | UI_MOD_SHIFT);
+            fprintf(stderr, "selftest: ask->move: %s; ask->copy: %s; ask unchanged: %s; Ctrl+Shift held: %s\n",
+                    a < 0 ? "ask" : names[a], b < 0 ? "ask" : names[b], c < 0 ? "ask" : names[c], d < 0 ? "ask" : names[d]);
+            /* The logged drag, end to end: began as ask, changed to move, no keys seen. */
+            char data[PATH_MAX];
+            snprintf(data, sizeof data, "%s/T\n", f->path);
+            ui_rect cl = ui_frame_client(s);
+            win_drop(s, cl.x + cl.w - 60, cl.y + cl.h - 60, MIME_WPS, data, strlen(data), UI_DND_MOVE, UI_DND_ASK, 0);
+            step++;
+        } else if (step == 1 && now - t0 > 1500) {
+            bool made = false;
+            for (size_t i = 0; i < f->m.total; i++) made |= model_name(&f->m, i) && !strcmp(model_name(&f->m, i), "T.wpobj");
+            fprintf(stderr, "selftest: the logged drag made a shadow: %d\n", made);
             ui_app_quit(app);
             step++;
         }
