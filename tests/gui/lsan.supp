@@ -1,0 +1,6 @@
+# Leak-checker suppressions for wps-shell-asan: allocations PipeWire's
+# own plug-ins keep for the life of the process (not WPS code).
+leak:libspa-
+leak:/spa-0.2/
+leak:libpipewire-module-
+leak:libpipewire-0.3.so

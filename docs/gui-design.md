@@ -189,6 +189,11 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 - **Big folders follow changes** (2026-11-19). A window applies each change event to its rows as the service did to its listing (by position, so a million-entry folder whose names are mostly unread follows too), keeping selection, cursor and a name being edited. Events that come together are applied as one batch; a batch of more than 64 changes, or one that does not follow on from the rows (version check), is cheaper as one read of the folder, as before. Only the rows on screen have their details read again.
 
+### G3 progress (2026-11-19)
+
+- **Action events.** One bus in `wps-shell` (`gui/shell/events.c`). The toolkit reports what it handles itself through one hook (`window.minimize`, `window.maximize`, `window.restore`, `menu.open`, `menu.select`); the shell raises the rest: `window.open`, `window.close`, `object.open`, `object.drag`, `object.drop`, `object.create`, `object.trash`, `object.delete`, `job.done`, `job.failed`, `alert.warning` (every question to the user), `alert.error` (every failure reported), `shell.startup`, `shell.shutdown`. `WPS_DEBUG_EVENTS=1` prints them.
+- **Sounds.** A PipeWire stream (role Event, 256-frame buffer) paused while quiet; sounds decoded once into memory, with libsndfile when installed (the freedesktop theme is Ogg), else WAV only; up to 8 at once. The default scheme plays few sounds: alerts, finished and failed jobs, emptying into the trash, start-up. Sounds are named as in GNOME's sound theme (`org.gnome.desktop.sound theme-name`, then freedesktop), and GNOME's "event sounds" switch turns them off. Until the Sound object, `<config>/sounds.conf` changes the scheme (`volume`, `enabled`, `<event> = <theme sound | file | none>`).
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.

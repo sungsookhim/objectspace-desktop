@@ -305,6 +305,16 @@ ui_surface *ui_notebook_surface(ui_notebook *nb);
 
 typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
 
+/* ---------------------------------------------------------- action events */
+
+/* Every user action is a named event (gui-design.md: Every action is an
+ * event). The toolkit names what it handles itself (window.minimize,
+ * window.maximize, window.restore, menu.open, menu.select); the
+ * application names the rest and receives them all through one hook. */
+typedef void (*ui_action_fn)(const char *name, ui_surface *s, ui_rect at);
+void ui_set_action_hook(ui_action_fn fn);
+void ui_action(const char *name, ui_surface *s, ui_rect at);
+
 /* ---------------------------------------------------------------- dialogs */
 
 /* A message and a row of buttons; fn gets the chosen button's index

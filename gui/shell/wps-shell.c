@@ -21,6 +21,8 @@
 
 #include "layout.h"
 #include "wallpaper.h"
+#include "events.h"
+#include "sound.h"
 #include "svc.h"
 #include "ui.h"
 #include "wps_menu_ids.h"
@@ -926,6 +928,9 @@ static void target_of(struct folder *f, size_t i, char *out, size_t n)
 static void ignore_reply(void *arg, const cv *reply) { (void)arg; (void)reply; }
 static void opened(void *arg, const cv *reply);
 static bool open_properties(const char *target);
+static void raise_in(struct folder *f, const char *name, const char *object, const char *cls);
+static ui_dialog *ask(const char *title, const char *msg, const char *const *buttons, size_t n, int def, ui_dialog_fn fn,
+                      void *ctx);
 
 /* A program another user owns: show its command and ask (the service
  * never runs it unconfirmed). */
@@ -951,7 +956,7 @@ static void confirm_program(struct folder *f, const cv *res)
     snprintf(msg, sizeof msg, "This program belongs to another user (user ID %lld). It would run, as you:\n%s\nRun it?",
              (long long)uid, cmd ? cmd : "?");
     const char *buttons[] = { "Run", "Cancel" };
-    ui_dialog_open(app, "Run a program", msg, buttons, 2, 1, confirmed, c);
+    ask("Run a program", msg, buttons, 2, 1, confirmed, c);
 }
 
 static void opened(void *arg, const cv *reply)
@@ -975,10 +980,13 @@ static void opened(void *arg, const cv *reply)
          * template): its settings notebook. */
         open_properties(f->pending_open);
         f->error[0] = 0;
-    } else if (!res && msg)
+    } else if (!res && msg) {
         snprintf(f->error, sizeof f->error, "%s", msg);
-    else
+        raise_in(f, "alert.error", f->pending_open, "");
+    } else {
         f->error[0] = 0;
+        if (res && cv_get(res, "launched")) raise_in(f, "object.open", f->pending_open, "file");
+    }
     damage_status(f);
 }
 
@@ -1506,6 +1514,7 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
 {
     struct folder *f = ctx;
     struct dragging *d = calloc(1, sizeof *d);
+    raise_in(f, "object.drag", NULL, "");
     /* The selection if the item is in it, else the item alone (OS/2). */
     size_t total = is_tree(f) ? f->ntvis : f->m.total;
     bool whole = ui_container_is_selected(f->cont, i);
@@ -1669,6 +1678,28 @@ static void set_status(long folder, const char *msg)
     damage_status(f);
 }
 
+/* An action event about a folder window (or an object in it). */
+static void raise_in(struct folder *f, const char *name, const char *object, const char *cls)
+{
+    ui_rect at = f ? ui_frame_client(f->win) : (ui_rect){ 0, 0, 0, 0 };
+    events_raise(name, object ? object : f ? f->path : "", cls, at);
+}
+
+/* Something failed: the status line says what, and alert.error sounds. */
+static void report_error(long folder, const char *msg)
+{
+    set_status(folder, msg);
+    raise_in(folder_by_id(folder), "alert.error", NULL, "");
+}
+
+/* A question to the user: alert.warning sounds, as OS/2's warning did. */
+static ui_dialog *ask(const char *title, const char *msg, const char *const *buttons, size_t n, int def, ui_dialog_fn fn,
+                      void *ctx)
+{
+    events_raise("alert.warning", "", "", (ui_rect){ 0, 0, 0, 0 });
+    return ui_dialog_open(app, title, msg, buttons, n, def, fn, ctx);
+}
+
 static void got_job(void *arg, const cv *reply)
 {
     struct xfer *x = arg;
@@ -1683,7 +1714,7 @@ static void got_job(void *arg, const cv *reply)
     } else {
         char m[300];
         snprintf(m, sizeof m, "Cannot %s: %s", x->kind, reply ? cv_text(reply, "message") : "lost the connection to wpsd");
-        set_status(x->folder, m);
+        report_error(x->folder, m);
     }
     xfer_free(x);
 }
@@ -1826,6 +1857,7 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     }
     if (getenv("WPS_DEBUG_DND"))
         fprintf(stderr, "dnd: dropping as %s\n", how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
+    raise_in(f, "object.drop", dest, how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
     do_drop(f, dest, mime, data, how, at);
     return how == DROP_MOVE ? UI_DND_MOVE : UI_DND_COPY;
 }
@@ -1910,6 +1942,7 @@ static void made_new(void *arg, const cv *reply)
     char nm[NAME_MAX + 64];
     if (!strncmp(addr, "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", addr);
     else snprintf(nm, sizeof nm, "%s", strrchr(addr, '/') ? strrchr(addr, '/') + 1 : addr);
+    raise_in(folder_by_id(l->folder), "object.create", addr, "");
     for (struct folder *o = folders; o; o = o->next)
         if (!o->closing && !strcmp(o->path, l->dest) && !is_tree(o)) {
             snprintf(o->rename_new, sizeof o->rename_new, "%s", nm);
@@ -2178,7 +2211,7 @@ static void delete_request(struct folder *f, size_t i, bool permanent)
     else snprintf(msg, sizeof msg, "Move %s to the trash?%s", what,
                   any_folder ? "\nFolders go with everything in them." : "");
     const char *buttons[] = { "Delete", "Cancel" };
-    last_dialog = ui_dialog_open(app, permanent ? "Delete for good" : "Delete", msg, buttons, 2, 0, delete_confirmed, d);
+    last_dialog = ask(permanent ? "Delete for good" : "Delete", msg, buttons, 2, 0, delete_confirmed, d);
 }
 
 static void win_close(ui_surface *s);
@@ -2220,6 +2253,8 @@ static bool deletion_event(struct jobtrack *t, const cv *st, const char *state, 
     else if (!strcmp(state, "failed")) snprintf(m, sizeof m, "Delete failed: %s", err ? err : "unknown error");
     else snprintf(m, sizeof m, "Delete cancelled after %lld", (long long)done);
     set_status(t->folder, m);
+    if (!strcmp(state, "failed")) raise_in(folder_by_id(t->folder), "job.failed", NULL, "");
+    else if (!strcmp(state, "done") && ok > 0) raise_in(folder_by_id(t->folder), trash ? "object.trash" : "object.delete", NULL, "");
     close_gone_windows();
     if (nn) {
         /* No trash takes them (a drive without one, or the trash itself):
@@ -2234,7 +2269,7 @@ static bool deletion_event(struct jobtrack *t, const cv *st, const char *state, 
         if (d->n == 1) snprintf(msg, sizeof msg, "\"%s\" cannot go to the trash (it is in the trash already, or its drive has none).\nDelete it for good?", d->names[0]);
         else snprintf(msg, sizeof msg, "%zu objects cannot go to the trash (they are in the trash already, or their drive has none).\nDelete them for good?", d->n);
         const char *buttons[] = { "Delete", "Cancel" };
-        last_dialog = ui_dialog_open(app, "Delete for good", msg, buttons, 2, 1, forgood_confirmed, d);
+        last_dialog = ask("Delete for good", msg, buttons, 2, 1, forgood_confirmed, d);
     }
     return true;
 }
@@ -2265,6 +2300,7 @@ static void on_job_event(const cv *st)
         else if (!strcmp(state, "failed")) snprintf(m, sizeof m, "%s failed: %s", move ? "Move" : "Copy", err ? err : "unknown error");
         else snprintf(m, sizeof m, "%s cancelled after %lld", move ? "Move" : "Copy", (long long)done);
         set_status(t->folder, m);
+        raise_in(folder_by_id(t->folder), !strcmp(state, "failed") ? "job.failed" : "job.done", NULL, "");
         *pp = t->next;
         free(t);
         return;
@@ -2278,7 +2314,7 @@ static void on_job_event(const cv *st)
         struct decide_ctx *d = malloc(sizeof *d);
         d->job = id;
         t->asking = true;
-        last_dialog = ui_dialog_open(app, move ? "Move" : "Copy", msg, buttons, 5, 0, decided, d);
+        last_dialog = ask(move ? "Move" : "Copy", msg, buttons, 5, 0, decided, d);
         return;
     }
     snprintf(m, sizeof m, "%s %lld of %lld%s%s", move ? "Moving" : "Copying", (long long)done, (long long)total,
@@ -2420,6 +2456,7 @@ static void close_later(void *arg)
 {
     struct folder *f = from_arg(arg);
     if (!f) return;
+    raise_in(f, "window.close", NULL, "folder");
     char path[PATH_MAX];
     snprintf(path, sizeof path, "%s", f->path);
     free_folder(f);
@@ -2439,6 +2476,11 @@ static void win_close(ui_surface *s)
 /* WPS_SHELL_SELFTEST=menus: open, re-open and toggle menus in quick
  * succession (the orders that broke Wayland's popup rules), then quit. */
 static void selftest_chosen(void *arg, int64_t id) { (void)arg; (void)id; }
+static void selftest_record(const wps_event *e, void *ctx)
+{
+    char *seen = ctx;
+    if (strlen(seen) + strlen(e->name) + 2 < 1024) { strcat(seen, " "); strcat(seen, e->name); }
+}
 
 static void selftest(ui_surface *s, double now)
 {
@@ -3257,6 +3299,38 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "events")) {
+        /* Action events and their sounds: a menu, then deleting a.txt
+         * (asked first: alert.warning; then object.trash). */
+        static double t0;
+        static int step;
+        static char seen[1024];
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0) {
+            events_subscribe(selftest_record, seen);
+            ui_menu_item one[] = { { 1, "One", true, false, NULL, 0 } };
+            ui_menu_popup(s, one, 1, 50, 50, 0, selftest_chosen, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 500) {
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            ui_surface_send_key(s, &esc);
+            ssize_t ai = model_find(&f->m, "a.txt");
+            if (ai >= 0) delete_request(f, (size_t)ai, false);
+            ui_key_event ret = { .sym = XKB_KEY_Return };
+            if (last_dialog) ui_surface_send_key(ui_dialog_surface(last_dialog), &ret);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 2000) {
+            fprintf(stderr, "selftest: events:%s\n", seen);
+            fprintf(stderr, "selftest: sound: PipeWire %s, formats %s, %u sounds started\n", sound_ready() ? "connected" : "not there",
+                    sound_formats(), sound_played());
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -3359,6 +3433,14 @@ static void got_title(void *arg, const cv *reply)
 }
 
 static void notify_in_use(const char *path);
+
+/* What the toolkit reports (minimize, maximize, restore, menus). */
+static void toolkit_action(const char *name, ui_surface *s, ui_rect at)
+{
+    struct folder *f = NULL;
+    for (struct folder *o = folders; o && !f; o = o->next) if (o->win == s) f = o;
+    events_raise(name, f ? f->path : "", !strncmp(name, "window.", 7) ? "folder" : "", at);
+}
 
 static struct folder *open_window(const char *path, ui_view view, bool desktop);
 static struct folder *open_folder(const char *path, ui_view view) { return open_window(path, view, false); }
@@ -3472,6 +3554,7 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
     update_title(f);
     layout(f);
     if (!desktop) svc_resolve(f->path, got_title, as_arg(f));
+    if (!desktop) raise_in(f, "window.open", NULL, "folder");
     notify_in_use(f->path);
     svc_subscribe_folder(f->path, got_sub, as_arg(f));
     svc_layout(f->path, got_layout, as_arg(f));
@@ -3493,6 +3576,8 @@ int main(int argc, char **argv)
     since_start();
     app = ui_app_new();
     load_system_conf();
+    events_init();
+    ui_set_action_hook(toolkit_action);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts
@@ -3524,7 +3609,10 @@ int main(int argc, char **argv)
             ui_surface_set_continuous(f->win, true);
         }
     }
+    if (desk) events_raise("shell.startup", "", "", (ui_rect){ 0, 0, 0, 0 });
     ui_app_run(app);
+    events_raise("shell.shutdown", "", "", (ui_rect){ 0, 0, 0, 0 });
+    events_shutdown();
     wallpaper_stop();
     while (folders) free_folder(folders);
     svc_stop();

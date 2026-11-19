@@ -30,7 +30,7 @@ trap 'exit 130' INT TERM
 # The command runs with the caller's settings (WPS_*), but this session's
 # display and runtime folder; a wpsd it needs must use the same runtime
 # folder, so WPS_RUNTIME_DIR is kept as given.
-XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" \
+PIPEWIRE_RUNTIME_DIR="$PARENT_RT" XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" \
     dbus-run-session -- sh -c '
         gsettings set org.gnome.shell welcome-dialog-last-shown-version "999"
         gnome-shell --headless --wayland --no-x11 --virtual-monitor "$0" --wayland-display wps-wg > "$1/shell.log" 2>&1 &

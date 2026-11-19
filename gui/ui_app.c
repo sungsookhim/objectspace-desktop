@@ -402,9 +402,20 @@ void ui_window_set_title(ui_surface *s, const char *title)
 }
 void ui_window_move(ui_surface *s, uint32_t serial) { xdg_toplevel_move(s->top, s->app->seat, serial); }
 void ui_window_resize(ui_surface *s, uint32_t serial, unsigned edges) { xdg_toplevel_resize(s->top, s->app->seat, serial, edges); }
-void ui_window_minimize(ui_surface *s) { xdg_toplevel_set_minimized(s->top); }
+static ui_action_fn action_hook;
+void ui_set_action_hook(ui_action_fn fn) { action_hook = fn; }
+void ui_action(const char *name, ui_surface *s, ui_rect at) { if (action_hook) action_hook(name, s, at); }
+
+static ui_rect whole(ui_surface *s) { return (ui_rect){ 0, 0, s->w, s->h }; }
+
+void ui_window_minimize(ui_surface *s)
+{
+    ui_action("window.minimize", s, whole(s));
+    xdg_toplevel_set_minimized(s->top);
+}
 void ui_window_toggle_maximize(ui_surface *s)
 {
+    ui_action(s->maximized ? "window.restore" : "window.maximize", s, whole(s));
     if (s->maximized) xdg_toplevel_unset_maximized(s->top);
     else xdg_toplevel_set_maximized(s->top);
 }

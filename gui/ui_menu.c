@@ -166,6 +166,7 @@ static void choose(struct menu *m, int i, uint32_t serial)
     const ui_menu_item *it = &m->items[i];
     if (!it->enabled) return;
     if (it->nitems) { open_child(m, i, serial); return; }
+    ui_action("menu.select", m->surf, (ui_rect){ 0, 0, 0, 0 });
     finish(m->root, it->id);
 }
 
@@ -330,6 +331,7 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
         close_now(old);
         if (same) { if (fn) fn(arg, -1); return; }
     }
+    ui_action("menu.open", parent, (ui_rect){ x, y, 0, 0 });
     struct menu_root *r = calloc(1, sizeof *r);
     active = r;
     r->opener = parent;
