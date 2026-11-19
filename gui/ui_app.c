@@ -754,6 +754,8 @@ void ui_app_run(ui_app *a)
             if (s->needs_draw || s->continuous) render(s);
         }
     }
+    if (getenv("WPS_UI_DEBUG_EXIT"))
+        fprintf(stderr, "wps-ui: main loop ended: %s\n", !a->surfaces ? "no windows left" : !a->running ? "quit requested" : "the display was lost");
     wl_display_flush(a->dpy);
 }
 

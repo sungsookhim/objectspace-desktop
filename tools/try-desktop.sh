@@ -6,7 +6,7 @@
 # few files); close the window to end it.
 #
 # Needs: sudo dnf install mutter-devkit
-# usage: tools/try-desktop.sh [FOLDER] [WIDTHxHEIGHT]
+# usage: tools/try-desktop.sh [FOLDER] [WIDTHxHEIGHT]   (one screen, of that size)
 set -e
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 command -v mutter-devkit >/dev/null 2>&1 || [ -x /usr/libexec/mutter-devkit ] || {
@@ -33,7 +33,7 @@ fi
 mkdir -p "$T/config" "$T/data/gnome-shell/extensions/wps@wps-linux" "$T/cache" "$RT/wps"
 E="$T/data/gnome-shell/extensions/wps@wps-linux"
 cp "$REPO/gnome-extension/wps@wps-linux/metadata.json" "$REPO/gnome-extension/wps@wps-linux/extension.js" "$E/"
-printf '{"command": ["%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$DESK" > "$E/config.json"
+printf '{"command": ["env", "WPS_UI_DEBUG_EXIT=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$DESK" > "$E/config.json"
 
 cleanup() {
     "$REPO/build/wpsctl" shutdown >/dev/null 2>&1 || true
@@ -63,5 +63,5 @@ WAYLAND_DISPLAY="$PARENT_WL" dbus-run-session -- sh -c "
     gsettings set org.gnome.shell enabled-extensions \"['wps@wps-linux']\"
     gsettings set org.gnome.shell disable-user-extensions false
     gsettings set org.gnome.shell welcome-dialog-last-shown-version '999'
-    exec gnome-shell --devkit --wayland --no-x11 --virtual-monitor $SIZE --wayland-display wps-try
+    exec gnome-shell --devkit --devkit-args=\"--monitor-size=$SIZE\" --wayland --no-x11 --wayland-display wps-try
 " > "$T/shell.log" 2>&1

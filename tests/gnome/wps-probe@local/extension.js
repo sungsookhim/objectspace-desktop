@@ -20,6 +20,7 @@ export default class Probe {
             // switch workspace: the desktop must still be there
             const n = global.workspace_manager.get_n_workspaces();
             console.log(`probe: workspaces ${n}`);
+            console.log(`probe: monitors ${JSON.stringify(Main.layoutManager.monitors.map(m => `${m.width}x${m.height}+${m.x}+${m.y}`))}, primary ${Main.layoutManager.primaryIndex}`);
             const out = GLib.getenv('PROBE_SHOT');
             if (out) {
                 const shot = new Shell.Screenshot();
