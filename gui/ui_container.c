@@ -15,12 +15,16 @@
 #define ROW_H 20
 #define HEAD_H 20
 #define SB_W 16
+#define SBW(c) ((c)->no_scrollbars ? 0 : SB_W)
 #define CELL_W UI_CELL_W
 #define CELL_H UI_CELL_H
 #define ICON 32
 #define INDENT 20                /* tree view: per level */
 
 struct ui_container {
+    bool no_scrollbars;      /* the desktop: none drawn, none taken */
+    ui_layer_draw_fn backdrop;   /* behind the items, if set (the desktop) */
+    void *backdrop_ctx;
     ui_surface *s;
     const ui_container_src *src;
     void *ctx;
@@ -55,7 +59,7 @@ struct ui_container {
 
 static ui_rect head_rect(ui_container *c)
 {
-    return (ui_rect){ c->r.x, c->r.y, c->r.w - SB_W, c->view == UI_VIEW_DETAILS ? HEAD_H : 0 };
+    return (ui_rect){ c->r.x, c->r.y, c->r.w - SBW(c), c->view == UI_VIEW_DETAILS ? HEAD_H : 0 };
 }
 
 static bool free_icons(ui_container *c) { return c->view == UI_VIEW_ICON && c->src->item_pos && c->src->items_in; }
@@ -70,14 +74,14 @@ static double content_w(ui_container *c)
 /* A horizontal scroll bar when placed icons reach past the window. */
 static bool has_hsb(ui_container *c)
 {
-    return free_icons(c) && content_w(c) > c->r.w - SB_W;
+    return !c->no_scrollbars && free_icons(c) && content_w(c) > c->r.w - SBW(c);
 }
 
 static ui_rect list_rect(ui_container *c)
 {
     ui_rect h = head_rect(c);
     double hb = has_hsb(c) ? SB_W : 0;
-    return (ui_rect){ c->r.x, c->r.y + h.h, c->r.w - SB_W, c->r.h - h.h - hb };
+    return (ui_rect){ c->r.x, c->r.y + h.h, c->r.w - SBW(c), c->r.h - h.h - hb };
 }
 
 static ui_rect hsb_rect(ui_container *c)
@@ -91,7 +95,7 @@ static double max_hscroll(ui_container *c)
     return m > 0 ? floor(m) : 0;
 }
 
-static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SB_W, c->r.y, SB_W, c->r.h }; }
+static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SBW(c), c->r.y, SBW(c), c->r.h }; }
 
 static size_t cols(ui_container *c)
 {
@@ -711,8 +715,17 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     double tx = r.x + (r.w - tw) / 2, ty = r.y + ICON + 8;
     bool sel = sel_get(c, i);
     if (sel) ui_fill(cr, (ui_rect){ tx - 2, ty, tw + 4, ROW_H - 2 }, k->selection);
-    ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, tx, ty + (ROW_H + ui_text_ascent()) / 2 - 2, t, maxw);
+    double by = ty + (ROW_H + ui_text_ascent()) / 2 - 2;
+    if (c->backdrop && !sel) {
+        /* on a picture: light text with a dark shadow reads on anything */
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
+        ui_text_draw(cr, UI_FONT_REGULAR, tx + 1, by + 1, t, maxw);
+        if (it.shadow) cairo_set_source_rgb(cr, 0.75, 0.85, 1.0);
+        else cairo_set_source_rgb(cr, 1, 1, 1);
+    } else {
+        ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
+    }
+    ui_text_draw(cr, UI_FONT_REGULAR, tx, by, t, maxw);
     if (c->focused && c->has_cursor && c->cursor == i) {
         ui_set_color(cr, sel ? k->selection_text : k->cursor);
         double dash = 1;
@@ -755,7 +768,8 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
     const ui_scheme *k = &ui_scheme_now;
     double x[6];
     columns(c, x);
-    ui_fill(cr, clip, k->client_bg);
+    if (c->backdrop) c->backdrop(c->backdrop_ctx, cr, clip);
+    else ui_fill(cr, clip, k->client_bg);
     double lh = line_h(c), off = c->view == UI_VIEW_ICON ? 4 : 0;
     double r0 = floor((clip.y - off) / lh), r1 = floor((clip.y + clip.h - off) / lh);
     size_t kcols = cols(c);
@@ -1242,6 +1256,22 @@ void ui_container_free(ui_container *c)
 }
 
 void ui_container_select_none(ui_container *c) { sel_clear(c); }
+
+void ui_container_set_backdrop(ui_container *c, ui_layer_draw_fn fn, void *ctx)
+{
+    c->no_scrollbars = fn != NULL;   /* a picture behind: a desktop, which does not scroll */
+    if (fn && c->layer) {
+        /* No scroll layer either: it would cover the whole window, and the
+         * compositor (Mutter) holds the frame callbacks of a surface its
+         * subsurface hides entirely, which stops all drawing. */
+        ui_layer_free(c->layer);
+        c->layer = NULL;
+    }
+    c->backdrop = fn;
+    c->backdrop_ctx = ctx;
+    if (c->layer) ui_layer_damage_all(c->layer);
+    ui_surface_damage_all(c->s);
+}
 
 void ui_container_select(ui_container *c, size_t i)
 {

@@ -409,6 +409,8 @@ void ui_window_toggle_maximize(ui_surface *s)
     else xdg_toplevel_set_maximized(s->top);
 }
 bool ui_window_maximized(ui_surface *s) { return s->maximized; }
+void ui_window_set_maximized(ui_surface *s) { if (s->top) xdg_toplevel_set_maximized(s->top); }
+void ui_window_set_frameless(ui_surface *s, bool on) { s->frameless = on; ui_surface_damage_all(s); }
 bool ui_window_active(ui_surface *s) { return s->activated; }
 
 /* ----------------------------------------------------------------- cursor */

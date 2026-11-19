@@ -18,6 +18,7 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "layout.h"
+#include "wallpaper.h"
 #include "svc.h"
 #include "ui.h"
 #include "wps_menu_ids.h"
@@ -51,6 +52,7 @@ struct folder {
     bool reload_again;       /* a change came during the re-read */
     int64_t sub;             /* event subscription */
     bool closing;
+    bool desktop;            /* the desktop: frameless, full screen, on the wallpaper; never closes */
     size_t vis_first, vis_last;
     struct tnode *troot;     /* tree view */
     struct tnode **tvis;     /* its visible rows */
@@ -145,7 +147,7 @@ static void update_title(struct folder *f)
 {
     char t[400];
     snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
-    ui_window_set_title(f->win, t);
+    ui_window_set_title(f->win, f->desktop ? "Desktop" : t);
 }
 
 static void damage_status(struct folder *f)
@@ -1149,7 +1151,7 @@ static void got_menu(void *arg, const cv *reply)
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
-    if (m->item == SIZE_MAX) {
+    if (m->item == SIZE_MAX && !f->desktop) {
         /* The folder window's own menu: a View cascade after Open, to switch
          * this window's view (the Open cascade opens new windows). */
         ui_view v = ui_container_view(f->cont);
@@ -1967,6 +1969,7 @@ static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
+    if (f->desktop) return;   /* no status line */
     ui_rect c = ui_frame_client(s);
     ui_rect st = { c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
     if (!ui_rect_meets(clip, st)) return;
@@ -1985,7 +1988,7 @@ static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 static void layout(struct folder *f)
 {
     ui_rect c = ui_frame_client(f->win);
-    c.h -= STATUS_H;
+    if (!f->desktop) c.h -= STATUS_H;
     ui_container_layout(f->cont, c);
 }
 
@@ -1993,6 +1996,7 @@ static void win_resized(ui_surface *s, double w, double h)
 {
     (void)w; (void)h;
     struct folder *f = ui_surface_data(s);
+    if (f->desktop) wallpaper_set_size(w, h, ui_surface_scale(s));
     layout(f);
     ui_surface_damage_all(s);
 }
@@ -2079,7 +2083,7 @@ static void close_later(void *arg)
 static void win_close(ui_surface *s)
 {
     struct folder *f = ui_surface_data(s);
-    if (f->closing) return;
+    if (f->closing || f->desktop) return;   /* the desktop stays */
     f->closing = true;
     if (f->bench_secs > 0) report(f);
     ui_app_post(app, close_later, as_arg(f));
@@ -2704,6 +2708,43 @@ static void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "desktop")) {
+        /* The desktop: frameless, its folder's icons on the wallpaper. */
+        static double t0;
+        static int step;
+        if (!f->desktop) return;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0 && (strcmp(wallpaper_showing(), "color") || t > 20000)) {
+            ui_rect c = ui_frame_client(s);
+            fprintf(stderr, "selftest: desktop %s: %zu objects, frameless %d (%.0fx%.0f of %.0fx%.0f), background %s after %.1f s\n",
+                    f->path, f->m.total, c.x == 0 && c.y == 0 && c.w == ui_surface_width(s) && c.h == ui_surface_height(s),
+                    c.w, c.h, ui_surface_width(s), ui_surface_height(s), wallpaper_showing(), t / 1000);
+            win_close(s);   /* the desktop stays */
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 300) {
+            fprintf(stderr, "selftest: after Close: desktop still open %d\n", !f->closing);
+            if (getenv("WPS_SHELL_SHOT")) {   /* a picture of it (with WPS_UI_NO_LAYER=1: all on one surface) */
+                cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ui_surface_width(s), (int)ui_surface_height(s));
+                cairo_t *icr = cairo_create(img);
+                win_draw(s, icr, (ui_rect){ 0, 0, ui_surface_width(s), ui_surface_height(s) });
+                cairo_destroy(icr);
+                cairo_surface_write_to_png(img, getenv("WPS_SHELL_SHOT"));
+                cairo_surface_destroy(img);
+            }
+            step++;
+        } else if (step == 2) {
+            size_t d = ui_surface_verify(s, NULL);
+            static double last;
+            (void)last;
+            if (d == SIZE_MAX) return;
+            fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -2807,12 +2848,53 @@ static void got_title(void *arg, const cv *reply)
 
 static void notify_in_use(const char *path);
 
-static struct folder *open_folder(const char *path, ui_view view)
+static struct folder *open_window(const char *path, ui_view view, bool desktop);
+static struct folder *open_folder(const char *path, ui_view view) { return open_window(path, view, false); }
+
+static void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip) { (void)ctx; wallpaper_draw(cr, clip); }
+
+static void desk_wallpaper_changed(void *ctx)
+{
+    struct folder *f = from_arg(ctx);
+    if (f) ui_container_layout_changed(f->cont);   /* redraws the whole list area */
+}
+
+/* The desktop folder: XDG_DESKTOP_DIR from user-dirs.dirs, else ~/Desktop. */
+static void desktop_dir(char *out, size_t n)
+{
+    const char *home = getenv("HOME"), *xdg = getenv("XDG_CONFIG_HOME");
+    char cfg[PATH_MAX], line[PATH_MAX + 64];
+    if (xdg && *xdg) snprintf(cfg, sizeof cfg, "%s/user-dirs.dirs", xdg);
+    else snprintf(cfg, sizeof cfg, "%s/.config/user-dirs.dirs", home ? home : "");
+    snprintf(out, n, "%s/Desktop", home ? home : "");
+    FILE *fp = fopen(cfg, "r");
+    while (fp && fgets(line, sizeof line, fp)) {
+        if (strncmp(line, "XDG_DESKTOP_DIR=\"", 17)) continue;
+        char *v = line + 17, *e = strrchr(v, '"');
+        if (!e) break;
+        *e = 0;
+        if (!strncmp(v, "$HOME", 5)) snprintf(out, n, "%s%s", home ? home : "", v + 5);
+        else if (v[0] == '/') snprintf(out, n, "%s", v);
+        break;
+    }
+    if (fp) fclose(fp);
+    mkdir(out, 0755);   /* a fresh account may not have one yet */
+}
+
+static struct folder *open_desktop(const char *path)
+{
+    char d[PATH_MAX];
+    if (!path) { desktop_dir(d, sizeof d); path = d; }
+    struct folder *f = open_window(path, UI_VIEW_ICON, true);
+    return f;
+}
+
+static struct folder *open_window(const char *path, ui_view view, bool desktop)
 {
     char real0[PATH_MAX];
     const char *want = realpath(path, real0) ? real0 : path;
     for (struct folder *o = folders; o; o = o->next)
-        if (!o->closing && !strcmp(o->path, want) && ui_container_view(o->cont) == view) {
+        if (!o->closing && !strcmp(o->path, want) && ui_container_view(o->cont) == view && !desktop) {
             ui_window_activate(o->win);   /* already open in this view: switch to it, as OS/2 did */
             return o;
         }
@@ -2825,15 +2907,29 @@ static struct folder *open_folder(const char *path, ui_view view)
     double w = view == UI_VIEW_ICON ? 640 : 760, h = 480;
     const char *sz = getenv("WPS_SHELL_SIZE");
     if (sz) sscanf(sz, "%lfx%lf", &w, &h);
-    f->win = ui_window_new(app, &win_ops, f, "org.wps.shell", w, h);
+    f->desktop = desktop;
+    if (desktop) {
+        /* Its app ID tells the GNOME Shell extension which window to make
+         * GNOME's desktop (below everything, on every workspace). */
+        snprintf(f->title, sizeof f->title, "Desktop");
+        f->win = ui_window_new(app, &win_ops, f, "org.wps.Desktop", w, h);
+        ui_window_set_frameless(f->win, true);
+        ui_window_set_maximized(f->win);
+    } else {
+        f->win = ui_window_new(app, &win_ops, f, "org.wps.shell", w, h);
+    }
     f->lay = layout_new(UI_CELL_W, UI_CELL_H);
     f->cont = ui_container_new(f->win, &folder_src, f, view);
+    if (desktop) {
+        ui_container_set_backdrop(f->cont, desk_backdrop, f);
+        wallpaper_start(app, desk_wallpaper_changed, as_arg(f));
+    }
     if (view == UI_VIEW_TREE) tree_start(f);
     f->next = folders;
     folders = f;
     update_title(f);
     layout(f);
-    svc_resolve(f->path, got_title, as_arg(f));
+    if (!desktop) svc_resolve(f->path, got_title, as_arg(f));
     notify_in_use(f->path);
     svc_subscribe_folder(f->path, got_sub, as_arg(f));
     svc_layout(f->path, got_layout, as_arg(f));
@@ -2844,12 +2940,14 @@ static struct folder *open_folder(const char *path, ui_view view)
 int main(int argc, char **argv)
 {
     int i = 1;
+    bool desk = false;
     for (; i < argc && argv[i][0] == '-'; i++) {
-        if (!strcmp(argv[i], "--details")) opt_view = UI_VIEW_DETAILS;
+        if (!strcmp(argv[i], "--desktop")) desk = true;
+        else if (!strcmp(argv[i], "--details")) opt_view = UI_VIEW_DETAILS;
         else if (!strcmp(argv[i], "--bench") && i + 1 < argc) opt_bench = atof(argv[++i]);
-        else { fprintf(stderr, "usage: wps-shell [--details] [--bench SECONDS] FOLDER...\n"); return 2; }
+        else { fprintf(stderr, "usage: wps-shell [--desktop [FOLDER]] [--details] [--bench SECONDS] [FOLDER...]\n"); return 2; }
     }
-    if (i >= argc) { fprintf(stderr, "usage: wps-shell [--details] [--bench SECONDS] FOLDER...\n"); return 2; }
+    if (i >= argc) desk = true;   /* no folder: the desktop */
     app = ui_app_new();
     load_system_conf();
     if (!app) return 1;
@@ -2864,6 +2962,11 @@ int main(int argc, char **argv)
     if (!up) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
     svc_on_event(on_event, NULL);
     svc_subscribe_jobs(ignore_reply, NULL);
+    if (desk) {
+        /* --desktop FOLDER: that folder as the desktop (tests) */
+        struct folder *f = open_desktop(i < argc ? argv[i++] : NULL);
+        if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);
+    }
     for (int k = i; k < argc; k++) {
         struct folder *f = open_folder(argv[k], opt_view);
         if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);   /* every window ticks */
@@ -2874,6 +2977,7 @@ int main(int argc, char **argv)
         }
     }
     ui_app_run(app);
+    wallpaper_stop();
     while (folders) free_folder(folders);
     svc_stop();
     return 0;

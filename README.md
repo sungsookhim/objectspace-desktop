@@ -52,7 +52,10 @@ tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB 
 tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-in hosts
 make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, wayland, xkbcommon, pipewire -devel)
 make gui      # wps-shell (optimised) and wps-shell-asan
+tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private headless GNOME Shell
 ```
+
+The WPS desktop in your GNOME session: `tools/install-extension.sh` installs the `wps@wps-linux` GNOME Shell extension (which starts `wps-shell --desktop`) and a systemd user unit for `wpsd`; then log out and back in. `tools/install-extension.sh --uninstall` removes both. Without the extension, `wps-shell` with no folder shows the desktop as an ordinary full-screen window.
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.
 

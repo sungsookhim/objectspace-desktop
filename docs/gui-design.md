@@ -182,6 +182,9 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 - **Delete** (2026-11-18): Delete... in every object's menu and the Delete key move the selection (or the item) to the trash; Shift+Delete deletes for good. Both ask first, as OS/2 does; the trash confirmation can be turned off in `<config>/system.conf` (`confirm_delete`, `confirm_folder_delete`, as on OS/2's System object Confirmations page, until that object exists); deleting for good always asks. Items no trash can take are asked about again. Windows of deleted folders close.
 
+- **The desktop in GNOME** (decided 2026-11-19: the Shell extension now). The desktop is `wps-shell --desktop`: the XDG desktop folder (`~/Desktop`) in icon view, frameless, on GNOME's background picture (`org.gnome.desktop.background`, the dark picture with a dark colour scheme, followed live; decoded by `glycin-thumbnailer`, GNOME's sandboxed image loaders, once per picture and size into `$XDG_CACHE_HOME/wps`), with no status line, no scroll bars, and no closing. The `wps@wps-linux` GNOME Shell extension starts it as a `Meta.WaylandClient` (so only that process can claim the role) and gives its window (app ID `org.wps.Desktop`) Mutter's desktop window type: below all windows, on every workspace, out of Alt+Tab, the window list and the overview, covering the primary monitor's work area; it restarts the desktop if it exits, and stays loaded on the lock screen. Window events for sounds come to the same extension in G3. `tests/gnome/run.sh` runs all this in a private headless GNOME Shell with a probe extension.
+- Found doing so: Mutter holds the frame callbacks of a surface that a subsurface covers entirely, so a window whose scroll layer covered it all stopped drawing (the desktop froze after the overview). The desktop draws without a scroll layer.
+
 ## Open
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.

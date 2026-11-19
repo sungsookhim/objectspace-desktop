@@ -167,6 +167,9 @@ typedef struct {
 
 ui_surface *ui_window_new(ui_app *a, const ui_surface_ops *ops, void *data, const char *app_id, double w, double h);
 void ui_window_set_title(ui_surface *s, const char *title);
+/* No frame at all, the client area the whole window (the desktop). */
+void ui_window_set_frameless(ui_surface *s, bool on);
+void ui_window_set_maximized(ui_surface *s);
 void ui_window_move(ui_surface *s, uint32_t serial);
 void ui_window_resize(ui_surface *s, uint32_t serial, unsigned edges);   /* xdg resize edges */
 void ui_window_minimize(ui_surface *s);
@@ -376,6 +379,12 @@ void ui_container_scroll_to_fraction(ui_container *c, double f);
 size_t ui_container_selected_count(ui_container *c);
 bool ui_container_is_selected(ui_container *c, size_t i);
 void ui_container_select_none(ui_container *c);
+/* Draw `fn` behind the items instead of the plain background (content
+ * coordinates, as for scroll layers); titles then get a shadow, for
+ * reading on a picture (the desktop). NULL: back to the plain one. */
+void ui_container_set_backdrop(ui_container *c, ui_layer_draw_fn fn, void *ctx);
+/* (Drawing then goes straight to the window, with no scroll layer: a
+ * layer covering a whole surface stops its frame callbacks in Mutter.) */
 void ui_container_select(ui_container *c, size_t i);
 size_t ui_container_cursor(ui_container *c);          /* SIZE_MAX: none */
 void ui_container_set_cursor(ui_container *c, size_t i);

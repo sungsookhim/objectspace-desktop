@@ -11,6 +11,7 @@ static double bw(void) { return ui_scheme_now.border; }
 ui_rect ui_frame_client(ui_surface *s)
 {
     const ui_scheme *k = &ui_scheme_now;
+    if (s->frameless) return (ui_rect){ 0, 0, s->w, s->h };
     double b = s->maximized ? 0 : bw();
     ui_rect r = { b, b + k->title_h, s->w - 2 * b, s->h - 2 * b - k->title_h };
     if (r.w < 0) r.w = 0;
@@ -44,6 +45,7 @@ static bool buttons_shown(ui_surface *s)
 ui_hit ui_frame_hit(ui_surface *s, double x, double y)
 {
     if (x < 0 || y < 0 || x >= s->w || y >= s->h) return UI_HIT_NONE;
+    if (s->frameless) return UI_HIT_CLIENT;
     double b = s->maximized ? 0 : bw();
     if (x < b || y < b || x >= s->w - b || y >= s->h - b) return UI_HIT_BORDER;
     ui_rect t = title_rect(s);
@@ -143,6 +145,7 @@ static void draw_button(cairo_t *cr, ui_surface *s, int which)
 void ui_frame_draw(ui_surface *s, cairo_t *cr, ui_rect clip, const char *title)
 {
     const ui_scheme *k = &ui_scheme_now;
+    if (s->frameless) return;
     double rad = s->maximized ? 0 : k->corner_radius;
     ui_rect c = ui_frame_client(s);
     /* Only the frame: the client area is the owner's. */

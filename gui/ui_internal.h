@@ -37,6 +37,7 @@ struct ui_surface {
     double w, h;           /* logical */
     int scale;
     bool configured, maximized, activated, destroyed;
+    bool frameless;          /* no frame at all (the desktop) */
     bool needs_draw, frame_pending, continuous;
     struct wl_callback *frame_cb;   /* destroyed with the surface */
     struct ui_buffer bufs[UI_BUFFERS];
