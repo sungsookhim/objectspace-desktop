@@ -57,6 +57,8 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
   - Pop-up menus on items and the background still did not appear after that: the toolkit could open a menu without a grab, but the shell still passed the click's serial. Fixed; `WPS_SHELL_SELFTEST=ctxmenu` sends a right click with a real-looking serial and checks the menu is still open 0.7 s later (the old code fails it).
   - Self-tests: `WPS_SHELL_SELFTEST=menus`, `=ctxmenu`, `=live` (files created and deleted appear and disappear) and `=close` (closing one of two windows leaves the other and the process running).
 
+- **A View cascade on the folder background's menu** (asked for by hand): Icon view (Ctrl+1), Tree view (until G2, greyed out) and Details view (Ctrl+2), with a check mark on the current view, switches this window; Open as… still opens new windows, as in Warp 4. Menus show shortcuts right-aligned (a label "Text\tShortcut"). Properties and Open With say in the status line that they come in G2.
+
 ## Not yet (later milestones)
 
 - Interactive use has not been checked by a person: menus, clicks, keyboard, resizing and opening windows were built against the protocol but only the benchmark has driven them. Please try `wps-shell` by hand.

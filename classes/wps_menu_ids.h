@@ -12,7 +12,13 @@
 #define WPS_MI_OPEN_ICON      11
 #define WPS_MI_OPEN_TREE      12
 #define WPS_MI_OPEN_DETAILS   13
+#define WPS_MI_OPEN_WITH      10
 #define WPS_MI_ARRANGE        20
+/* Added by the GUI itself to a folder window's background menu. */
+#define WPS_MI_VIEW           30    /* cascade: switch this window's view */
+#define WPS_MI_VIEW_ICON      31
+#define WPS_MI_VIEW_TREE      32
+#define WPS_MI_VIEW_DETAILS   33
 #define WPS_MI_FIRST_CLASS  1000
 
 #endif

@@ -2,6 +2,7 @@
  * set 3). Items come from the service's menu data. */
 #define _GNU_SOURCE
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -118,7 +119,13 @@ static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             cairo_line_to(cr, 15, y + 6);
             cairo_stroke(cr);
         }
-        ui_text_draw(cr, UI_FONT_REGULAR, 22, y + (ITEM_H + ui_text_ascent()) / 2 - 1, it->label, m->w - 44);
+        char label[256];
+        snprintf(label, sizeof label, "%s", it->label);
+        char *key = strchr(label, '\t');   /* "Text\tShortcut": shortcut right-aligned */
+        if (key) *key++ = 0;
+        double base = y + (ITEM_H + ui_text_ascent()) / 2 - 1;
+        ui_text_draw(cr, UI_FONT_REGULAR, 22, base, label, m->w - 44);
+        if (key) ui_text_draw(cr, UI_FONT_REGULAR, m->w - 22 - ui_text_width(UI_FONT_REGULAR, key), base, key, 0);
         if (it->nitems) {
             cairo_move_to(cr, m->w - 12, y + 7);
             cairo_line_to(cr, m->w - 8, y + 11);
@@ -251,7 +258,11 @@ static void open_menu(struct menu_root *r, struct menu *parent, ui_surface *on, 
     double w = 120;
     for (size_t i = 0; i < n; i++)
         if (!is_sep(&items[i])) {
-            double tw = ui_text_width(UI_FONT_REGULAR, items[i].label) + 22 + 30;
+            char label[256];
+            snprintf(label, sizeof label, "%s", items[i].label);
+            char *key = strchr(label, '\t');
+            if (key) *key++ = 0;
+            double tw = ui_text_width(UI_FONT_REGULAR, label) + 22 + 30 + (key ? ui_text_width(UI_FONT_REGULAR, key) + 24 : 0);
             if (tw > w) w = tw;
         }
     m->w = w;

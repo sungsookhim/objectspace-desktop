@@ -426,6 +426,15 @@ static void menu_chosen(void *arg, int64_t id)
             snprintf(f->error, sizeof f->error, "The settings notebook comes in G2");
             damage_status(f);
             break;
+        case WPS_MI_OPEN_WITH:
+            snprintf(f->error, sizeof f->error, "Open With comes in G2");
+            damage_status(f);
+            break;
+        case WPS_MI_VIEW_ICON:
+        case WPS_MI_VIEW_DETAILS:
+            ui_container_set_view(f->cont, id == WPS_MI_VIEW_ICON ? UI_VIEW_ICON : UI_VIEW_DETAILS);
+            update_title(f);
+            break;
         case WPS_MI_ARRANGE: break;   /* icon view is arranged in G1; free placement in G2 */
         default: svc_menu_select(t, id, selected_done, as_arg(f)); break;
         }
@@ -442,6 +451,20 @@ static void got_menu(void *arg, const cv *reply)
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
+    if (m->item == SIZE_MAX) {
+        /* The folder window's own menu: a View cascade after Open, to switch
+         * this window's view (the Open cascade opens new windows). */
+        ui_view v = ui_container_view(f->cont);
+        ui_menu_item *views = calloc(3, sizeof *views);
+        views[0] = (ui_menu_item){ WPS_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON, NULL, 0 };
+        views[1] = (ui_menu_item){ WPS_MI_VIEW_TREE, "Tree view", false, false, NULL, 0 };
+        views[2] = (ui_menu_item){ WPS_MI_VIEW_DETAILS, "Details view\tCtrl+2", true, v == UI_VIEW_DETAILS, NULL, 0 };
+        items = realloc(items, (n + 1) * sizeof *items);
+        size_t at = n ? 1 : 0;
+        memmove(items + at + 1, items + at, (n - at) * sizeof *items);
+        items[at] = (ui_menu_item){ WPS_MI_VIEW, "View", true, false, views, 3 };
+        n++;
+    }
     /* No grab (serial 0): the button was released before the service
      * answered, and GNOME refuses a grab then, dismissing the menu at once.
      * The shell closes its own menus on clicks elsewhere. */
@@ -667,7 +690,19 @@ static void win_frame(ui_surface *s, double now)
             e.x = c.x + 40; e.y = c.y + 30;
             e.kind = UI_PRESS; win_pointer(s, &e); e.kind = UI_RELEASE; win_pointer(s, &e); step++; t0 = now;
         }
-        else if (step == 3 && now - t0 > 700) { fprintf(stderr, "selftest: right click on an item: menu open %d\n", ui_menu_is_open()); ui_app_quit(app); step++; }
+        else if (step == 3 && now - t0 > 700) {
+            fprintf(stderr, "selftest: right click on an item: menu open %d\n", ui_menu_is_open());
+            /* Choose View > Details view as the background menu would. */
+            struct menu_ctx *mc = calloc(1, sizeof *mc);
+            mc->folder = f->id;
+            mc->item = SIZE_MAX;
+            ui_view before = ui_container_view(f->cont);
+            menu_chosen(mc, WPS_MI_VIEW_DETAILS);
+            fprintf(stderr, "selftest: View > Details view: %s -> %s\n", before == UI_VIEW_ICON ? "icon" : "details",
+                    ui_container_view(f->cont) == UI_VIEW_ICON ? "icon" : "details");
+            ui_app_quit(app);
+            step++;
+        }
         return;
     }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
