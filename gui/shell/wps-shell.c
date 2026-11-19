@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "svc.h"
@@ -27,6 +28,14 @@ enum { P_NONE, P_NAMES, P_DETAILED };
 struct row { char *name, *title; ui_kind kind; int64_t size, mtime; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
+/* A folder's contents as read from the service, a page at a time. */
+struct model {
+    struct page **pages;
+    size_t npages, total;
+    bool complete, growing;
+    int pending;             /* detail pages still awaited before a swap */
+};
+
 struct folder {
     struct folder *next;
     long id;                 /* replies find their window by ID: it may have closed */
@@ -34,9 +43,13 @@ struct folder {
     ui_container *cont;
     char path[PATH_MAX];
     char title[256];
-    struct page **pages;
-    size_t npages, total;
-    bool complete, growing;
+    struct model m;          /* on screen */
+    struct model *sh;        /* being re-read after a change, swapped in when ready */
+    unsigned gen, sgen;      /* replies for an older model are dropped */
+    bool reload_again;       /* a change came during the re-read */
+    int64_t sub;             /* event subscription */
+    bool closing;
+    size_t vis_first, vis_last;
     char error[256];
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
@@ -65,17 +78,34 @@ static struct folder *open_folder(const char *path, ui_view view);
 
 /* ------------------------------------------------------------------ model */
 
-static struct page *page_at(struct folder *f, size_t p)
+static struct page *page_at(struct model *m, size_t p)
 {
-    if (p >= f->npages) {
-        size_t n = f->npages ? f->npages : 64;
+    if (p >= m->npages) {
+        size_t n = m->npages ? m->npages : 64;
         while (n <= p) n *= 2;
-        f->pages = realloc(f->pages, n * sizeof *f->pages);
-        memset(f->pages + f->npages, 0, (n - f->npages) * sizeof *f->pages);
-        f->npages = n;
+        m->pages = realloc(m->pages, n * sizeof *m->pages);
+        memset(m->pages + m->npages, 0, (n - m->npages) * sizeof *m->pages);
+        m->npages = n;
     }
-    if (!f->pages[p]) f->pages[p] = calloc(1, sizeof **f->pages);
-    return f->pages[p];
+    if (!m->pages[p]) m->pages[p] = calloc(1, sizeof **m->pages);
+    return m->pages[p];
+}
+
+static void model_free(struct model *m)
+{
+    for (size_t p = 0; p < m->npages; p++) {
+        if (!m->pages[p]) continue;
+        for (size_t r = 0; r < PAGE; r++) { free(m->pages[p]->rows[r].name); free(m->pages[p]->rows[r].title); }
+        free(m->pages[p]);
+    }
+    free(m->pages);
+    memset(m, 0, sizeof *m);
+}
+
+static const char *model_name(struct model *m, size_t i)
+{
+    struct page *pg = i / PAGE < m->npages ? m->pages[i / PAGE] : NULL;
+    return pg && pg->rows[i % PAGE].name ? pg->rows[i % PAGE].name : NULL;
 }
 
 static ui_kind kind_of(const char *type, const char *name)
@@ -100,22 +130,26 @@ static void damage_status(struct folder *f)
     ui_surface_damage(f->win, (ui_rect){ c.x, c.y + c.h - STATUS_H, c.w, STATUS_H });
 }
 
-static void request_more(struct folder *f);
-static void fetch_visible(struct folder *f, size_t first, size_t last);
+/* Which model and generation a reply belongs to. */
+struct pctx { long id; unsigned gen; bool shadow; };
 
-static void got_page(void *arg, const cv *reply)
+static void *page_arg(struct folder *f, bool shadow)
 {
-    struct folder *f = from_arg(arg);
-    if (!f) return;
-    const cv *res = reply ? cv_get(reply, "result") : NULL;
-    if (!res) {
-        const cv *e = reply ? cv_get(reply, "error") : NULL;
-        const char *m = e ? cv_text(e, "message") : NULL;
-        snprintf(f->error, sizeof f->error, "%s", m ? m : reply ? "the folder cannot be read" : "lost the connection to wpsd");
-        f->growing = false;
-        damage_status(f);
-        return;
-    }
+    struct pctx *pc = malloc(sizeof *pc);
+    pc->id = f->id;
+    pc->gen = shadow ? f->sgen : f->gen;
+    pc->shadow = shadow;
+    return pc;
+}
+
+static void request_more(struct folder *f, bool shadow);
+static void fetch_visible(struct folder *f, size_t first, size_t last);
+static void reload(struct folder *f);
+static void got_page(void *arg, const cv *reply);
+
+/* Store a reply's rows; returns whether they had details. */
+static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out)
+{
     int64_t off = 0, tot = 0;
     cv_int(res, "offset", &off);
     cv_int(res, "total", &tot);
@@ -125,8 +159,7 @@ static void got_page(void *arg, const cv *reply)
     for (size_t i = 0; i < n; i++) {
         const cv *it = &items->items[i];
         size_t r = (size_t)off + i;
-        struct page *pg = page_at(f, r / PAGE);
-        struct row *dst = &pg->rows[r % PAGE];
+        struct row *dst = &page_at(m, r / PAGE)->rows[r % PAGE];
         const char *nm = cv_text(it, "name"), *ti = cv_text(it, "title"), *ty = cv_text(it, "type");
         free(dst->name);
         free(dst->title);
@@ -140,49 +173,166 @@ static void got_page(void *arg, const cv *reply)
         }
     }
     for (size_t p = (size_t)off / PAGE; n && p <= ((size_t)off + n - 1) / PAGE; p++) {
-        struct page *pg = page_at(f, p);
+        struct page *pg = page_at(m, p);
         if (details) { pg->state = P_DETAILED; pg->requested = false; }
         else if (pg->state == P_NONE) pg->state = P_NAMES;
     }
-    bool was_complete = f->complete;
-    if ((size_t)tot > f->total) f->total = (size_t)tot;
-    f->complete = cmp && cmp->k == CV_BOOL && cmp->b;
-    if (!details) f->growing = false;
+    if ((size_t)tot > m->total) m->total = (size_t)tot;
+    m->complete = cmp && cmp->k == CV_BOOL && cmp->b;
+    if (!details) m->growing = false;
+    *off_out = (size_t)off;
+    *n_out = n;
+    return details;
+}
+
+/* The re-read model replaces the one on screen, keeping the scroll
+ * position, the selection and the cursor (by name). */
+static void swap(struct folder *f)
+{
+    struct model *old = &f->m, *nm = f->sh;
+    size_t nsel = ui_container_selected_count(f->cont), cur = ui_container_cursor(f->cont);
+    char **sel = NULL, *curname = NULL;
+    size_t k = 0;
+    if (nsel && nsel <= 256) {
+        sel = calloc(nsel, sizeof *sel);
+        for (size_t i = 0; i < old->total && k < nsel; i++)
+            if (ui_container_is_selected(f->cont, i) && model_name(old, i)) sel[k++] = strdup(model_name(old, i));
+    }
+    if (cur != SIZE_MAX && model_name(old, cur)) curname = strdup(model_name(old, cur));
+    model_free(old);
+    f->m = *nm;
+    free(nm);
+    f->sh = NULL;
+    f->gen++;
+    ui_container_select_none(f->cont);
+    ui_container_reset(f->cont);
+    if (k || curname)
+        for (size_t i = 0; i < f->m.total; i++) {
+            const char *n = model_name(&f->m, i);
+            if (!n) continue;
+            for (size_t j = 0; j < k; j++)
+                if (sel[j] && !strcmp(sel[j], n)) { ui_container_select(f->cont, i); free(sel[j]); sel[j] = NULL; }
+            if (curname && !strcmp(curname, n)) { ui_container_set_cursor(f->cont, i); free(curname); curname = NULL; }
+        }
+    for (size_t j = 0; j < k; j++) free(sel[j]);
+    free(sel);
+    free(curname);
+    damage_status(f);
+    if (f->reload_again) {
+        f->reload_again = false;
+        reload(f);
+    }
+}
+
+static void got_page(void *arg, const cv *reply)
+{
+    struct pctx *pc = arg;
+    struct folder *f = folder_by_id(pc->id);
+    bool shadow = pc->shadow;
+    unsigned gen = pc->gen;
+    free(pc);
+    if (!f) return;
+    struct model *m = shadow ? f->sh : &f->m;
+    if (!m || gen != (shadow ? f->sgen : f->gen)) return;   /* for a model replaced since */
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!res) {
+        const cv *e = reply ? cv_get(reply, "error") : NULL;
+        const char *msg = e ? cv_text(e, "message") : NULL;
+        snprintf(f->error, sizeof f->error, "%s", msg ? msg : reply ? "the folder cannot be read" : "lost the connection to wpsd");
+        m->growing = false;
+        if (shadow) { model_free(f->sh); free(f->sh); f->sh = NULL; }
+        damage_status(f);
+        return;
+    }
+    size_t off, n;
+    bool was_complete = m->complete;
+    bool details = store(m, res, &off, &n);
+    if (shadow) {
+        if (details) { if (--m->pending == 0) swap(f); return; }
+        if (!m->complete) { request_more(f, true); return; }
+        /* All names are in: fetch details for what is on screen, then swap. */
+        size_t p0 = f->vis_first / PAGE, p1 = f->vis_last / PAGE + 1;
+        for (size_t p = p0; p <= p1 && p * PAGE < m->total; p++) {
+            m->pending++;
+            page_at(m, p)->requested = true;
+            svc_list(f->path, p * PAGE, PAGE, true, got_page, page_arg(f, true));
+        }
+        if (!m->pending) swap(f);
+        return;
+    }
+    f->error[0] = 0;
     ui_container_count_changed(f->cont);
-    if (n) ui_container_changed(f->cont, (size_t)off, (size_t)off + n - 1);
-    if (!f->complete) request_more(f);
-    if (f->complete != was_complete || !details) damage_status(f);
+    if (n) ui_container_changed(f->cont, off, off + n - 1);
+    if (!m->complete) request_more(f, false);
+    if (m->complete != was_complete || !details) damage_status(f);
 }
 
 /* Names stream in; the folder's size grows as the service reads it. */
-static void request_more(struct folder *f)
+static void request_more(struct folder *f, bool shadow)
 {
-    if (f->growing || f->complete) return;
-    f->growing = true;
-    svc_list(f->path, f->total, f->total ? 4096 : 128, false, got_page, as_arg(f));
+    struct model *m = shadow ? f->sh : &f->m;
+    if (!m || m->growing || m->complete) return;
+    m->growing = true;
+    svc_list(f->path, m->total, m->total ? 4096 : 128, false, got_page, page_arg(f, shadow));
 }
 
 /* Details (size, date, title) for the pages on screen. */
 static void fetch_visible(struct folder *f, size_t first, size_t last)
 {
+    f->vis_first = first;
+    f->vis_last = last;
     size_t p0 = first / PAGE, p1 = last / PAGE + 1;
-    for (size_t p = p0; p <= p1 && p * PAGE < f->total; p++) {
-        struct page *pg = page_at(f, p);
+    for (size_t p = p0; p <= p1 && p * PAGE < f->m.total; p++) {
+        struct page *pg = page_at(&f->m, p);
         if (pg->state == P_DETAILED || pg->requested) continue;
         pg->requested = true;
-        svc_list(f->path, p * PAGE, PAGE, true, got_page, as_arg(f));
+        svc_list(f->path, p * PAGE, PAGE, true, got_page, page_arg(f, false));
     }
+}
+
+/* The folder changed: read it again in the background. Changes during the
+ * re-read start one more when it is done, so bursts cost two reads. */
+static void reload(struct folder *f)
+{
+    if (f->sh) { f->reload_again = true; return; }
+    f->sh = calloc(1, sizeof *f->sh);
+    f->sgen++;
+    request_more(f, true);
+}
+
+static void on_event(void *arg, const cv *ev)
+{
+    (void)arg;
+    int64_t sub;
+    const char *name = ev ? cv_text(ev, "event") : NULL;
+    if (!name || !cv_int(ev, "sub", &sub)) return;
+    for (struct folder *f = folders; f; f = f->next)
+        if (f->sub == sub && !f->closing &&
+            (!strcmp(name, "content_added") || !strcmp(name, "content_removed") || !strcmp(name, "object_moved") ||
+             !strcmp(name, "object_changed")))
+            reload(f);
+}
+
+static void got_sub(void *arg, const cv *reply)
+{
+    struct folder *f = from_arg(arg);
+    int64_t sub;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!f || !res || res->k != CV_INT) return;
+    sub = res->i;
+    if (f->closing) { svc_unsubscribe(sub); return; }
+    f->sub = sub;
 }
 
 /* ----------------------------------------------------------- container src */
 
-static size_t src_count(void *ctx) { return ((struct folder *)ctx)->total; }
+static size_t src_count(void *ctx) { return ((struct folder *)ctx)->m.total; }
 
 static void src_item(void *ctx, size_t i, ui_item *out)
 {
     struct folder *f = ctx;
     memset(out, 0, sizeof *out);
-    struct page *pg = i / PAGE < f->npages ? f->pages[i / PAGE] : NULL;
+    struct page *pg = i / PAGE < f->m.npages ? f->m.pages[i / PAGE] : NULL;
     if (!pg || pg->state == P_NONE || !pg->rows[i % PAGE].name) return;
     struct row *r = &pg->rows[i % PAGE];
     out->loaded = true;
@@ -196,11 +346,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
 
 static void src_visible(void *ctx, size_t first, size_t last) { fetch_visible(ctx, first, last); }
 
-static const char *row_name(struct folder *f, size_t i)
-{
-    struct page *pg = i / PAGE < f->npages ? f->pages[i / PAGE] : NULL;
-    return pg && pg->rows[i % PAGE].name ? pg->rows[i % PAGE].name : NULL;
-}
+static const char *row_name(struct folder *f, size_t i) { return model_name(&f->m, i); }
 
 static void target_of(struct folder *f, size_t i, char *out, size_t n)
 {
@@ -228,7 +374,7 @@ static void open_item(struct folder *f, size_t i, ui_view view)
 {
     char t[PATH_MAX];
     target_of(f, i, t, sizeof t);
-    struct page *pg = i == SIZE_MAX || i / PAGE >= f->npages ? NULL : f->pages[i / PAGE];
+    struct page *pg = i == SIZE_MAX || i / PAGE >= f->m.npages ? NULL : f->m.pages[i / PAGE];
     bool is_folder = i == SIZE_MAX || (pg && pg->rows[i % PAGE].kind == UI_KIND_FOLDER);
     if (is_folder) open_folder(t, view);
     else svc_open(t, false, opened, as_arg(f));
@@ -334,8 +480,8 @@ static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     char msg[512];
     size_t nsel = ui_container_selected_count(f->cont);
     if (f->error[0]) snprintf(msg, sizeof msg, "%s", f->error);
-    else if (nsel) snprintf(msg, sizeof msg, "%zu objects, %zu selected%s", f->total, nsel, f->complete ? "" : " (reading...)");
-    else snprintf(msg, sizeof msg, "%zu objects%s", f->total, f->complete ? "" : " (reading...)");
+    else if (nsel) snprintf(msg, sizeof msg, "%zu objects, %zu selected%s", f->m.total, nsel, f->m.complete ? "" : " (reading...)");
+    else snprintf(msg, sizeof msg, "%zu objects%s", f->m.total, f->m.complete ? "" : " (reading...)");
     ui_set_color(cr, k->text);
     ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
 }
@@ -389,12 +535,9 @@ static void free_folder(struct folder *f)
 {
     for (struct folder **pp = &folders; *pp; pp = &(*pp)->next)
         if (*pp == f) { *pp = f->next; break; }
-    for (size_t p = 0; p < f->npages; p++) {
-        if (!f->pages[p]) continue;
-        for (size_t r = 0; r < PAGE; r++) { free(f->pages[p]->rows[r].name); free(f->pages[p]->rows[r].title); }
-        free(f->pages[p]);
-    }
-    free(f->pages);
+    if (f->sub) svc_unsubscribe(f->sub);
+    model_free(&f->m);
+    if (f->sh) { model_free(f->sh); free(f->sh); }
     ui_container_free(f->cont);
     ui_surface_destroy(f->win);
     free(f);
@@ -402,11 +545,22 @@ static void free_folder(struct folder *f)
 
 static void report(struct folder *f);
 
+/* Closing happens on the next loop turn: the request comes from inside
+ * this window's own event handling (its close button), which must not
+ * find the window freed under it. */
+static void close_later(void *arg)
+{
+    struct folder *f = from_arg(arg);
+    if (f) free_folder(f);
+}
+
 static void win_close(ui_surface *s)
 {
     struct folder *f = ui_surface_data(s);
+    if (f->closing) return;
+    f->closing = true;
     if (f->bench_secs > 0) report(f);
-    free_folder(f);
+    ui_app_post(app, close_later, as_arg(f));
 }
 
 /* Benchmark: a fling, then jumps as if the scroll bar thumb were dragged. */
@@ -439,13 +593,74 @@ static void selftest(ui_surface *s, double now)
     else if (step == 6 && t > 1500) { fprintf(stderr, "selftest: done\n"); ui_app_quit(app); step++; }
 }
 
+/* WPS_SHELL_SELFTEST=live: files created and deleted in the folder appear
+ * and disappear. =close: closing one of two windows (as its close button
+ * does) leaves the other and the process running. */
+static void selftest_live(struct folder *f, double now)
+{
+    static double t0;
+    static int step;
+    static size_t base;
+    char p[PATH_MAX + 32];
+    if (!t0) { if (!f->m.complete) return; t0 = now; base = f->m.total; }
+    double t = now - t0;
+    if (step == 0) {
+        for (int i = 0; i < 3; i++) {
+            snprintf(p, sizeof p, "%s/selftest-%d.txt", f->path, i);
+            FILE *x = fopen(p, "w");
+            if (x) fclose(x);
+        }
+        step++;
+    } else if (step == 1 && t > 1500) {
+        fprintf(stderr, "selftest: after creating 3 files: %zu objects (was %zu)\n", f->m.total, base);
+        for (int i = 0; i < 3; i++) { snprintf(p, sizeof p, "%s/selftest-%d.txt", f->path, i); unlink(p); }
+        step++;
+    } else if (step == 2 && t > 3000) {
+        fprintf(stderr, "selftest: after deleting them: %zu objects\n", f->m.total);
+        ui_app_quit(app);
+        step++;
+    }
+}
+
+static void selftest_close(ui_surface *s, double now)
+{
+    static double t0;
+    static int step;
+    if (!t0) t0 = now;
+    if (step == 0 && now - t0 > 300) {
+        int n = 0;
+        for (struct folder *x = folders; x; x = x->next) n++;
+        fprintf(stderr, "selftest: %d windows; closing one\n", n);
+        win_close(s);
+        step++;
+    }
+}
+
+static void selftest_after_close(void *arg)
+{
+    (void)arg;
+    int n = 0;
+    for (struct folder *x = folders; x; x = x->next) n++;
+    fprintf(stderr, "selftest: %d window(s) left, process running\n", n);
+    ui_app_quit(app);
+}
+
 static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
-    if (getenv("WPS_SHELL_SELFTEST")) { selftest(s, now); return; }
+    const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
+    if (st && !strcmp(st, "close")) {
+        if (f == folders) {   /* the first window closes itself */
+            selftest_close(s, now);
+            if (f->closing) ui_app_post(app, selftest_after_close, NULL);
+        }
+        return;
+    }
+    if (st) { selftest(s, now); return; }
     if (f->bench_secs <= 0) return;
     if (f->bench_start == 0) {
-        if (!f->total) return;
+        if (!f->m.total) return;
         size_t n;
         const ui_frame_stat *st;
         ui_surface_stats(s, &st, &n);
@@ -510,7 +725,7 @@ static void report(struct folder *f)
            "\"interval_ms\":{\"p50\":%.2f,\"p99\":%.2f,\"max\":%.2f},\"late_frames\":%zu,"
            "\"full_redraws\":%zu,\"drawn_fraction_mean\":%.3f,\"move_ms\":{\"p50\":%.2f,\"p99\":%.2f},"
            "\"verified\":%zu,\"verify_failed\":%zu,\"verify_diff_px\":%zu}\n",
-           f->path, f->total, ui_container_view(f->cont) == UI_VIEW_ICON ? "icon" : "details", ui_surface_scale(f->win),
+           f->path, f->m.total, ui_container_view(f->cont) == UI_VIEW_ICON ? "icon" : "details", ui_surface_scale(f->win),
            ui_surface_width(f->win), ui_surface_height(f->win), m, secs > 0 ? (double)m / secs : 0, P(d, 50), P(d, 99),
            m ? d[m - 1] : 0, P(iv, 50), P(iv, 99), m ? iv[m - 1] : 0, late, fulls, m ? frac / (double)m : 0, P(mv, 50), P(mv, 99), f->verified, f->verify_failed, f->verify_diff);
     fflush(stdout);
@@ -552,7 +767,8 @@ static struct folder *open_folder(const char *path, ui_view view)
     update_title(f);
     layout(f);
     svc_resolve(f->path, got_title, as_arg(f));
-    request_more(f);
+    svc_subscribe_folder(f->path, got_sub, as_arg(f));
+    request_more(f, false);
     return f;
 }
 
@@ -569,6 +785,7 @@ int main(int argc, char **argv)
     if (!app) return 1;
     char err[512];
     if (!svc_start(app, err, sizeof err)) { fprintf(stderr, "wps-shell: %s\n", err); return 1; }
+    svc_on_event(on_event, NULL);
     for (int k = i; k < argc; k++) {
         struct folder *f = open_folder(argv[k], opt_view);
         if (k == i && getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);

@@ -100,6 +100,7 @@ void ui_set_cursor(ui_app *a, const char *name);
 bool ui_menu_press_outside(ui_surface *s);   /* true: a menu closed; the press is used up */
 ui_surface *ui_menu_key_surface(void);       /* where keys go while a menu is open */
 void ui_menu_close_all(void);
+void ui_menu_forget_surface(ui_surface *s);   /* before s is destroyed */
 /* Draw the layer's changes; -1 if no buffer is free yet. */
 double ui_layer_render(ui_layer *l);
 /* For ui_surface_verify: paste the slice last shown onto `img` (device

@@ -360,7 +360,11 @@ ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *op
     s->popup = xdg_surface_get_popup(s->xs, parent->xs, pos);
     xdg_positioner_destroy(pos);
     xdg_popup_add_listener(s->popup, &pop_listener, s);
-    xdg_popup_grab(s->popup, a->seat, serial);
+    /* Serial 0: no grab. The program closes its own menus on presses
+     * elsewhere and when its window loses focus, so a menu opened after a
+     * round trip to the service (when the button is no longer held, and a
+     * grab would be refused) still works. */
+    if (serial) xdg_popup_grab(s->popup, a->seat, serial);
     wl_surface_commit(s->wl);
     return s;
 }
@@ -372,6 +376,7 @@ void ui_surface_destroy(ui_surface *s)
     if (a->key_focus == s) a->key_focus = NULL;
     for (ui_surface **pp = &a->surfaces; *pp; pp = &(*pp)->next)
         if (*pp == s) { *pp = s->next; break; }
+    ui_menu_forget_surface(s);   /* its menus go first: popups are destroyed topmost first */
     if (s->layer) ui_layer_free(s->layer);
     if (s->frame_cb) wl_callback_destroy(s->frame_cb);
     if (s->popup) xdg_popup_destroy(s->popup);
@@ -483,11 +488,6 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
     a->last_serial = serial;
     int b = button == BTN_LEFT ? UI_BTN1 : button == BTN_RIGHT ? UI_BTN2 : button == BTN_MIDDLE ? UI_BTN3 : 0;
     if (!b) return;
-    if (state == WL_POINTER_BUTTON_STATE_PRESSED && a->ptr_focus && ui_menu_press_outside(a->ptr_focus)) {
-        a->swallow_release = b;   /* the click only closed the menu */
-        return;
-    }
-    if (state == WL_POINTER_BUTTON_STATE_RELEASED && a->swallow_release == b) { a->swallow_release = 0; return; }
     ui_pointer_event e = { .kind = state == WL_POINTER_BUTTON_STATE_PRESSED ? UI_PRESS : UI_RELEASE,
                            .button = b, .clicks = 1, .serial = serial };
     if (e.kind == UI_PRESS) {
@@ -499,6 +499,16 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
         a->last_click_t = now;
         a->last_click_x = a->px;
         a->last_click_y = a->py;
+        /* A press outside an open menu closes it and is used up, except the
+         * second click of a double click: the first opened the menu (the
+         * system menu button), and the double click means Close. */
+        if (a->ptr_focus && ui_menu_press_outside(a->ptr_focus) && e.clicks != 2) {
+            a->swallow_release = b;
+            return;
+        }
+    } else if (a->swallow_release == b) {
+        a->swallow_release = 0;
+        return;
     }
     send_ptr(a, &e);
 }

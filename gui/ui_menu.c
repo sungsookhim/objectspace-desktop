@@ -33,6 +33,8 @@ struct menu_root {
     bool closing;
     int64_t id;            /* the choice, once closing */
     ui_surface *opener;    /* where it was opened, for "click again closes" */
+    ui_app *app;
+    bool grab;             /* the root took a grab; so may its cascades */
     double ox, oy, closed_at;
 };
 
@@ -139,7 +141,9 @@ static void open_child(struct menu *m, int i, uint32_t serial)
     close_child(m);
     if (!it->nitems || !it->enabled) return;
     ui_rect anchor = { 0, item_y(m, (size_t)i), m->w - 2, ITEM_H };
-    open_menu(m->root, m, m->surf, it->items, it->nitems, anchor, serial);
+    /* A cascade grabs only if its root did (the protocol forbids a grab
+     * under a popup without one). */
+    open_menu(m->root, m, m->surf, it->items, it->nitems, anchor, m->root->grab ? serial : 0);
 }
 
 static void set_hot(struct menu *m, int i)
@@ -297,7 +301,7 @@ static void finish(struct menu_root *r, int64_t id)
     r->closing = true;
     r->id = id;
     r->closed_at = ui_now_ms();
-    ui_app_post(r->opener->app, finish_now, r);
+    ui_app_post(r->app, finish_now, r);
 }
 
 void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
@@ -317,6 +321,8 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     struct menu_root *r = calloc(1, sizeof *r);
     active = r;
     r->opener = parent;
+    r->app = parent->app;
+    r->grab = serial != 0;
     r->ox = x;
     r->oy = y;
     r->fn = fn;
@@ -356,3 +362,14 @@ void ui_menu_close_all(void)
 }
 
 bool ui_menu_is_open(void) { return active && !active->closing; }
+
+void ui_menu_forget_surface(ui_surface *s)
+{
+    if (!active) return;
+    if (active->opener == s || in_tree(active, s)) {
+        if (in_tree(active, s)) return;   /* a menu's own popup going away */
+        finish(active, -1);
+        close_now(active);
+        active->opener = NULL;
+    }
+}

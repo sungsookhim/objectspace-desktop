@@ -248,5 +248,11 @@ void ui_container_scroll_by(ui_container *c, double dy);
 void ui_container_scroll_to_fraction(ui_container *c, double f);
 size_t ui_container_selected_count(ui_container *c);
 bool ui_container_is_selected(ui_container *c, size_t i);
+void ui_container_select_none(ui_container *c);
+void ui_container_select(ui_container *c, size_t i);
+size_t ui_container_cursor(ui_container *c);          /* SIZE_MAX: none */
+void ui_container_set_cursor(ui_container *c, size_t i);
+/* The whole model was replaced (same scroll position): redraw all. */
+void ui_container_reset(ui_container *c);
 
 #endif

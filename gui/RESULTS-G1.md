@@ -48,10 +48,18 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 
 - **A menu could not be closed by clicking elsewhere in the window.** GNOME dismisses a menu only for clicks on other programs' windows; clicks on the program's own windows are delivered to it, and it must close its menus itself. Now a press anywhere outside the open menu closes it and is used up (as in OS/2), keys go to the open menu wherever the keyboard focus is (Escape works), and menus close when their window loses focus.
 
+- **Second round of hand testing:**
+  - A double click on the system menu button did nothing: the second click only closed the menu. The second click of a double click now reaches the frame, which closes the window (as in OS/2).
+  - Button 2 on the title bar opened the system menu; it no longer does.
+  - **Closing one folder window crashed the shell, taking every window with it.** The close button freed the window inside its own click handler, which then used it. Closing now happens on the next loop turn; menus opened from a window are closed before it goes.
+  - Pop-up menus on items and the background never appeared. They open on button release, after asking the service for their items, and GNOME refuses an input grab once no button is held, dismissing the menu at once. These menus now open without a grab (the shell closes its own menus on clicks elsewhere and when the window loses focus); the system menu, opened on press, still grabs.
+  - New files did not appear until the folder was opened again. Windows now subscribe to their folder's events and re-read it in the background after a change, swapping the new contents in with details for the rows on screen, keeping scroll position, selection and cursor. A burst of changes costs at most two re-reads. (Incremental updates for very large folders: G2.)
+  - Self-tests: `WPS_SHELL_SELFTEST=menus`, `=live` (files created and deleted appear and disappear) and `=close` (closing one of two windows leaves the other and the process running).
+
 ## Not yet (later milestones)
 
 - Interactive use has not been checked by a person: menus, clicks, keyboard, resizing and opening windows were built against the protocol but only the benchmark has driven them. Please try `wps-shell` by hand.
 - Tree view, in-place rename, free icon placement and Arrange (G2).
 - The settings notebook (Properties) and confirmation dialogs (G2).
-- Live updates from `wpsd` events (G2): a folder window does not yet notice files added or removed after it was read.
+- Incremental live updates for very large folders (G2); for now a change re-reads the folder.
 - Drag and drop (G2).

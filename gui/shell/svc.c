@@ -23,6 +23,14 @@ static struct out *outq, *outq_tail;
 static struct pending *pend;
 static int64_t next_id = 1;
 static bool stopping, broken;
+static svc_fn event_fn;
+static void *event_arg;
+
+void svc_on_event(svc_fn fn, void *arg)
+{
+    event_fn = fn;
+    event_arg = arg;
+}
 
 static void deliver(void *arg)   /* UI thread */
 {
@@ -105,7 +113,8 @@ static void *reader_main(void *x)
         int rc = cv_decode(buf, n, m);
         free(buf);
         int64_t id;
-        if (rc || !cv_int(m, "id", &id)) { if (!rc) cv_free(m); free(m); continue; }   /* events: later (G2) */
+        if (!rc && cv_get(m, "event") && event_fn) { post(event_fn, event_arg, m); continue; }
+        if (rc || !cv_int(m, "id", &id)) { if (!rc) cv_free(m); free(m); continue; }
         pthread_mutex_lock(&mu);
         struct pending *found = NULL;
         for (struct pending **pp = &pend; *pp; pp = &(*pp)->next)
@@ -237,4 +246,24 @@ void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
     send_req(o, id, fn, arg);
+}
+
+void svc_subscribe_folder(const char *folder, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("subscribe", 1, &id);
+    cb_text(&o->b, "folders");
+    cb_array(&o->b, 1);
+    cb_text(&o->b, folder);
+    send_req(o, id, fn, arg);
+}
+
+static void ignore(void *arg, const cv *reply) { (void)arg; (void)reply; }
+
+void svc_unsubscribe(int64_t sub)
+{
+    int64_t id;
+    struct out *o = begin("unsubscribe", 1, &id);
+    cb_text(&o->b, "sub"); cb_int(&o->b, sub);
+    send_req(o, id, ignore, NULL);
 }

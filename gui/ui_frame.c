@@ -259,10 +259,6 @@ bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e)
             return false;
         }
     }
-    if (e->kind == UI_PRESS && e->button == UI_BTN2 && (h == UI_HIT_TITLE || h == UI_HIT_SYSMENU)) {
-        system_menu(s, e->serial);
-        return true;
-    }
     if (e->kind == UI_RELEASE && s->pressed) {
         ui_hit p = s->pressed;
         s->pressed = UI_HIT_NONE;

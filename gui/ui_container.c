@@ -752,3 +752,33 @@ void ui_container_free(ui_container *c)
     free(c->sel);
     free(c);
 }
+
+void ui_container_select_none(ui_container *c) { sel_clear(c); }
+
+void ui_container_select(ui_container *c, size_t i)
+{
+    if (i >= c->count) return;
+    sel_set(c, i, true);
+    damage_item(c, i);
+}
+
+size_t ui_container_cursor(ui_container *c) { return c->has_cursor ? c->cursor : SIZE_MAX; }
+
+void ui_container_set_cursor(ui_container *c, size_t i)
+{
+    if (i >= c->count) { c->has_cursor = false; return; }
+    c->cursor = c->anchor = i;
+    c->has_cursor = true;
+    damage_item(c, i);
+}
+
+void ui_container_reset(ui_container *c)
+{
+    c->count = c->src->count(c->ctx);
+    if (c->scroll > max_scroll(c)) scroll_to(c, max_scroll(c));
+    if (c->has_cursor && c->cursor >= c->count) c->has_cursor = false;
+    damage_list(c);
+    damage_sb(c);
+    c->vis_first = c->vis_last = SIZE_MAX;
+    report_visible(c);
+}
