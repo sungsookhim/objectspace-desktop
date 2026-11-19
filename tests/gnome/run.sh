@@ -52,7 +52,7 @@ dbus-run-session -- sh -c "
   kill \$SH; sleep 1; kill -9 \$SH 2>/dev/null
 " 
 "$REPO/build/wpsctl" shutdown >/dev/null 2>&1; wait $WP 2>/dev/null
-grep -E "wps:|probe:|selftest:|dnd:|timing:|JS ERROR|ERROR: AddressSanitizer|runtime error|wps-ui" "$T/shell.log" | grep -v "^$" | head -40
+grep -E "wps:|probe:|selftest:|dnd:|timing:|event:|JS ERROR|ERROR: AddressSanitizer|runtime error|wps-ui" "$T/shell.log" | grep -v "^$" | head -40
 ls -la "$T/shot.png" 2>/dev/null
 echo "T=$T"
 # anything of this session still running, and its mounts

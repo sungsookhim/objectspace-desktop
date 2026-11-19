@@ -8,6 +8,9 @@
  */
 #define _GNU_SOURCE
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -3562,8 +3565,51 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
     return f;
 }
 
+/* Window events from the GNOME Shell extension, one line each on
+ * standard input: event TAB app TAB title TAB x TAB y TAB w TAB h. */
+static char ev_buf[8192];
+static size_t ev_len;
+
+static void on_window_events(void *arg, int fd, short rev)
+{
+    (void)arg;
+    ssize_t n = read(fd, ev_buf + ev_len, sizeof ev_buf - 1 - ev_len);
+    if (n <= 0) {
+        if (n < 0 && errno == EAGAIN) return;
+        ui_app_unwatch_fd(app, fd);   /* the extension went away */
+        return;
+    }
+    (void)rev;
+    ev_len += (size_t)n;
+    ev_buf[ev_len] = 0;
+    char *line = ev_buf, *nl;
+    while ((nl = strchr(line, '\n'))) {
+        *nl = 0;
+        char *f[7] = { 0 };
+        int k = 0;
+        for (char *p = line, *t; k < 7 && (t = strsep(&p, "\t"));) f[k++] = t;
+        if (k == 7 && !strncmp(f[0], "window.", 7)) {
+            ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };
+            events_raise(f[0], f[1], "window", at);
+        }
+        line = nl + 1;
+    }
+    ev_len = strlen(line);
+    memmove(ev_buf, line, ev_len + 1);
+    if (ev_len == sizeof ev_buf - 1) ev_len = 0;   /* a line too long: dropped */
+}
+
 int main(int argc, char **argv)
 {
+    /* --events-stdin (anywhere: the extension adds it last) */
+    bool events_stdin = false;
+    for (int k = 1; k < argc; k++)
+        if (!strcmp(argv[k], "--events-stdin")) {
+            events_stdin = true;
+            memmove(argv + k, argv + k + 1, (size_t)(argc - k) * sizeof *argv);
+            argc--;
+            k--;
+        }
     int i = 1;
     bool desk = false;
     for (; i < argc && argv[i][0] == '-'; i++) {
@@ -3578,6 +3624,10 @@ int main(int argc, char **argv)
     load_system_conf();
     events_init();
     ui_set_action_hook(toolkit_action);
+    if (events_stdin) {
+        fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
+        ui_app_watch_fd(app, 0, POLLIN, on_window_events, NULL);
+    }
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

@@ -54,6 +54,13 @@ export default class Probe {
             at(t, () => { if (Main.overview.visible) Main.overview.hide(); });
         at(5.8, () => console.log(`probe: overview visible ${Main.overview.visible}`));
         if (GLib.getenv('PROBE_MODE') !== 'interact') {
+            // Another program's window (the folder window run.sh opens) through
+            // minimize, restore, maximize and unmaximize: window events.
+            const other = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell');
+            at(9, () => other()?.minimize());
+            at(10, () => other()?.unminimize());
+            at(11, () => other()?.maximize());
+            at(12, () => other()?.unmaximize());
             at(14, () => {
                 windows('end');
                 console.log(`probe: workspaces ${global.workspace_manager.get_n_workspaces()}`);

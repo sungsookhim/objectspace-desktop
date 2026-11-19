@@ -120,7 +120,11 @@ static bool find_sound(const char *name, char *out, size_t n)
     char copy[4096];
     snprintf(copy, sizeof copy, "%s", dd && *dd ? dd : "/usr/local/share:/usr/share");
     for (char *s = copy, *t; nd < 16 && (t = strsep(&s, ":"));)
-        if (*t) snprintf(dirs[nd++], PATH_MAX, "%s/sounds", t);
+        if (*t) {
+            size_t l = strlen(t);
+            while (l > 1 && t[l - 1] == '/') t[--l] = 0;   /* "/usr/share/" */
+            snprintf(dirs[nd++], PATH_MAX, "%s/sounds", t);
+        }
     const char *themes[2] = { theme, "freedesktop" };
     static const char *const exts[] = { "oga", "ogg", "wav", "flac", "opus" };
     for (int t = 0; t < 2; t++)
