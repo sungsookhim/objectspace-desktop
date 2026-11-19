@@ -33,18 +33,22 @@ printf '{"command": ["%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$DESK
 cleanup() {
     "$REPO/build/wpsctl" shutdown >/dev/null 2>&1 || true
     for p in $(pgrep -u "$(id -u)"); do
-        tr '\0' '\n' < /proc/$p/environ 2>/dev/null | grep -q "XDG_RUNTIME_DIR=$RT" && kill $p 2>/dev/null
+        { tr '\0' '\n' < /proc/$p/environ; } 2>/dev/null | grep -q "XDG_RUNTIME_DIR=$RT" && kill $p 2>/dev/null
     done
     sleep 1
     for p in $(pgrep -u "$(id -u)"); do
-        tr '\0' '\n' < /proc/$p/environ 2>/dev/null | grep -q "XDG_RUNTIME_DIR=$RT" && kill -9 $p 2>/dev/null
+        { tr '\0' '\n' < /proc/$p/environ; } 2>/dev/null | grep -q "XDG_RUNTIME_DIR=$RT" && kill -9 $p 2>/dev/null
     done
     for m in $(grep -o "$RT/[^ ]*" /proc/mounts); do fusermount3 -u "$m" 2>/dev/null; done
     rm -rf "$RT"
     echo "Ended. Logs: $T/shell.log, $T/wpsd.log"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
+# The viewer shows the nested screen through your PipeWire (its socket is
+# in your own runtime folder).
+export PIPEWIRE_RUNTIME_DIR="$PARENT_RT"
 export XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache"
 export WPS_CONFIG_DIR="$T/wps/config" WPS_STATE_DIR="$T/wps/state" WPS_RUNTIME_DIR="$RT/wps"
 unset DISPLAY JOURNAL_STREAM INVOCATION_ID

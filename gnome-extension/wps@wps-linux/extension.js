@@ -27,6 +27,7 @@ export default class WpsExtension extends Extension {
         this._on = true;
         this._signals = [];
         this._desktops = new Set();
+        this._ready = new Set();   // desktops Mutter has shown
         this._delay = 1;
         this._restartId = 0;
         this._connect(global.display, 'window-created', (_d, w) => this._windowCreated(w));
@@ -44,6 +45,7 @@ export default class WpsExtension extends Extension {
         this._client?.get_subprocess()?.send_signal(15);
         this._client = null;
         this._desktops.clear();
+        this._ready.clear();
     }
 
     _connect(obj, signal, fn) {
@@ -116,19 +118,24 @@ export default class WpsExtension extends Extension {
         w.set_type(Meta.WindowType.DESKTOP);
         w.stick();
         w.hide_from_window_list();
-        this._connect(w, 'unmanaged', () => this._desktops.delete(w));
-        // Its size once it has been shown, and whenever the work area changes.
+        this._connect(w, 'unmanaged', () => {
+            this._desktops.delete(w);
+            this._ready.delete(w);
+        });
+        // Sized once Mutter has shown it (not before: it is not ready), and
+        // whenever the work area changes.
         const id = w.connect('shown', () => {
             w.disconnect(id);
+            this._ready.add(w);
             this._place(w);
         });
-        this._place(w);
         const r = w.get_frame_rect();
         console.log(`wps: desktop window: type ${w.get_window_type()}, on all workspaces ${w.is_on_all_workspaces()}, ` +
             `skip taskbar ${w.is_skip_taskbar()}, ${r.width}x${r.height}+${r.x}+${r.y}`);
     }
 
     _place(w) {
+        if (!this._ready.has(w)) return;
         const mon = Main.layoutManager.primaryIndex;
         if (mon < 0) return;
         const wa = w.get_work_area_for_monitor(mon);
