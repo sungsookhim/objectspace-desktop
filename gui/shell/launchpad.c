@@ -41,6 +41,7 @@ struct entry {
     bool folder_target;        /* a shadow or link of a folder */
     char target[PATH_MAX];     /* what a shadow or link stands for */
     char icon[PATH_MAX];       /* its own icon (a PNG), or "" */
+    char id[48];               /* its object ID (positions are kept by it) */
 };
 
 struct drawer {
@@ -151,6 +152,8 @@ static size_t parse(const cv *reply, struct entry *out, size_t max)
         e->link = ty && !strcmp(ty, "link");
         const char *mk = cv_text(it, "makes");
         if (mk) e->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
+        const char *oid = cv_text(it, "id");
+        if (oid) snprintf(e->id, sizeof e->id, "%s", oid);
         const char *ic = cv_text(it, "icon");
         if (ic) snprintf(e->icon, sizeof e->icon, "%s", ic);
         const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
@@ -199,14 +202,12 @@ static void got_order(void *arg, const cv *reply)
 {
     (void)arg;
     if (!lp.s) return;
-    const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
+    /* positions by object ID ("x,y"): files and central objects alike */
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *pos = res ? cv_get(res, "positions") : NULL;
     for (size_t i = 0; i < nlisted; i++) {
         order_x[i] = INT64_MAX;   /* no position: at the end */
-        for (size_t k = 0; items && items->k == CV_ARRAY && k < items->n; k++) {
-            const char *nm = cv_text(&items->items[k], "name");
-            int64_t x;
-            if (nm && !strcmp(nm, listed_items[i].name) && cv_int(&items->items[k], "x", &x)) { order_x[i] = x; break; }
-        }
+        const char *v = listed_items[i].id[0] && pos ? cv_text(pos, listed_items[i].id) : NULL;
+        if (v) order_x[i] = strtoll(v, NULL, 10);
     }
     size_t idx[MAX_ITEMS];
     for (size_t i = 0; i < nlisted; i++) idx[i] = i;
@@ -217,8 +218,7 @@ static void got_order(void *arg, const cv *reply)
     size_t nplace = 0;
     for (size_t k = 0; k < nlisted; k++) {
         lp.items[k] = listed_items[idx[k]];
-        /* (central objects keep their listing order: their layout names differ) */
-        if (order_x[idx[k]] != (int64_t)k * ORDER_CELL && lp.items[k].name[0] != '\x01') {
+        if (order_x[idx[k]] != (int64_t)k * ORDER_CELL) {
             char a[PATH_MAX + 32];
             address(lp.dir, &lp.items[k], a, sizeof a);
             t[nplace] = strdup(a);
