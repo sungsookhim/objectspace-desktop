@@ -7,10 +7,10 @@
 #   /usr/share/wayland-sessions/wps.desktop   the login screen's entry
 #   /usr/local/bin/wps-session                runs tools/wps-session here
 #   /etc/pam.d/wps-lock                       the lock screen's password check
-# (GDM 51 lists only sessions that say X-GDM-CanRunHeadless=true; the login
-# screen reads the list when it starts: after installing, restart GDM or
-# reboot.)
 # (the same as the system's: auth include system-auth)
+# GDM 51 lists only sessions that say X-GDM-CanRunHeadless=true; the login
+# screen reads the list when it starts: after installing, restart GDM or
+# reboot.
 set -e
 [ "$(id -u)" = 0 ] || { echo "run it with sudo: sudo $0 $*" >&2; exit 1; }
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
