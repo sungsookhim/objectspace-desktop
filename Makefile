@@ -244,7 +244,9 @@ $(B)/wps-shell-asan: $(UIDEPS)
 # G5: the compositor (wlroots 0.20). It draws frames with the toolkit's
 # frame code (gui/ui_framepaint.c), so it links the drawing part of it.
 COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig xcb
-COMPSRC := compositor/wps-compositor.c compositor/desktop.c gui/ui_draw.c gui/ui_framepaint.c
+# The lock screen checks passwords with PAM (pam-devel); without it, no locking.
+COMPPAM := $(shell test -f /usr/include/security/pam_appl.h && echo -DHAVE_PAM)
+COMPSRC := compositor/wps-compositor.c compositor/desktop.c compositor/lock.c gui/ui_draw.c gui/ui_framepaint.c
 DECOXML := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 $(G0)/xdg-decoration-unstable-v1-client-protocol.h: $(DECOXML)
 	@mkdir -p $(G0)
@@ -264,7 +266,7 @@ $(TV)/ssd-client: tests/comp/ssd-client.c $(G0)/xdg-shell-client-protocol.h $(G0
 	$(CC) $(G0FLAGS) -I$(G0) -o $@ tests/comp/ssd-client.c $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-protocol.c $$(pkg-config --cflags --libs wayland-client)
 $(B)/wps-compositor: $(COMPSRC) gui/ui.h compositor/comp.h
 	@mkdir -p $(B)
-	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $$(pkg-config --libs $(COMPPKG)) -lm
+	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE $(COMPPAM) -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lm
 
 $(TV)/test_ui_entry: tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c gui/ui.h
 	@mkdir -p $(TV)

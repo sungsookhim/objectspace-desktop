@@ -28,6 +28,7 @@ struct server {
     struct wl_display *display;
     struct wl_event_loop *loop;
     struct wlr_backend *backend;
+    struct wlr_session *session;      /* on a console (the WPS session): screens and input devices */
     struct wlr_renderer *renderer;
     struct wlr_allocator *allocator;
     struct wlr_scene *scene;
@@ -125,6 +126,15 @@ void comp_focus(struct toplevel *t);
 void comp_minimize(struct toplevel *t, bool on);
 void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);
+void comp_redraw_frames(void);   /* the scheme or font changed */
+void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
+void comp_after_unlock(void);
+
+/* lock.c: the lock screen */
+bool lock_screen(void);          /* false: it cannot lock (no PAM) */
+bool lock_active(void);
+void lock_key(uint32_t sym, const char *utf8);
+void lock_layout(void);          /* the screens changed */
 struct toplevel *comp_toplevel_of(struct wlr_surface *s);
 
 /* Start a program (sh -c COMMAND, or argv) apart from the compositor: a

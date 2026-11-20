@@ -1,0 +1,60 @@
+#!/bin/sh
+# The WPS session (G5 step 4): what "WPS" on the login screen starts
+# (/usr/share/wayland-sessions/wps.desktop, from tools/install-session.sh).
+#
+# wps-compositor on the screens and input devices, WPS's desktop in it on
+# the Desktop folder, wpsd (the user service). GNOME's settings are shared
+# (gui-design.md: Settings shared with GNOME): the keyboard layout and the
+# pointer's look come from them, and other programs follow the WPS
+# scheme's light or dark choice through the desktop portal, whose
+# Settings answer from the same GNOME settings (the desktop keeps them
+# in step with the WPS scheme).
+#
+# Its log: ~/.local/state/wps/session.log (the last session's; the one
+# before is session.log.old).
+REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/wps
+mkdir -p "$STATE"
+[ -f "$STATE/session.log" ] && mv "$STATE/session.log" "$STATE/session.log.old"
+exec 2>> "$STATE/session.log"
+echo "wps-session: $(date)" >&2
+
+export XDG_CURRENT_DESKTOP=WPS XDG_SESSION_DESKTOP=wps XDG_SESSION_TYPE=wayland WPS_SESSION=1
+export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM="wayland;xcb" SDL_VIDEODRIVER=wayland _JAVA_AWT_WM_NONREPARENTING=1
+
+# The keyboard layout: GNOME's first input source, and its options.
+src=$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null | grep -o "('xkb', '[^']*')" | head -1 | sed "s/('xkb', '\(.*\)')/\1/")
+if [ -n "$src" ]; then
+    export XKB_DEFAULT_LAYOUT=${src%%+*}
+    case "$src" in *+*) export XKB_DEFAULT_VARIANT=${src#*+} ;; esac
+fi
+opts=$(gsettings get org.gnome.desktop.input-sources xkb-options 2>/dev/null | tr -d "[]' " )
+[ -n "$opts" ] && [ "$opts" != "@as" ] && export XKB_DEFAULT_OPTIONS=$opts
+# The pointer's look.
+theme=$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")
+size=$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null)
+[ -n "$theme" ] && export XCURSOR_THEME=$theme
+[ -n "$size" ] && export XCURSOR_SIZE=$size
+
+# The desktop portal: GNOME's GTK backend (its Settings read GNOME's
+# settings), for a desktop named WPS.
+PORTALS=${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal
+mkdir -p "$PORTALS"
+[ -f "$PORTALS/wps-portals.conf" ] || printf '[preferred]\ndefault=gtk;\norg.freedesktop.impl.portal.Secret=oo7-portal;gnome-keyring;\n' > "$PORTALS/wps-portals.conf"
+
+# wpsd: the user service (tools/install.sh enables it).
+systemctl --user start wpsd.service 2>/dev/null
+
+DESK=$(xdg-user-dir DESKTOP 2>/dev/null)
+[ -d "$DESK" ] || DESK=$HOME/Desktop
+mkdir -p "$DESK"
+
+# Once the compositor is up: services started by D-Bus or systemd (the
+# portal) get its display.
+READY="dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP; systemctl --user restart xdg-desktop-portal.service 2>/dev/null"
+"$REPO/build/wps-compositor" -d "'$REPO/build/wps-shell' --desktop '$DESK'" -s "$READY"
+status=$?
+echo "wps-session: the compositor ended ($status)" >&2
+# What this session started and set for systemd goes with it.
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP 2>/dev/null
+exit $status

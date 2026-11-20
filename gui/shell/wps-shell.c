@@ -4138,7 +4138,11 @@ static void apply_setup_object(const char *cls, const cv *settings)
         else if (!strcmp(cls, "WPMouse")) ui_mouse_set(key, val);
         else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
         else if (!strcmp(cls, "WPSystem")) {
-            if (ui_scheme_set_option(key, val)) {}   /* corners, buttons, border, shadows, translucency, title layout */
+            if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */
+                char kv[160];   /* the compositor's frames too (WPS session) */
+                snprintf(kv, sizeof kv, "%s=%s", key, val);
+                winlist_ext("frame", kv);
+            }
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
         }
@@ -4188,6 +4192,12 @@ static void got_setup(void *arg, const cv *reply)
 static void apply_scheme(void)
 {
     if (!ui_scheme_use(scheme_name)) ui_scheme_use("classic");
+    /* in the WPS session the compositor draws other programs' frames: the
+     * same scheme and font (under GNOME the extension ignores these) */
+    winlist_ext("scheme", ui_scheme_now.name);
+    char font[300];
+    snprintf(font, sizeof font, "%g %s", ui_scheme_now.font_px, ui_text_family());
+    winlist_ext("font", font);
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
         layout(f);   /* border and title sizes may have changed */

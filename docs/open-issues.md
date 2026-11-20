@@ -114,4 +114,7 @@ G2's planned items are all built. What remains are the issues above.
 - The compositor's frames use the classic scheme: the WPS scheme and font chosen in the desktop are not followed yet (step 4, with the session's settings).
 - One headless run in about ten saw an X11 test window never appear (XWayland's first start, slow?); not seen again.
 - No scaled (HiDPI) screens, one screen only for the desktop, no fullscreen yet.
+- The session has not been started from the login screen in tests (it needs a console): the headless tests cover the compositor, the desktop, the lock screen (with a test password) and the scheme lines; `tools/wps-session` was only checked for its syntax and its reading of GNOME's settings.
+- The lock screen needs pam-devel at build time; without it Lockup says so and does nothing. Fingerprint and smart-card logins go through PAM as configured (not tried).
+- No screen blanking, idle lock or power management yet; no on-screen keyboard; the keyboard layout is read when the session starts (a change in GNOME's settings needs a new session).
 

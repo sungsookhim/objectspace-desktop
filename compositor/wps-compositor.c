@@ -44,6 +44,7 @@
 #include <wlr/backend.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/wayland.h>
+#include <wlr/backend/session.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/render/allocator.h>
@@ -538,6 +539,7 @@ static void do_resize(void)
 static void process_motion(uint32_t time)
 {
     struct server *s = &server;
+    if (lock_active()) { set_cursor("default"); return; }   /* no program sees the pointer */
     if (s->mode == MODE_MOVE && s->grabbed->maximized) {
         /* a maximized window's title dragged (not just pressed): restored
          * under the pointer, at the same place across its title */
@@ -603,6 +605,7 @@ static bool menu_release_ignored;   /* the release of the click that opened it *
 static void process_button(uint32_t time, uint32_t button, bool pressed)
 {
     struct server *s = &server;
+    if (lock_active()) return;
     if (menu.t) {
         int i = menu_item_at(s->cursor->x, s->cursor->y);
         if (!pressed && menu_release_ignored) { menu_release_ignored = false; if (i < 0) return; }
@@ -739,6 +742,12 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
         }
         return true;
     }
+    if ((mods & WLR_MODIFIER_LOGO) && (sym == XKB_KEY_l || sym == XKB_KEY_L)) { lock_screen(); return true; }   /* as in GNOME */
+    /* Ctrl+Alt+F1..F12 (xkb makes them XF86Switch_VT_n): another console */
+    if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
+        if (server.session) wlr_session_change_vt(server.session, sym - XKB_KEY_XF86Switch_VT_1 + 1);
+        return true;
+    }
     if (!(mods & WLR_MODIFIER_ALT)) return false;
     struct toplevel *front = wl_list_empty(&server.toplevels) ? NULL : wl_container_of(server.toplevels.next, front, link);
     switch (sym) {
@@ -756,6 +765,16 @@ static void on_key(struct wl_listener *l, void *data)
     const xkb_keysym_t *syms;
     int n = xkb_state_key_get_syms(k->wlr_keyboard->xkb_state, keycode, &syms);
     uint32_t mods = wlr_keyboard_get_modifiers(k->wlr_keyboard);
+    if (lock_active()) {   /* the lock screen has every key (consoles still switch) */
+        if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED)
+            for (int i = 0; i < n; i++) {
+                if (syms[i] >= XKB_KEY_XF86Switch_VT_1 && syms[i] <= XKB_KEY_XF86Switch_VT_12) { shortcut(mods, syms[i]); continue; }
+                char utf8[8] = "";
+                xkb_state_key_get_utf8(k->wlr_keyboard->xkb_state, keycode, utf8, sizeof utf8);
+                lock_key(syms[i], utf8);
+            }
+        return;
+    }
     bool handled = false;
     if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED)
         for (int i = 0; i < n; i++) handled |= shortcut(mods, syms[i]);
@@ -938,6 +957,7 @@ static void on_new_output(struct wl_listener *l, void *data)
     wlr_output_layout_get_box(server.output_layout, NULL, &all);
     wlr_scene_node_set_position(&server.background->node, all.x, all.y);
     wlr_scene_rect_set_size(server.background, all.width, all.height);
+    lock_layout();
 }
 
 /* ------------------------------------------------------------ windows */
@@ -1507,6 +1527,38 @@ void comp_maximize(struct toplevel *t, bool on)
 }
 void comp_close(struct toplevel *t) { view_close(t); }
 
+void comp_before_lock(void)
+{
+    menu_close();
+    server.mode = MODE_PASS;
+    server.grabbed = NULL;
+    wlr_seat_keyboard_notify_clear_focus(server.seat);
+    wlr_seat_pointer_clear_focus(server.seat);
+    set_cursor("default");
+}
+
+void comp_after_unlock(void)
+{
+    /* the window that had the keyboard has it again (still the front of
+     * the list: nothing was focused while locked), else a normal window */
+    struct toplevel *t, *pick = NULL;
+    wl_list_for_each(t, &server.toplevels, link)
+        if (t->mapped && !t->minimized && (t->kind == KIND_NORMAL || !pick)) { pick = t; if (t->kind == KIND_NORMAL || t->activated) break; }
+    if (pick) { pick->activated = false; focus(pick); }
+}
+
+void comp_redraw_frames(void)
+{
+    struct toplevel *t;
+    wl_list_for_each(t, &server.toplevels, link) {
+        if (!t->mapped) continue;
+        /* the frame's size may change (border, title bar): the program's size stays */
+        struct wlr_box g = view_geo(t);
+        draw_frame(t);
+        if (t->xw) x11_configure(t, g.width, g.height);
+    }
+}
+
 struct toplevel *comp_toplevel_of(struct wlr_surface *s)
 {
     struct wlr_xdg_toplevel *xt = s ? wlr_xdg_toplevel_try_from_wlr_surface(s) : NULL;
@@ -1572,6 +1624,7 @@ static void script_key(const char *combo)
         if (!strncmp(p, "ctrl+", 5)) { mods |= WLR_MODIFIER_CTRL; p += 5; }
         else if (!strncmp(p, "alt+", 4)) { mods |= WLR_MODIFIER_ALT; p += 4; }
         else if (!strncmp(p, "shift+", 6)) { mods |= WLR_MODIFIER_SHIFT; p += 6; }
+        else if (!strncmp(p, "super+", 6)) { mods |= WLR_MODIFIER_LOGO; p += 6; }
         else break;
     }
     snprintf(name, sizeof name, "%s", p);
@@ -1581,10 +1634,11 @@ static void script_key(const char *combo)
     if (!kb) { if (!shortcut(mods, sym)) fprintf(stderr, "wps-compositor: script: no keyboard for %s\n", combo); return; }
     /* typed on the test keyboard, as a hand types: the modifiers, the key */
     static const struct { uint32_t mod; const char *key; } mk[] = {
-        { WLR_MODIFIER_CTRL, "Control_L" }, { WLR_MODIFIER_ALT, "Alt_L" }, { WLR_MODIFIER_SHIFT, "Shift_L" } };
-    uint32_t codes[4];
+        { WLR_MODIFIER_CTRL, "Control_L" }, { WLR_MODIFIER_ALT, "Alt_L" }, { WLR_MODIFIER_SHIFT, "Shift_L" },
+        { WLR_MODIFIER_LOGO, "Super_L" } };
+    uint32_t codes[5];
     size_t n = 0;
-    for (size_t i = 0; i < 3; i++)
+    for (size_t i = 0; i < 4; i++)
         if (mods & mk[i].mod) codes[n++] = keycode_for(kb, xkb_keysym_from_name(mk[i].key, XKB_KEYSYM_NO_FLAGS));
     codes[n++] = keycode_for(kb, sym);
     if (!codes[n - 1]) { fprintf(stderr, "wps-compositor: script: no key for %s\n", combo); return; }
@@ -1677,7 +1731,7 @@ int main(int argc, char **argv)
         s->backend = wlr_headless_backend_create(s->loop);
         s->renderer = wlr_pixman_renderer_create();   /* readable for screenshots */
     } else {
-        s->backend = wlr_backend_autocreate(s->loop, NULL);
+        s->backend = wlr_backend_autocreate(s->loop, &s->session);
         if (s->backend) s->renderer = wlr_renderer_autocreate(s->backend);
     }
     if (!s->backend || !s->renderer) { fprintf(stderr, "wps-compositor: no backend or renderer\n"); return 1; }

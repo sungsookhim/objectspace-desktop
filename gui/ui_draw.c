@@ -378,6 +378,8 @@ void ui_text_init(void)
 
 /* The interface font (GNOME's, G3): a family and a size in pixels. All
  * text is shaped again. */
+const char *ui_text_family(void) { return family; }
+
 void ui_text_set_font(const char *fam, double px)
 {
     if (!fam || !*fam || px < 6 || px > 72) return;

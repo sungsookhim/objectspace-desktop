@@ -327,8 +327,24 @@ static void command(char *line)
         }
         return;
     }
-    if (!strcmp(line, "lock")) { fprintf(stderr, "wps-compositor: lock: not yet (G5 step 4)\n"); return; }
+    if (!strcmp(line, "lock")) { lock_screen(); return; }
     if (!strcmp(line, "find")) return;   /* WPS's own Find answers it */
+    /* the desktop's scheme, font and frame options: the frames follow */
+    if (!strcmp(line, "scheme")) { if (ui_scheme_use(arg)) comp_redraw_frames(); return; }
+    if (!strcmp(line, "frame")) {
+        char key[64];
+        const char *eq = strchr(arg, '=');
+        if (!eq || (size_t)(eq - arg) >= sizeof key) return;
+        snprintf(key, sizeof key, "%.*s", (int)(eq - arg), arg);
+        if (ui_scheme_set_option(key, eq + 1)) comp_redraw_frames();
+        return;
+    }
+    if (!strcmp(line, "font")) {
+        double px = atof(arg);
+        const char *fam = strchr(arg, ' ');
+        if (px > 0 && fam) { ui_text_set_font(fam + 1, px); comp_redraw_frames(); }
+        return;
+    }
     struct toplevel *t = by_id(arg);
     if (!t) return;
     if (!strcmp(line, "activate")) comp_focus(t);
