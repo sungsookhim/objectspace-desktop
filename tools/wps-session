@@ -19,6 +19,15 @@ mkdir -p "$STATE"
 exec 2>> "$STATE/session.log"
 echo "wps-session: $(date)" >&2
 
+# Settings of your own for the session, one NAME=value a line (e.g.
+# WLR_RENDERER=pixman to draw in software): ~/.config/wps/session.env
+ENVFILE=${XDG_CONFIG_HOME:-$HOME/.config}/wps/session.env
+if [ -f "$ENVFILE" ]; then
+    while IFS= read -r line; do
+        case "$line" in ''|\#*) continue ;; *=*) export "$line"; echo "wps-session: $line" >&2 ;; esac
+    done < "$ENVFILE"
+fi
+
 export XDG_CURRENT_DESKTOP=WPS XDG_SESSION_DESKTOP=wps XDG_SESSION_TYPE=wayland WPS_SESSION=1
 export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM="wayland;xcb" SDL_VIDEODRIVER=wayland _JAVA_AWT_WM_NONREPARENTING=1
 

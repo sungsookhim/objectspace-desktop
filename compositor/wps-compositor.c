@@ -889,6 +889,7 @@ static void on_output_frame(struct wl_listener *l, void *data)
     (void)data;
     struct output *o = wl_container_of(l, o, frame);
     struct wlr_scene_output *so = wlr_scene_get_scene_output(server.scene, o->wlr_output);
+    double t0 = now_ms();
     struct wlr_output_state st;
     wlr_output_state_init(&st);
     if (wlr_scene_output_build_state(so, &st, NULL)) {
@@ -900,6 +901,12 @@ static void on_output_frame(struct wl_listener *l, void *data)
         }
     }
     wlr_output_state_finish(&st);
+    /* how long frames take (a slow renderer makes everything seem dead):
+     * the first, and the slow ones, now and then */
+    double took = now_ms() - t0;
+    static int frames, slow;
+    if (!frames++) fprintf(stderr, "wps-compositor: %.3f first frame (%.0f ms)\n", (now_ms() - start_ms) / 1000, took);
+    else if (took > 200 && slow++ < 20) fprintf(stderr, "wps-compositor: %.3f a frame took %.0f ms\n", (now_ms() - start_ms) / 1000, took);
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_scene_output_send_frame_done(so, &now);
