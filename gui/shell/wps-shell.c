@@ -3699,6 +3699,29 @@ static void win_frame(ui_surface *s, double now)
         #undef LROWS
         return;
     }
+    if (st && !strcmp(st, "typeahead")) {
+        /* Keys typed in a folder: the item they spell is the cursor's. */
+        static double t0;
+        if (f != folders || f->closing || !f->m.complete) return;
+        if (!t0) { t0 = now; return; }
+        if (now - t0 < 500) return;
+        static const char *const typed[] = { "b", "b", "b", "ca", "CAT", "x" };
+        for (size_t k = 0; k < sizeof typed / sizeof *typed; k++) {
+            for (const char *p = typed[k]; *p; p++) {
+                ui_key_event e = { .sym = (uint32_t)(unsigned char)*p };
+                e.utf8[0] = *p;
+                ui_container_key(f->cont, &e);
+            }
+            size_t c = ui_container_cursor(f->cont);
+            ui_item it = { 0 };
+            if (c != SIZE_MAX) src_item(f, c, &it);
+            fprintf(stderr, "selftest: typed '%s': %s\n", typed[k], it.title ? it.title : "(none)");
+            /* the next word: as after a pause */
+            if (k != 0 && k != 1) ui_container_typeahead_reset(f->cont);   /* b, b, b: one after another */
+        }
+        ui_app_quit(app);
+        return;
+    }
     if (st && !strcmp(st, "find")) {
         /* Find (G4 search) on the folder: typed as a user types (each key
          * a new search), then a pattern, then folders only. */

@@ -423,6 +423,8 @@ void ui_container_set_name_head(ui_container *c, const char *title);
 void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip);
 bool ui_container_pointer(ui_container *c, const ui_pointer_event *e);
 bool ui_container_key(ui_container *c, const ui_key_event *e);
+/* Forget what was typed (type-ahead), as a pause does. */
+void ui_container_typeahead_reset(ui_container *c);
 void ui_container_set_view(ui_container *c, ui_view v);
 ui_view ui_container_view(ui_container *c);
 /* Whether it has the keyboard (its cursor is drawn); a new one has. */

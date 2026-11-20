@@ -211,10 +211,31 @@ static void open_entry(const char *dir, const struct entry *e)
     else svc_open(a, false, opened, NULL);
 }
 
+/* Shut down: OS/2 asked before shutting down; a session of today can also
+ * end with the machine left on (log off) or restart it. */
+static const char *const end_how[] = { "poweroff", "reboot", "logout" };
+
+static void end_chosen(void *ctx, int choice)
+{
+    (void)ctx;
+    if (choice < 0 || choice > 2) return;   /* Cancel */
+    events_raise("session.end", end_how[choice], "launchpad", (ui_rect){ 0, 0, 0, 0 });
+    if (!winlist_ext("shutdown", end_how[choice]))
+        fprintf(stderr, "wps-shell: LaunchPad: Shut down needs the WPS GNOME Shell extension\n");
+}
+
+static void ask_end(void)
+{
+    static const char *const buttons[] = { "Shut down", "Restart", "Log off", "Cancel" };
+    ui_dialog_open(lp.app, "Shut Down", "End this session: shut the computer down, restart it, or log off?", buttons, 4,
+                   0, end_chosen, NULL);
+}
+
 static void press_sys(size_t i)
 {
     events_raise("launchpad.button", sys_names[i], "launchpad", (ui_rect){ 0, 0, 0, 0 });
     if (i == 3) { winlist_open(false); return; }
+    if (i == 2) { ask_end(); return; }
     if (i == 1) {   /* WPS's own Find, from the home folder */
         const char *home = getenv("HOME");
         findwin_open(home && *home ? home : "/", NULL);

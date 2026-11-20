@@ -28,6 +28,7 @@
 // rendered once per app into $XDG_RUNTIME_DIR/wps-icons), or empty
 // and sends commands back on its standard output, one line each:
 //     activate TAB <id>   minimize TAB <id>   maximize TAB <id>
+//     lock   find   shutdown TAB poweroff|reboot|logout
 //     restore TAB <id>    close TAB <id>      terminate TAB <id>
 // (only this process can: the pipes are the ones the extension made).
 
@@ -292,8 +293,13 @@ export default class WpsExtension extends Extension {
             if (cmd === 'lock') { Main.screenShield?.lock(true); next(); return; }
             if (cmd === 'find') { Main.overview.show(); next(); return; }
             if (cmd === 'shutdown') {
-                try {
-                    GLib.spawn_command_line_async('gnome-session-quit --power-off');
+                // The desktop has asked already (its Shut Down dialog):
+                // power off, restart or log out without GNOME asking again
+                // (programs that object still say so).
+                const how = { poweroff: '--power-off', reboot: '--reboot', logout: '--logout' }[id] ?? '--power-off';
+                if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command shutdown ${how}`);
+                else try {
+                    GLib.spawn_command_line_async(`gnome-session-quit ${how} --no-prompt`);
                 } catch (e) {
                     console.log(`wps: cannot ask to shut down: ${e.message}`);
                 }

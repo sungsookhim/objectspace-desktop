@@ -2,6 +2,7 @@
  * (gui-design.md, Widget set 2). Rows are fetched through the source as
  * they come into view; unloaded rows are placeholders. */
 #define _GNU_SOURCE
+#include <ctype.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -46,7 +47,9 @@ struct ui_container {
     bool b2_down;
     double b2x, b2y;
     uint32_t b2_serial;
-    const char *name_head;   /* details view: the second column's title (NULL: "Name") */   /* the press's: GNOME grants a menu's grab for a press, not a release */
+    const char *name_head;
+    char ta[64];             /* type-ahead: what was typed, the last key's time */
+    double ta_ms;   /* details view: the second column's title (NULL: "Name") */   /* the press's: GNOME grants a menu's grab for a press, not a release */
     size_t vis_first, vis_last;
     ui_layer *layer;          /* rows are drawn here; NULL: on the surface */
     ui_entry *rename;         /* in-place rename, if active */
@@ -1109,6 +1112,49 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     return true;
 }
 
+static bool starts_with(const char *s, const char *p)
+{
+    if (!s) return false;
+    for (; *p; s++, p++) {
+        unsigned char a = (unsigned char)*s, b = (unsigned char)*p;
+        if (!a) return false;
+        if (a < 128 && b < 128 ? tolower(a) != tolower(b) : a != b) return false;
+    }
+    return true;
+}
+
+/* Type-ahead: a printable key goes to the next item whose title starts
+ * with it (OS/2); keys typed within a second of each other spell the
+ * start of a title. The same letter again goes on to the next one. */
+static bool type_ahead(ui_container *c, const ui_key_event *e)
+{
+    unsigned char ch = (unsigned char)e->utf8[0];
+    if (ch < 0x20 || ch == 0x7f || (e->mods & (UI_MOD_CTRL | UI_MOD_ALT))) return false;
+    if (ch == ' ' && !c->ta[0]) return false;   /* Space selects, unless in the middle of a name */
+    double now = ui_now_ms();
+    if (now - c->ta_ms > 1000) c->ta[0] = 0;
+    c->ta_ms = now;
+    size_t l = strlen(c->ta), add = strlen(e->utf8);
+    if (l + add < sizeof c->ta) memcpy(c->ta + l, e->utf8, add + 1);
+    /* "aaa": the next title starting with "a", each time */
+    bool same = true;
+    for (size_t i = add; c->ta[i] && same; i++) same = c->ta[i] == c->ta[i % add];
+    const char *want = c->ta;
+    char one[8];
+    if (same && strlen(c->ta) > add) { snprintf(one, sizeof one, "%s", e->utf8); want = one; }
+    size_t start = c->has_cursor ? c->cursor + (want == one || !l ? 1 : 0) : 0;
+    for (size_t k = 0; k < c->count; k++) {
+        size_t i = (start + k) % c->count;
+        ui_item it = { 0 };
+        c->src->item(c->ctx, i, &it);
+        if (!it.loaded) continue;
+        if (starts_with(it.title ? it.title : it.name, want)) { move_cursor(c, i, 0); return true; }
+    }
+    return true;   /* no match: the key is still the type-ahead's */
+}
+
+void ui_container_typeahead_reset(ui_container *c) { c->ta[0] = 0; }
+
 bool ui_container_key(ui_container *c, const ui_key_event *e)
 {
     if (c->rename) {
@@ -1185,17 +1231,18 @@ bool ui_container_key(ui_container *c, const ui_key_event *e)
     case XKB_KEY_Home: move_cursor(c, 0, e->mods); return true;
     case XKB_KEY_End: move_cursor(c, c->count - 1, e->mods); return true;
     case XKB_KEY_space:
+        if (c->ta[0] && ui_now_ms() - c->ta_ms <= 1000) return type_ahead(c, e);   /* a name with a space */
         if (c->has_cursor) { sel_set(c, cur, !sel_get(c, cur)); damage_item(c, cur); }
         return true;
     case XKB_KEY_Return: case XKB_KEY_KP_Enter:
         if (c->has_cursor && c->src->activate) c->src->activate(c->ctx, cur);
         return true;
     case XKB_KEY_slash: case XKB_KEY_a:   /* Ctrl+/ (OS/2) and Ctrl+A select all */
-        if (!(e->mods & UI_MOD_CTRL)) return false;
+        if (!(e->mods & UI_MOD_CTRL)) return type_ahead(c, e);
         sel_range(c, 0, c->count - 1, true);
         return true;
     case XKB_KEY_backslash:               /* Ctrl+\ deselects all (OS/2) */
-        if (!(e->mods & UI_MOD_CTRL)) return false;
+        if (!(e->mods & UI_MOD_CTRL)) return type_ahead(c, e);
         sel_clear(c);
         return true;
     case XKB_KEY_Menu: case XKB_KEY_F10:
@@ -1206,7 +1253,7 @@ bool ui_container_key(ui_container *c, const ui_key_event *e)
         }
         return true;
     default:
-        return false;
+        return type_ahead(c, e);
     }
 }
 

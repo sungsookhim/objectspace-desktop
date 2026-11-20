@@ -151,9 +151,10 @@ export default class Probe {
             };
             const step = (s, f) => at(s, () => { const a = arrow(); console.log(`probe: drawer step at ${s}: arrow ${a}`); if (a) f(a); });
             at(8, () => dev.notify_absolute_motion(t(), 640, 400));   // off the hot corner
-            // The first click (step 10) is lost in headless GNOME: the pointer
-            // enters the LaunchPad, then GNOME moves it to the desktop window
-            // before the press (not seen in a real session); step 13 on works.
+            // The first click (step 10) is lost in headless GNOME: the hidden
+            // overview's dash (its app icons at the bottom centre, under the
+            // LaunchPad) still takes it, and may start Text Editor or
+            // Software; step 13 on works. Not seen in a real session.
             step(10, a => click(...a));                  // open the first drawer
             at(11, () => { if (out) shoot(out.replace('.png', '-open.png')); });
             step(11.5, a => click(1150, 500));           // closed by a click elsewhere
@@ -162,6 +163,38 @@ export default class Probe {
             at(15.5, () => { if (out) shoot(out.replace('.png', '-open2.png')); });
             step(16, a => click(a[0] + 56, a[1]));       // that arrow again: closed
             at(17, () => { windows('drawer'); if (out) shoot(out); });
+            return;
+        }
+        if (GLib.getenv('PROBE_MODE') === 'shutdown') {
+            // The LaunchPad's Shut down: its dialog, then Log off by keys
+            // (Right twice, Enter). WPS_DEBUG_COMMANDS (run.sh) makes the
+            // extension log the command rather than run it.
+            const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+            const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            const kb = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            this._dev = dev;
+            this._ptr = kb;
+            const t = () => GLib.get_monotonic_time();
+            const click = (x, y) => {
+                dev.notify_absolute_motion(t(), x, y);
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                    dev.notify_button(t(), 1, Clutter.ButtonState.PRESSED);
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                        dev.notify_button(t(), 1, Clutter.ButtonState.RELEASED);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                    return GLib.SOURCE_REMOVE;
+                });
+            };
+            const key = sym => { kb.notify_keyval(t(), sym, Clutter.KeyState.PRESSED); kb.notify_keyval(t(), sym, Clutter.KeyState.RELEASED); };
+            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad')?.get_frame_rect();
+            at(8, () => dev.notify_absolute_motion(t(), 640, 400));   // off the hot corner
+            // a first click on Window list (the first is lost headless; if not, a list opens)
+            at(10, () => { const r = lp(); if (r) click(r.x + 12 + 3 * 40 + 18, r.y + r.height / 2 + 5); });
+            at(11, () => { const r = lp(); if (r) click(r.x + 12 + 2 * 40 + 18, r.y + r.height / 2 + 5); console.log('probe: clicked Shut down'); });
+            at(12.5, () => { windows('dialog'); if (out) shoot(out.replace('.png', '-dialog.png')); });
+            at(13.5, () => { key(Clutter.KEY_Right); key(Clutter.KEY_Right); key(Clutter.KEY_Return); console.log('probe: Log off chosen'); });
+            at(15, () => { windows('end'); if (out) shoot(out); });
             return;
         }
         if (GLib.getenv('PROBE_MODE') === 'quiet') {
