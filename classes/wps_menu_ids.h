@@ -16,6 +16,9 @@
 #define WPS_MI_ARRANGE        20
 #define WPS_MI_DELETE         40    /* to the trash (asks first, as OS/2 does) */
 #define WPS_MI_CREATE_ANOTHER 41    /* a new object of the same kind, beside it */
+/* Added by the GUI to the desktop's own menu (G4). */
+#define WPS_MI_WINDOW_LIST    50
+#define WPS_MI_MINIMIZED      51
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

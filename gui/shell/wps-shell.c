@@ -25,6 +25,7 @@
 #include "layout.h"
 #include "wallpaper.h"
 #include "events.h"
+#include "winlist.h"
 #include "gnome.h"
 #include "sound.h"
 #include "svc.h"
@@ -1420,6 +1421,8 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_ARRANGE: arrange(f); break;
         case WPS_MI_DELETE: delete_request(f, m->item, false); break;
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
+        case WPS_MI_WINDOW_LIST: winlist_open(false); break;
+        case WPS_MI_MINIMIZED: winlist_open(true); break;
         default: svc_menu_select(t, id, selected_done, as_arg(f)); break;
         }
     }
@@ -1435,6 +1438,13 @@ static void got_menu(void *arg, const cv *reply)
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
+    if (m->item == SIZE_MAX && f->desktop) {
+        /* The desktop's own menu: the window list and the minimized
+         * windows (G4), after the folder's items. */
+        items = realloc(items, (n + 2) * sizeof *items);
+        items[n++] = (ui_menu_item){ WPS_MI_WINDOW_LIST, "Window list", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_MINIMIZED, "Minimized windows", true, false, NULL, 0 };
+    }
     if (m->item == SIZE_MAX && !f->desktop) {
         /* The folder window's own menu: a View cascade after Open, to switch
          * this window's view (the Open cascade opens new windows). */
@@ -2440,6 +2450,8 @@ static void win_resized(ui_surface *s, double w, double h)
 static void win_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     struct folder *f = ui_surface_data(s);
+    /* The window-list button (button 3 by default, as on OS/2) on the desktop. */
+    if (f->desktop && e->kind == UI_PRESS && ui_mouse_is(UI_ACT_WINDOW_LIST, e)) { winlist_open(false); return; }
     size_t before = ui_container_selected_count(f->cont);
     ui_hit h = ui_frame_hit(s, e->x, e->y);
     bool used = false;
@@ -3610,6 +3622,55 @@ static void win_frame(ui_surface *s, double now)
         #undef GGET
         return;
     }
+    if (st && !strcmp(st, "winlist")) {
+        /* The Window List and the Minimized Window Viewer, with the
+         * extension: the folder window run.sh opens, minimized and restored. */
+        static double t0;
+        static int step;
+        if (!f->desktop) return;
+        if (!t0) { if (!winlist_count(false)) return; t0 = now; }
+        double t = now - t0;
+        char rows[600] = "";
+        #define ROWS(minimized) do { rows[0] = 0; for (size_t i_ = 0; winlist_title(i_, minimized); i_++) \
+            snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i_ ? ", " : "", winlist_title(i_, minimized)); } while (0)
+        if (step == 0 && t > 1000) {
+            winlist_open(false);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1000) {
+            ROWS(false);
+            fprintf(stderr, "selftest: Window List (%zu): %s\n", winlist_count(false), rows);
+            char shot[PATH_MAX];
+            if (getenv("WPS_SHELL_SHOT")) {
+                snprintf(shot, sizeof shot, "%s-list.png", getenv("WPS_SHELL_SHOT"));
+                winlist_snapshot(false, shot);
+            }
+            fprintf(stderr, "selftest: minimize Projects: sent %d\n", winlist_command("minimize", "Projects"));
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            winlist_open(true);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1000) {
+            ROWS(true);
+            fprintf(stderr, "selftest: Minimized Window Viewer (%zu): %s\n", winlist_count(true), rows);
+            char shot[PATH_MAX];
+            if (getenv("WPS_SHELL_SHOT")) {
+                snprintf(shot, sizeof shot, "%s-minimized.png", getenv("WPS_SHELL_SHOT"));
+                winlist_snapshot(true, shot);
+            }
+            fprintf(stderr, "selftest: restore it: sent %d\n", winlist_command("activate", "Projects"));
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 1500) {
+            fprintf(stderr, "selftest: after restoring: %zu minimized\n", winlist_count(true));
+            ui_app_quit(app);
+            step++;
+        }
+        #undef ROWS
+        return;
+    }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
     if (st && !strcmp(st, "close")) {
         if (f == folders) {   /* the first window closes itself */
@@ -3991,7 +4052,8 @@ static void on_window_events(void *arg, int fd, short rev)
         char *f[7] = { 0 };
         int k = 0;
         for (char *p = line, *t; k < 7 && (t = strsep(&p, "\t"));) f[k++] = t;
-        if (k == 7 && !strncmp(f[0], "window.", 7)) {
+        if (k == 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
+        else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };
             events_raise(f[0], f[1], "window", at);
         }
@@ -4030,6 +4092,14 @@ int main(int argc, char **argv)
     if (events_stdin) {
         fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
         ui_app_watch_fd(app, 0, POLLIN, on_window_events, NULL);
+        /* Standard output is the extension's command pipe now: anything
+         * else printed goes to standard error. */
+        int cmd = dup(1);
+        dup2(2, 1);
+        fcntl(cmd, F_SETFD, FD_CLOEXEC);
+        winlist_init(app, cmd);
+    } else {
+        winlist_init(app, -1);
     }
     if (!app) return 1;
     char err[512];

@@ -53,6 +53,11 @@ export default class Probe {
         for (const t of [3, 4, 4.5, 5, 5.5])
             at(t, () => { if (Main.overview.visible) Main.overview.hide(); });
         at(5.8, () => console.log(`probe: overview visible ${Main.overview.visible}`));
+        if (GLib.getenv('PROBE_MODE') === 'quiet') {
+            at(Number(GLib.getenv('PROBE_SHOT_AT') ?? 13), () => { if (out) shoot(out); });
+            at(14, () => windows('end'));
+            return;
+        }
         if (GLib.getenv('PROBE_MODE') === 'frame') {
             // Click the folder window's maximize button (in its frame: border
             // 4, title bar 22, buttons 18 wide 2 apart, 3 from the right end).

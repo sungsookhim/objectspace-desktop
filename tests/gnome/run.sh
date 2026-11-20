@@ -22,7 +22,7 @@ echo hi > "$T/desk/notes.txt"
 E="$T/data/gnome-shell/extensions/wps@wps-linux"
 mkdir -p "$E"; cp "$REPO/gnome-extension/wps@wps-linux/"* "$E/"
 if [ -n "$SELFTEST" ]; then   # the desktop runs a self-test (its output in shell.log)
-  printf '{"command": ["env", "WPS_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "%s", "--desktop", "%s"]}\n' "$SELFTEST" "$T/cache" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
+  printf '{"command": ["env", "WPS_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$SELFTEST" "$T/cache" "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
 elif [ -n "$WLDEBUG" ]; then
   printf '{"command": ["env", "WAYLAND_DEBUG=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
 elif [ -n "$DESKENV" ]; then   # e.g. DESKENV=WPS_DEBUG_DND=1
@@ -34,7 +34,7 @@ cp -r "$REPO/tests/gnome/wps-probe@local" "$T/data/gnome-shell/extensions/"
 export XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache"
 export WPS_TEMPLATES_DIR="$T/templates" WPS_SETUP_DIR="$T/setup"
 export WPS_CONFIG_DIR="$T/w/config" WPS_STATE_DIR="$T/w/state" WPS_RUNTIME_DIR="$RT/wps"
-export PROBE_SHOT="$T/shot.png" WPS_WALLPAPER="${WALL:-/usr/share/backgrounds/f45/default/f45-01-day.jxl}"
+export WPS_DEBUG_COMMANDS=1 PROBE_SHOT="$T/shot.png" WPS_WALLPAPER="${WALL:-/usr/share/backgrounds/f45/default/f45-01-day.jxl}"
 unset WAYLAND_DISPLAY DISPLAY JOURNAL_STREAM INVOCATION_ID
 mkdir -p "$RT/wps"
 "$REPO/build/wpsd" 2> "$T/wpsd.log" &

@@ -19,6 +19,14 @@
 // covers all windows (gui-design.md: Coexisting with GNOME, stage 1):
 //     <event> TAB <app ID> TAB <title> TAB <x> TAB <y> TAB <width> TAB <height>
 // WPS's own windows are left out: they raise their events themselves.
+//
+// The window list (G4): the desktop also gets every window's state, WPS's
+// own included (the desktop and WPS's window lists excepted), one line per
+// change:
+//     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized 0|1> TAB <focused 0|1>
+// and sends commands back on its standard output, one line each:
+//     activate TAB <id>   minimize TAB <id>   close TAB <id>
+// (only this process can: the pipes are the ones the extension made).
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -28,6 +36,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const DESKTOP_APP_ID = 'org.wps.Desktop';
+// WPS's window list and Minimized Window Viewer: not listed in themselves.
+const UNLISTED = new Set([DESKTOP_APP_ID, 'org.wps.WindowList']);
 
 export default class WpsExtension extends Extension {
     enable() {
@@ -51,6 +61,8 @@ export default class WpsExtension extends Extension {
         });
         this._lines = [];
         this._writing = false;
+        this._listed = new Map();   // window -> its last line's fields
+        this._connect(global.display, 'window-created', (_d, w) => this._track(w));
         this._start();
     }
 
@@ -64,6 +76,8 @@ export default class WpsExtension extends Extension {
         this._client = null;
         this._out = null;
         this._lines = [];
+        this._listed?.clear();
+        this._tracked?.clear();
         this._desktops.clear();
         this._ready.clear();
     }
@@ -88,11 +102,15 @@ export default class WpsExtension extends Extension {
         const argv = this._command();
         const started = GLib.get_monotonic_time();
         try {
-            const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.STDIN_PIPE});
+            const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE});
             this._client = Meta.WaylandClient.new_subprocess(global.context, launcher, [...argv, '--events-stdin']);
             this._out = this._client.get_subprocess().get_stdin_pipe();
             this._lines = [];
             this._writing = false;
+            this._readCommands(this._client.get_subprocess().get_stdout_pipe());
+            // the window list as it is now
+            this._listed = new Map();
+            for (const w of global.display.list_all_windows()) this._track(w);
         } catch (e) {
             console.error(`wps: cannot start ${argv[0]}: ${e.message}`);
             this._retry(started);
@@ -137,6 +155,81 @@ export default class WpsExtension extends Extension {
         this._lines.push([name, clean(w.get_wm_class()), clean(w.get_title()), r.x, r.y, r.width, r.height].join('\t') + '\n');
         if (this._lines.length > 256) this._lines.shift();   // the desktop is not reading: keep the latest
         this._flush();
+    }
+
+    // ----------------------------------------------------------- window list
+
+    _listable(w) {
+        const type = w.get_window_type();
+        if (type !== Meta.WindowType.NORMAL && type !== Meta.WindowType.DIALOG && type !== Meta.WindowType.MODAL_DIALOG) return false;
+        return !UNLISTED.has(w.get_wm_class()) && !w.is_skip_taskbar();
+    }
+
+    // Follow one window for the list: its title, minimized and focus.
+    _track(w) {
+        if (this._tracked?.has(w)) { this._listLine(w); return; }
+        this._tracked ??= new Set();
+        this._tracked.add(w);
+        for (const sig of ['notify::title', 'notify::minimized', 'notify::appears-focused', 'notify::wm-class'])
+            this._connect(w, sig, () => this._listLine(w));
+        this._connect(w, 'unmanaged', () => {
+            this._tracked.delete(w);
+            if (this._listed.has(w)) {
+                this._listed.delete(w);
+                this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0']);
+            }
+        });
+        this._listLine(w);
+    }
+
+    _listLine(w) {
+        if (!this._listable(w)) {
+            if (this._listed.has(w)) { this._listed.delete(w); this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0']); }
+            return;
+        }
+        const clean = v => String(v ?? '').replace(/[\t\n\r]/g, ' ');
+        const f = [String(w.get_id()), clean(w.get_wm_class()), clean(w.get_title()), w.minimized ? '1' : '0',
+            w.appears_focused ? '1' : '0'];
+        const was = this._listed.get(w);
+        if (was && was.join('\t') === f.join('\t')) return;
+        this._listed.set(w, f);
+        this._send(['W', was ? 'change' : 'add', ...f]);
+    }
+
+    _send(fields) {
+        if (!this._out) return;
+        this._lines.push(fields.join('\t') + '\n');
+        if (this._lines.length > 1024) this._lines.shift();
+        this._flush();
+    }
+
+    // Commands from the desktop: activate, minimize, close a window by ID.
+    _readCommands(stream) {
+        const data = new Gio.DataInputStream({base_stream: stream});
+        const next = () => data.read_line_async(GLib.PRIORITY_DEFAULT, null, (d, res) => {
+            let line;
+            try {
+                [line] = d.read_line_finish_utf8(res);
+            } catch (e) {
+                return;
+            }
+            if (line === null) return;   // the desktop went away
+            const [cmd, id] = line.split('\t');
+            const w = global.display.list_all_windows().find(x => String(x.get_id()) === id);
+            if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command ${cmd} ${id}: ${w ? w.get_title() : 'no such window'}`);
+            if (w) {
+                // a time GNOME takes as now (the event's own may be 0)
+                const now = global.display.get_current_time_roundtrip();
+                if (cmd === 'activate') {
+                    if (w.minimized) w.unminimize();
+                    w.activate(now);
+                }
+                else if (cmd === 'minimize') w.minimize();
+                else if (cmd === 'close') w.delete(now);
+            }
+            next();
+        });
+        next();
     }
 
     // Writes one at a time (a stream takes one outstanding write), never
