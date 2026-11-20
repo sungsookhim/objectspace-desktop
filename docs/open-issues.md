@@ -76,7 +76,7 @@ G2's planned items are all built. What remains are the issues above.
 
 ## LaunchPad (G4)
 
-- Buttons come in listing order; no reordering by drag yet (OS/2 allowed it).
+- Buttons keep the order they were added in (the LaunchPad folder's icon positions); no reordering by drag yet (OS/2 allowed it).
 - No tooltips: titles are drawn under the icons, cut short.
 - Not yet a setting: shown on every desktop start (`WPS_NO_LAUNCHPAD` turns it off); OS/2 had it as an object with its own notebook (orientation, small icons, text, float on top).
 - Drawers are read when opened, not followed; a duplicate in a drawer is not refused.

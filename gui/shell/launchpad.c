@@ -170,12 +170,70 @@ static void layout(void)
     ui_surface_damage_all(lp.s);
 }
 
+/* The buttons' order is the LaunchPad folder's icon positions (wpsd keeps
+ * them, as for any folder): left to right by x. Objects with no position
+ * (just added) go after the others, and every button gets x = its place
+ * times a cell, so the order outlives the session and the folder, opened,
+ * shows them in a row the same way. */
+#define ORDER_CELL 100
+
+static struct entry listed_items[MAX_ITEMS];
+static size_t nlisted;
+static int64_t order_x[MAX_ITEMS];
+
+static int by_order(const void *a, const void *b)
+{
+    size_t i = *(const size_t *)a, j = *(const size_t *)b;
+    int64_t x = order_x[i], y = order_x[j];
+    if (x != y) return x < y ? -1 : 1;
+    return i < j ? -1 : i > j;   /* listing order among equals */
+}
+
+static void placed(void *arg, const cv *reply) { (void)arg; (void)reply; }
+
+static void got_order(void *arg, const cv *reply)
+{
+    (void)arg;
+    if (!lp.s) return;
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
+    for (size_t i = 0; i < nlisted; i++) {
+        order_x[i] = INT64_MAX;   /* no position: at the end */
+        for (size_t k = 0; items && items->k == CV_ARRAY && k < items->n; k++) {
+            const char *nm = cv_text(&items->items[k], "name");
+            int64_t x;
+            if (nm && !strcmp(nm, listed_items[i].name) && cv_int(&items->items[k], "x", &x)) { order_x[i] = x; break; }
+        }
+    }
+    size_t idx[MAX_ITEMS];
+    for (size_t i = 0; i < nlisted; i++) idx[i] = i;
+    qsort(idx, nlisted, sizeof *idx, by_order);
+    /* positions that differ from place * cell are written back */
+    char *t[MAX_ITEMS];
+    int64_t px[MAX_ITEMS], py[MAX_ITEMS];
+    size_t nplace = 0;
+    for (size_t k = 0; k < nlisted; k++) {
+        lp.items[k] = listed_items[idx[k]];
+        /* (central objects keep their listing order: their layout names differ) */
+        if (order_x[idx[k]] != (int64_t)k * ORDER_CELL && lp.items[k].name[0] != '\x01') {
+            char a[PATH_MAX + 32];
+            address(lp.dir, &lp.items[k], a, sizeof a);
+            t[nplace] = strdup(a);
+            px[nplace] = (int64_t)k * ORDER_CELL;
+            py[nplace++] = 0;
+        }
+    }
+    lp.n = nlisted;
+    if (nplace) svc_place(lp.dir, (const char *const *)t, px, py, nplace, placed, NULL);
+    for (size_t k = 0; k < nplace; k++) free(t[k]);
+    layout();
+}
+
 static void got_list(void *arg, const cv *reply)
 {
     (void)arg;
     if (!lp.s) return;
-    lp.n = parse(reply, lp.items, MAX_ITEMS);
-    layout();
+    nlisted = parse(reply, listed_items, MAX_ITEMS);
+    svc_layout(lp.dir, got_order, NULL);
 }
 
 static void reload(void) { svc_list(lp.dir, 0, MAX_ITEMS, true, got_list, NULL); }
