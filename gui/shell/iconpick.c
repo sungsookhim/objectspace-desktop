@@ -268,8 +268,8 @@ static void preview_made(void *ctx, const char *png)
 
 static void want_preview(size_t row)
 {
-    if (row >= pk.nrows) return;
     struct list *l = src();
+    if (row >= pk.nrows || pk.rows[row] >= l->n) return;
     struct icon *ic = &l->v[pk.rows[row]];
     if (ic->state || pk.loading >= MAX_LOADING) return;
     struct pv *v = calloc(1, sizeof *v);
@@ -292,7 +292,7 @@ static void s_item(void *ctx, size_t i, ui_item *out)
 {
     (void)ctx;
     memset(out, 0, sizeof *out);
-    if (i >= pk.nrows) return;
+    if (i >= pk.nrows || pk.rows[i] >= src()->n) return;
     struct icon *ic = &src()->v[pk.rows[i]];
     if (!ic->state) want_preview(i);
     out->loaded = out->detailed = true;
@@ -312,7 +312,7 @@ static void close_picker(void);
 
 static void pick(size_t i)
 {
-    if (i >= pk.nrows) return;
+    if (i >= pk.nrows || pk.rows[i] >= src()->n) return;
     struct icon *ic = &src()->v[pk.rows[i]];
     events_raise("icon.choose", ic->name, "iconpick", (ui_rect){ 0, 0, 0, 0 });
     if (pk.chosen) pk.chosen(pk.owner, pk.key, ic->path);
@@ -430,8 +430,8 @@ static void set_source(bool library)
     if (library == pk.library) return;
     pk.library = library;
     if (library) read_library();
+    refilter();   /* the shown rows are the new source's before anything is drawn */
     ui_container_layout(pk.cont, rects().list);
-    refilter();
 }
 
 static void press(int which)
@@ -593,7 +593,7 @@ void iconpick_open(const char *for_title, iconpick_fn chosen, long owner, const 
 
 bool iconpick_ready(void) { return pk.s && (pk.library || pk.themes_ready); }
 size_t iconpick_count(void) { return pk.s ? pk.nrows : 0; }
-const char *iconpick_name(size_t i) { return pk.s && i < pk.nrows ? src()->v[pk.rows[i]].name : NULL; }
+const char *iconpick_name(size_t i) { return pk.s && i < pk.nrows && pk.rows[i] < src()->n ? src()->v[pk.rows[i]].name : NULL; }
 bool iconpick_search(const char *t)
 {
     if (!pk.s) return false;

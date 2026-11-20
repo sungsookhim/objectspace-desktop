@@ -3741,6 +3741,29 @@ static void win_frame(ui_surface *s, double now)
         #undef LROWS
         return;
     }
+    if (st && !strcmp(st, "iconlib")) {
+        /* The picker's icon library (WPS_ICON_LIBRARY), chosen as a user
+         * does: by the button, then back to the themes and again. */
+        static double t0;
+        static int step;
+        if (f != folders || f->closing || !f->m.complete) return;
+        ui_surface_damage_all(f->win);
+        if (!t0) { t0 = now; return; }
+        double t = now - t0;
+        if (step == 0 && t > 300) { iconpick_open("test", NULL, 0, "icon"); step++; t0 = now; }
+        else if (step == 1 && t > 500) { iconpick_source(true); step++; t0 = now; }
+        else if (step == 2 && t > 1500) {
+            fprintf(stderr, "selftest: library: %zu icons\n", iconpick_count());
+            if (getenv("WPS_SHELL_SHOT")) iconpick_snapshot(getenv("WPS_SHELL_SHOT"));
+            iconpick_source(false); step++; t0 = now;
+        } else if (step == 3 && t > 1500) { iconpick_source(true); step++; t0 = now; }
+        else if (step == 4 && t > 1500) {
+            fprintf(stderr, "selftest: library again: %zu icons\n", iconpick_count());
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "icons")) {
         /* An object's own icon (G4): Properties' Icon page with an image
          * dropped on it, then one chosen in the picker, then Default. */
