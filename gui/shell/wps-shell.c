@@ -3699,6 +3699,43 @@ static void win_frame(ui_surface *s, double now)
         #undef LROWS
         return;
     }
+    if (st && !strcmp(st, "a11y")) {
+        /* For a screen reader (tests/gui/a11y.py listens): the cursor
+         * through the folder by keys, then a dialog's buttons. */
+        static double t0;
+        static int step;
+        static ui_dialog *d;
+        if (f != folders || f->closing || !f->m.complete) return;
+        if (!t0) { t0 = now; return; }
+        double t = now - t0;
+        ui_surface_damage_all(f->win);   /* frames keep coming: this runs on each */
+        ui_key_event tab = { .sym = XKB_KEY_Tab };
+        if (step < 3 && t > 2500 + step * 500.0) {
+            ui_key_event k = { .sym = step == 0 ? XKB_KEY_End : step == 1 ? XKB_KEY_Home : XKB_KEY_Right };
+            ui_container_key(f->cont, &k);
+            step++;
+        }
+        else if (step == 3 && t > 4500) {
+            static const char *const b[] = { "Delete", "Cancel" };
+            d = ui_dialog_open(app, "Delete", "Delete gamma?", b, 2, 1, NULL, NULL);
+            step++;
+        } else if (step == 4 && t > 6000) {
+            ui_dialog_key(d, &tab);
+            step++;
+        } else if (step == 5 && t > 6800) {
+            findwin_open(f->path, NULL);   /* its fields: Name, then Tab: Folder, Include subfolders */
+            step++;
+        } else if (step >= 6 && step <= 7 && t > 7800 + (step - 6) * 500.0) {
+            findwin_key(XKB_KEY_Tab);
+            step++;
+        } else if (step == 8 && t > 8800) {
+            findwin_key(XKB_KEY_space);   /* the check box, unticked */
+            step++;
+        } else if (step == 9 && t > 11000) {
+            ui_app_quit(app);
+        }
+        return;
+    }
     if (st && !strcmp(st, "typeahead")) {
         /* Keys typed in a folder: the item they spell is the cursor's. */
         static double t0;
@@ -4198,6 +4235,7 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
         snprintf(f->title, sizeof f->title, "Desktop");
         f->win = ui_window_new(app, &win_ops, f, "org.wps.Desktop", w, h);
         ui_window_set_frameless(f->win, true);
+        ui_a11y_window(f->win, UI_ROLE_DESKTOP, NULL);   /* for screen readers: the desktop */
         ui_window_set_maximized(f->win);
     } else {
         f->win = ui_window_new(app, &win_ops, f, "org.wps.shell", w, h);

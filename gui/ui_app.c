@@ -318,8 +318,10 @@ static void xs_configure(void *d, struct xdg_surface *x, uint32_t serial)
 {
     ui_surface *s = d;
     xdg_surface_ack_configure(x, serial);
+    bool first = !s->configured;
     s->configured = true;
     ui_surface_damage_all(s);
+    if (first && s->popup) ui_a11y_shown(s);   /* a menu, for screen readers */
 }
 static const struct xdg_surface_listener xs_listener = { xs_configure };
 
@@ -341,6 +343,7 @@ static void top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h,
     }
     if (was_active && !s->activated) ui_menu_close_all();
     if (was_active != s->activated && s->ops->focus) s->ops->focus(s, s->activated);
+    if (was_active != s->activated) ui_a11y_activated(s, s->activated);
 }
 static void top_close(void *d, struct xdg_toplevel *t)
 {
@@ -385,6 +388,7 @@ static ui_surface *surface_new(ui_app *a, const ui_surface_ops *ops, void *data,
     xdg_surface_add_listener(s->xs, &xs_listener, s);
     s->next = a->surfaces;
     a->surfaces = s;
+    ui_a11y_surface_new(s);
     return s;
 }
 
@@ -492,6 +496,7 @@ void ui_surface_destroy(ui_surface *s)
     if (a->ptr_focus == s) a->ptr_focus = NULL;
     if (a->key_focus == s) a->key_focus = NULL;
     ui_textinput_surface_gone(s);
+    ui_a11y_surface_gone(s);
     for (ui_surface **pp = &a->surfaces; *pp; pp = &(*pp)->next)
         if (*pp == s) { *pp = s->next; break; }
     ui_menu_forget_surface(s);   /* its menus go first: popups are destroyed topmost first */
@@ -830,6 +835,7 @@ ui_app *ui_app_new(void)
     }
     ui_dnd_init(a);
     ui_textinput_seat(a);
+    ui_a11y_init(a);
     return a;
 }
 

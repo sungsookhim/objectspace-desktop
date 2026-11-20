@@ -63,6 +63,14 @@ static ui_rect button_rect(ui_dialog *d, size_t i)
     return (ui_rect){ x, c.y + c.h - MARGIN - BUTTON_H, button_w(d, i), BUTTON_H };
 }
 
+/* For screen readers: the button with the focus. */
+static void a11y_button(ui_dialog *d)
+{
+    if (d->focus < 0 || (size_t)d->focus >= d->nbuttons) return;
+    ui_a11y_info info = { .role = UI_ROLE_BUTTON, .name = d->buttons[d->focus], .index = d->focus, .count = (int)d->nbuttons };
+    ui_a11y_focus(d->win, &info);
+}
+
 static void dlg_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     ui_dialog *d = ui_surface_data(s);
@@ -139,6 +147,7 @@ static void dlg_key(ui_surface *s, const ui_key_event *e)
     case XKB_KEY_Escape: finish(d, n - 1); return;
     case XKB_KEY_Tab: case XKB_KEY_Right: d->focus = (d->focus + 1) % n; break;
     case XKB_KEY_ISO_Left_Tab: case XKB_KEY_Left: d->focus = (d->focus + n - 1) % n; break;
+    case XKB_KEY_Shift_L: case XKB_KEY_Shift_R: return;
     default:
         /* A button's first letter chooses it. */
         if (e->utf8[0] && !e->utf8[1])
@@ -147,6 +156,7 @@ static void dlg_key(ui_surface *s, const ui_key_event *e)
         return;
     }
     ui_surface_damage_all(s);
+    a11y_button(d);
 }
 
 static void dlg_close(ui_surface *s) { finish(ui_surface_data(s), (int)((ui_dialog *)ui_surface_data(s))->nbuttons - 1); }
@@ -173,7 +183,10 @@ ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, con
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 2 * MARGIN + (double)d->nlines * LINE_H + 16 + BUTTON_H + MARGIN;
     d->win = ui_window_new(a, &dlg_ops, d, "org.wps.dialog", WIDTH, h);
     ui_window_set_title(d->win, title);
+    ui_a11y_window(d->win, UI_ROLE_DIALOG, message);   /* a screen reader reads the message with the title */
+    a11y_button(d);
     return d;
 }
 
 ui_surface *ui_dialog_surface(ui_dialog *d) { return d->win; }
+void ui_dialog_key(ui_dialog *d, const ui_key_event *e) { dlg_key(d->win, e); }

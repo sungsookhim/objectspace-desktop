@@ -922,6 +922,24 @@ void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip)
 
 /* ------------------------------------------------------------------ input */
 
+/* For screen readers: the item with the cursor, while the container has
+ * the keyboard: its title, then what it is. */
+static void a11y_cursor(ui_container *c)
+{
+    if (!c->focused || !c->has_cursor || c->cursor >= c->count) return;
+    ui_item it = { 0 };
+    c->src->item(c->ctx, c->cursor, &it);
+    static const char *const kinds[] = { "file", "folder", "program", "link", "object" };
+    char desc[64];
+    snprintf(desc, sizeof desc, "%s%s%s", it.shadow ? "shadow of a " : "", kinds[it.kind <= UI_KIND_OTHER ? it.kind : 4],
+             it.is_template ? ", template" : it.in_use ? ", in use" : "");
+    ui_a11y_info info = { .role = c->view == UI_VIEW_TREE ? UI_ROLE_TREE_ITEM : UI_ROLE_LIST_ITEM,
+                          .name = it.title ? it.title : it.name, .description = desc,
+                          .selected = sel_get(c, c->cursor), .expandable = it.expandable, .expanded = it.expanded,
+                          .index = (int)c->cursor, .count = (int)c->count, .at = item_rect(c, c->cursor) };
+    ui_a11y_focus(c->s, &info);
+}
+
 static void move_cursor(ui_container *c, size_t to, unsigned mods)
 {
     if (!c->count) return;
@@ -941,6 +959,7 @@ static void move_cursor(ui_container *c, size_t to, unsigned mods)
     if (had) damage_item(c, old);
     damage_item(c, to);
     ensure_visible(c, to);
+    a11y_cursor(c);
 }
 
 static void band_update(ui_container *c)
@@ -1341,6 +1360,7 @@ void ui_container_set_focused(ui_container *c, bool on)
     if (c->focused == on) return;
     c->focused = on;
     damage_list(c);
+    a11y_cursor(c);
 }
 
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view)

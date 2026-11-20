@@ -321,6 +321,33 @@ extern void (*ui_entry_free_hook)(ui_entry *e);   /* the toolkit's, for input me
  * moves; committed text then arrives as key events (sym 0, utf8 the
  * character). */
 void ui_text_input_focus(ui_surface *s, ui_entry *e, ui_rect r);
+/* ---------------------------------------------------------- accessibility */
+
+/* Screen readers (G4; AT-SPI, ui_a11y.c): each window, and in it the
+ * element that has the keyboard, as the owner describes it. The toolkit
+ * does this itself for containers (the item with the cursor), menus and
+ * dialogs; owners of other controls call ui_a11y_focus as the focus moves
+ * among them. */
+typedef enum {
+    UI_ROLE_NONE, UI_ROLE_LIST_ITEM, UI_ROLE_TREE_ITEM, UI_ROLE_ENTRY, UI_ROLE_BUTTON, UI_ROLE_CHECK_BOX,
+    UI_ROLE_COMBO_BOX, UI_ROLE_MENU_ITEM, UI_ROLE_PAGE_TAB, UI_ROLE_SPIN_BUTTON, UI_ROLE_ICON,
+    /* windows */
+    UI_ROLE_FRAME, UI_ROLE_DIALOG, UI_ROLE_MENU, UI_ROLE_DESKTOP, UI_ROLE_TOOL_BAR,
+} ui_role;
+typedef struct {
+    ui_role role;
+    const char *name;          /* what is read first: a title, a label */
+    const char *description;   /* then: the kind of object, a hint */
+    const char *text;          /* an entry's text (NULL: none) */
+    bool checked, selected, expandable, expanded, disabled;
+    int index, count;          /* "3 of 10" (count 0: not in a set) */
+    ui_rect at;                /* where, in the window */
+} ui_a11y_info;
+/* The element of window s with the keyboard (NULL: none); copied. */
+void ui_a11y_focus(ui_surface *s, const ui_a11y_info *info);
+/* A window's role (default: frame) and description (e.g. a dialog's message). */
+void ui_a11y_window(ui_surface *s, ui_role role, const char *description);
+
 /* Self-tests: as if the input method had sent these (then done). */
 void ui_text_input_inject(ui_app *a, const char *commit, const char *preedit);
 void ui_entry_select_stem(ui_entry *e);     /* up to the last dot: a file's name without extension */
@@ -373,6 +400,7 @@ typedef void (*ui_dialog_fn)(void *ctx, int choice);
 ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
                           int default_button, ui_dialog_fn fn, void *ctx);
 ui_surface *ui_dialog_surface(ui_dialog *d);
+void ui_dialog_key(ui_dialog *d, const ui_key_event *e);   /* as if typed (self-tests) */
 
 /* An object kind's icon (the GUI's own, until icon objects). */
 void ui_draw_kind_icon(cairo_t *cr, ui_kind k, double x, double y, double size);

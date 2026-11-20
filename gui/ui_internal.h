@@ -58,6 +58,11 @@ struct ui_surface {
     bool layer_dirty;
     bool pointer_inside;
     ui_frame_stat *stats;
+    /* accessibility (ui_a11y.c) */
+    unsigned a11y_id;
+    ui_role a11y_role;
+    char *a11y_desc;
+    struct ui_a11y_node *a11y_focus;   /* the element with the keyboard, or NULL */
     size_t nstats, capstats;
     double last_draw_t;
 };
@@ -145,5 +150,12 @@ void ui_textinput_bind(ui_app *a, struct wl_registry *r, uint32_t name, uint32_t
 void ui_textinput_seat(ui_app *a);
 void ui_textinput_surface_gone(ui_surface *s);
 void ui_textinput_key(ui_app *a, ui_surface *s, const char *utf8);   /* deliver text as keys */
+
+/* ui_a11y.c */
+void ui_a11y_init(ui_app *a);
+void ui_a11y_surface_new(ui_surface *s);
+void ui_a11y_surface_gone(ui_surface *s);
+void ui_a11y_activated(ui_surface *s, bool on);
+void ui_a11y_shown(ui_surface *s);
 
 #endif

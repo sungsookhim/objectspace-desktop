@@ -413,6 +413,28 @@ static void damage_top(struct fw *w)
     ui_surface_damage(w->s, (ui_rect){ c.x, c.y, c.w, r.results.y - c.y });
 }
 
+/* For screen readers: the field with the keyboard. */
+static void a11y_field(struct fw *w)
+{
+    struct rects r = rects(w);
+    ui_a11y_info i = { .index = w->focus, .count = F_COUNT };
+    char found[64];
+    switch (w->focus) {
+    case F_NAME: i.role = UI_ROLE_ENTRY; i.name = "Name"; i.text = ui_entry_text(w->name); i.at = r.name;
+        i.description = "a part of the name, or a pattern such as *.txt"; break;
+    case F_FOLDER: i.role = UI_ROLE_ENTRY; i.name = "Folder"; i.text = ui_entry_text(w->folder); i.at = r.folder; break;
+    case F_SUB: i.role = UI_ROLE_CHECK_BOX; i.name = "Include subfolders"; i.checked = w->sub; i.at = r.sub; break;
+    case F_TYPE: i.role = UI_ROLE_COMBO_BOX; i.name = "Type"; i.description = kind_labels[w->kind]; i.at = r.type; break;
+    case F_FIND: i.role = UI_ROLE_BUTTON; i.name = "Find"; i.at = r.find; break;
+    default:
+        if (ui_container_cursor(w->cont) != SIZE_MAX) return;   /* the container says which result */
+        snprintf(found, sizeof found, "%zu found", w->nres);
+        i.role = UI_ROLE_LIST_ITEM; i.name = "Results"; i.description = found; i.at = r.results;
+        i.index = 0; i.count = 0;
+    }
+    ui_a11y_focus(w->s, &i);
+}
+
 static void set_focus(struct fw *w, int f)
 {
     w->focus = f;
@@ -421,6 +443,7 @@ static void set_focus(struct fw *w, int f)
     struct rects r = rects(w);
     ui_text_input_focus(w->s, f == F_NAME ? w->name : f == F_FOLDER ? w->folder : NULL, f == F_NAME ? r.name : r.folder);
     damage_top(w);
+    a11y_field(w);
 }
 
 static void kind_chosen(void *arg, int64_t item)
@@ -429,6 +452,7 @@ static void kind_chosen(void *arg, int64_t item)
     if (!w || item < 0 || item > 3) return;
     w->kind = (int)item;
     damage_top(w);
+    a11y_field(w);
     if (*ui_entry_text(w->name)) search(w, false);
 }
 
@@ -444,6 +468,7 @@ static void toggle_sub(struct fw *w)
 {
     w->sub = !w->sub;
     damage_top(w);
+    a11y_field(w);
     if (*ui_entry_text(w->name)) search(w, false);
 }
 
@@ -516,7 +541,7 @@ static void fw_key(ui_surface *s, const ui_key_event *e)
     switch (w->focus) {
     case F_NAME: case F_FOLDER: {
         ui_entry_result r = ui_entry_key(w->focus == F_NAME ? w->name : w->folder, e);
-        if (r != UI_ENTRY_NONE) damage_top(w);
+        if (r != UI_ENTRY_NONE) { damage_top(w); a11y_field(w); }
         if (r == UI_ENTRY_COMMIT) search(w, false);
         else if (r == UI_ENTRY_CHANGED && w->focus == F_NAME) search(w, true);   /* as you type */
         break;
@@ -529,6 +554,7 @@ static void fw_key(ui_surface *s, const ui_key_event *e)
         if (e->sym == XKB_KEY_space || e->sym == XKB_KEY_Down) {
             w->kind = (w->kind + 1) % 4;
             damage_top(w);
+            a11y_field(w);
             if (*ui_entry_text(w->name)) search(w, false);
         } else if (enter) {
             search(w, false);
@@ -637,6 +663,14 @@ bool findwin_kind(int kind)
     if (!last || kind < 0 || kind > 3) return false;
     last->kind = kind;
     damage_top(last);
+    return true;
+}
+
+bool findwin_key(uint32_t sym)
+{
+    if (!last) return false;
+    ui_key_event k = { .sym = sym };
+    fw_key(last->s, &k);
     return true;
 }
 

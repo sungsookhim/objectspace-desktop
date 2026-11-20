@@ -675,6 +675,18 @@ static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, con
     return UI_DND_COPY;   /* the source keeps its object: this was a shadow */
 }
 
+/* For screen readers: the button the keyboard is on. */
+static void a11y_button(void)
+{
+    if (!lp.s) return;
+    size_t total = NSYS + lp.n, k = lp.kfocus < total ? lp.kfocus : total - 1;
+    ui_a11y_info i = { .role = UI_ROLE_BUTTON, .index = (int)k, .count = (int)total,
+                       .at = k < NSYS ? sys_rect(k) : obj_rect(k - NSYS) };
+    i.name = k < NSYS ? sys_names[k] : lp.items[k - NSYS].title;
+    i.description = k < NSYS ? NULL : "a drawer above it (Up)";
+    ui_a11y_focus(lp.s, &i);
+}
+
 /* The keyboard (accessibility, G4): Left and Right (Home, End) go from
  * button to button, Enter or Space presses one, Up opens its drawer,
  * Shift+F10 (or the Menu key) its menu. */
@@ -704,12 +716,14 @@ static void lp_key(ui_surface *s, const ui_key_event *e)
     default: return;
     }
     ui_surface_damage_all(s);
+    a11y_button();
 }
 
 static void lp_focus(ui_surface *s, bool on)
 {
     lp.focused = on;
     ui_surface_damage_all(s);
+    if (on) a11y_button();
 }
 
 static void lp_close(ui_surface *s)
@@ -739,6 +753,7 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
         if (setup && *setup) svc_shadow(setup, lp.dir, removed, NULL);
     }
     lp.s = ui_window_new(a, &lp_ops, NULL, "org.wps.LaunchPad", bar_w(), bar_h());
+    ui_a11y_window(lp.s, UI_ROLE_TOOL_BAR, "OS/2's buttons, then objects");
     ui_window_set_title(lp.s, "LaunchPad");
     ui_window_set_frameless(lp.s, true);
     ui_window_set_size(lp.s, bar_w(), bar_h(), true);

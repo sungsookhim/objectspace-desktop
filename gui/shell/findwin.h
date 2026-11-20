@@ -36,6 +36,7 @@ const char *findwin_result(size_t i);   /* its path */
 bool findwin_searching(void);
 bool findwin_type(const char *text);    /* as typed into the name field (replaces it) */
 bool findwin_kind(int kind);              /* 0 any, 1 folders, 2 files, 3 programs */
+bool findwin_key(uint32_t sym);           /* as if pressed */
 bool findwin_snapshot(const char *png);
 
 #endif

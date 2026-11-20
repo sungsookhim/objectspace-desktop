@@ -163,11 +163,33 @@ static void open_child(struct menu *m, int i, uint32_t serial)
     open_menu(m->root, m, m->surf, it->items, it->nitems, anchor, m->root->grab ? serial : 0);
 }
 
+/* For screen readers: the highlighted item, "label, n of m". */
+static void a11y_hot(struct menu *m)
+{
+    if (m->hot < 0 || (size_t)m->hot >= m->n) return;
+    const ui_menu_item *it = &m->items[m->hot];
+    char label[256], *tab;
+    snprintf(label, sizeof label, "%s", it->label ? it->label : "");
+    const char *accel = NULL;
+    if ((tab = strchr(label, '\t'))) { *tab = 0; accel = tab + 1; }
+    int index = 0, count = 0;
+    for (size_t k = 0; k < m->n; k++) {
+        if (m->items[k].label && !strcmp(m->items[k].label, "-")) continue;
+        if ((int)k == m->hot) index = count;
+        count++;
+    }
+    ui_a11y_info info = { .role = UI_ROLE_MENU_ITEM, .name = label, .description = accel, .disabled = !it->enabled,
+                          .expandable = it->nitems > 0, .checked = it->checked, .index = index, .count = count,
+                          .at = { 0, item_y(m, (size_t)m->hot), m->w, ITEM_H } };
+    ui_a11y_focus(m->surf, &info);
+}
+
 static void set_hot(struct menu *m, int i)
 {
     if (i == m->hot) return;
     m->hot = i;
     ui_surface_damage_all(m->surf);
+    a11y_hot(m);
 }
 
 static void choose(struct menu *m, int i, uint32_t serial)

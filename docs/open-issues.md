@@ -98,4 +98,6 @@ G2's planned items are all built. What remains are the issues above.
 
 - The LaunchPad gets the keyboard only from a click (GNOME keeps it out of Alt+Tab); there is no shortcut to reach it yet.
 - Alt+Space is GNOME's own window menu (mutter's activate-window-menu); WPS's system menu is on Shift+Esc.
+- Screen readers follow the focus only: a window's other contents (the rest of a folder's items, labels, the status line) are not exposed, so a reader cannot explore a window, only hear where the keyboard is. Not tried with Orca itself (tested with libatspi, as Orca uses it).
+- No Action interface yet (a reader cannot press a button itself), and component extents are in window coordinates (Wayland gives no screen positions).
 

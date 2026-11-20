@@ -177,7 +177,12 @@ static ui_rect status_rect(ui_notebook *nb)
     return (ui_rect){ c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
 }
 
-static void damage(ui_notebook *nb) { ui_surface_damage(nb->win, ui_frame_client(nb->win)); }
+static void a11y_nb(ui_notebook *nb);
+static void damage(ui_notebook *nb)
+{
+    ui_surface_damage(nb->win, ui_frame_client(nb->win));
+    a11y_nb(nb);
+}
 
 /* ------------------------------------------------------------ drawing */
 
@@ -361,6 +366,45 @@ static void show_page(ui_notebook *nb, size_t p)
     nb->focus = -1;
     ui_text_input_focus(nb->win, NULL, (ui_rect){ 0, 0, 0, 0 });
     damage(nb);
+}
+
+/* For screen readers: the field with the keyboard (its label, its
+ * value), Undo, or with nothing focused the page's tab. */
+static void a11y_nb(ui_notebook *nb)
+{
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    int nf = pg ? (int)pg->n : 0;
+    struct field *f = focused_field(nb);
+    ui_a11y_info i = { .index = nb->focus, .count = nf + 1 };
+    char num[32];
+    if (f) {
+        i.name = f->label;
+        i.at = control_rect(nb, (size_t)nb->focus);
+        switch (f->kind) {
+        case UI_FIELD_TEXT: i.role = UI_ROLE_ENTRY; i.text = ui_entry_text(f->entry); break;
+        case UI_FIELD_NUMBER:
+            i.role = UI_ROLE_SPIN_BUTTON;
+            snprintf(num, sizeof num, "%s", ui_entry_text(f->entry));
+            i.description = num;
+            break;
+        case UI_FIELD_CHECKBOX: i.role = UI_ROLE_CHECK_BOX; i.checked = f->v.checked; break;
+        case UI_FIELD_CHOICE:
+            i.role = UI_ROLE_COMBO_BOX;
+            i.description = f->v.number >= 0 && (size_t)f->v.number < f->nchoices ? f->choices[f->v.number] : "";
+            break;
+        }
+    } else if (nb->focus == nf) {
+        i.role = UI_ROLE_BUTTON;
+        i.name = "Undo";
+    } else if (pg) {
+        i.role = UI_ROLE_PAGE_TAB;
+        i.name = pg->title;
+        i.index = (int)nb->page;
+        i.count = (int)nb->npages;
+    } else {
+        return;
+    }
+    ui_a11y_focus(nb->win, &i);
 }
 
 static void step_number(ui_notebook *nb, struct field *f, int d)
