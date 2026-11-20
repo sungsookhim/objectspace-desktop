@@ -37,6 +37,10 @@
  *                      (shared or private, as titles are). Others: title.
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
+ *   {op:"find", folder, name, subfolders, kind:"any"|"folder"|"file"|"program", limit}
+ *       -> {find:ID}; then "found" events (sub: the ID) with items [{path, type}],
+ *       done, scanned, truncated
+ *   {op:"find_cancel", find:ID}
  *   {op:"stats"}
  *   {op:"shutdown"}
  * Every request carries an "id" that the reply echoes; replies are
@@ -73,6 +77,7 @@
 #include "jobs.h"
 #include "launch.h"
 #include "listing.h"
+#include "find.h"
 #include "plugins.h"
 #include "shadows.h"
 #include "WPShadow.h"
@@ -2235,6 +2240,34 @@ static void shutdown_flushed(void *arg)
 
 /* ---- dispatch */
 
+/* A batch of a search's results, as a "found" event to the client that
+ * asked (the search's ID as its sub). */
+static void found(void *arg, int64_t find, const wps_found *items, size_t n, bool done, uint64_t scanned, bool truncated,
+                  int err)
+{
+    struct client *c = arg;
+    if (c->dead) {
+        if (!done) wps_find_cancel(find);   /* nobody reads it any more */
+    } else {
+        cbuf b;
+        event_head(&b, "found", find, 4 + (err != 0));
+        cb_text(&b, "items");
+        cb_array(&b, n);
+        for (size_t i = 0; i < n; i++) {
+            cb_map(&b, 2);
+            cb_text(&b, "path"); cb_text(&b, items[i].path);
+            cb_text(&b, "type"); cb_text(&b, items[i].type);
+        }
+        cb_text(&b, "done"); cb_bool(&b, done);
+        cb_text(&b, "scanned"); cb_uint(&b, scanned);
+        cb_text(&b, "truncated"); cb_bool(&b, truncated);
+        if (err) { cb_text(&b, "error"); cb_text(&b, strerror(err)); }
+        send_frame(c, &b);
+        cb_free(&b);
+    }
+    if (done) client_unref(c);
+}
+
 static void handle(struct client *c, cv *msg)
 {
     int64_t id = 0;
@@ -2256,6 +2289,43 @@ static void handle(struct client *c, cv *msg)
         else start_volume_job(s);
     } else if (handle_jobs(c, id, op, msg)) {
         /* selections and jobs */
+    } else if (strcmp(op, "find") == 0) {
+        const char *folder = cv_text(msg, "folder"), *name = cv_text(msg, "name"), *kind = cv_text(msg, "kind");
+        const cv *sub = cv_get(msg, "subfolders");
+        int64_t limit = 1000;
+        cv_int(msg, "limit", &limit);
+        if (!folder || folder[0] != '/' || limit < 1 || limit > 100000) {
+            reply_error(c, id, "bad request", "find needs an absolute folder and a sane limit");
+            cv_free(msg);
+            return;
+        }
+        wps_find_kind k = !kind || !strcmp(kind, "any") ? WPS_FIND_ANY : !strcmp(kind, "folder") ? WPS_FIND_FOLDER :
+                          !strcmp(kind, "file") ? WPS_FIND_FILE : !strcmp(kind, "program") ? WPS_FIND_PROGRAM : (wps_find_kind)-1;
+        if ((int)k < 0) {
+            reply_error(c, id, "bad request", "find: kind is any, folder, file or program");
+            cv_free(msg);
+            return;
+        }
+        c->refs++;   /* until the last batch */
+        int64_t fid = wps_find_start(folder, name ? name : "", sub && sub->k == CV_BOOL && sub->b, k, (size_t)limit, found, c);
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result"); cb_map(&b, 1); cb_text(&b, "find"); cb_int(&b, fid);
+        send_frame(c, &b);
+        cb_free(&b);
+    } else if (strcmp(op, "find_cancel") == 0) {
+        int64_t fid = 0;
+        cv_int(msg, "find", &fid);
+        if (wps_find_cancel(fid)) {
+            struct simple *s = calloc(1, sizeof *s);
+            s->c = c; s->id = id; c->refs++;
+            reply_simple_ok(s, "cancelled");
+        } else {
+            reply_error(c, id, "no such find", "it ended, or never was");
+        }
     } else if (strcmp(op, "list") == 0) {
         const char *folder = cv_text(msg, "target");
         int64_t off = 0, cnt = 100;
@@ -2533,6 +2603,7 @@ int main(void)
     start_volume_job(NULL);
     wps_shadows_init(loop, db);
     wps_listing_init(loop);
+    wps_find_init(loop);
     wps_jobs_init(loop, db, env.identity);
     wps_launch_init(loop, on_in_use);
     wps_templates_init();
@@ -2554,6 +2625,7 @@ int main(void)
     while (clients) client_close(clients);
     /* Running jobs pause and are journaled; they resume at the next start
      * (design: logout). */
+    wps_find_shutdown();
     wps_jobs_shutdown(true);
     /* The jobs' last progress events (no subscribers remain to hear them). */
     wpo_loop_run_until_idle(loop, 1000);

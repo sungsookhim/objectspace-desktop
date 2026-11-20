@@ -45,6 +45,7 @@ static int usage(void)
             "       wpsctl shadow TARGET FOLDER\n"
             "       wpsctl create FOLDER CLASS TITLE [COMMAND]\n"
             "       wpsctl list FOLDER [OFFSET [COUNT [details]]]\n"
+            "       wpsctl find FOLDER PATTERN [sub] [any|folder|file|program] [LIMIT]\n"
             "       wpsctl select FOLDER all [EXCEPT...] | select FOLDER ITEM...\n"
             "       wpsctl move|copy SELECTION DEST\n"
             "       wpsctl job ID | jobs | job_cancel|job_pause|job_resume ID\n"
@@ -116,7 +117,7 @@ int main(int argc, char **argv)
     cbuf b;
     cb_init(&b);
     int i = 2;
-    bool watching = false;
+    bool watching = false, finding = false;   /* finding: until the last batch */
     if (!strcmp(op, "ping") || !strcmp(op, "setup") || !strcmp(op, "stats") || !strcmp(op, "flush") ||
         !strcmp(op, "sync") || !strcmp(op, "scan") || !strcmp(op, "shutdown")) {
         if (argc != 2) return usage();
@@ -266,6 +267,27 @@ int main(int argc, char **argv)
         for (int k = 2; k < argc; k++) if (!strcmp(argv[k], "object")) cb_text(&b, argv[++k]); else if (!strcmp(argv[k], "folder")) k++;
         cb_text(&b, "jobs"); cb_bool(&b, jobs);
         watching = true;
+    } else if (!strcmp(op, "find")) {
+        /* find FOLDER PATTERN [sub] [KIND] [LIMIT]: the reply, then each batch until the last */
+        if (argc < 4) return usage();
+        bool sub = false;
+        const char *kind = "any";
+        long long limit = 1000;
+        for (int k = 4; k < argc; k++) {
+            if (!strcmp(argv[k], "sub")) sub = true;
+            else if (!strcmp(argv[k], "any") || !strcmp(argv[k], "folder") || !strcmp(argv[k], "file") || !strcmp(argv[k], "program")) kind = argv[k];
+            else if (atoll(argv[k]) > 0) limit = atoll(argv[k]);
+            else return usage();
+        }
+        cb_map(&b, 7);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "find");
+        cb_text(&b, "folder"); cb_text(&b, argv[2]);
+        cb_text(&b, "name"); cb_text(&b, argv[3]);
+        cb_text(&b, "subfolders"); cb_bool(&b, sub);
+        cb_text(&b, "kind"); cb_text(&b, kind);
+        cb_text(&b, "limit"); cb_int(&b, limit);
+        watching = finding = true;
     } else if (!strcmp(op, "list")) {
         if (argc < 3 || argc > 6) return usage();
         bool details = argc == 6 && !strcmp(argv[5], "details");
@@ -332,7 +354,7 @@ int main(int argc, char **argv)
     printf("%.*s\n", (int)j.n, (const char *)j.d);
     fflush(stdout);
     /* watch: then print each event as one line of JSON, until interrupted. */
-    while (watching) {
+    while (watching && !(finding && !(cv_get(&reply, "ok") && cv_get(&reply, "ok")->b))) {
         unsigned char h[4];
         if (io_all(fd, h, 4, false)) break;
         uint32_t len = (uint32_t)h[0] << 24 | (uint32_t)h[1] << 16 | (uint32_t)h[2] << 8 | h[3];
@@ -345,8 +367,11 @@ int main(int argc, char **argv)
         printf("%.*s\n", (int)o.n, (const char *)o.d);
         fflush(stdout);
         cb_free(&o);
+        const cv *done = cv_get(&e, "done");
+        bool last = finding && done && done->k == CV_BOOL && done->b;
         cv_free(&e);
         free(ev);
+        if (last) break;
     }
     const cv *ok = cv_get(&reply, "ok");
     int rc = ok && ok->k == CV_BOOL && ok->b ? 0 : 1;
