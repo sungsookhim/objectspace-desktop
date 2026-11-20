@@ -709,6 +709,10 @@ static void save_done(void *arg)
         s->retry_delay_ms = 0;
     }
     if (!was_retry && wps_on_saved) wps_on_saved(s);
+    /* Written: say so again. Clients that read the object from storage
+     * (folder listings, for titles and icons) read it before the write
+     * when the change was first announced. */
+    if (!busy && wps_on_changed) wps_on_changed(s->o);
     if (s->queued) schedule_flush();
     if (wps_objects_pending() == 0) {
         struct flush_waiter *w = waiters;

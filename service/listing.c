@@ -99,6 +99,9 @@ static void central_details(wps_entry *e)
     char *t = NULL;
     if (op && wps_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
     free(t);
+    t = NULL;
+    if (op && wps_props_str(op, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+    free(t);
     int64_t tv;
     if (op && wps_props_int(op, "template", &tv) && tv) e->is_template = true;
     t = NULL;
@@ -117,6 +120,9 @@ static void central_details(wps_entry *e)
             const wps_props *tp = props_of(&tg, "WPObject");
             t = NULL;
             if (!e->title[0] && tp && wps_props_str(tp, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+            free(t);
+            t = NULL;
+            if (!e->icon[0] && tp && wps_props_str(tp, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
             if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
         }
@@ -144,6 +150,9 @@ static void detail_work(void *arg)
         char *t = NULL;
         if (e->id[0] && wps_attr_read(p, "WPObject", &ps) == WPS_A_OK) {
             if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+            free(t);
+            t = NULL;
+            if (wps_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
             int64_t tv;
             if (wps_props_int(&ps, "template", &tv) && tv) e->is_template = true;
@@ -181,6 +190,9 @@ static void detail_work(void *arg)
                 t = NULL;
                 if (wps_attr_read(e->target_path, "WPObject", &ps) == WPS_A_OK) {
                     if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+                    free(t);
+                    t = NULL;   /* the target's icon, unless the shadow has its own */
+                    if (!e->icon[0] && wps_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
                     free(t);
                     wps_props_free(&ps);
                 }

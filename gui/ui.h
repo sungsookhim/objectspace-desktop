@@ -359,7 +359,11 @@ ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect
 
 /* Settings notebooks, as in Warp 4 (ui_notebook.c). Built from pages of
  * typed fields; `set` is called as each change is made. */
-typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE } ui_field_kind;
+/* UI_FIELD_ICON: value.text is a PNG's path ("": the kind's icon). Its
+ * owner's `set` gets value.text "" for Default, the path of an image
+ * dropped on it (to be made into an icon), or NULL when Choose... was
+ * pressed; the notebook shows the new icon when ui_notebook_update says. */
+typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON } ui_field_kind;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */
 typedef struct {
     const char *key, *label;
@@ -378,6 +382,7 @@ void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n);
 void ui_notebook_set_status(ui_notebook *nb, const char *msg);
 void ui_notebook_close(ui_notebook *nb);
 ui_surface *ui_notebook_surface(ui_notebook *nb);
+void ui_notebook_show_page(ui_notebook *nb, size_t page);
 
 typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
 

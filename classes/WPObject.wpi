@@ -4,6 +4,7 @@ version 1.0
 include "wps_state.h"
 data {
     char *title;        /* NULL: the class decides (see wpQueryTitle) */
+    char *icon;         /* its own icon, a PNG (WPS keeps a copy); NULL: its kind's */
     char id[37];        /* object ID; empty until assigned (lazily, by the service) */
     uint32_t dirty;     /* state changed since the last save */
     uint64_t changes;   /* in-memory change counter, for optimistic client writes */
@@ -14,6 +15,9 @@ override wpInitData
 override wpUnInitData
 method wpQueryTitle() -> string
 method wpSetTitle(string title) -> bool
+# The object's own icon: the path of a PNG, or "" for its kind's again.
+method wpQueryIcon() -> string
+method wpSetIcon(string path) -> bool
 method wpQueryHandle() -> string
 # Menus and settings pages are data, built as text by each class and
 # parsed by the service into structures for clients (design: Menus and
@@ -21,7 +25,7 @@ method wpQueryHandle() -> string
 #   menu item:      id<TAB>label[<TAB>parent-id[<TAB>flags]]   flags: disabled,checked
 #   settings page:  page<TAB>title
 #   settings field: field<TAB>key<TAB>type<TAB>label<TAB>value<TAB>setter[<TAB>choices]
-#                   type: text, number, checkbox, choice; setter: a method name
+#                   type: text, number, checkbox, choice, icon (a PNG's path); setter: a method name
 method wpModifyPopupMenu(string menu) -> string
 method wpMenuItemSelected(int item) -> bool
 method wpSaveDeferred() -> void

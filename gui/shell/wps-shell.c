@@ -27,6 +27,8 @@
 #include "events.h"
 #include "winlist.h"
 #include "findwin.h"
+#include "icons.h"
+#include "iconpick.h"
 #include "launchpad.h"
 #include "gnome.h"
 #include "sound.h"
@@ -41,7 +43,7 @@ static double status_h(void) { double h = ceil(ui_scheme_now.font_px + 9); retur
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon; };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -139,6 +141,7 @@ static void model_free(struct model *m)
             free(m->pages[p]->rows[r].name);
             free(m->pages[p]->rows[r].title);
             free(m->pages[p]->rows[r].target);
+            free(m->pages[p]->rows[r].icon);
         }
         free(m->pages[p]);
     }
@@ -231,7 +234,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
         free(dst->name);
         free(dst->title);
         free(dst->target);
-        dst->target = NULL;
+        free(dst->icon);
+        dst->target = dst->icon = NULL;
         dst->name = strdup(nm ? nm : "?");
         dst->title = ti && *ti ? strdup(ti) : NULL;
         dst->kind = kind_of(ty, nm);
@@ -245,6 +249,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             dst->in_use = iu && iu->k == CV_BOOL && iu->b;   /* a program has it open */
             const cv *tv = cv_get(it, "template");
             dst->tpl = tv && tv->k == CV_BOOL && tv->b;
+            const char *ic = cv_text(it, "icon");     /* its own icon */
+            dst->icon = ic && *ic ? strdup(ic) : NULL;
             const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
             if (mk) dst->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
@@ -360,7 +366,7 @@ static void model_append(struct model *m, const char *name, const char *type)
 {
     size_t i = m->total++;
     struct row *r = row_ptr(m, i);
-    free(r->name); free(r->title); free(r->target);
+    free(r->name); free(r->title); free(r->target); free(r->icon);
     memset(r, 0, sizeof *r);
     r->name = strdup(name);
     r->kind = kind_of(type, name);
@@ -371,7 +377,7 @@ static void model_append(struct model *m, const char *name, const char *type)
 static void model_remove(struct model *m, size_t i)
 {
     struct row *r = row_ptr(m, i);
-    free(r->name); free(r->title); free(r->target);
+    free(r->name); free(r->title); free(r->target); free(r->icon);
     for (size_t j = i; j + 1 < m->total; j++) *row_ptr(m, j) = *row_ptr(m, j + 1);   /* details move with their rows */
     memset(row_ptr(m, m->total - 1), 0, sizeof(struct row));
     m->total--;
@@ -938,6 +944,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->in_use = r->in_use;
     out->link = r->link;
     out->is_template = r->tpl;
+    out->image = icons_get(r->icon);   /* its own icon, if it has one */
     if (r->kind == UI_KIND_FOLDER) {
         /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];
@@ -1233,7 +1240,7 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
             d->key = cv_text(fd, "key");
             d->label = cv_text(fd, "label");
             d->kind = !type || !strcmp(type, "text") ? UI_FIELD_TEXT : !strcmp(type, "checkbox") ? UI_FIELD_CHECKBOX
-                      : !strcmp(type, "number") ? UI_FIELD_NUMBER : UI_FIELD_CHOICE;
+                      : !strcmp(type, "number") ? UI_FIELD_NUMBER : !strcmp(type, "icon") ? UI_FIELD_ICON : UI_FIELD_CHOICE;
             if (v && v->k == CV_TEXT) d->value.text = (char *)v->s;
             else if (v && v->k == CV_INT) d->value.number = v->i;
             else if (v && v->k == CV_BOOL) d->value.checked = v->b;
@@ -1306,10 +1313,45 @@ static void props_applied(void *arg, const cv *reply)
     props_refresh(p);
 }
 
+/* An icon made from an image (dropped, or chosen in the picker): the
+ * object's icon now. */
+struct icon_req { long props; char key[64]; };
+
+static void icon_made(void *ctx, const char *png)
+{
+    struct icon_req *r = ctx;
+    struct props *p = props_by_id(r->props);
+    if (p && p->nb) {
+        if (!png) ui_notebook_set_status(p->nb, "That image cannot be read: the icon is as it was");
+        else {
+            cv val = { .k = CV_TEXT, .s = (char *)png, .len = strlen(png) };
+            svc_settings_set(p->target, r->key, &val, p->changes, props_applied, (void *)(intptr_t)p->id);
+            events_raise("object.icon", p->target, "properties", (ui_rect){ 0, 0, 0, 0 });
+        }
+    }
+    free(r);
+}
+
+void props_icon_from(long props, const char *key, const char *image)
+{
+    struct props *p = props_by_id(props);
+    if (!p) return;
+    if (p->nb) ui_notebook_set_status(p->nb, "Making the icon...");
+    struct icon_req *r = calloc(1, sizeof *r);
+    r->props = props;
+    snprintf(r->key, sizeof r->key, "%s", key);
+    icons_import(image, icon_made, r);
+}
+
 static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_value *v)
 {
     struct props *p = ctx;
     void *arg = (void *)(intptr_t)p->id;
+    if (kind == UI_FIELD_ICON) {
+        if (!v->text) { iconpick_open(p->title, props_icon_from, p->id, key); return; }   /* Choose... */
+        if (*v->text) { props_icon_from(p->id, key, v->text); return; }                     /* an image dropped */
+        /* Default: "" below */
+    }
     if (!strcmp(key, "title") && kind == UI_FIELD_TEXT) {
         /* Decided: a file's title is its name; the service renames it (or,
          * without permission, keeps it as a title). */
@@ -1317,7 +1359,7 @@ static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_v
         return;
     }
     cv val = { 0 };
-    if (kind == UI_FIELD_TEXT) { val.k = CV_TEXT; val.s = v->text ? v->text : ""; val.len = strlen(val.s); }
+    if (kind == UI_FIELD_TEXT || kind == UI_FIELD_ICON) { val.k = CV_TEXT; val.s = v->text ? v->text : ""; val.len = strlen(val.s); }
     else if (kind == UI_FIELD_CHECKBOX) { val.k = CV_BOOL; val.b = v->checked; }
     else { val.k = CV_INT; val.i = v->number; }
     svc_settings_set(p->target, key, &val, p->changes, props_applied, arg);
@@ -3699,6 +3741,56 @@ static void win_frame(ui_surface *s, double now)
         #undef LROWS
         return;
     }
+    if (st && !strcmp(st, "icons")) {
+        /* An object's own icon (G4): Properties' Icon page with an image
+         * dropped on it, then one chosen in the picker, then Default. */
+        static double t0;
+        static int step;
+        static char target[PATH_MAX];
+        if (f != folders || f->closing || !f->m.complete) return;
+        ui_surface_damage_all(f->win);   /* frames keep coming */
+        if (!t0) { t0 = now; snprintf(target, sizeof target, "%s/a.txt", f->path); return; }
+        double t = now - t0;
+        struct props *p = NULL;
+        for (struct props *q = props_open; q; q = q->next) if (!strcmp(q->target, target)) p = q;
+        ssize_t row = model_find(&f->m, "a.txt");
+        const char *icon = row >= 0 && row_ptr(&f->m, (size_t)row)->icon ? row_ptr(&f->m, (size_t)row)->icon : "";
+        char shot[PATH_MAX];
+        const char *sh = getenv("WPS_SHELL_SHOT");
+        if (step == 0 && t > 500) { open_properties(target); step++; t0 = now; }
+        else if (step == 1 && p && p->nb && t > 800) {
+            ui_value v = { .text = "/usr/share/icons/Adwaita/scalable/places/folder-music.svg" };   /* as dropped */
+            props_set(p, "icon", UI_FIELD_ICON, &v);
+            step++; t0 = now;
+        } else if (step == 2 && (*icon || t > 6000)) {
+            fprintf(stderr, "selftest: dropped image: icon %s, drawn %d\n", *icon ? strrchr(icon, '/') + 1 : "(none)", icons_get(icon) != NULL);
+            ui_notebook_show_page(p->nb, 1);   /* the Icon page, for its picture */
+            ui_value v = { .text = NULL };   /* Choose... */
+            props_set(p, "icon", UI_FIELD_ICON, &v);
+            step++; t0 = now;
+        } else if (step == 3 && (iconpick_ready() || t > 10000)) {
+            fprintf(stderr, "selftest: picker: %zu icons in the themes\n", iconpick_count());
+            iconpick_search("folder");
+            fprintf(stderr, "selftest: picker, \"folder\": %zu, first '%s'\n", iconpick_count(), iconpick_name(0) ? iconpick_name(0) : "");
+            if (sh && p->nb) { snprintf(shot, sizeof shot, "%s-notebook.png", sh); ui_surface_snapshot(ui_notebook_surface(p->nb), shot); }
+            if (sh) { snprintf(shot, sizeof shot, "%s-folder.png", sh); ui_surface_snapshot(f->win, shot); }
+            step++; t0 = now;
+        } else if (step == 4 && t > 1500) {
+            if (sh) { snprintf(shot, sizeof shot, "%s-picker.png", sh); iconpick_snapshot(shot); }
+            iconpick_choose(0);
+            step++; t0 = now;
+        } else if (step == 5 && (t > 6000 || (*icon && !strstr(icon, "folder-music")))) {
+            fprintf(stderr, "selftest: chosen in the picker: icon %s\n", *icon ? strrchr(icon, '/') + 1 : "(none)");
+            ui_value v = { .text = "" };   /* Default */
+            props_set(p, "icon", UI_FIELD_ICON, &v);
+            step++; t0 = now;
+        } else if (step == 6 && (!*icon || t > 4000)) {
+            fprintf(stderr, "selftest: after Default: icon %s\n", *icon ? icon : "(its kind's)");
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "a11y")) {
         /* For a screen reader (tests/gui/a11y.py listens): the cursor
          * through the folder by keys, then a dialog's buttons. */
@@ -4334,6 +4426,8 @@ int main(int argc, char **argv)
         winlist_init(app, -1);
     }
     findwin_init(app, launchpad_open_folder);
+    icons_init(app);
+    iconpick_init(app, launchpad_open_folder);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

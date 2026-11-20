@@ -101,3 +101,10 @@ G2's planned items are all built. What remains are the issues above.
 - Screen readers follow the focus only: a window's other contents (the rest of a folder's items, labels, the status line) are not exposed, so a reader cannot explore a window, only hear where the keyboard is. Not tried with Orca itself (tested with libatspi, as Orca uses it).
 - No Action interface yet (a reader cannot press a button itself), and component extents are in window coordinates (Wayland gives no screen positions).
 
+## Icons (G4 follow-up)
+
+- The self-test (`selftest.sh icons`) hands the dropped image straight to the Properties code; the drop itself (text/uri-list on the Icon page's picture) is not driven by a headless drag yet.
+- The icon library is a plain folder: no drop on the picker to add an image to it (open it with "Open library folder" and drop there).
+- An object's icon is a copy: changing the source image later does not change it. Icons no object uses any more stay in `wps/icons`.
+- Templates copy their icon setting (the same PNG); deleting an object leaves its PNG.
+

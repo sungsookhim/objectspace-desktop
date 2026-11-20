@@ -30,6 +30,8 @@ struct field {
     char **choices;
     size_t nchoices;
     ui_entry *entry;         /* text and number */
+    cairo_surface_t *img;    /* icon: its picture, read from img_path */
+    char *img_path;
     bool spin_down;          /* an arrow held (number) */
 };
 
@@ -47,6 +49,9 @@ struct ui_notebook {
     size_t page;             /* shown */
     int focus;               /* field on the page; -1: none; npages-relative buttons below */
     int pressed_button;      /* 0 Undo, 1 Default, 2 Help; -1 none */
+    struct field *icon_field;   /* an icon field's button held down (icon_pressed 0, 1), or NULL */
+    int icon_pressed;
+    struct field *drop_on;      /* an icon field a drag is over */
     char status[256];
     ui_notebook_set_fn set;
     ui_notebook_close_fn closed;
@@ -86,6 +91,8 @@ static void free_pages(struct page *p, size_t n)
             for (size_t c = 0; c < f->nchoices; c++) free(f->choices[c]);
             free(f->choices);
             ui_entry_free(f->entry);
+            if (f->img) cairo_surface_destroy(f->img);
+            free(f->img_path);
         }
         free(p[i].f);
         free(p[i].title);
@@ -148,16 +155,28 @@ static ui_rect page_rect(ui_notebook *nb)
     return (ui_rect){ c.x + MARGIN - 4, c.y + 8 + TAB_H, c.w - 2 * (MARGIN - 4), c.h - 8 - TAB_H - BUTTON_H - 22 - STATUS_H };
 }
 
+#define ICON_BOX 76           /* an icon field's picture */
+#define ICON_ROW (ICON_BOX + 12)
+
+static double row_h(const struct field *f) { return f->kind == UI_FIELD_ICON ? ICON_ROW : ROW_H; }
+
 static ui_rect control_rect(ui_notebook *nb, size_t k)
 {
     ui_rect p = page_rect(nb);
     double x = p.x + MARGIN + LABEL_W, w = p.w - 2 * MARGIN - LABEL_W;
-    struct field *f = &nb->pages[nb->page].f[k];
+    struct page *pg = &nb->pages[nb->page];
+    struct field *f = &pg->f[k];
+    double y = p.y + MARGIN;
+    for (size_t i = 0; i < k; i++) y += row_h(&pg->f[i]);
     if (f->kind == UI_FIELD_CHECKBOX) w = FIELD_H;
     else if (f->kind == UI_FIELD_NUMBER) w = fmin(w, 140);
     else if (f->kind == UI_FIELD_CHOICE) w = fmin(w, 220);
-    return (ui_rect){ x, p.y + MARGIN + (double)k * ROW_H, w, FIELD_H };
+    return (ui_rect){ x, y, w, f->kind == UI_FIELD_ICON ? ICON_BOX : FIELD_H };
 }
+
+/* An icon field: the picture, and its two buttons (0 Choose..., 1 Default). */
+static ui_rect icon_box(ui_rect r) { return (ui_rect){ r.x, r.y, ICON_BOX, ICON_BOX }; }
+static ui_rect icon_button(ui_rect r, int i) { return (ui_rect){ r.x + ICON_BOX + 14, r.y + i * 30, 110, 24 }; }
 
 static ui_rect spin_rect(ui_rect r, bool up)
 {
@@ -201,6 +220,60 @@ static void draw_check(cairo_t *cr, ui_rect r, bool on)
     cairo_line_to(cr, b.x + b.w / 2 - 1, b.y + b.h - 4);
     cairo_line_to(cr, b.x + b.w - 3, b.y + 3);
     cairo_stroke(cr);
+}
+
+static void focus_ring(cairo_t *cr, ui_rect r);
+
+/* An icon field: its picture (the object's own icon, or a note that it
+ * has its kind's), Choose... and Default beside it, and the hint that an
+ * image can be dropped on it. */
+static void draw_icon_field(ui_notebook *nb, struct field *f, cairo_t *cr, ui_rect r, bool focused)
+{
+    (void)nb;
+    const ui_scheme *k = &ui_scheme_now;
+    const char *want = f->v.text ? f->v.text : "";
+    if (!f->img_path || strcmp(f->img_path, want)) {
+        if (f->img) cairo_surface_destroy(f->img);
+        f->img = NULL;
+        free(f->img_path);
+        f->img_path = strdup(want);
+        if (*want) {
+            f->img = cairo_image_surface_create_from_png(want);
+            if (cairo_surface_status(f->img) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(f->img); f->img = NULL; }
+        }
+    }
+    ui_rect b = icon_box(r);
+    ui_fill(cr, b, nb->drop_on == f ? k->selection : k->client_bg);
+    ui_bevel(cr, b, false);
+    if (f->img) {
+        double iw = cairo_image_surface_get_width(f->img), ih = cairo_image_surface_get_height(f->img);
+        double sz = ICON_BOX - 12, sc = sz / (iw > ih ? iw : ih);
+        cairo_save(cr);
+        cairo_translate(cr, b.x + (ICON_BOX - iw * sc) / 2, b.y + (ICON_BOX - ih * sc) / 2);
+        cairo_scale(cr, sc, sc);
+        cairo_set_source_surface(cr, f->img, 0, 0);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+        cairo_restore(cr);
+    } else {
+        ui_set_color(cr, k->disabled_text);
+        const char *t = "(its kind's)";
+        double tw = ui_text_width(UI_FONT_REGULAR, t);
+        ui_text_draw(cr, UI_FONT_REGULAR, b.x + (ICON_BOX - tw) / 2, b.y + ICON_BOX / 2 + 4, t, ICON_BOX - 4);
+    }
+    static const char *const labels[2] = { "Choose...", "Default" };
+    for (int i = 0; i < 2; i++) {
+        ui_rect bt = icon_button(r, i);
+        bool down = nb->icon_pressed == i && nb->icon_field == f;
+        ui_fill(cr, bt, k->face);
+        ui_bevel(cr, bt, !down);
+        ui_set_color(cr, i == 1 && !*want ? k->disabled_text : k->text);
+        double tw = ui_text_width(UI_FONT_REGULAR, labels[i]);
+        ui_text_draw(cr, UI_FONT_REGULAR, bt.x + (bt.w - tw) / 2 + down, bt.y + bt.h / 2 + 5 + down, labels[i], bt.w - 4);
+    }
+    ui_set_color(cr, k->disabled_text);
+    ui_text_draw(cr, UI_FONT_REGULAR, icon_button(r, 0).x, r.y + ICON_BOX - 6, "or drop an image on the picture", r.w - ICON_BOX - 14);
+    if (focused) focus_ring(cr, b);
 }
 
 static void draw_arrow(cairo_t *cr, ui_rect r, bool up)
@@ -259,6 +332,9 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         switch (f->kind) {
         case UI_FIELD_TEXT:
             ui_entry_draw(f->entry, cr, r, focused);
+            break;
+        case UI_FIELD_ICON:
+            draw_icon_field(nb, f, cr, r, focused);
             break;
         case UI_FIELD_NUMBER: {
             ui_rect er = { r.x, r.y, r.w - 16, r.h };
@@ -388,6 +464,11 @@ static void a11y_nb(ui_notebook *nb)
             i.description = num;
             break;
         case UI_FIELD_CHECKBOX: i.role = UI_ROLE_CHECK_BOX; i.checked = f->v.checked; break;
+        case UI_FIELD_ICON:
+            i.role = UI_ROLE_BUTTON;
+            i.description = f->v.text && *f->v.text ? "its own icon; Enter: choose another, Delete: its kind's"
+                                                    : "its kind's icon; Enter: choose one";
+            break;
         case UI_FIELD_CHOICE:
             i.role = UI_ROLE_COMBO_BOX;
             i.description = f->v.number >= 0 && (size_t)f->v.number < f->nchoices ? f->choices[f->v.number] : "";
@@ -465,6 +546,78 @@ static void undo(ui_notebook *nb)
     damage(nb);
 }
 
+/* Choose... (0) or Default (1) of an icon field: its owner does it. */
+static void icon_action(ui_notebook *nb, struct field *f, int which)
+{
+    if (!nb->set) return;
+    if (which == 1 && !(f->v.text && *f->v.text)) return;   /* already the kind's */
+    ui_value v = { .text = which == 1 ? "" : NULL };
+    nb->set(nb->ctx, f->key, UI_FIELD_ICON, &v);
+}
+
+/* An image dropped on an icon field's picture (text/uri-list: a file). */
+static struct field *icon_field_at(ui_notebook *nb, double x, double y)
+{
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    for (size_t k = 0; pg && k < pg->n; k++)
+        if (pg->f[k].kind == UI_FIELD_ICON && ui_rect_has(icon_box(control_rect(nb, k)), x, y)) return &pg->f[k];
+    return NULL;
+}
+
+static uint32_t nb_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
+                               unsigned mods, const char **mime)
+{
+    (void)src_actions; (void)mods;
+    ui_notebook *nb = ui_surface_data(s);
+    struct field *f = NULL;
+    for (size_t i = 0; i < n && !f; i++)
+        if (!strcmp(mimes[i], "text/uri-list")) { f = icon_field_at(nb, x, y); if (f) *mime = mimes[i]; }
+    if (f != nb->drop_on) { nb->drop_on = f; damage(nb); }
+    return f ? UI_DND_COPY : 0;
+}
+
+static void nb_drag_leave(ui_surface *s)
+{
+    ui_notebook *nb = ui_surface_data(s);
+    if (nb->drop_on) { nb->drop_on = NULL; damage(nb); }
+}
+
+static uint32_t nb_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
+                        uint32_t start_action, unsigned mods)
+{
+    (void)mime; (void)action; (void)start_action; (void)mods;
+    ui_notebook *nb = ui_surface_data(s);
+    nb->drop_on = NULL;
+    damage(nb);
+    struct field *f = icon_field_at(nb, x, y);
+    if (!f || !nb->set) return 0;
+    /* the first file:// line, unescaped */
+    char path[4096];
+    size_t o = 0;
+    const char *p = data, *end = data + len;
+    while (p < end && (*p == '#' || strncmp(p, "file://", 7))) {   /* comments and other schemes */
+        const char *nl = memchr(p, '\n', (size_t)(end - p));
+        p = nl ? nl + 1 : end;
+    }
+    if (p >= end) return 0;
+    p += 7;
+    while (p < end && *p != '/' && *p != '\r' && *p != '\n') p++;   /* a host name */
+    for (; p < end && *p != '\r' && *p != '\n' && o < sizeof path - 1; p++) {
+        if (*p == '%' && end - p > 2) {
+            char hx[3] = { p[1], p[2], 0 };
+            path[o++] = (char)strtol(hx, NULL, 16);
+            p += 2;
+        } else {
+            path[o++] = *p;
+        }
+    }
+    path[o] = 0;
+    if (!o) return 0;
+    ui_value v = { .text = path };
+    nb->set(nb->ctx, f->key, UI_FIELD_ICON, &v);
+    return UI_DND_COPY;
+}
+
 static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     ui_notebook *nb = ui_surface_data(s);
@@ -475,6 +628,16 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         ui_rect r = control_rect(nb, (size_t)nb->focus);
         if (ff->kind == UI_FIELD_NUMBER) r.w -= 16;
         if (ui_entry_pointer(ff->entry, e, r) != UI_ENTRY_NONE) damage(nb);
+    }
+    if (e->kind == UI_RELEASE && nb->icon_field) {
+        struct field *f = nb->icon_field;
+        int b = nb->icon_pressed;
+        nb->icon_field = NULL;
+        damage(nb);
+        struct page *pg = &nb->pages[nb->page];
+        for (size_t k = 0; k < pg->n; k++)
+            if (&pg->f[k] == f && ui_rect_has(icon_button(control_rect(nb, k), b), e->x, e->y)) icon_action(nb, f, b);
+        return;
     }
     if (e->kind == UI_RELEASE && nb->pressed_button >= 0) {
         int b = nb->pressed_button;
@@ -489,6 +652,17 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
     struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
     for (size_t k = 0; pg && k < pg->n; k++) {
         ui_rect r = control_rect(nb, k);
+        if (pg->f[k].kind == UI_FIELD_ICON) {
+            for (int i = 0; i < 2; i++)
+                if (ui_rect_has(icon_button(r, i), e->x, e->y)) {
+                    set_focus(nb, (int)k);
+                    nb->icon_field = &pg->f[k];
+                    nb->icon_pressed = i;
+                    damage(nb);
+                    return;
+                }
+            r = icon_box(r);
+        }
         if (!ui_rect_has(r, e->x, e->y)) continue;
         struct field *f = &pg->f[k];
         set_focus(nb, (int)k);
@@ -501,6 +675,8 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         case UI_FIELD_CHOICE:
             open_choices(nb, k, e->serial);
             break;
+        case UI_FIELD_ICON:
+            break;   /* the picture: focused (Enter chooses) */
         case UI_FIELD_NUMBER:
             if (ui_rect_has(spin_rect(r, true), e->x, e->y)) { step_number(nb, f, 1); break; }
             if (ui_rect_has(spin_rect(r, false), e->x, e->y)) { step_number(nb, f, -1); break; }
@@ -548,6 +724,10 @@ static void nb_key(ui_surface *s, const ui_key_event *e)
     switch (f->kind) {
     case UI_FIELD_CHECKBOX:
         if (e->sym == XKB_KEY_space) { f->v.checked = !f->v.checked; apply(nb, f); damage(nb); }
+        return;
+    case UI_FIELD_ICON:   /* Enter or Space: Choose...; Delete: Default */
+        if (e->sym == XKB_KEY_space || e->sym == XKB_KEY_Return || e->sym == XKB_KEY_KP_Enter) icon_action(nb, f, 0);
+        else if (e->sym == XKB_KEY_Delete || e->sym == XKB_KEY_BackSpace) icon_action(nb, f, 1);
         return;
     case UI_FIELD_CHOICE:
         if (e->sym == XKB_KEY_Up) set_choice(nb, f, f->v.number - 1);
@@ -604,6 +784,7 @@ static void nb_close(ui_surface *s) { ui_notebook_close(ui_surface_data(s)); }
 
 static const ui_surface_ops nb_ops = {
     .draw = nb_draw, .pointer = nb_pointer, .key = nb_key, .resized = nb_resized, .focus = nb_focus, .close = nb_close,
+    .drag_motion = nb_drag_motion, .drag_leave = nb_drag_leave, .drop = nb_drop,
 };
 
 ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *pages, size_t n,
@@ -618,9 +799,13 @@ ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *
     nb->set = set;
     nb->closed = closed;
     nb->ctx = ctx;
-    size_t most = 1;
-    for (size_t i = 0; i < n; i++) if (pages[i].nfields > most) most = pages[i].nfields;
-    double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 8 + TAB_H + 2 * MARGIN + (double)most * ROW_H +
+    double most = ROW_H;   /* the tallest page */
+    for (size_t i = 0; i < n; i++) {
+        double t = 0;
+        for (size_t k = 0; k < pages[i].nfields; k++) t += pages[i].fields[k].kind == UI_FIELD_ICON ? ICON_ROW : ROW_H;
+        if (t > most) most = t;
+    }
+    double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 8 + TAB_H + 2 * MARGIN + most +
                BUTTON_H + 22 + STATUS_H + 20;
     nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", 520, h < 280 ? 280 : h);
     ui_window_set_title(nb->win, title);
@@ -650,5 +835,7 @@ void ui_notebook_set_status(ui_notebook *nb, const char *msg)
     snprintf(nb->status, sizeof nb->status, "%s", msg ? msg : "");
     ui_surface_damage(nb->win, status_rect(nb));
 }
+
+void ui_notebook_show_page(ui_notebook *nb, size_t page) { show_page(nb, page); }
 
 ui_surface *ui_notebook_surface(ui_notebook *nb) { return nb->win; }

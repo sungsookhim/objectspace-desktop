@@ -11,7 +11,8 @@
  *   {op:"sync"}        rescan volumes and synchronise portable ones
  *   {op:"scan"}        run the catch-up scan now
  *   {op:"shadow", target, folder}   create a shadow (managed symlink)
- *   {op:"list", target, offset, count, details}   a page of a folder (streamed)
+ *   {op:"list", target, offset, count, details}   a page of a folder (streamed); with
+ *                      details, an object with its own icon has "icon" (a PNG's path)
  *   {op:"select", folder, all, except|items}   a selection; returns its ID
  *   {op:"move"|"copy", selection, dest}        a job; returns its ID
  *   {op:"job", job} {op:"jobs"} {op:"job_cancel"|"job_pause"|"job_resume", job}
@@ -1212,8 +1213,8 @@ static void list_reply(void *arg, const wps_page *pg)
                          ((e->shadow || e->type == DT_LNK) && e->target_path[0] && wps_launch_in_use(e->target_path));
                 }
                 bool link = e->detailed && !e->shadow && e->type == DT_LNK;
-                bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0];
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes : 2);
+                bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0], icon = e->detailed && e->icon[0];
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -1234,6 +1235,7 @@ static void list_reply(void *arg, const wps_page *pg)
                     if (iu) { cb_text(&b, "in_use"); cb_bool(&b, true); }
                     if (tpl) { cb_text(&b, "template"); cb_bool(&b, true); }
                     if (makes) { cb_text(&b, "makes"); cb_text(&b, e->makes); }   /* a built-in template */
+                    if (icon) { cb_text(&b, "icon"); cb_text(&b, e->icon); }       /* its own icon (a PNG) */
                 }
             }
             send_frame(r->c, &b);

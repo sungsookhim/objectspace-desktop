@@ -15,6 +15,7 @@ void WPObject__wpInitData(wpo_object *self)
 void WPObject__wpUnInitData(wpo_object *self)
 {
     free(WPObject_data(self)->title);
+    free(WPObject_data(self)->icon);
     wps_state_free(WPObject_data(self)->state);
     WPObject_parent_wpUnInitData(self);
 }
@@ -52,14 +53,37 @@ char *WPObject__wpModifyPopupMenu(wpo_object *self, const char *menu)
     return wps_concat(menu, "1\tOpen\n2\tProperties\n41\tCreate another\n40\tDelete...\n");
 }
 
+char *WPObject__wpQueryIcon(wpo_object *self)
+{
+    WPObjectData *d = WPObject_data(self);
+    return wps_strdup(d->icon ? d->icon : "");
+}
+
+bool WPObject__wpSetIcon(wpo_object *self, const char *path)
+{
+    WPObjectData *d = WPObject_data(self);
+    /* "": its kind's icon again; otherwise a full path (the GUI keeps a
+     * PNG copy in WPS's icons folder, so the source may go). */
+    if (path && *path && path[0] != '/') return false;
+    char *p = path && *path ? wps_strdup(path) : NULL;
+    if (path && *path && !p) return false;
+    free(d->icon);
+    d->icon = p;
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
 char *WPObject__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     WPObjectData *d = WPObject_data(self);
     char *title = WPObject_wpQueryTitle(self);
-    size_t n = strlen(title ? title : "") + 128;
+    size_t n = strlen(title ? title : "") + strlen(d->icon ? d->icon : "") + 192;
     char *line = malloc(n);
     snprintf(line, n, "page\tGeneral\nfield\ttitle\ttext\tTitle\t%s\twpSetTitle\n"
-                      "field\ttemplate\tcheckbox\tTemplate\t%d\twpSetTemplate\n", title ? title : "", d->is_template);
+                      "field\ttemplate\tcheckbox\tTemplate\t%d\twpSetTemplate\n"
+                      "page\tIcon\nfield\ticon\ticon\tIcon\t%s\twpSetIcon\n", title ? title : "", d->is_template,
+             d->icon ? d->icon : "");
     char *r = wps_concat(pages, line);
     free(line);
     free(title);
@@ -101,6 +125,8 @@ bool WPObject__wpSaveState(wpo_object *self)
     else wps_state_remove(self, "WPObject", "title");
     if (d->is_template) wps_state_put_int(self, "WPObject", "template", 1);
     else wps_state_remove(self, "WPObject", "template");
+    if (d->icon) wps_state_put_str(self, "WPObject", "icon", d->icon);
+    else wps_state_remove(self, "WPObject", "icon");
     return true;
 }
 
@@ -112,6 +138,9 @@ void WPObject__wpRestoreProperties(wpo_object *self)
     free(d->title);
     d->title = wps_state_get_str(self, "WPObject", "title", &t) ? t : NULL;
     d->is_template = wps_state_get_int(self, "WPObject", "template", &tpl) && tpl;
+    free(d->icon);
+    t = NULL;
+    d->icon = wps_state_get_str(self, "WPObject", "icon", &t) ? t : NULL;
 }
 
 char *WPObject__wpclsQueryTitle(wpo_object *self)

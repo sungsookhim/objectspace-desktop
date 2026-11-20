@@ -37,6 +37,7 @@ typedef struct {
     bool locked;             /* a lock file next to it (or its target) says it is open */
     bool is_template;        /* marked as one, or in the templates folder */
     char makes[64];          /* a built-in template: the class of what it makes */
+    char icon[PATH_MAX];     /* its own icon (a PNG), or its shadow's target's; "": its kind's */
 } wps_entry;
 
 typedef struct {

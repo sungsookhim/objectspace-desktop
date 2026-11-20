@@ -16,6 +16,7 @@
 #include "svc.h"
 #include "winlist.h"
 #include "findwin.h"
+#include "icons.h"
 
 #define GRIP_W 12.0
 #define SYS_W 40.0           /* OS/2's own buttons */
@@ -39,6 +40,7 @@ struct entry {
     bool shadow, link;
     bool folder_target;        /* a shadow or link of a folder */
     char target[PATH_MAX];     /* what a shadow or link stands for */
+    char icon[PATH_MAX];       /* its own icon (a PNG), or "" */
 };
 
 struct drawer {
@@ -149,6 +151,8 @@ static size_t parse(const cv *reply, struct entry *out, size_t max)
         e->link = ty && !strcmp(ty, "link");
         const char *mk = cv_text(it, "makes");
         if (mk) e->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
+        const char *ic = cv_text(it, "icon");
+        if (ic) snprintf(e->icon, sizeof e->icon, "%s", ic);
         const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
         if (e->shadow || e->link) {
             e->folder_target = tt && !strcmp(tt, "folder");
@@ -414,6 +418,7 @@ static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         if ((ssize_t)i == d->hot) ui_fill(cr, r, k->menu_hilite);
         ui_item it = { .loaded = true, .detailed = true, .kind = d->items[i].kind, .shadow = d->items[i].shadow,
                        .link = d->items[i].link };
+        it.image = icons_get(d->items[i].icon);
         ui_draw_item_icon(cr, &it, r.x + 3, r.y + 3, 24);
         ui_set_color(cr, (ssize_t)i == d->hot ? k->menu_hilite_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, r.x + 32, r.y + (DRAWER_ROW + ui_text_ascent()) / 2 - 1, d->items[i].title,
@@ -607,6 +612,7 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_item it = { .loaded = true, .detailed = true, .kind = lp.items[i].kind, .shadow = lp.items[i].shadow,
                        .link = lp.items[i].link };
         double d = down ? 1 : 0;
+        it.image = icons_get(lp.items[i].icon);
         ui_draw_item_icon(cr, &it, r.x + (r.w - 32) / 2 + d, r.y + 4 + d, 32);
         if (lp.focused && lp.kfocus == NSYS + i) focus_ring(cr, (ui_rect){ r.x + 3, r.y + 3, r.w - 6, r.h - 6 });
         ui_set_color(cr, k->text);
