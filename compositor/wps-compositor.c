@@ -71,6 +71,7 @@
 
 struct server server;
 bool comp_debug;   /* WPS_COMP_DEBUG */
+static double start_ms;   /* (the session log says when, from here) */
 
 static bool from_desktop(struct toplevel *t);
 static ui_rect client_rect(struct toplevel *t);
@@ -810,6 +811,15 @@ static void new_keyboard(struct wlr_input_device *dev)
     k->wlr_keyboard = wk;
     struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     struct xkb_keymap *km = xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);   /* XKB_DEFAULT_* */
+    if (!km) {
+        /* the session's layout cannot be made (a typo, an unknown variant):
+         * US, rather than a keyboard that types nothing at all */
+        fprintf(stderr, "wps-compositor: keyboard layout %s%s%s cannot be made; US instead\n",
+                getenv("XKB_DEFAULT_LAYOUT") ? getenv("XKB_DEFAULT_LAYOUT") : "(default)",
+                getenv("XKB_DEFAULT_VARIANT") ? " variant " : "", getenv("XKB_DEFAULT_VARIANT") ? getenv("XKB_DEFAULT_VARIANT") : "");
+        struct xkb_rule_names us = { .layout = "us" };
+        km = xkb_keymap_new_from_names(ctx, &us, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    }
     wlr_keyboard_set_keymap(wk, km);
     xkb_keymap_unref(km);
     xkb_context_unref(ctx);
@@ -828,6 +838,9 @@ static void on_new_input(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_input_device *dev = data;
+    static const char *const types[] = { "keyboard", "pointer", "touch", "tablet", "tablet pad", "switch" };
+    fprintf(stderr, "wps-compositor: %.3f input: %s (%s)\n", (now_ms() - start_ms) / 1000, dev->name ? dev->name : "?",
+            dev->type < sizeof types / sizeof *types ? types[dev->type] : "other");
     if (dev->type == WLR_INPUT_DEVICE_KEYBOARD) new_keyboard(dev);
     else if (dev->type == WLR_INPUT_DEVICE_POINTER) wlr_cursor_attach_input_device(server.cursor, dev);
     uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
@@ -880,7 +893,11 @@ static void on_output_frame(struct wl_listener *l, void *data)
     wlr_output_state_init(&st);
     if (wlr_scene_output_build_state(so, &st, NULL)) {
         if (shot_path && st.buffer) { write_shot(st.buffer, shot_path); shot_path = NULL; }
-        wlr_output_commit_state(o->wlr_output, &st);
+        if (!wlr_output_commit_state(o->wlr_output, &st)) {
+            static int failed;   /* (said a few times, not every frame) */
+            if (failed++ < 5) fprintf(stderr, "wps-compositor: %.3f %s: the screen could not be updated\n",
+                                      (now_ms() - start_ms) / 1000, o->wlr_output->name);
+        }
     }
     wlr_output_state_finish(&st);
     struct timespec now;
@@ -930,8 +947,10 @@ static void on_new_output(struct wl_listener *l, void *data)
         if (wlr_output_is_headless(wo)) wlr_output_state_set_custom_mode(&st, w, h, 60000);
         else if (sz || wo->width <= 0) wlr_output_state_set_custom_mode(&st, w, h, 0);
     }
-    wlr_output_commit_state(wo, &st);
+    bool ok = wlr_output_commit_state(wo, &st);
     wlr_output_state_finish(&st);
+    fprintf(stderr, "wps-compositor: %.3f screen %s: %dx%d@%.1f Hz%s\n", (now_ms() - start_ms) / 1000, wo->name,
+            wo->width, wo->height, wo->refresh / 1000.0, ok ? "" : " (could not be set up)");
     struct output *o = calloc(1, sizeof *o);
     o->server = &server;
     o->wlr_output = wo;
@@ -1583,7 +1602,6 @@ static void on_request_activate(struct wl_listener *l, void *data)
 struct step { double at; char line[512]; };
 static struct step *steps;
 static size_t nsteps, next_step;
-static double start_ms;
 static struct wl_event_source *script_timer;
 
 static void log_windows(void)
@@ -1723,6 +1741,7 @@ int main(int argc, char **argv)
     ui_scheme_init();
     ui_text_init();
     struct server *s = &server;
+    start_ms = now_ms();
     s->display = wl_display_create();
     s->loop = wl_display_get_event_loop(s->display);
     const char *headless = getenv("WPS_COMP_HEADLESS");
@@ -1741,6 +1760,8 @@ int main(int argc, char **argv)
         }
     }
     if (!s->backend || !s->renderer) { fprintf(stderr, "wps-compositor: no backend or renderer\n"); return 1; }
+    fprintf(stderr, "wps-compositor: renderer %s%s\n", wlr_renderer_is_pixman(s->renderer) ? "pixman (software)" : "GPU",
+            s->session ? ", on a console (libseat)" : "");
     wlr_renderer_init_wl_display(s->renderer, s->display);
     s->allocator = wlr_allocator_autocreate(s->backend, s->renderer);
     if (!s->allocator) { fprintf(stderr, "wps-compositor: no allocator\n"); return 1; }
@@ -1777,7 +1798,8 @@ int main(int argc, char **argv)
 
     s->cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(s->cursor, s->output_layout);
-    s->cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+    const char *cs = getenv("XCURSOR_SIZE");
+    s->cursor_mgr = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), cs && atoi(cs) > 0 ? (uint32_t)atoi(cs) : 24);
 #define ON(sig, field, fn) do { s->field.notify = fn; wl_signal_add(&(sig), &s->field); } while (0)
     ON(s->cursor->events.motion, cursor_motion, on_cursor_motion);
     ON(s->cursor->events.motion_absolute, cursor_motion_absolute, on_cursor_motion_absolute);
@@ -1827,8 +1849,8 @@ int main(int argc, char **argv)
         char *argv_sh[] = { "/bin/sh", "-c", (char *)startup, NULL };
         comp_spawn(argv_sh, NULL, NULL);
     }
+    set_cursor("default");   /* a pointer to be seen from the start (nothing sets one before the first motion) */
     if (desktop) desktop_start(desktop);
-    start_ms = now_ms();
     const char *script = getenv("WPS_COMP_SCRIPT");
     if (script) load_script(script);
     wl_display_run(s->display);
