@@ -911,6 +911,16 @@ static void on_output_frame(struct wl_listener *l, void *data)
     struct output *o = wl_container_of(l, o, frame);
     struct wlr_scene_output *so = wlr_scene_get_scene_output(server.scene, o->wlr_output);
     double t0 = now_ms();
+    if (!shot_path && !wlr_scene_output_needs_frame(so)) {
+        /* nothing changed: no new frame (the scene asks for one when
+         * something does). Committing anyway made the loop spin, frame
+         * after frame, where a screen flips at once (a VM: ~49,000 a
+         * second), so that input was hardly handled. */
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        wlr_scene_output_send_frame_done(so, &now);
+        return;
+    }
     struct wlr_output_state st;
     wlr_output_state_init(&st);
     if (wlr_scene_output_build_state(so, &st, NULL)) {
