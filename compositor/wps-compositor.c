@@ -24,13 +24,16 @@
  * WPS_COMP_SCRIPT=file plays timed input and takes screenshots:
  *   <seconds> move X Y | click X Y [right] | down X Y | up X Y | dclick X Y
  *   <seconds> key [ctrl+][alt+][shift+]NAME   (an xkb key name: Tab, F4, a)
- *   <seconds> shot FILE.png | windows | quit
+ *   <seconds> shot FILE.png | windows | hang SECONDS | quit
  */
 #define _GNU_SOURCE
 #include <assert.h>
 #include <cairo.h>
 #include <drm_fourcc.h>
 #include <getopt.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <sys/prctl.h>
 #include <math.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -1718,6 +1721,8 @@ static void script_step(const char *line)
         wl_list_for_each(o, &server.outputs, link) wlr_output_schedule_frame(o->wlr_output);
     } else if (!strcmp(cmd, "windows")) {
         log_windows();
+    } else if (!strcmp(cmd, "hang")) {   /* the loop stuck on purpose (tests the watchdog) */
+        sleep((unsigned)atoi(arg));
     } else if (!strcmp(cmd, "quit")) {
         wl_display_terminate(server.display);
     }
@@ -1767,6 +1772,32 @@ static int on_heartbeat(void *data)
             server.session && !server.session->active ? ", session NOT active" : "");
     wl_event_source_timer_update(heartbeat, 5000);
     return 0;
+}
+
+/* The watchdog (WPS_COMP_DEBUG): a thread that sees whether the loop
+ * still turns (a tick each second); stuck for 8 s, it has gdb write every
+ * thread's stack to the log, once: where it is stuck. */
+static atomic_ulong loop_ticks;
+static struct wl_event_source *tick_src;
+static int on_tick(void *data) { (void)data; atomic_fetch_add(&loop_ticks, 1); wl_event_source_timer_update(tick_src, 1000); return 0; }
+
+static void *watchdog(void *arg)
+{
+    (void)arg;
+    unsigned long last = (unsigned long)-1;
+    int still = 0;
+    for (;;) {
+        sleep(1);
+        unsigned long now = atomic_load(&loop_ticks);
+        if (now != last) { last = now; still = 0; continue; }
+        if (++still != 8) continue;
+        fprintf(stderr, "wps-compositor: %.1f the loop has not turned for 8 s: its threads' stacks follow (gdb)\n", comp_uptime());
+        char cmd[256];
+        snprintf(cmd, sizeof cmd, "gdb -q -batch -p %d -ex 'thread apply all bt' 1>&2 2>/dev/null < /dev/null", (int)getpid());
+        if (system(cmd) != 0) fprintf(stderr, "wps-compositor: gdb could not show them (installed? sudo dnf install gdb)\n");
+        fprintf(stderr, "wps-compositor: (end of the stacks)\n");
+    }
+    return NULL;
 }
 
 static struct wl_listener session_active;
@@ -1910,6 +1941,13 @@ int main(int argc, char **argv)
     if (!getenv("WPS_COMP_HEADLESS")) {
         heartbeat = wl_event_loop_add_timer(s->loop, on_heartbeat, NULL);
         wl_event_source_timer_update(heartbeat, 5000);
+    }
+    if (comp_debug) {
+        prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);   /* (gdb, from the watchdog, may look) */
+        tick_src = wl_event_loop_add_timer(s->loop, on_tick, NULL);
+        wl_event_source_timer_update(tick_src, 1000);
+        pthread_t th;
+        if (pthread_create(&th, NULL, watchdog, NULL) == 0) pthread_detach(th);
     }
     const char *script = getenv("WPS_COMP_SCRIPT");
     if (script) load_script(script);

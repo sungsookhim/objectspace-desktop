@@ -266,7 +266,7 @@ $(TV)/ssd-client: tests/comp/ssd-client.c $(G0)/xdg-shell-client-protocol.h $(G0
 	$(CC) $(G0FLAGS) -I$(G0) -o $@ tests/comp/ssd-client.c $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-protocol.c $$(pkg-config --cflags --libs wayland-client)
 $(B)/wps-compositor: $(COMPSRC) gui/ui.h compositor/comp.h
 	@mkdir -p $(B)
-	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE $(COMPPAM) -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lm
+	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE $(COMPPAM) -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lpthread -lm
 
 $(TV)/test_ui_entry: tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c gui/ui.h
 	@mkdir -p $(TV)
