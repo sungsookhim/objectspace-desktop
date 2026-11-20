@@ -486,6 +486,8 @@ static void end_rename(ui_container *c, bool apply)
     free(name);
 }
 
+static ui_rect rename_rect(ui_container *c);
+
 void ui_container_begin_rename(ui_container *c, size_t i)
 {
     if (i >= c->count || !c->src->rename) return;
@@ -499,6 +501,7 @@ void ui_container_begin_rename(ui_container *c, size_t i)
     c->rename_i = i;
     ensure_visible(c, i);
     damage_rename(c);
+    ui_text_input_focus(c->s, c->rename, rename_rect(c));   /* an input method can type the name */
 }
 
 bool ui_container_renaming(ui_container *c) { return c->rename != NULL; }

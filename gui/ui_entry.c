@@ -17,7 +17,11 @@ struct ui_entry {
     size_t cursor, anchor;    /* byte offsets; the selection is between them */
     double scroll;            /* horizontal, so the caret stays in view */
     bool dragging;
+    char *preedit;            /* being composed by an input method: drawn at the cursor */
+    int pre_cursor;           /* bytes into it */
 };
+
+void (*ui_entry_free_hook)(ui_entry *e);
 
 static char *clipboard;      /* within this program until the data device (DnD step) */
 
@@ -38,11 +42,24 @@ ui_entry *ui_entry_new(const char *text)
 void ui_entry_free(ui_entry *e)
 {
     if (!e) return;
+    if (ui_entry_free_hook) ui_entry_free_hook(e);
+    free(e->preedit);
     free(e->s);
     free(e);
 }
 
 const char *ui_entry_text(ui_entry *e) { return e->s; }
+size_t ui_entry_cursor(ui_entry *e) { return e->cursor; }
+
+void ui_entry_set_preedit(ui_entry *e, const char *text, int cursor)
+{
+    free(e->preedit);
+    e->preedit = text && *text ? strdup(text) : NULL;
+    size_t n = e->preedit ? strlen(e->preedit) : 0;
+    e->pre_cursor = cursor < 0 ? (int)n : cursor > (int)n ? (int)n : cursor;
+}
+
+const char *ui_entry_preedit(ui_entry *e) { return e->preedit; }
 
 void ui_entry_set_text(ui_entry *e, const char *t)
 {
@@ -230,9 +247,12 @@ ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect
     return UI_ENTRY_NONE;
 }
 
+static void draw_preedit(ui_entry *e, cairo_t *cr, ui_rect r, bool focused);
+
 void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused)
 {
     const ui_scheme *k = &ui_scheme_now;
+    if (e->preedit) { draw_preedit(e, cr, r, focused); return; }
     ui_fill(cr, r, k->client_bg);
     ui_bevel(cr, r, false);
     double inner = r.w - 2 * PAD;
@@ -266,4 +286,33 @@ void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused)
         ui_fill(cr, (ui_rect){ x0 + cx, r.y + 3, 1, r.h - 6 }, k->cursor);
     }
     cairo_restore(cr);
+}
+
+/* The text with what an input method is composing at the cursor,
+ * underlined, the caret where the input method puts it. */
+static void draw_preedit(ui_entry *e, cairo_t *cr, ui_rect r, bool focused)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    size_t pl = strlen(e->preedit);
+    char *t = malloc(e->len + pl + 1);
+    memcpy(t, e->s, e->cursor);
+    memcpy(t + e->cursor, e->preedit, pl);
+    memcpy(t + e->cursor + pl, e->s + e->cursor, e->len - e->cursor + 1);
+    ui_fill(cr, r, k->client_bg);
+    ui_bevel(cr, r, false);
+    double inner = r.w - 2 * PAD;
+    double a = ui_text_caret_x(UI_FONT_REGULAR, t, e->cursor), b = ui_text_caret_x(UI_FONT_REGULAR, t, e->cursor + pl);
+    double cx = ui_text_caret_x(UI_FONT_REGULAR, t, e->cursor + (size_t)e->pre_cursor);
+    if (b - e->scroll > inner) e->scroll = b - inner;
+    if (a - e->scroll < 0) e->scroll = a;
+    cairo_save(cr);
+    cairo_rectangle(cr, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+    cairo_clip(cr);
+    double x0 = r.x + PAD - e->scroll, base = r.y + (r.h + ui_text_ascent()) / 2 - 1;
+    ui_set_color(cr, k->text);
+    ui_text_draw(cr, UI_FONT_REGULAR, x0, base, t, 0);
+    ui_fill(cr, (ui_rect){ x0 + a, base + 2, b - a, 1 }, k->text);
+    if (focused) ui_fill(cr, (ui_rect){ x0 + cx, r.y + 3, 1, r.h - 6 }, k->cursor);
+    cairo_restore(cr);
+    free(t);
 }

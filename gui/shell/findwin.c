@@ -417,6 +417,9 @@ static void set_focus(struct fw *w, int f)
 {
     w->focus = f;
     ui_container_set_focused(w->cont, f == F_RESULTS);
+    /* an input method for the two text fields */
+    struct rects r = rects(w);
+    ui_text_input_focus(w->s, f == F_NAME ? w->name : f == F_FOLDER ? w->folder : NULL, f == F_NAME ? r.name : r.folder);
     damage_top(w);
 }
 

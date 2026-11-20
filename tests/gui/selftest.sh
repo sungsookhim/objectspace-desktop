@@ -30,7 +30,7 @@ export WPS_CONFIG_DIR="$W/config" WPS_STATE_DIR="$W/state" WPS_RUNTIME_DIR="$RT"
 XDG_CONFIG_HOME="$W/xdg/config" XDG_DATA_HOME="$W/xdg/data" XDG_CONFIG_DIRS="$W/xdg/sys" build/wpsd 2> "$W/wpsd.log" &
 P=$!
 for i in $(seq 50); do build/wpsctl ping >/dev/null 2>&1 && break; sleep 0.1; done
-WPS_SELFTEST_TRASH="$W/xdg/data/Trash" WPS_SHELL_SELFTEST=$1 XDG_CACHE_HOME="$W/cache" timeout 60 build/wps-shell-asan ${SHELL_ARGS:-} "$W/d" 2>&1 | grep -E "selftest|ERROR|Sanitizer|runtime error" || true
+WPS_SELFTEST_TRASH="$W/xdg/data/Trash" WPS_SHELL_SELFTEST=$1 XDG_CACHE_HOME="$W/cache" timeout 60 build/wps-shell-asan ${SHELL_ARGS:-} "$W/d" 2>&1 | grep -E "selftest|ERROR|Sanitizer|runtime error${SELFTEST_GREP:+|$SELFTEST_GREP}" || true
 build/wpsctl shutdown >/dev/null 2>&1 || true
 wait $P || true
 grep -E "ERROR|runtime error" "$W/wpsd.log" || true

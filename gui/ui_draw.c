@@ -168,6 +168,19 @@ static struct face {
 } faces[2];
 static double ascent;
 
+/* Fallback fonts: for characters the interface font does not have (CJK,
+ * and others), the font fontconfig picks for each one, loaded once. */
+#define MAX_FALLBACK 24
+static struct fallback {
+    struct face f;
+    char file[512];
+    int index;
+    bool bold;
+} fb[MAX_FALLBACK];
+static int nfb;
+#define CP_SLOTS 4096
+static struct { uint32_t key; short face; } cp_cache[CP_SLOTS];   /* key: cp << 1 | bold, +1 (0: empty) */
+
 static FT_Face load_face(const char *pattern, double px)
 {
     FcPattern *p = FcNameParse((const FcChar8 *)pattern);
@@ -196,6 +209,7 @@ struct run {
     int font;
     unsigned n;
     unsigned *glyphs;
+    struct face **face; /* the font of each glyph (the interface font's, or a fallback) */
     unsigned *clusters; /* byte offset in the string where each glyph starts */
     double *x;          /* pen position of each glyph, then the total width */
     uint64_t used;
@@ -208,6 +222,85 @@ static uint64_t hash(int font, const char *s)
     uint64_t h = 1469598103934665603ull ^ (uint64_t)font;
     for (; *s; s++) h = (h ^ (unsigned char)*s) * 1099511628211ull;
     return h;
+}
+
+static size_t utf8_len(const char *p)
+{
+    unsigned char c = (unsigned char)*p;
+    size_t n = c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
+    for (size_t i = 1; i < n; i++) if (!p[i]) return i;
+    return n;
+}
+
+static uint32_t utf8_cp(const char *p)
+{
+    const unsigned char *u = (const unsigned char *)p;
+    if (u[0] < 0x80) return u[0];
+    if (u[0] < 0xe0) return (uint32_t)(u[0] & 0x1f) << 6 | (u[1] & 0x3f);
+    if (u[0] < 0xf0) return (uint32_t)(u[0] & 0x0f) << 12 | (uint32_t)(u[1] & 0x3f) << 6 | (u[2] & 0x3f);
+    return (uint32_t)(u[0] & 0x07) << 18 | (uint32_t)(u[1] & 0x3f) << 12 | (uint32_t)(u[2] & 0x3f) << 6 | (u[3] & 0x3f);
+}
+
+static char family[256];
+
+static bool load_pair(struct face *fc, const char *file, int index, double px)
+{
+    FT_Face f, sh;
+    if (FT_New_Face(ft, file, index, &f)) return false;
+    if (FT_New_Face(ft, file, index, &sh)) { FT_Done_Face(f); return false; }
+    FT_Set_Char_Size(f, 0, (FT_F26Dot6)(px * 64), 72, 72);
+    FT_Set_Char_Size(sh, 0, (FT_F26Dot6)(px * 64), 72, 72);
+    fc->ft = f;
+    fc->shaping = sh;
+    fc->hb = hb_ft_font_create_referenced(sh);
+    hb_ft_font_set_load_flags(fc->hb, FT_LOAD_NO_HINTING);
+    fc->cf = cairo_ft_font_face_create_for_ft_face(f, FT_LOAD_NO_HINTING);
+    return true;
+}
+
+/* The font for the character at s[at]: the interface font when it has
+ * it (or for marks and spaces, which go with what is around them), else a
+ * fallback that has it, else the interface font (a box). */
+static struct face *face_for(ui_font font, const char *s, size_t at, size_t len)
+{
+    (void)len;
+    struct face *main = &faces[font];
+    uint32_t cp = utf8_cp(s + at);
+    if (cp < 0x300 || FT_Get_Char_Index(main->shaping, cp)) return main;
+    uint32_t key = (cp << 1 | (font == UI_FONT_BOLD)) + 1;
+    size_t slot = (key * 2654435761u) % CP_SLOTS;
+    if (cp_cache[slot].key == key) return cp_cache[slot].face < 0 ? main : &fb[cp_cache[slot].face].f;
+    short found = -1;
+    FcPattern *p = FcNameParse((const FcChar8 *)family);
+    if (font == UI_FONT_BOLD) FcPatternAddInteger(p, FC_WEIGHT, FC_WEIGHT_BOLD);
+    FcCharSet *cs = FcCharSetCreate();
+    FcCharSetAddChar(cs, cp);
+    FcPatternAddCharSet(p, FC_CHARSET, cs);
+    FcConfigSubstitute(NULL, p, FcMatchPattern);
+    FcDefaultSubstitute(p);
+    FcResult res;
+    FcPattern *m = FcFontMatch(NULL, p, &res);
+    FcChar8 *file = NULL;
+    FcCharSet *has = NULL;
+    int index = 0;
+    if (m && FcPatternGetString(m, FC_FILE, 0, &file) == FcResultMatch &&
+        FcPatternGetCharSet(m, FC_CHARSET, 0, &has) == FcResultMatch && FcCharSetHasChar(has, cp)) {
+        FcPatternGetInteger(m, FC_INDEX, 0, &index);
+        for (int i = 0; i < nfb && found < 0; i++)
+            if (!strcmp(fb[i].file, (const char *)file) && fb[i].index == index && fb[i].bold == (font == UI_FONT_BOLD)) found = (short)i;
+        if (found < 0 && nfb < MAX_FALLBACK && load_pair(&fb[nfb].f, (const char *)file, index, ui_scheme_now.font_px)) {
+            snprintf(fb[nfb].file, sizeof fb[nfb].file, "%s", (const char *)file);
+            fb[nfb].index = index;
+            fb[nfb].bold = font == UI_FONT_BOLD;
+            found = (short)nfb++;
+        }
+    }
+    if (m) FcPatternDestroy(m);
+    FcCharSetDestroy(cs);
+    FcPatternDestroy(p);
+    cp_cache[slot].key = key;
+    cp_cache[slot].face = found;
+    return found < 0 ? main : &fb[found].f;
 }
 
 static struct run *shape(ui_font font, const char *s)
@@ -226,40 +319,59 @@ static struct run *shape(ui_font font, const char *s)
     struct run *r = &cache[victim];
     free(r->s);
     free(r->glyphs);
+    free(r->face);
     free(r->clusters);
     free(r->x);
-    hb_buffer_t *b = hb_buffer_create();
-    hb_buffer_add_utf8(b, s, -1, 0, -1);
-    hb_buffer_guess_segment_properties(b);
-    hb_shape(faces[font].hb, b, NULL, 0);
-    unsigned n;
-    hb_glyph_info_t *gi = hb_buffer_get_glyph_infos(b, &n);
-    hb_glyph_position_t *gp = hb_buffer_get_glyph_positions(b, &n);
     r->s = strdup(s);
     r->font = (int)font;
-    r->n = n;
-    r->glyphs = malloc((n ? n : 1) * sizeof *r->glyphs);
-    r->clusters = malloc((n ? n : 1) * sizeof *r->clusters);
-    r->x = malloc((n + 1) * sizeof *r->x);
+    r->n = 0;
+    unsigned cap = 16;
+    r->glyphs = malloc(cap * sizeof *r->glyphs);
+    r->face = malloc(cap * sizeof *r->face);
+    r->clusters = malloc(cap * sizeof *r->clusters);
+    r->x = malloc((cap + 1) * sizeof *r->x);
     double pen = 0;
-    for (unsigned i = 0; i < n; i++) {
-        r->glyphs[i] = gi[i].codepoint;
-        r->clusters[i] = gi[i].cluster;
-        r->x[i] = pen + gp[i].x_offset / 64.0;
-        pen += gp[i].x_advance / 64.0;
+    /* Runs of characters with the same font, each shaped with it. */
+    size_t len = strlen(s), at = 0;
+    while (at < len) {
+        struct face *fc = face_for(font, s, at, len);
+        size_t end = at + utf8_len(s + at);
+        while (end < len && face_for(font, s, end, len) == fc) end += utf8_len(s + end);
+        hb_buffer_t *b = hb_buffer_create();
+        hb_buffer_add_utf8(b, s, (int)len, (unsigned)at, (int)(end - at));
+        hb_buffer_guess_segment_properties(b);
+        hb_shape(fc->hb, b, NULL, 0);
+        unsigned n;
+        hb_glyph_info_t *gi = hb_buffer_get_glyph_infos(b, &n);
+        hb_glyph_position_t *gp = hb_buffer_get_glyph_positions(b, &n);
+        if (r->n + n + 1 > cap) {
+            while (r->n + n + 1 > cap) cap *= 2;
+            r->glyphs = realloc(r->glyphs, cap * sizeof *r->glyphs);
+            r->face = realloc(r->face, cap * sizeof *r->face);
+            r->clusters = realloc(r->clusters, cap * sizeof *r->clusters);
+            r->x = realloc(r->x, (cap + 1) * sizeof *r->x);
+        }
+        for (unsigned i = 0; i < n; i++) {
+            unsigned k = r->n++;
+            r->glyphs[k] = gi[i].codepoint;
+            r->face[k] = fc;
+            r->clusters[k] = gi[i].cluster;
+            r->x[k] = pen + gp[i].x_offset / 64.0;
+            pen += gp[i].x_advance / 64.0;
+        }
+        hb_buffer_destroy(b);
+        at = end;
     }
-    r->x[n] = pen;
+    r->x[r->n] = pen;
     r->used = ++tick;
-    hb_buffer_destroy(b);
     return r;
 }
-
-static char family[256] = "sans-serif";
 
 static void load_faces(void);
 
 void ui_text_init(void)
 {
+    snprintf(family, sizeof family, "sans-serif");
     FT_Init_FreeType(&ft);
     load_faces();
 }
@@ -280,9 +392,17 @@ void ui_text_set_font(const char *fam, double px)
         memset(&faces[i], 0, sizeof faces[i]);
     }
     for (size_t i = 0; i < CACHE_SLOTS; i++) {
-        free(cache[i].s); free(cache[i].glyphs); free(cache[i].clusters); free(cache[i].x);
+        free(cache[i].s); free(cache[i].glyphs); free(cache[i].face); free(cache[i].clusters); free(cache[i].x);
         memset(&cache[i], 0, sizeof cache[i]);
     }
+    for (int i = 0; i < nfb; i++) {
+        hb_font_destroy(fb[i].f.hb);
+        cairo_font_face_destroy(fb[i].f.cf);
+        FT_Done_Face(fb[i].f.shaping);
+    }
+    memset(fb, 0, sizeof fb);
+    nfb = 0;
+    memset(cp_cache, 0, sizeof cp_cache);
     load_faces();
 }
 
@@ -337,14 +457,22 @@ double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const cha
         g[i].x = x + r->x[i];
         g[i].y = baseline;
     }
-    cairo_set_font_face(cr, faces[f].cf);
     cairo_set_font_size(cr, ui_scheme_now.font_px);
-    cairo_show_glyphs(cr, g, (int)n);
+    for (unsigned i = 0; i < n;) {   /* a group of glyphs per font */
+        unsigned j = i + 1;
+        while (j < n && r->face[j] == r->face[i]) j++;
+        cairo_set_font_face(cr, r->face[i]->cf);
+        cairo_set_font_size(cr, ui_scheme_now.font_px);
+        cairo_show_glyphs(cr, g + i, (int)(j - i));
+        i = j;
+    }
     double w = r->x[n];
     if (g != stack) free(g);
     if (cut) {
         struct run *e = shape(f, "\xe2\x80\xa6");
         cairo_glyph_t eg = { e->glyphs[0], x + w, baseline };
+        cairo_set_font_face(cr, e->face[0]->cf);
+        cairo_set_font_size(cr, ui_scheme_now.font_px);
         cairo_show_glyphs(cr, &eg, 1);
         w += e->x[1];
     }

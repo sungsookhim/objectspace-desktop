@@ -306,6 +306,21 @@ void ui_entry_free(ui_entry *e);
 const char *ui_entry_text(ui_entry *e);
 void ui_entry_set_text(ui_entry *e, const char *text);
 void ui_entry_select_all(ui_entry *e);
+size_t ui_entry_cursor(ui_entry *e);         /* a byte offset */
+/* Text an input method is composing (NULL: none), drawn at the cursor;
+ * cursor: bytes into it. */
+void ui_entry_set_preedit(ui_entry *e, const char *text, int cursor);
+const char *ui_entry_preedit(ui_entry *e);
+extern void (*ui_entry_free_hook)(ui_entry *e);   /* the toolkit's, for input methods */
+/* Input methods (CJK and others, through the compositor): the entry being
+ * typed in on surface s, at r (surface coordinates: the input method's
+ * candidate window goes by it), or NULL when none is. An entry's owner
+ * calls it when the entry gets or loses the keyboard, and again when it
+ * moves; committed text then arrives as key events (sym 0, utf8 the
+ * character). */
+void ui_text_input_focus(ui_surface *s, ui_entry *e, ui_rect r);
+/* Self-tests: as if the input method had sent these (then done). */
+void ui_text_input_inject(ui_app *a, const char *commit, const char *preedit);
 void ui_entry_select_stem(ui_entry *e);     /* up to the last dot: a file's name without extension */
 void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused);
 ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k);

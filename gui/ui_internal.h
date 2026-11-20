@@ -11,6 +11,7 @@
 #include "ui_damage.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "text-input-unstable-v3-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #define UI_BUFFERS 3
@@ -71,6 +72,17 @@ struct ui_app {
     struct wl_shm *shm;
     struct wl_subcompositor *subcomp;
     struct xdg_activation_v1 *activation;
+    /* Input methods (ui_textinput.c): text-input-v3. */
+    struct zwp_text_input_manager_v3 *ti_manager;
+    struct zwp_text_input_v3 *ti;
+    ui_surface *ti_entered;          /* the surface the input method is on */
+    ui_surface *ti_surface;          /* the entry being typed in, and where */
+    struct ui_entry *ti_entry;
+    ui_rect ti_rect;
+    bool ti_enabled;
+    char *ti_preedit, *ti_commit;    /* pending until done */
+    int32_t ti_pre_cursor;
+    uint32_t ti_del_before, ti_del_after;
     struct wl_data_device_manager *ddm;
     int ddm_version;
     struct wl_data_device *ddev;
@@ -127,5 +139,11 @@ void ui_watch_dispatch(const struct pollfd *pf, size_t n);
  * pixels), and draw the same window of content afresh onto `cr`. */
 bool ui_layer_paste_shown(ui_layer *l, unsigned char *img, int stride);
 void ui_layer_draw_fresh(ui_layer *l, cairo_t *cr);
+
+/* ui_textinput.c */
+void ui_textinput_bind(ui_app *a, struct wl_registry *r, uint32_t name, uint32_t ver);
+void ui_textinput_seat(ui_app *a);
+void ui_textinput_surface_gone(ui_surface *s);
+void ui_textinput_key(ui_app *a, ui_surface *s, const char *utf8);   /* deliver text as keys */
 
 #endif

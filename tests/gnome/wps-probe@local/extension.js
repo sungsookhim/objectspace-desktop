@@ -165,6 +165,23 @@ export default class Probe {
             at(17, () => { windows('drawer'); if (out) shoot(out); });
             return;
         }
+        if (GLib.getenv('PROBE_MODE') === 'imtype') {
+            // Ctrl+F in the folder window (Find), then "note" typed: with
+            // an input method running, the text comes through text-input.
+            const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+            const kb = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            this._dev = kb;
+            const t = () => GLib.get_monotonic_time();
+            const key = (sym, down) => kb.notify_keyval(t(), sym, down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
+            at(9, () => {
+                const w = global.display.list_all_windows().find(x => x.get_wm_class() === 'org.wps.shell');
+                w?.activate(global.display.get_current_time_roundtrip());
+            });
+            at(10, () => { key(Clutter.KEY_Control_L, true); key(Clutter.KEY_f, true); key(Clutter.KEY_f, false); key(Clutter.KEY_Control_L, false); });
+            [...'note'].forEach((ch, i) => at(12 + i * 0.3, () => { key(Clutter[`KEY_${ch}`], true); key(Clutter[`KEY_${ch}`], false); }));
+            at(14, () => { const f = global.display.focus_window; console.log(`probe: focused ${f?.get_title()}`); if (out) shoot(out); });
+            return;
+        }
         if (GLib.getenv('PROBE_MODE') === 'shutdown') {
             // The LaunchPad's Shut down: its dialog, then Log off by keys
             // (Right twice, Enter). WPS_DEBUG_COMMANDS (run.sh) makes the

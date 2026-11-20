@@ -491,6 +491,7 @@ void ui_surface_destroy(ui_surface *s)
     ui_app *a = s->app;
     if (a->ptr_focus == s) a->ptr_focus = NULL;
     if (a->key_focus == s) a->key_focus = NULL;
+    ui_textinput_surface_gone(s);
     for (ui_surface **pp = &a->surfaces; *pp; pp = &(*pp)->next)
         if (*pp == s) { *pp = s->next; break; }
     ui_menu_forget_surface(s);   /* its menus go first: popups are destroyed topmost first */
@@ -791,6 +792,8 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     } else if (!strcmp(iface, wl_seat_interface.name) && !a->seat) {
         a->seat = wl_registry_bind(r, name, &wl_seat_interface, ver < 8 ? ver : 8);
         wl_seat_add_listener(a->seat, &seat_listener, a);
+    } else if (!strcmp(iface, zwp_text_input_manager_v3_interface.name)) {
+        ui_textinput_bind(a, r, name, ver);
     }
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name) { (void)d; (void)r; (void)name; }
@@ -819,6 +822,7 @@ ui_app *ui_app_new(void)
         return NULL;
     }
     ui_dnd_init(a);
+    ui_textinput_seat(a);
     return a;
 }
 

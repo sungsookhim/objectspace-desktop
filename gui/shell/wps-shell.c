@@ -3736,19 +3736,41 @@ static void win_frame(ui_surface *s, double now)
             findwin_type(typed[0]);
             step++;
             t0 = now;
+        } else if (step == 11 && t > 400) {
+            if (getenv("WPS_SHELL_SHOT")) {
+                char shot[PATH_MAX];
+                snprintf(shot, sizeof shot, "%s-preedit.png", getenv("WPS_SHELL_SHOT"));
+                findwin_snapshot(shot);
+            }
+            ui_text_input_inject(app, "日本", NULL);
+            step = 10;
+            t0 = now;
+        } else if (step == 10 && (t > 5000 || (!findwin_searching() && t > 300))) {
+            fprintf(stderr, "selftest: find by input method: %zu: %s\n", findwin_count(), findwin_result(0) ? strrchr(findwin_result(0), '/') + 1 : "");
+            ui_app_quit(app);
+            return;
         } else if (step >= 1 && step <= 3 && (t > 5000 || (!findwin_searching() && t > 300))) {
             char rows[1200] = "";
             size_t pl = strlen(f->path);
             for (size_t i = 0; findwin_result(i); i++)
                 snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i ? ", " : "", findwin_result(i) + pl);
             fprintf(stderr, "selftest: find '%s'%s: %zu: %s\n", typed[step - 1], step == 3 ? " (folders)" : "", findwin_count(), rows);
-            if (step == 1 && getenv("WPS_SHELL_SHOT")) findwin_snapshot(getenv("WPS_SHELL_SHOT"));
+            if (step == 2 && getenv("WPS_SHELL_SHOT")) findwin_snapshot(getenv("WPS_SHELL_SHOT"));
             if (step == 1) findwin_type(typed[1]);
+            else if (step == 3) {
+                /* an input method: 日本 composed (preedit), then committed */
+                findwin_kind(0);
+                findwin_type("");
+                ui_text_input_inject(app, NULL, "にほん");
+                step = 11;   /* drawn, then committed */
+                t0 = now;
+                return;
+            }
             else if (step == 2) {
                 /* Type: Folders (the type field, as Space there does), then the name */
                 findwin_kind(1);
                 findwin_type(typed[2]);
-            } else { ui_app_quit(app); }
+            }
             step++;
             t0 = now;
         }

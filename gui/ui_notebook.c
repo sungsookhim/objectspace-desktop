@@ -347,6 +347,9 @@ static void set_focus(ui_notebook *nb, int i)
     nb->focus = i;
     struct field *f = focused_field(nb);
     if (f && f->entry) ui_entry_select_all(f->entry);
+    /* an input method for text fields (not numbers) */
+    bool text = f && f->entry && f->kind == UI_FIELD_TEXT;
+    ui_text_input_focus(nb->win, text ? f->entry : NULL, text ? control_rect(nb, (size_t)i) : (ui_rect){ 0, 0, 0, 0 });
     damage(nb);
 }
 
@@ -356,6 +359,7 @@ static void show_page(ui_notebook *nb, size_t p)
     commit_entry(nb, focused_field(nb));
     nb->page = p;
     nb->focus = -1;
+    ui_text_input_focus(nb->win, NULL, (ui_rect){ 0, 0, 0, 0 });
     damage(nb);
 }
 

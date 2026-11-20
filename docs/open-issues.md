@@ -88,3 +88,9 @@ G2's planned items are all built. What remains are the issues above.
 - Results cannot be dragged out yet, nor saved as a folder of shadows (OS/2's Find made its results a folder).
 - Each search walks the file system; nothing is indexed. A home folder of about 13,000 entries (hidden ones skipped) takes about 50 ms; very large trees stop at 2,000 results.
 
+## Input methods and text (G4)
+
+- Not tried with a real CJK input engine: the headless tests run GNOME's IBus with its plain engine (keys pass through text-input as typed), and inject composed and committed text into the toolkit's handler (`ui_text_input_inject`). Worth a check in a real session with e.g. ibus-anthy or ibus-hangul.
+- Text is laid out left to right: right-to-left scripts are shaped within a run, but there is no bidirectional reordering of mixed text, and the caret moves by bytes in visual order.
+- The input method's text being composed is dropped (not committed) when focus moves to another field.
+

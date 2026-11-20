@@ -194,6 +194,16 @@ $(G0)/xdg-activation-v1-protocol.c: $(ACTXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
+TIXML   := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/text-input/text-input-unstable-v3.xml
+
+$(G0)/text-input-unstable-v3-client-protocol.h: $(TIXML)
+	@mkdir -p $(G0)
+	wayland-scanner client-header $< $@
+
+$(G0)/text-input-unstable-v3-protocol.c: $(TIXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+
 $(G0)/viewporter-client-protocol.h: $(VPXML)
 	@mkdir -p $(G0)
 	wayland-scanner client-header $< $@
@@ -214,10 +224,10 @@ g0: $(G0)/folderview $(G0)/soundlat
 
 # The GUI: libwpsui (gui/ui_*.c) and wps-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
-UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c
-SHELLSRC := gui/shell/wps-shell.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/findwin.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c
+UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c
+SHELLSRC := gui/shell/wps-shell.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/findwin.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon
-UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h
+UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
 UIFLAGS = -Igui -Igui/shell -Iservice -Iclasses -I$(G0) $(shell pkg-config --cflags $(UIPKG))
 UILIBS  = $(shell pkg-config --libs $(UIPKG)) -lpthread -lm
 # Sounds: PipeWire, and libsndfile when installed (Ogg, FLAC; else WAV only).
