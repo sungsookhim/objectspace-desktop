@@ -82,9 +82,16 @@ systemctl --user daemon-reload 2>/dev/null
 systemctl --user stop wps-session.target 2>/dev/null
 # The watcher: the compositor itself stays in the login session (logind
 # gives it the screens and input devices by it), so systemd follows this
-# script instead, from outside.
+# script instead, from outside. When the script ends (however: at log out
+# the session's processes are killed), the watcher ends the session for
+# systemd: graphical-session.target stops only when nothing wants it, and
+# services started in the session (the portal) still do, so it is stopped
+# outright, as GNOME's session does at its end; else GNOME will not start
+# at the next login ("A graphical session is already running!").
+END="systemctl --user stop wps-session.target graphical-session.target; \
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP"
 systemd-run --user --quiet --collect --unit="$WATCH" -- \
-    sh -c "while kill -0 $$ 2>/dev/null; do sleep 1; done" 2>/dev/null
+    sh -c "while kill -0 $$ 2>/dev/null; do sleep 1; done; $END" 2>/dev/null
 
 # Once the compositor is up: services started by D-Bus or systemd get its
 # display; the session's target starts (the portal follows); GDM is told
@@ -97,7 +104,7 @@ systemctl --user restart xdg-desktop-portal.service 2>/dev/null"
 "$REPO/build/wps-compositor" -d "'$REPO/build/wps-shell' --desktop '$DESK'" -s "$READY"
 status=$?
 echo "wps-session: the compositor ended ($status)" >&2
-# What this session started and set for systemd goes with it.
-systemctl --user stop wps-session.target 2>/dev/null
-systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP 2>/dev/null
+# What this session started and set for systemd goes with it (the
+# watcher does it too, if this script is killed before).
+sh -c "$END" 2>/dev/null
 exit $status
