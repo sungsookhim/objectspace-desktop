@@ -74,6 +74,8 @@ bool comp_debug;   /* WPS_COMP_DEBUG */
 static double start_ms;   /* (the session log says when, from here) */
 static double now_ms(void);
 double comp_uptime(void) { return (now_ms() - start_ms) / 1000; }
+/* For the heartbeat in the log: what happened since the start. */
+static unsigned long n_frames, n_keys, n_buttons, n_motions;
 
 static bool from_desktop(struct toplevel *t);
 static ui_rect client_rect(struct toplevel *t);
@@ -675,6 +677,7 @@ static void on_cursor_motion(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_motion_event *e = data;
+    n_motions++;
     wlr_cursor_move(server.cursor, &e->pointer->base, e->delta_x, e->delta_y);
     process_motion(e->time_msec);
 }
@@ -683,6 +686,7 @@ static void on_cursor_motion_absolute(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_motion_absolute_event *e = data;
+    n_motions++;
     wlr_cursor_warp_absolute(server.cursor, &e->pointer->base, e->x, e->y);
     process_motion(e->time_msec);
 }
@@ -691,6 +695,7 @@ static void on_cursor_button(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_button_event *e = data;
+    n_buttons++;
     process_button(e->time_msec, e->button, e->state == WL_POINTER_BUTTON_STATE_PRESSED);
 }
 
@@ -771,6 +776,7 @@ static void on_key(struct wl_listener *l, void *data)
     const xkb_keysym_t *syms;
     int n = xkb_state_key_get_syms(k->wlr_keyboard->xkb_state, keycode, &syms);
     uint32_t mods = wlr_keyboard_get_modifiers(k->wlr_keyboard);
+    n_keys++;
     if (comp_debug && e->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         char name[64] = "?";
         if (n > 0) xkb_keysym_get_name(syms[0], name, sizeof name);
@@ -917,6 +923,7 @@ static void on_output_frame(struct wl_listener *l, void *data)
      * the first, and the slow ones, now and then */
     double took = now_ms() - t0;
     static int frames, slow;
+    n_frames++;
     if (!frames++) fprintf(stderr, "wps-compositor: %.3f first frame (%.0f ms)\n", (now_ms() - start_ms) / 1000, took);
     else if (took > 200 && slow++ < 20) fprintf(stderr, "wps-compositor: %.3f a frame took %.0f ms\n", (now_ms() - start_ms) / 1000, took);
     struct timespec now;
@@ -1744,6 +1751,31 @@ static void load_script(const char *path)
     wl_event_source_timer_update(script_timer, 20);
 }
 
+/* --------------------------------------------------------------- the log */
+
+/* Every 5 s: the loop is running, and what it has seen (input that never
+ * comes shows as counts that stay 0). */
+static struct wl_event_source *heartbeat;
+static int on_heartbeat(void *data)
+{
+    (void)data;
+    int windows = 0;
+    struct toplevel *t;
+    wl_list_for_each(t, &server.toplevels, link) windows += t->mapped;
+    fprintf(stderr, "wps-compositor: %.1f alive: %lu frames, %lu keys, %lu clicks, %lu pointer moves, %d windows%s\n",
+            comp_uptime(), n_frames, n_keys, n_buttons, n_motions, windows,
+            server.session && !server.session->active ? ", session NOT active" : "");
+    wl_event_source_timer_update(heartbeat, 5000);
+    return 0;
+}
+
+static struct wl_listener session_active;
+static void on_session_active(struct wl_listener *l, void *data)
+{
+    (void)l; (void)data;
+    fprintf(stderr, "wps-compositor: %.3f session active: %s\n", comp_uptime(), server.session->active ? "yes" : "no");
+}
+
 /* ---------------------------------------------------------------- main */
 
 int main(int argc, char **argv)
@@ -1870,10 +1902,20 @@ int main(int argc, char **argv)
     }
     set_cursor("default");   /* a pointer to be seen from the start (nothing sets one before the first motion) */
     if (desktop) desktop_start(desktop);
+    if (s->session) {
+        fprintf(stderr, "wps-compositor: session active: %s\n", s->session->active ? "yes" : "no");
+        session_active.notify = on_session_active;
+        wl_signal_add(&s->session->events.active, &session_active);
+    }
+    if (!getenv("WPS_COMP_HEADLESS")) {
+        heartbeat = wl_event_loop_add_timer(s->loop, on_heartbeat, NULL);
+        wl_event_source_timer_update(heartbeat, 5000);
+    }
     const char *script = getenv("WPS_COMP_SCRIPT");
     if (script) load_script(script);
     wl_display_run(s->display);
     desktop_stop();
+    if (s->session) wl_list_remove(&session_active.link);
     if (s->xwayland) {
         wl_list_remove(&s->new_xsurface.link);
         wl_list_remove(&s->xwayland_ready.link);
