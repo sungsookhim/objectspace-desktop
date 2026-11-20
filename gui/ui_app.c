@@ -674,6 +674,13 @@ static void send_key(ui_app *a, uint32_t key, bool repeat)
     if (!s || !s->ops->key || !a->kstate) return;
     ui_key_event e = { .sym = xkb_state_key_get_one_sym(a->kstate, key + 8), .mods = a->mods, .repeat = repeat };
     xkb_state_key_get_utf8(a->kstate, key + 8, e.utf8, sizeof e.utf8);
+    /* The system menu from the keyboard, as OS/2: Alt+Space or Shift+Esc,
+     * in any framed window. */
+    if (s->top && !s->frameless && !repeat &&
+        ((e.sym == XKB_KEY_space && (e.mods & UI_MOD_ALT)) || (e.sym == XKB_KEY_Escape && (e.mods & UI_MOD_SHIFT)))) {
+        ui_frame_system_menu(s, a->last_serial);
+        return;
+    }
     s->ops->key(s, &e);
 }
 
@@ -825,6 +832,8 @@ ui_app *ui_app_new(void)
     ui_textinput_seat(a);
     return a;
 }
+
+uint32_t ui_app_input_serial(ui_app *a) { return a->last_serial; }
 
 void ui_app_post(ui_app *a, void (*fn)(void *), void *arg)
 {

@@ -94,3 +94,8 @@ G2's planned items are all built. What remains are the issues above.
 - Text is laid out left to right: right-to-left scripts are shaped within a run, but there is no bidirectional reordering of mixed text, and the caret moves by bytes in visual order.
 - The input method's text being composed is dropped (not committed) when focus moves to another field.
 
+## Accessibility (G4)
+
+- The LaunchPad gets the keyboard only from a click (GNOME keeps it out of Alt+Tab); there is no shortcut to reach it yet.
+- Alt+Space is GNOME's own window menu (mutter's activate-window-menu); WPS's system menu is on Shift+Esc.
+

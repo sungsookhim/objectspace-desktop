@@ -156,6 +156,8 @@ bool ui_drag_start(ui_surface *origin, uint32_t serial, const char *const *mimes
 void ui_app_post(ui_app *a, void (*fn)(void *), void *arg);
 int ui_app_scale_override(void);       /* WPS_UI_SCALE, or 0 */
 double ui_now_ms(void);
+/* The serial of the last input event (for a menu or popup opened by a key). */
+uint32_t ui_app_input_serial(ui_app *a);
 
 /* --------------------------------------------------------------- surfaces */
 

@@ -182,6 +182,53 @@ export default class Probe {
             at(14, () => { const f = global.display.focus_window; console.log(`probe: focused ${f?.get_title()}`); if (out) shoot(out); });
             return;
         }
+        if (GLib.getenv('PROBE_MODE') === 'lpkeys') {
+            // The keyboard alone: the LaunchPad (focused), Home, Right twice to Shut down,
+            // Enter: its dialog; Shift+Esc: the dialog's system menu; Escape twice.
+            const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+            const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            const kb = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            this._dev = dev;
+            this._ptr = kb;
+            const t = () => GLib.get_monotonic_time();
+            const click = (x, y) => {
+                dev.notify_absolute_motion(t(), x, y);
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                    dev.notify_button(t(), 1, Clutter.ButtonState.PRESSED);
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => { dev.notify_button(t(), 1, Clutter.ButtonState.RELEASED); return GLib.SOURCE_REMOVE; });
+                    return GLib.SOURCE_REMOVE;
+                });
+            };
+            const key = (sym, mod) => {
+                if (mod) kb.notify_keyval(t(), mod, Clutter.KeyState.PRESSED);
+                kb.notify_keyval(t(), sym, Clutter.KeyState.PRESSED);
+                kb.notify_keyval(t(), sym, Clutter.KeyState.RELEASED);
+                if (mod) kb.notify_keyval(t(), mod, Clutter.KeyState.RELEASED);
+            };
+            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad')?.get_frame_rect();
+            dev.notify_absolute_motion(t(), 640, 400);   // off the hot corner from the start
+            // focused as a click gives it (clicks are unreliable headless)
+            at(10.5, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad')?.activate(global.display.get_current_time_roundtrip()));
+            at(11.5, () => { console.log(`probe: focused ${global.display.focus_window?.get_title()}`); key(Clutter.KEY_Home); key(Clutter.KEY_Right); key(Clutter.KEY_Right); });
+            at(12, () => { if (out) shoot(out.replace('.png', '-focus.png')); });
+            at(12.5, () => key(Clutter.KEY_Return));
+            // Shift+Esc in the dialog: its system menu (Alt+Space is GNOME's own window menu)
+            // (held a moment, as a hand does: a menu's grab needs the key's serial to be the latest)
+            at(13.5, () => {
+                windows('dialog');
+                kb.notify_keyval(t(), Clutter.KEY_Shift_L, Clutter.KeyState.PRESSED);
+                kb.notify_keyval(t(), Clutter.KEY_Escape, Clutter.KeyState.PRESSED);
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                    kb.notify_keyval(t(), Clutter.KEY_Escape, Clutter.KeyState.RELEASED);
+                    kb.notify_keyval(t(), Clutter.KEY_Shift_L, Clutter.KeyState.RELEASED);
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+            at(14.5, () => { if (out) shoot(out); key(Clutter.KEY_Escape); });
+            at(15.5, () => key(Clutter.KEY_Escape));   // the menu, then the dialog
+            at(16.5, () => windows('after escape'));
+            return;
+        }
         if (GLib.getenv('PROBE_MODE') === 'shutdown') {
             // The LaunchPad's Shut down: its dialog, then Log off by keys
             // (Right twice, Enter). WPS_DEBUG_COMMANDS (run.sh) makes the

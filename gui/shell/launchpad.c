@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "events.h"
 #include "svc.h"
@@ -64,6 +65,8 @@ static struct {
     ssize_t drop_at;           /* where a drag is (object button, -2 the bar), -1 none */
     bool drop_arrow;
     struct drawer drawer;
+    size_t kfocus;             /* the button the keyboard is on (0..3 OS/2's, 4.. objects) */
+    bool focused;              /* the bar has the keyboard */
 } lp = { .pressed = -1, .drop_at = -1 };
 
 static void reload(void);
@@ -487,6 +490,18 @@ static void draw_glyph(cairo_t *cr, size_t i, ui_rect r)
     cairo_restore(cr);
 }
 
+static void focus_ring(cairo_t *cr, ui_rect r)
+{
+    ui_set_color(cr, ui_scheme_now.cursor);
+    double dash = 1;
+    cairo_save(cr);
+    cairo_set_dash(cr, &dash, 1, 0);
+    cairo_set_line_width(cr, 1);
+    cairo_rectangle(cr, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    cairo_stroke(cr);
+    cairo_restore(cr);
+}
+
 static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     (void)s; (void)clip;
@@ -506,6 +521,7 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         if (down) cairo_translate(cr, 1, 1);
         draw_glyph(cr, i, (ui_rect){ r.x, r.y, r.w, r.h - 2 });
         if (down) cairo_translate(cr, -1, -1);
+        if (lp.focused && lp.kfocus == i) focus_ring(cr, (ui_rect){ r.x + 3, r.y + 3, r.w - 6, r.h - 6 });
     }
     double sx = GRIP_W + NSYS * SYS_W + SEP_W / 2 - 1;
     ui_fill(cr, (ui_rect){ sx, ARROW_H + PAD + 2, 1, BTN_H - 4 }, k->shadow);
@@ -534,6 +550,7 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
                        .link = lp.items[i].link };
         double d = down ? 1 : 0;
         ui_draw_item_icon(cr, &it, r.x + (r.w - 32) / 2 + d, r.y + 4 + d, 32);
+        if (lp.focused && lp.kfocus == NSYS + i) focus_ring(cr, (ui_rect){ r.x + 3, r.y + 3, r.w - 6, r.h - 6 });
         ui_set_color(cr, k->text);
         double tw = ui_text_width(UI_FONT_REGULAR, lp.items[i].title);
         double tx = tw < r.w - 4 ? r.x + (r.w - tw) / 2 : r.x + 2;
@@ -564,6 +581,8 @@ static void bar_menu_chosen(void *arg, int64_t id)
     else if (id == 4) winlist_open(false);
 }
 
+static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t serial);
+
 static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     bool arrow;
@@ -581,24 +600,30 @@ static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
         if (was < NSYS) press_sys((size_t)was);
         else open_entry(lp.dir, &lp.items[was - NSYS]);
     } else if (e->kind == UI_PRESS && e->button == UI_BTN2) {
-        if (h >= NSYS && !arrow) {
-            ui_menu_item items[] = {
-                { 1, "Open", true, false, NULL, 0 },
-                { 2, "Remove from LaunchPad", true, false, NULL, 0 },
-                { 0, "-", false, false, NULL, 0 },
-                { 3, "Open LaunchPad folder", true, false, NULL, 0 },
-            };
-            ui_menu_popup(s, items, 4, e->x, e->y, e->serial, menu_chosen, (void *)(intptr_t)(h - NSYS));
-        } else {
-            ui_menu_item items[] = {
-                { 3, "Open LaunchPad folder", true, false, NULL, 0 },
-                { 4, "Window list", true, false, NULL, 0 },
-            };
-            ui_menu_popup(s, items, 2, e->x, e->y, e->serial, bar_menu_chosen, NULL);
-        }
+        button_menu(s, h >= NSYS && !arrow ? (size_t)h : SIZE_MAX, e->x, e->y, e->serial);
     } else if (e->kind == UI_LEAVE && lp.pressed >= 0) {
         lp.pressed = -1;
         ui_surface_damage_all(s);
+    }
+}
+
+/* An object button's menu (h: 4..), or the bar's (anything else). */
+static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t serial)
+{
+    if (h >= NSYS && h < NSYS + lp.n) {
+        ui_menu_item items[] = {
+            { 1, "Open", true, false, NULL, 0 },
+            { 2, "Remove from LaunchPad", true, false, NULL, 0 },
+            { 0, "-", false, false, NULL, 0 },
+            { 3, "Open LaunchPad folder", true, false, NULL, 0 },
+        };
+        ui_menu_popup(s, items, 4, x, y, serial, menu_chosen, (void *)(intptr_t)(h - NSYS));
+    } else {
+        ui_menu_item items[] = {
+            { 3, "Open LaunchPad folder", true, false, NULL, 0 },
+            { 4, "Window list", true, false, NULL, 0 },
+        };
+        ui_menu_popup(s, items, 2, x, y, serial, bar_menu_chosen, NULL);
     }
 }
 
@@ -650,12 +675,49 @@ static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, con
     return UI_DND_COPY;   /* the source keeps its object: this was a shadow */
 }
 
+/* The keyboard (accessibility, G4): Left and Right (Home, End) go from
+ * button to button, Enter or Space presses one, Up opens its drawer,
+ * Shift+F10 (or the Menu key) its menu. */
+static void lp_key(ui_surface *s, const ui_key_event *e)
+{
+    size_t total = NSYS + lp.n;
+    if (lp.kfocus >= total) lp.kfocus = total - 1;
+    size_t k = lp.kfocus;
+    switch (e->sym) {
+    case XKB_KEY_Left: case XKB_KEY_ISO_Left_Tab: lp.kfocus = k ? k - 1 : total - 1; break;
+    case XKB_KEY_Right: case XKB_KEY_Tab: lp.kfocus = (k + 1) % total; break;
+    case XKB_KEY_Home: lp.kfocus = 0; break;
+    case XKB_KEY_End: lp.kfocus = total - 1; break;
+    case XKB_KEY_Return: case XKB_KEY_KP_Enter: case XKB_KEY_space:
+        if (k < NSYS) press_sys(k);
+        else open_entry(lp.dir, &lp.items[k - NSYS]);
+        return;
+    case XKB_KEY_Up:
+        if (k >= NSYS) drawer_open(k - NSYS, ui_app_input_serial(lp.app));
+        return;
+    case XKB_KEY_Menu: case XKB_KEY_F10: {
+        if (e->sym == XKB_KEY_F10 && !(e->mods & UI_MOD_SHIFT)) return;
+        ui_rect r = k < NSYS ? sys_rect(k) : obj_rect(k - NSYS);
+        button_menu(s, k, r.x + r.w / 2, r.y + r.h / 2, ui_app_input_serial(lp.app));
+        return;
+    }
+    default: return;
+    }
+    ui_surface_damage_all(s);
+}
+
+static void lp_focus(ui_surface *s, bool on)
+{
+    lp.focused = on;
+    ui_surface_damage_all(s);
+}
+
 static void lp_close(ui_surface *s)
 {
     (void)s;   /* the LaunchPad stays while the desktop runs (OS/2: it closed with the desktop) */
 }
 
-static const ui_surface_ops lp_ops = { .draw = lp_draw, .pointer = lp_pointer, .close = lp_close,
+static const ui_surface_ops lp_ops = { .draw = lp_draw, .pointer = lp_pointer, .key = lp_key, .focus = lp_focus, .close = lp_close,
                                        .drag_motion = lp_drag_motion, .drag_leave = lp_drag_leave, .drop = lp_drop };
 
 void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char *templates, const char *setup)
