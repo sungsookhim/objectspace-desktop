@@ -75,7 +75,8 @@ static struct {
     double corner_radius, border;
     bool buttons_on_hover, title_mirrored, compact;
     int shadows, translucency;
-} opts = { 0, 4, false, false, false, 0, 0 };
+    double font_px;          /* the interface font's size (GNOME's), 0: the scheme's */
+} opts = { 0, 4, false, false, false, 0, 0, 0 };
 
 static void apply_opts(void)
 {
@@ -85,6 +86,7 @@ static void apply_opts(void)
     ui_scheme_now.title_mirrored = opts.title_mirrored;
     ui_scheme_now.shadows = opts.shadows;
     ui_scheme_now.translucency = opts.translucency;
+    if (opts.font_px > 0) ui_scheme_now.font_px = opts.font_px;
     if (opts.compact) { ui_scheme_now.title_h = 17; ui_scheme_now.button_w = 15; ui_scheme_now.button_h = 13; }
 }
 
@@ -252,16 +254,54 @@ static struct run *shape(ui_font font, const char *s)
     return r;
 }
 
+static char family[256] = "sans-serif";
+
+static void load_faces(void);
+
 void ui_text_init(void)
 {
     FT_Init_FreeType(&ft);
-    const char *pat[2] = { "sans-serif", "sans-serif:bold" };
+    load_faces();
+}
+
+/* The interface font (GNOME's, G3): a family and a size in pixels. All
+ * text is shaped again. */
+void ui_text_set_font(const char *fam, double px)
+{
+    if (!fam || !*fam || px < 6 || px > 72) return;
+    if (!strcmp(fam, family) && px == ui_scheme_now.font_px) return;
+    snprintf(family, sizeof family, "%s", fam);
+    ui_scheme_now.font_px = opts.font_px = px;
+    for (int i = 0; i < 2; i++) {
+        if (faces[i].hb) hb_font_destroy(faces[i].hb);
+        if (faces[i].cf) cairo_font_face_destroy(faces[i].cf);
+        if (faces[i].shaping) FT_Done_Face(faces[i].shaping);
+        /* faces[i].ft belongs to the Cairo face now: freed with it */
+        memset(&faces[i], 0, sizeof faces[i]);
+    }
+    for (size_t i = 0; i < CACHE_SLOTS; i++) {
+        free(cache[i].s); free(cache[i].glyphs); free(cache[i].clusters); free(cache[i].x);
+        memset(&cache[i], 0, sizeof cache[i]);
+    }
+    load_faces();
+}
+
+static void load_faces(void)
+{
+    char pat[2][300];
+    snprintf(pat[0], sizeof pat[0], "%s", family);
+    snprintf(pat[1], sizeof pat[1], "%s:bold", family);
     for (int i = 0; i < 2; i++) {
         /* Two faces of the same font: Cairo changes its face's size to the
          * device size when it draws (2x on a 2x screen), and HarfBuzz would
          * follow that, shaping some strings at one size and some at the
          * other. Text positions must not depend on which drew last. */
         FT_Face f = load_face(pat[i], ui_scheme_now.font_px), sh = load_face(pat[i], ui_scheme_now.font_px);
+        if ((!f || !sh) && strcmp(family, "sans-serif")) {   /* not installed: back to the default */
+            snprintf(family, sizeof family, "sans-serif");
+            load_faces();
+            return;
+        }
         if (!f || !sh) { fprintf(stderr, "wps-ui: no font for %s\n", pat[i]); exit(1); }
         faces[i].ft = f;
         faces[i].shaping = sh;

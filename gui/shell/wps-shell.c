@@ -25,13 +25,16 @@
 #include "layout.h"
 #include "wallpaper.h"
 #include "events.h"
+#include "gnome.h"
 #include "sound.h"
 #include "svc.h"
 #include "ui.h"
 #include "wps_menu_ids.h"
 
 #define PAGE 256
-#define STATUS_H 20
+/* The status line: tall enough for the interface font (GNOME's may be larger). */
+static double status_h(void) { double h = ceil(ui_scheme_now.font_px + 9); return h < 20 ? 20 : h; }
+#define STATUS_H status_h()
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
@@ -186,6 +189,7 @@ static void *page_arg(struct folder *f, bool shadow)
 static void request_more(struct folder *f, bool shadow);
 static bool setup_event(const cv *ev);
 static char setup_ids[4][64];   /* the settings objects (see below) */
+static char setup_cls[4][32];   /* their classes */
 static void rename_new_now(struct folder *f);
 static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
@@ -2410,7 +2414,11 @@ static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     else if (nsel) snprintf(msg, sizeof msg, "%zu objects, %zu selected%s", f->m.total, nsel, f->m.complete ? "" : " (reading...)");
     else snprintf(msg, sizeof msg, "%zu objects%s", f->m.total, f->m.complete ? "" : " (reading...)");
     ui_set_color(cr, k->text);
+    cairo_save(cr);   /* inside its bevel, whatever the font */
+    cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
+    cairo_clip(cr);
     ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
+    cairo_restore(cr);
 }
 
 static void layout(struct folder *f)
@@ -2764,7 +2772,7 @@ static void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: a collapsed: %s\n", rows);
             step++;
         } else if (step == 5 && t > 3300) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;   /* a change still being drawn: next frame */
             fprintf(stderr, "selftest: tree pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -2898,7 +2906,7 @@ static void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: after Arrange:%s\n", line);
             step++;
         } else if (step == 3 && t > 2800) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -2971,7 +2979,7 @@ static void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: a plain link to T opened T: %d window(s)\n", nT);
             step++;
         } else if (step == 6) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -3079,7 +3087,7 @@ static void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: b.txt with a lock file: in use %d\n", bi != SIZE_MAX && ib.in_use);
             step++;
         } else if (step == 4) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -3136,7 +3144,7 @@ static void win_frame(ui_surface *s, double now)
                     bi != SIZE_MAX, access(q, F_OK) == 0, access(p, F_OK) == 0, f->error);
             step++;
         } else if (step == 3) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -3171,7 +3179,7 @@ static void win_frame(ui_surface *s, double now)
             }
             step++;
         } else if (step == 2) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             static double last;
             (void)last;
             if (d == SIZE_MAX) return;
@@ -3271,7 +3279,7 @@ static void win_frame(ui_surface *s, double now)
             if (ri != SIZE_MAX) ui_surface_send_key(s, &esc);
             step++;
         } else if (step == 5) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             const char *shot = getenv("WPS_SHELL_SHOT");   /* the templates window (with WPS_UI_NO_LAYER=1) */
@@ -3339,7 +3347,7 @@ static void win_frame(ui_surface *s, double now)
                     k >= 0 && ui_container_is_selected(f->cont, (size_t)k));
             step++;
         } else if (step == 2) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -3428,7 +3436,7 @@ static void win_frame(ui_surface *s, double now)
             }
             step++;
         } else if (step == 3) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -3544,13 +3552,62 @@ static void win_frame(ui_surface *s, double now)
                     ui_frame_hit(s, tw - 12, ty) == UI_HIT_SYSMENU ? "the system menu" : "something else");
             step++;
         } else if (step == 2) {
-            size_t d = ui_surface_verify(s, NULL);
+            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw (inside the shadow): %zu differ\n", d);
             if (getenv("WPS_SHELL_SHOT")) fprintf(stderr, "selftest: buffer saved %d\n", ui_surface_snapshot(s, getenv("WPS_SHELL_SHOT")));
             ui_app_quit(app);
             step++;
         }
+        return;
+    }
+    if (st && !strcmp(st, "gnome")) {
+        /* Settings shared with GNOME, both ways (the desktop process). */
+        static double t0;
+        static int step;
+        if (!f->desktop) return;
+        if (!t0) { if (!f->m.complete || !setup_cls[3][0]) return; t0 = now; }
+        double t = now - t0;
+        const char *mouse = NULL, *pal = NULL;
+        for (int i = 0; i < 4; i++) {
+            if (!strcmp(setup_cls[i], "WPMouse")) mouse = setup_ids[i];
+            if (!strcmp(setup_cls[i], "WPSchemePalette")) pal = setup_ids[i];
+        }
+        char v[256];
+        #define GGET(schema, key) (snprintf(v, sizeof v, "gsettings get %s %s", schema, key), \
+            (void)0, ({ FILE *p_ = popen(v, "r"); v[0] = 0; if (p_) { if (!fgets(v, sizeof v, p_)) v[0] = 0; pclose(p_); } \
+            v[strcspn(v, "\n")] = 0; v; }))
+        if (step == 0 && t > 1000) {
+            fprintf(stderr, "selftest: at start: scheme %s, GNOME color-scheme %s\n", ui_scheme_now.name,
+                    GGET("org.gnome.desktop.interface", "color-scheme"));
+            if (system("gsettings set org.gnome.desktop.interface color-scheme prefer-dark")) {}
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 2500) {
+            fprintf(stderr, "selftest: GNOME to dark: WPS scheme %s\n", ui_scheme_now.name);
+            cv d = { .k = CV_TEXT, .s = (char *)"650", .len = 3 };
+            svc_settings_set(mouse, "double_click_ms", &d, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 2500) {
+            fprintf(stderr, "selftest: WPS double-click 650: GNOME %s, the toolkit %d\n",
+                    GGET("org.gnome.desktop.peripherals.mouse", "double-click"), ui_mouse.double_click_ms);
+            if (system("gsettings set org.gnome.desktop.interface font-name 'DejaVu Sans 12'")) {}
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 2500) {
+            fprintf(stderr, "selftest: GNOME font DejaVu Sans 12: WPS font %.0f px\n", ui_scheme_now.font_px);
+            cv hc = { .k = CV_TEXT, .s = (char *)"high contrast", .len = 13 };
+            svc_settings_set(pal, "scheme", &hc, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 2500) {
+            fprintf(stderr, "selftest: WPS high contrast: GNOME high-contrast %s; WPS scheme %s\n",
+                    GGET("org.gnome.desktop.a11y.interface", "high-contrast"), ui_scheme_now.name);
+            ui_app_quit(app);
+            step++;
+        }
+        #undef GGET
         return;
     }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }
@@ -3682,6 +3739,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
         const cv *k = &settings->items[2 * i], *v = &settings->items[2 * i + 1];
         if (k->k != CV_TEXT || v->k != CV_TEXT) continue;
         const char *key = k->s, *val = v->s;
+        gnome_wps_value(cls, key, val);
         if (!strcmp(cls, "WPSound")) events_setup_set(key, val);
         else if (!strcmp(cls, "WPMouse")) ui_mouse_set(key, val);
         else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
@@ -3705,9 +3763,15 @@ static void got_setup(void *arg, const cv *reply)
         if (cls->k != CV_TEXT) continue;
         apply_setup_object(cls->s, cv_get(o, "settings"));
         const char *a = cv_text(o, "address");
-        if (a) { snprintf(setup_ids[n], sizeof setup_ids[n], "%s", a); ids[n] = setup_ids[n]; n++; }
+        if (a) {
+            snprintf(setup_ids[n], sizeof setup_ids[n], "%s", a);
+            snprintf(setup_cls[n], sizeof setup_cls[n], "%s", cls->s);
+            ids[n] = setup_ids[n];
+            n++;
+        }
     }
     apply_scheme();
+    gnome_wps_read();   /* GNOME follows (or, the first time, leads) */
     for (struct folder *f = folders; f; f = f->next) if (!f->closing) ui_surface_damage_all(f->win);
     if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
     const char *folder = cv_text(res, "folder");
@@ -3722,6 +3786,27 @@ static void apply_scheme(void)
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
         layout(f);   /* border and title sizes may have changed */
+        ui_container_layout_changed(f->cont);
+        ui_surface_damage_all(f->win);
+    }
+}
+
+/* GNOME changed a shared setting: the settings object takes it. */
+static void gnome_set_wps(const char *cls, const char *key, const char *value)
+{
+    for (int i = 0; i < 4; i++)
+        if (!strcmp(setup_cls[i], cls)) {
+            cv v = { .k = CV_TEXT, .s = (char *)value, .len = strlen(value) };
+            svc_settings_set(setup_ids[i], key, &v, -1, ignore_reply, NULL);
+        }
+}
+
+/* GNOME's interface font changed: every window lays out again. */
+static void gnome_font(void)
+{
+    for (struct folder *f = folders; f; f = f->next) {
+        if (f->closing) continue;
+        layout(f);
         ui_container_layout_changed(f->cont);
         ui_surface_damage_all(f->win);
     }
@@ -3964,6 +4049,9 @@ int main(int argc, char **argv)
     svc_on_event(on_event, NULL);
     svc_subscribe_jobs(ignore_reply, NULL);
     svc_setup(got_setup, NULL);
+    /* Settings shared with GNOME: every shell follows its font; the
+     * desktop keeps the rest in step both ways. */
+    gnome_start(app, desk, gnome_set_wps, gnome_font);
     if (desk) {
         /* --desktop FOLDER: that folder as the desktop (tests) */
         struct folder *f = open_desktop(i < argc ? argv[i++] : NULL);
@@ -3982,6 +4070,7 @@ int main(int argc, char **argv)
     ui_app_run(app);
     events_raise("shell.shutdown", "", "", (ui_rect){ 0, 0, 0, 0 });
     events_shutdown();
+    gnome_stop();
     wallpaper_stop();
     while (folders) free_folder(folders);
     svc_stop();

@@ -57,6 +57,14 @@ Known problems and gaps found while building and trying G2, as of 2026-11-19. Ea
 - Each batch of changes still costs the window time in proportion to the folder (moving rows after a removal, matching icon spots by name); a batch of more than 64 changes reads the folder again instead. Fine at 200,000 entries; a million-entry folder under constant change would want a cheaper structure.
 - The selection survives a change by name only when at most 256 items are selected (as with reading the folder again).
 
+## G3 (built 2026-11-19)
+
+- **Sounds need libsndfile-devel** at build time for the sound theme's Ogg files (WAV plays without it), and an audio output (this machine's is a dummy).
+- **Window events and settings sync need the desktop process** (the extension starts it): without the desktop, other programs' windows make no sounds and GNOME's settings are only read (the font), not kept in step.
+- **Fonts**: WPS follows GNOME's interface font; it has no font setting (OS/2's Font Palette) of its own yet.
+- **The Sound object's events are text fields** (a theme sound name or a file path); a list to pick from, with a Play button, would be friendlier.
+- **Shadows** are drawn by WPS for its own windows only (GNOME draws none for windows with their own frames); menus have none.
+
 ## Remaining G2 work
 
 G2's planned items are all built. What remains are the issues above.

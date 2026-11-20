@@ -72,6 +72,9 @@ void ui_set_color(cairo_t *cr, ui_color c);
 typedef enum { UI_FONT_REGULAR, UI_FONT_BOLD } ui_font;
 
 void ui_text_init(void);
+/* The interface font: a fontconfig family and a size in pixels (GNOME's,
+ * G3); every string is shaped again. */
+void ui_text_set_font(const char *family, double px);
 double ui_text_width(ui_font f, const char *s);
 /* Draw at a baseline, cut with "..." beyond max_w (0: no limit). Shaped
  * runs are cached, so redrawing the same strings costs little. */
