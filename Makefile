@@ -243,7 +243,7 @@ $(B)/wps-shell-asan: $(UIDEPS)
 
 # G5: the compositor (wlroots 0.20). It draws frames with the toolkit's
 # frame code (gui/ui_framepaint.c), so it links the drawing part of it.
-COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig
+COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig xcb
 COMPSRC := compositor/wps-compositor.c compositor/desktop.c gui/ui_draw.c gui/ui_framepaint.c
 DECOXML := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 $(G0)/xdg-decoration-unstable-v1-client-protocol.h: $(DECOXML)
@@ -253,7 +253,11 @@ $(G0)/xdg-decoration-unstable-v1-protocol.c: $(DECOXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
-compositor: $(B)/wps-compositor $(TV)/ssd-client
+compositor: $(B)/wps-compositor $(TV)/ssd-client $(TV)/x11-client
+# An X11 test client (XWayland).
+$(TV)/x11-client: tests/comp/x11-client.c
+	@mkdir -p $(TV)
+	$(CC) $(G0FLAGS) -o $@ $< $$(pkg-config --cflags --libs xcb)
 # A test client that asks for a server-side frame (tests/comp).
 $(TV)/ssd-client: tests/comp/ssd-client.c $(G0)/xdg-shell-client-protocol.h $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-client-protocol.h $(G0)/xdg-decoration-unstable-v1-protocol.c
 	@mkdir -p $(TV)

@@ -33,6 +33,7 @@
 #include <getopt.h>
 #include <math.h>
 #include <signal.h>
+#include <sys/wait.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +45,7 @@
 #include <wlr/backend/headless.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/interfaces/wlr_buffer.h>
+#include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/pixman.h>
 #include <wlr/render/wlr_renderer.h>
@@ -70,6 +72,70 @@ struct server server;
 bool comp_debug;   /* WPS_COMP_DEBUG */
 
 static bool from_desktop(struct toplevel *t);
+static ui_rect client_rect(struct toplevel *t);
+
+/* --------------------------------------------------------------- views */
+
+/* A window is a Wayland one (xdg) or an X11 one (XWayland); these say
+ * what both are, and do to either what the window manager does. */
+
+const char *view_title(struct toplevel *t) { return t->xdg ? t->xdg->title : t->xw->title; }
+const char *view_app(struct toplevel *t) { return t->xdg ? t->xdg->app_id : t->xw->class; }
+
+struct wl_client *view_client(struct toplevel *t)
+{
+    if (t->xdg) return wl_resource_get_client(t->xdg->resource);
+    return t->xw->surface && t->xw->surface->resource ? wl_resource_get_client(t->xw->surface->resource) : NULL;
+}
+
+struct wlr_box view_geo(struct toplevel *t)
+{
+    if (t->xdg) return t->xdg->base->geometry;
+    return (struct wlr_box){ 0, 0, t->xw->width, t->xw->height };
+}
+
+static struct wlr_surface *view_surface(struct toplevel *t) { return t->xdg ? t->xdg->base->surface : t->xw->surface; }
+static bool view_ready(struct toplevel *t) { return t->xdg ? t->xdg->base->initialized : true; }
+static void view_schedule(struct toplevel *t) { if (t->xdg) wlr_xdg_surface_schedule_configure(t->xdg->base); }
+
+/* An X11 window is told where it is on the screen (its menus open there). */
+static void x11_configure(struct toplevel *t, int w, int h)
+{
+    ui_rect c = t->ssd ? client_rect(t) : (ui_rect){ 0, 0, 0, 0 };
+    wlr_xwayland_surface_configure(t->xw, (int16_t)(t->tree->node.x + c.x), (int16_t)(t->tree->node.y + c.y),
+                                   (uint16_t)(w > 0 ? w : t->xw->width), (uint16_t)(h > 0 ? h : t->xw->height));
+}
+
+static void view_move(struct toplevel *t, int x, int y)
+{
+    wlr_scene_node_set_position(&t->tree->node, x, y);
+    if (t->xw) x11_configure(t, 0, 0);
+}
+
+static void view_set_size(struct toplevel *t, int w, int h)
+{
+    if (t->xdg) wlr_xdg_toplevel_set_size(t->xdg, w, h);
+    else if (w > 0 && h > 0) x11_configure(t, w, h);
+}
+
+static void view_activate(struct toplevel *t, bool on)
+{
+    if (t->xdg) { wlr_xdg_toplevel_set_activated(t->xdg, on); return; }
+    wlr_xwayland_surface_activate(t->xw, on);
+    if (on) wlr_xwayland_surface_restack(t->xw, NULL, XCB_STACK_MODE_ABOVE);
+}
+
+static void view_set_maximized(struct toplevel *t, bool on)
+{
+    if (t->xdg) wlr_xdg_toplevel_set_maximized(t->xdg, on);
+    else wlr_xwayland_surface_set_maximized(t->xw, on, on);
+}
+
+static void view_close(struct toplevel *t)
+{
+    if (t->xdg) wlr_xdg_toplevel_send_close(t->xdg);
+    else wlr_xwayland_surface_close(t->xw);
+}
 
 static double now_ms(void)
 {
@@ -122,6 +188,7 @@ static void frame_size(struct toplevel *t, int cw, int ch, int *w, int *h)
 
 static ui_rect client_rect(struct toplevel *t)
 {
+    if (!t->ssd) return (ui_rect){ 0, 0, 0, 0 };
     ui_frame_geom g = geom_of(t, t->fw, t->fh);
     return ui_frame_geom_client(&g);
 }
@@ -132,7 +199,7 @@ static void draw_frame(struct toplevel *t)
         wlr_scene_node_set_enabled(&t->frame->node, false);
         return;
     }
-    struct wlr_box geo = t->xdg->base->geometry;
+    struct wlr_box geo = view_geo(t);
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
     t->fw = w;
@@ -141,7 +208,7 @@ static void draw_frame(struct toplevel *t)
     cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     cairo_t *cr = cairo_create(s);
     ui_frame_geom g = geom_of(t, w, h);
-    const char *title = t->xdg->title && *t->xdg->title ? t->xdg->title : t->xdg->app_id ? t->xdg->app_id : "";
+    const char *title = view_title(t) && *view_title(t) ? view_title(t) : view_app(t) ? view_app(t) : "";
     ui_frame_geom_draw(&g, cr, (ui_rect){ 0, 0, w, h }, title);
     cairo_destroy(cr);
     cairo_surface_flush(s);
@@ -153,13 +220,13 @@ static void draw_frame(struct toplevel *t)
     wlr_scene_node_set_enabled(&t->frame->node, true);
     /* the program's surfaces go in the frame's client area */
     ui_rect c = client_rect(t);
-    wlr_scene_node_set_position(&t->client->node, (int)c.x - geo.x, (int)c.y - geo.y);
+    if (t->client) wlr_scene_node_set_position(&t->client->node, (int)c.x - geo.x, (int)c.y - geo.y);
 }
 
 /* The window's box on screen: its frame, or the program's own geometry. */
 static struct wlr_box window_box(struct toplevel *t)
 {
-    struct wlr_box geo = t->xdg->base->geometry;
+    struct wlr_box geo = view_geo(t);
     struct wlr_box b = { t->tree->node.x, t->tree->node.y, geo.width, geo.height };
     if (t->ssd) { b.width = t->fw; b.height = t->fh; }
     return b;
@@ -171,7 +238,7 @@ static void set_activated(struct toplevel *t, bool on)
 {
     if (t->activated == on) return;
     t->activated = on;
-    wlr_xdg_toplevel_set_activated(t->xdg, on);
+    view_activate(t, on);
     draw_frame(t);
     desktop_window(t, "change");
 }
@@ -190,13 +257,14 @@ static void focus(struct toplevel *t)
     wl_list_insert(&s->toplevels, &t->link);
     set_activated(t, true);
     struct wlr_keyboard *kb = wlr_seat_get_keyboard(s->seat);
-    if (kb) wlr_seat_keyboard_notify_enter(s->seat, t->xdg->base->surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+    if (kb) wlr_seat_keyboard_notify_enter(s->seat, view_surface(t), kb->keycodes, kb->num_keycodes, &kb->modifiers);
 }
 
 static void minimize(struct toplevel *t, bool on)
 {
     if (t->minimized == on) { if (!on) focus(t); return; }
     t->minimized = on;
+    if (t->xw) wlr_xwayland_surface_set_minimized(t->xw, on);
     desktop_event(t, on ? "window.minimize" : "window.restore");
     desktop_window(t, "change");
     wlr_scene_node_set_enabled(&t->tree->node, !on);
@@ -221,7 +289,7 @@ static struct wlr_output *output_at_window(struct toplevel *t)
 
 static void maximize(struct toplevel *t, bool on)
 {
-    if (t->maximized == on || t->kind != KIND_NORMAL) { wlr_xdg_surface_schedule_configure(t->xdg->base); return; }
+    if (t->maximized == on || t->kind != KIND_NORMAL) { view_schedule(t); return; }
     struct wlr_output *o = output_at_window(t);
     if (!o) return;
     struct wlr_box ob;
@@ -231,8 +299,8 @@ static void maximize(struct toplevel *t, bool on)
         t->maximized = true;
         int cw = ob.width, ch = ob.height;
         if (t->ssd) ch -= (int)ui_scheme_now.title_h;   /* no border when maximized */
-        wlr_scene_node_set_position(&t->tree->node, ob.x, ob.y);
-        wlr_xdg_toplevel_set_size(t->xdg, cw, ch);
+        view_move(t, ob.x, ob.y);
+        view_set_size(t, cw, ch);
     } else {
         t->maximized = false;
         int cw = t->restore.width, ch = t->restore.height;
@@ -240,10 +308,10 @@ static void maximize(struct toplevel *t, bool on)
             cw -= (int)(2 * ui_scheme_now.border);
             ch -= (int)(2 * ui_scheme_now.border + ui_scheme_now.title_h);
         }
-        wlr_scene_node_set_position(&t->tree->node, t->restore.x, t->restore.y);
-        wlr_xdg_toplevel_set_size(t->xdg, cw, ch);
+        view_move(t, t->restore.x, t->restore.y);
+        view_set_size(t, cw, ch);
     }
-    wlr_xdg_toplevel_set_maximized(t->xdg, on);
+    view_set_maximized(t, on);
     desktop_event(t, on ? "window.maximize" : "window.restore");
     desktop_window(t, "change");
 }
@@ -463,8 +531,8 @@ static void do_resize(void)
         cw -= (int)(2 * ui_scheme_now.border);
         ch -= (int)(2 * ui_scheme_now.border + ui_scheme_now.title_h);
     }
-    wlr_scene_node_set_position(&t->tree->node, x0, y0);
-    wlr_xdg_toplevel_set_size(t->xdg, cw, ch);
+    view_move(t, x0, y0);
+    view_set_size(t, cw, ch);
 }
 
 static void process_motion(uint32_t time)
@@ -483,7 +551,7 @@ static void process_motion(uint32_t time)
         s->grab_y = 8;
     }
     if (s->mode == MODE_MOVE) {
-        wlr_scene_node_set_position(&s->grabbed->tree->node, (int)(s->cursor->x - s->grab_x), (int)(s->cursor->y - s->grab_y));
+        view_move(s->grabbed, (int)(s->cursor->x - s->grab_x), (int)(s->cursor->y - s->grab_y));
         return;
     }
     if (s->mode == MODE_RESIZE) { do_resize(); return; }
@@ -524,7 +592,7 @@ static void frame_button(struct toplevel *t, ui_hit part)
     switch (part) {
     case UI_HIT_MIN: minimize(t, true); break;
     case UI_HIT_MAX: maximize(t, !t->maximized); break;
-    case UI_HIT_CLOSE: wlr_xdg_toplevel_send_close(t->xdg); break;
+    case UI_HIT_CLOSE: view_close(t); break;
     case UI_HIT_SYSMENU: menu_open(t, false); break;
     default: break;
     }
@@ -577,7 +645,7 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
             if (!t->maximized) begin_grab(t, MODE_RESIZE, edges_at(t, sx, sy));
             return;
         case UI_HIT_SYSMENU:
-            if (dbl) { menu_close(); wlr_xdg_toplevel_send_close(t->xdg); return; }   /* OS/2 */
+            if (dbl) { menu_close(); view_close(t); return; }   /* OS/2 */
             menu_open(t, false);
             menu_release_ignored = true;
             return;
@@ -664,7 +732,7 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
             server.focus_window_list = true;
             struct toplevel *t;   /* already open: forward */
             wl_list_for_each(t, &server.toplevels, link)
-                if (t->mapped && t->xdg->app_id && !strcmp(t->xdg->app_id, "org.wps.WindowList") && from_desktop(t)) {
+                if (t->mapped && view_app(t) && !strcmp(view_app(t), "org.wps.WindowList") && from_desktop(t)) {
                     if (t->minimized) minimize(t, false); else focus(t);
                     break;
                 }
@@ -675,7 +743,7 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
     struct toplevel *front = wl_list_empty(&server.toplevels) ? NULL : wl_container_of(server.toplevels.next, front, link);
     switch (sym) {
     case XKB_KEY_Tab: case XKB_KEY_ISO_Left_Tab: cycle_windows(); return true;
-    case XKB_KEY_F4: if (front && front->activated) wlr_xdg_toplevel_send_close(front->xdg); return true;
+    case XKB_KEY_F4: if (front && front->activated) view_close(front); return true;
     default: return false;
     }
 }
@@ -887,8 +955,8 @@ static struct wlr_box first_output_box(void)
 static void place_desktop(struct toplevel *t)
 {
     struct wlr_box b = first_output_box();
-    wlr_scene_node_set_position(&t->tree->node, b.x, b.y);
-    wlr_xdg_toplevel_set_size(t->xdg, b.width, b.height);
+    view_move(t, b.x, b.y);
+    view_set_size(t, b.width, b.height);
 }
 
 static struct tag *tag_new(int type, struct toplevel *t)
@@ -901,11 +969,11 @@ static struct tag *tag_new(int type, struct toplevel *t)
 
 /* WPS's desktop and LaunchPad: only from the desktop process the
  * compositor started (another program naming itself so is a window). */
-static bool from_desktop(struct toplevel *t) { return desktop_is(wl_resource_get_client(t->xdg->resource)); }
+static bool from_desktop(struct toplevel *t) { return desktop_is(view_client(t)); }
 
 static enum kind kind_of(struct toplevel *t)
 {
-    const char *app = t->xdg->app_id ? t->xdg->app_id : "";
+    const char *app = view_app(t) ? view_app(t) : "";
     if (!from_desktop(t) && !getenv("WPS_COMP_TRUST_APP_IDS")) return KIND_NORMAL;
     return !strcmp(app, "org.wps.Desktop") ? KIND_DESKTOP : !strcmp(app, "org.wps.LaunchPad") ? KIND_PALETTE : KIND_NORMAL;
 }
@@ -915,18 +983,18 @@ static void on_map(struct wl_listener *l, void *data)
     (void)data;
     struct toplevel *t = wl_container_of(l, t, map);
     t->mapped = true;
-    DBG("map '%s' (%s)\n", t->xdg->title ? t->xdg->title : "", t->xdg->app_id ? t->xdg->app_id : "");
+    DBG("map '%s' (%s)\n", view_title(t) ? view_title(t) : "", view_app(t) ? view_app(t) : "");
     t->kind = kind_of(t);
     if (t->kind != KIND_NORMAL) t->ssd = false;
     wlr_scene_node_reparent(&t->tree->node, t->kind == KIND_DESKTOP ? server.layer_desktop
                                            : t->kind == KIND_PALETTE ? server.layer_palette : server.layer_normal);
     draw_frame(t);
     struct wlr_box ob = first_output_box();
-    struct wlr_box geo = t->xdg->base->geometry;
+    struct wlr_box geo = view_geo(t);
     if (t->kind == KIND_DESKTOP) {
         place_desktop(t);
     } else if (t->kind == KIND_PALETTE) {   /* the LaunchPad: bottom centre */
-        wlr_scene_node_set_position(&t->tree->node, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
+        view_move(t, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
     } else {
         /* a new window: centred, or cascaded from the one in front */
         struct wlr_box b = { 0, 0, t->ssd ? t->fw : geo.width, t->ssd ? t->fh : geo.height };
@@ -935,7 +1003,7 @@ static void on_map(struct wl_listener *l, void *data)
         wl_list_for_each(o, &server.toplevels, link)
             if (o != t && o->mapped && o->kind == KIND_NORMAL && o->tree->node.x == x && o->tree->node.y == y) { x += 24; y += 24; }
         if (y < ob.y) y = ob.y;
-        wlr_scene_node_set_position(&t->tree->node, x, y);
+        view_move(t, x, y);
     }
     focus(t);
     desktop_window(t, "add");
@@ -965,7 +1033,7 @@ static void on_unmap(struct wl_listener *l, void *data)
 
 static void set_decoration_mode(struct toplevel *t)
 {
-    if (!t->deco || !t->xdg->base->initialized) return;
+    if (!t->deco || !view_ready(t)) return;
     /* WPS's frame, unless it is WPS's desktop or LaunchPad (no frame at all) */
     wlr_xdg_toplevel_decoration_v1_set_mode(t->deco, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
@@ -974,29 +1042,34 @@ static void on_commit(struct wl_listener *l, void *data)
 {
     (void)data;
     struct toplevel *t = wl_container_of(l, t, commit);
-    if (t->xdg->base->initial_commit) {
+    if (t->xdg && t->xdg->base->initial_commit) {
         set_decoration_mode(t);
-        wlr_xdg_toplevel_set_size(t->xdg, 0, 0);   /* its own size */
+        view_set_size(t, 0, 0);   /* its own size */
         return;
     }
-    struct wlr_box geo = t->xdg->base->geometry;
+    struct wlr_box geo = view_geo(t);
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
     if (t->ssd && (w != t->fw || h != t->fh)) draw_frame(t);
-    else if (!t->ssd) wlr_scene_node_set_position(&t->client->node, -geo.x, -geo.y);
+    else if (!t->ssd && t->client) wlr_scene_node_set_position(&t->client->node, -geo.x, -geo.y);
 }
 
 static void on_destroy(struct wl_listener *l, void *data)
 {
     (void)data;
     struct toplevel *t = wl_container_of(l, t, destroy);
-    DBG("destroy '%s'\n", t->xdg->title ? t->xdg->title : "");
+    DBG("destroy '%s'\n", view_title(t) ? view_title(t) : "");
     struct wl_listener *ls[] = { &t->map, &t->unmap, &t->commit, &t->destroy, &t->request_move, &t->request_resize,
                                  &t->request_maximize, &t->request_minimize, &t->request_fullscreen, &t->set_title, &t->set_app_id };
     for (size_t i = 0; i < sizeof ls / sizeof *ls; i++) wl_list_remove(&ls[i]->link);
     if (t->deco) {
         wl_list_remove(&t->deco_request_mode.link);
         wl_list_remove(&t->deco_destroy.link);
+    }
+    if (t->xw) {
+        struct wl_listener *xl[] = { &t->associate, &t->dissociate, &t->request_configure, &t->request_activate, &t->set_decorations };
+        for (size_t i = 0; i < sizeof xl / sizeof *xl; i++) wl_list_remove(&xl[i]->link);
+        t->xw->data = NULL;
     }
     if (hovered == t) hovered = NULL;
     if (server.grabbed == t) { server.grabbed = NULL; server.mode = MODE_PASS; }
@@ -1028,9 +1101,9 @@ static void on_request_maximize(struct wl_listener *l, void *data)
 {
     (void)data;
     struct toplevel *t = wl_container_of(l, t, request_maximize);
-    if (!t->xdg->base->initialized) return;
-    if (kind_of(t) != KIND_NORMAL) { wlr_xdg_surface_schedule_configure(t->xdg->base); return; }   /* the desktop asks: it is placed */
-    maximize(t, t->xdg->requested.maximized);
+    if (!view_ready(t)) return;
+    if (kind_of(t) != KIND_NORMAL) { view_schedule(t); return; }   /* the desktop asks: it is placed */
+    maximize(t, t->xdg ? t->xdg->requested.maximized : !t->maximized);
 }
 
 static void on_request_minimize(struct wl_listener *l, void *data)
@@ -1044,7 +1117,7 @@ static void on_request_fullscreen(struct wl_listener *l, void *data)
 {
     (void)data;
     struct toplevel *t = wl_container_of(l, t, request_fullscreen);
-    if (t->xdg->base->initialized) wlr_xdg_surface_schedule_configure(t->xdg->base);   /* not yet: answered as is */
+    if (view_ready(t)) view_schedule(t);   /* not yet: answered as is */
 }
 
 static void on_set_title(struct wl_listener *l, void *data)
@@ -1095,6 +1168,228 @@ static void on_new_toplevel(struct wl_listener *l, void *data)
     ON(xt->events.set_app_id, set_app_id, on_set_app_id);
 #undef ON
     wl_list_insert(server.toplevels.prev, &t->link);
+}
+
+/* ---------------------------------------------------------------- X11 */
+
+/* X11 programs through XWayland. Managed windows are windows like the
+ * others (framed unless they ask for no decorations); override-redirect
+ * ones (X11 menus, tooltips) are shown where they say, above all. */
+
+static void x_associate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct toplevel *t = wl_container_of(l, t, associate);
+    struct wlr_surface *s = t->xw->surface;
+    t->client = wlr_scene_subsurface_tree_create(t->tree, s);
+    t->map.notify = on_map;
+    wl_signal_add(&s->events.map, &t->map);
+    t->unmap.notify = on_unmap;
+    wl_signal_add(&s->events.unmap, &t->unmap);
+    t->commit.notify = on_commit;
+    wl_signal_add(&s->events.commit, &t->commit);
+}
+
+static void x_dissociate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct toplevel *t = wl_container_of(l, t, dissociate);
+    wl_list_remove(&t->map.link);
+    wl_list_remove(&t->unmap.link);
+    wl_list_remove(&t->commit.link);
+    wl_list_init(&t->map.link);
+    wl_list_init(&t->unmap.link);
+    wl_list_init(&t->commit.link);
+    t->client = NULL;   /* destroyed with its surface */
+}
+
+static void x_request_configure(struct wl_listener *l, void *data)
+{
+    struct toplevel *t = wl_container_of(l, t, request_configure);
+    struct wlr_xwayland_surface_configure_event *e = data;
+    if (!t->mapped) {
+        /* where it asks to be (placed when it is shown) */
+        ui_rect c = t->ssd ? client_rect(t) : (ui_rect){ 0, 0, 0, 0 };
+        wlr_scene_node_set_position(&t->tree->node, e->x - (int)c.x, e->y - (int)c.y);
+        wlr_xwayland_surface_configure(t->xw, e->x, e->y, e->width, e->height);
+        return;
+    }
+    if (t->maximized) { x11_configure(t, 0, 0); return; }   /* it stays as it is */
+    x11_configure(t, e->width, e->height);   /* its size; it stays where it is */
+}
+
+static void x_request_activate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct toplevel *t = wl_container_of(l, t, request_activate);
+    if (t->mapped) comp_focus(t);
+}
+
+static void x_request_resize(struct wl_listener *l, void *data)
+{
+    struct toplevel *t = wl_container_of(l, t, request_resize);
+    struct wlr_xwayland_resize_event *e = data;
+    begin_grab(t, MODE_RESIZE, e->edges);
+}
+
+static void x_request_minimize(struct wl_listener *l, void *data)
+{
+    struct toplevel *t = wl_container_of(l, t, request_minimize);
+    struct wlr_xwayland_minimize_event *e = data;
+    if (t->mapped) minimize(t, e->minimize);
+}
+
+static void x_set_decorations(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct toplevel *t = wl_container_of(l, t, set_decorations);
+    bool want = t->xw->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
+    if (want == t->ssd) return;
+    t->ssd = want;
+    draw_frame(t);
+}
+
+static void x_set_class(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct toplevel *t = wl_container_of(l, t, set_app_id);
+    draw_frame(t);
+    desktop_window(t, "change");
+}
+
+/* An override-redirect window: no frame, no focus, where it says. */
+struct unmanaged {
+    struct wlr_xwayland_surface *xw;
+    struct wlr_scene_tree *tree;
+    struct wl_listener associate, dissociate, map, unmap, set_geometry, destroy;
+};
+
+static void u_map(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct unmanaged *u = wl_container_of(l, u, map);
+    u->tree = wlr_scene_subsurface_tree_create(server.layer_palette, u->xw->surface);
+    wlr_scene_node_set_position(&u->tree->node, u->xw->x, u->xw->y);
+    if (wlr_xwayland_surface_override_redirect_wants_focus(u->xw)) {
+        struct wlr_keyboard *kb = wlr_seat_get_keyboard(server.seat);
+        if (kb) wlr_seat_keyboard_notify_enter(server.seat, u->xw->surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+    }
+}
+
+static void u_unmap(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct unmanaged *u = wl_container_of(l, u, unmap);
+    if (u->tree) wlr_scene_node_destroy(&u->tree->node);
+    u->tree = NULL;
+}
+
+static void u_associate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct unmanaged *u = wl_container_of(l, u, associate);
+    u->map.notify = u_map;
+    wl_signal_add(&u->xw->surface->events.map, &u->map);
+    u->unmap.notify = u_unmap;
+    wl_signal_add(&u->xw->surface->events.unmap, &u->unmap);
+}
+
+static void u_dissociate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct unmanaged *u = wl_container_of(l, u, dissociate);
+    wl_list_remove(&u->map.link);
+    wl_list_remove(&u->unmap.link);
+    wl_list_init(&u->map.link);
+    wl_list_init(&u->unmap.link);
+}
+
+static void u_set_geometry(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct unmanaged *u = wl_container_of(l, u, set_geometry);
+    if (u->tree) wlr_scene_node_set_position(&u->tree->node, u->xw->x, u->xw->y);
+}
+
+static void u_destroy(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct unmanaged *u = wl_container_of(l, u, destroy);
+    wl_list_remove(&u->associate.link);
+    wl_list_remove(&u->dissociate.link);
+    wl_list_remove(&u->map.link);
+    wl_list_remove(&u->unmap.link);
+    wl_list_remove(&u->set_geometry.link);
+    wl_list_remove(&u->destroy.link);
+    free(u);
+}
+
+static void on_new_xsurface(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_xwayland_surface *xs = data;
+    DBG("new X11 window %u%s\n", xs->window_id, xs->override_redirect ? " (override-redirect)" : "");
+    if (xs->override_redirect) {
+        struct unmanaged *u = calloc(1, sizeof *u);
+        u->xw = xs;
+        wl_list_init(&u->map.link);
+        wl_list_init(&u->unmap.link);
+        u->associate.notify = u_associate;
+        wl_signal_add(&xs->events.associate, &u->associate);
+        u->dissociate.notify = u_dissociate;
+        wl_signal_add(&xs->events.dissociate, &u->dissociate);
+        u->set_geometry.notify = u_set_geometry;
+        wl_signal_add(&xs->events.set_geometry, &u->set_geometry);
+        u->destroy.notify = u_destroy;
+        wl_signal_add(&xs->events.destroy, &u->destroy);
+        return;
+    }
+    struct toplevel *t = calloc(1, sizeof *t);
+    t->server = &server;
+    t->xw = xs;
+    xs->data = t;
+    t->ssd = xs->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
+    t->tree = wlr_scene_tree_create(server.layer_normal);
+    t->tree->node.data = tag_new(2, t);
+    t->frame = wlr_scene_buffer_create(t->tree, NULL);
+    t->frame->node.data = tag_new(1, t);
+    wlr_scene_node_set_enabled(&t->frame->node, false);
+    t->hover = t->pressed = UI_HIT_NONE;
+    static unsigned next_x11 = 1000000;   /* (apart from Wayland windows' IDs) */
+    t->id = next_x11++;
+    wl_list_init(&t->map.link);
+    wl_list_init(&t->unmap.link);
+    wl_list_init(&t->commit.link);
+#define ON(sig, field, fn) do { t->field.notify = fn; wl_signal_add(&(sig), &t->field); } while (0)
+    ON(xs->events.associate, associate, x_associate);
+    ON(xs->events.dissociate, dissociate, x_dissociate);
+    ON(xs->events.destroy, destroy, on_destroy);
+    ON(xs->events.request_configure, request_configure, x_request_configure);
+    ON(xs->events.request_activate, request_activate, x_request_activate);
+    ON(xs->events.request_move, request_move, on_request_move);
+    ON(xs->events.request_resize, request_resize, x_request_resize);
+    ON(xs->events.request_maximize, request_maximize, on_request_maximize);
+    ON(xs->events.request_minimize, request_minimize, x_request_minimize);
+    ON(xs->events.request_fullscreen, request_fullscreen, on_request_fullscreen);
+    ON(xs->events.set_title, set_title, on_set_title);
+    ON(xs->events.set_class, set_app_id, x_set_class);
+    ON(xs->events.set_decorations, set_decorations, x_set_decorations);
+#undef ON
+    wl_list_insert(server.toplevels.prev, &t->link);
+}
+
+static void on_xwayland_ready(struct wl_listener *l, void *data)
+{
+    (void)l; (void)data;
+    wlr_xwayland_set_seat(server.xwayland, server.seat);
+    /* X11 programs' default pointer: the same as ours */
+    struct wlr_xcursor *xc = wlr_xcursor_manager_get_xcursor(server.cursor_mgr, "default", 1);
+    if (xc && xc->image_count) {
+        struct wlr_xcursor_image *im = xc->images[0];
+        struct wlr_buffer *b = wlr_xcursor_image_get_buffer(im);
+        if (b) wlr_xwayland_set_cursor(server.xwayland, b, (int32_t)im->hotspot_x, (int32_t)im->hotspot_y);
+    }
+    DBG("XWayland ready on %s\n", server.xwayland->display_name);
 }
 
 /* Popups (menus): in their parent's tree, kept on the screen. */
@@ -1176,6 +1471,25 @@ static void on_new_decoration(struct wl_listener *l, void *data)
     set_decoration_mode(t);
 }
 
+/* ------------------------------------------------------------ spawning */
+
+bool comp_spawn(char *const argv[], void (*prepare)(void *), void *arg)
+{
+    pid_t pid = fork();
+    if (pid < 0) return false;
+    if (pid == 0) {
+        if (fork() == 0) {   /* the program: init's child, not ours */
+            setsid();
+            if (prepare) prepare(arg);
+            execvp(argv[0], argv);
+            _exit(127);
+        }
+        _exit(0);
+    }
+    waitpid(pid, NULL, 0);   /* the go-between, at once */
+    return true;
+}
+
 /* ------------------------------------------------------------ for desktop.c */
 
 void comp_focus(struct toplevel *t)
@@ -1191,13 +1505,14 @@ void comp_maximize(struct toplevel *t, bool on)
     if (t->minimized) minimize(t, false);
     if (t->kind == KIND_NORMAL) maximize(t, on);
 }
-void comp_close(struct toplevel *t) { wlr_xdg_toplevel_send_close(t->xdg); }
+void comp_close(struct toplevel *t) { view_close(t); }
 
 struct toplevel *comp_toplevel_of(struct wlr_surface *s)
 {
     struct wlr_xdg_toplevel *xt = s ? wlr_xdg_toplevel_try_from_wlr_surface(s) : NULL;
+    struct wlr_xwayland_surface *xs = s && !xt ? wlr_xwayland_surface_try_from_wlr_surface(s) : NULL;
     struct toplevel *t;
-    if (xt) wl_list_for_each(t, &server.toplevels, link) if (t->xdg == xt) return t;
+    if (xt || xs) wl_list_for_each(t, &server.toplevels, link) if ((xt && t->xdg == xt) || (xs && t->xw == xs)) return t;
     return NULL;
 }
 
@@ -1224,11 +1539,28 @@ static void log_windows(void)
     struct toplevel *t;
     wl_list_for_each(t, &server.toplevels, link) {
         struct wlr_box b = window_box(t);
-        fprintf(stderr, "wps-compositor: window '%s' app %s %dx%d+%d+%d%s%s%s%s%s\n", t->xdg->title ? t->xdg->title : "",
-                t->xdg->app_id ? t->xdg->app_id : "", b.width, b.height, b.x, b.y, t->ssd ? " framed" : "",
+        fprintf(stderr, "wps-compositor: window '%s' app %s %dx%d+%d+%d%s%s%s%s%s\n", view_title(t) ? view_title(t) : "",
+                view_app(t) ? view_app(t) : "", b.width, b.height, b.x, b.y, t->ssd ? " framed" : "",
                 t->activated ? " active" : "", t->minimized ? " minimized" : "", t->maximized ? " maximized" : "",
                 t->kind == KIND_DESKTOP ? " desktop" : t->kind == KIND_PALETTE ? " palette" : "");
     }
+}
+
+/* The keycode (xkb) that types sym without modifiers, or 0. */
+static uint32_t keycode_for(struct wlr_keyboard *kb, xkb_keysym_t sym)
+{
+    struct xkb_keymap *km = kb->keymap;
+    for (xkb_keycode_t k = xkb_keymap_min_keycode(km); k <= xkb_keymap_max_keycode(km); k++) {
+        const xkb_keysym_t *syms;
+        int n = xkb_keymap_key_get_syms_by_level(km, k, 0, 0, &syms);
+        for (int i = 0; i < n; i++) if (syms[i] == sym) return k;
+    }
+    for (xkb_keycode_t k = xkb_keymap_min_keycode(km); k <= xkb_keymap_max_keycode(km); k++) {   /* upper case: level 1 */
+        const xkb_keysym_t *syms;
+        int n = xkb_keymap_key_get_syms_by_level(km, k, 0, 1, &syms);
+        for (int i = 0; i < n; i++) if (syms[i] == sym) return k;
+    }
+    return 0;
 }
 
 static void script_key(const char *combo)
@@ -1243,9 +1575,24 @@ static void script_key(const char *combo)
         else break;
     }
     snprintf(name, sizeof name, "%s", p);
-    xkb_keysym_t sym = xkb_keysym_from_name(name, XKB_KEYSYM_CASE_INSENSITIVE);
-    if (shortcut(mods, sym)) return;
-    fprintf(stderr, "wps-compositor: script: %s is no compositor key (keys to programs: not yet)\n", combo);
+    xkb_keysym_t sym = xkb_keysym_from_name(name, XKB_KEYSYM_NO_FLAGS);
+    if (sym == XKB_KEY_NoSymbol) sym = xkb_keysym_from_name(name, XKB_KEYSYM_CASE_INSENSITIVE);
+    struct wlr_keyboard *kb = server.script_kb;
+    if (!kb) { if (!shortcut(mods, sym)) fprintf(stderr, "wps-compositor: script: no keyboard for %s\n", combo); return; }
+    /* typed on the test keyboard, as a hand types: the modifiers, the key */
+    static const struct { uint32_t mod; const char *key; } mk[] = {
+        { WLR_MODIFIER_CTRL, "Control_L" }, { WLR_MODIFIER_ALT, "Alt_L" }, { WLR_MODIFIER_SHIFT, "Shift_L" } };
+    uint32_t codes[4];
+    size_t n = 0;
+    for (size_t i = 0; i < 3; i++)
+        if (mods & mk[i].mod) codes[n++] = keycode_for(kb, xkb_keysym_from_name(mk[i].key, XKB_KEYSYM_NO_FLAGS));
+    codes[n++] = keycode_for(kb, sym);
+    if (!codes[n - 1]) { fprintf(stderr, "wps-compositor: script: no key for %s\n", combo); return; }
+    uint32_t t = (uint32_t)now_ms();
+    for (size_t i = 0; i < n; i++)
+        wlr_keyboard_notify_key(kb, &(struct wlr_keyboard_key_event){ t, codes[i] - 8, true, WL_KEYBOARD_KEY_STATE_PRESSED });
+    for (size_t i = n; i-- > 0;)
+        wlr_keyboard_notify_key(kb, &(struct wlr_keyboard_key_event){ t, codes[i] - 8, true, WL_KEYBOARD_KEY_STATE_RELEASED });
 }
 
 static void script_step(const char *line)
@@ -1337,7 +1684,7 @@ int main(int argc, char **argv)
     wlr_renderer_init_wl_display(s->renderer, s->display);
     s->allocator = wlr_allocator_autocreate(s->backend, s->renderer);
     if (!s->allocator) { fprintf(stderr, "wps-compositor: no allocator\n"); return 1; }
-    wlr_compositor_create(s->display, 5, s->renderer);
+    s->compositor = wlr_compositor_create(s->display, 5, s->renderer);
     wlr_subcompositor_create(s->display);
     wlr_data_device_manager_create(s->display);
 
@@ -1388,16 +1735,37 @@ int main(int argc, char **argv)
     const char *socket = wl_display_add_socket_auto(s->display);
     if (!socket) { fprintf(stderr, "wps-compositor: no socket\n"); return 1; }
     if (!wlr_backend_start(s->backend)) { fprintf(stderr, "wps-compositor: the backend did not start\n"); return 1; }
-    if (hw > 0) wlr_headless_add_output(s->backend, (unsigned)hw, (unsigned)hh);
+    if (hw > 0) {
+        wlr_headless_add_output(s->backend, (unsigned)hw, (unsigned)hh);
+        /* a keyboard (headless has none): for the scripts' keys, and
+         * XWayland, which will not start without one */
+        static const struct wlr_keyboard_impl impl = { .name = "wps-test-keyboard" };
+        static struct wlr_keyboard kb;
+        wlr_keyboard_init(&kb, &impl, "wps-test-keyboard");
+        on_new_input(NULL, &kb.base);
+        s->script_kb = &kb;
+    }
     setenv("WAYLAND_DISPLAY", socket, true);
     unsetenv("DISPLAY");
+    /* X11 programs: XWayland, started when the first one connects */
+    if (!getenv("WPS_COMP_NO_X11")) {
+        s->xwayland = wlr_xwayland_create(s->display, s->compositor, true);
+        if (s->xwayland) {
+            s->new_xsurface.notify = on_new_xsurface;
+            wl_signal_add(&s->xwayland->events.new_surface, &s->new_xsurface);
+            s->xwayland_ready.notify = on_xwayland_ready;
+            wl_signal_add(&s->xwayland->events.ready, &s->xwayland_ready);
+            setenv("DISPLAY", s->xwayland->display_name, true);
+            fprintf(stderr, "wps-compositor: DISPLAY=%s\n", s->xwayland->display_name);
+        } else {
+            fprintf(stderr, "wps-compositor: no XWayland: X11 programs will not run\n");
+        }
+    }
     fprintf(stderr, "wps-compositor: WAYLAND_DISPLAY=%s\n", socket);
     wlr_seat_set_capabilities(s->seat, WL_SEAT_CAPABILITY_POINTER);
-    signal(SIGCHLD, SIG_IGN);
-    if (startup && fork() == 0) {
-        signal(SIGCHLD, SIG_DFL);   /* ignored here (no zombies), but not for what it starts */
-        execl("/bin/sh", "/bin/sh", "-c", startup, (char *)NULL);
-        _exit(127);
+    if (startup) {
+        char *argv_sh[] = { "/bin/sh", "-c", (char *)startup, NULL };
+        comp_spawn(argv_sh, NULL, NULL);
     }
     if (desktop) desktop_start(desktop);
     start_ms = now_ms();
@@ -1405,6 +1773,11 @@ int main(int argc, char **argv)
     if (script) load_script(script);
     wl_display_run(s->display);
     desktop_stop();
+    if (s->xwayland) {
+        wl_list_remove(&s->new_xsurface.link);
+        wl_list_remove(&s->xwayland_ready.link);
+        wlr_xwayland_destroy(s->xwayland);
+    }
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
                                  &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection,

@@ -108,3 +108,10 @@ G2's planned items are all built. What remains are the issues above.
 - An object's icon is a copy: changing the source image later does not change it. Icons no object uses any more stay in `wps/icons`.
 - Templates copy their icon setting (the same PNG); deleting an object leaves its PNG.
 
+## wps-compositor (G5)
+
+- GTK 4 / libadwaita programs (Ptyxis, Text Editor, ...) keep their own title bars; the per-application setting to put WPS's frame around them is still to come.
+- The compositor's frames use the classic scheme: the WPS scheme and font chosen in the desktop are not followed yet (step 4, with the session's settings).
+- One headless run in about ten saw an X11 test window never appear (XWayland's first start, slow?); not seen again.
+- No scaled (HiDPI) screens, one screen only for the desktop, no fullscreen yet.
+

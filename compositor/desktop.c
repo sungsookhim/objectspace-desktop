@@ -38,7 +38,6 @@
 
 static struct {
     char *command;
-    pid_t pid;
     struct wl_client *client;
     struct wl_listener client_destroy;
     int in_fd, out_fd;              /* its standard input (we write), output (we read) */
@@ -107,16 +106,16 @@ static void clean(char *out, size_t n, const char *s)
 static struct wlr_box box_of(struct toplevel *t)
 {
     struct wlr_box b = { t->tree->node.x, t->tree->node.y, t->fw, t->fh };
-    if (!t->ssd) { b.width = t->xdg->base->geometry.width; b.height = t->xdg->base->geometry.height; }
+    if (!t->ssd) { struct wlr_box g = view_geo(t); b.width = g.width; b.height = g.height; }
     return b;
 }
 
 void desktop_event(struct toplevel *t, const char *name)
 {
-    if (d.in_fd < 0 || desktop_is(wl_resource_get_client(t->xdg->resource))) return;   /* WPS's own raise theirs */
+    if (d.in_fd < 0 || desktop_is(view_client(t))) return;   /* WPS's own raise theirs */
     char app[256], title[512], line[1024];
-    clean(app, sizeof app, t->xdg->app_id);
-    clean(title, sizeof title, t->xdg->title);
+    clean(app, sizeof app, view_app(t));
+    clean(title, sizeof title, view_title(t));
     struct wlr_box b = box_of(t);
     snprintf(line, sizeof line, "%s\t%s\t%s\t%d\t%d\t%d\t%d\n", name, app, title, b.x, b.y, b.width, b.height);
     send_line(line);
@@ -128,6 +127,13 @@ static struct icon { char *app, *png; bool asked; } *icons;
 static size_t nicons;
 
 static bool exists(const char *p) { return access(p, R_OK) == 0; }
+
+static void quiet(void *arg)
+{
+    (void)arg;
+    int nul = open("/dev/null", O_RDWR);
+    dup2(nul, 0); dup2(nul, 1); dup2(nul, 2);
+}
 
 static bool desktop_file_icon(const char *app, char *out, size_t n)
 {
@@ -230,13 +236,8 @@ static const char *icon_for(const char *app)
     if (exists(out)) return ic->png;
     char uri[PATH_MAX + 8];
     snprintf(uri, sizeof uri, "file://%s", svg);
-    pid_t pid = fork();
-    if (pid == 0) {
-        int nul = open("/dev/null", O_RDWR);
-        dup2(nul, 0); dup2(nul, 1); dup2(nul, 2);
-        execlp("glycin-thumbnailer", "glycin-thumbnailer", "-i", uri, "-o", out, "-s", "64", (char *)NULL);
-        _exit(127);
-    }
+    char *argv[] = { "glycin-thumbnailer", "-i", uri, "-o", out, "-s", "64", NULL };
+    comp_spawn(argv, quiet, NULL);
     struct wl_event_source *t = wl_event_loop_add_timer(server.loop, icons_ready, NULL);
     wl_event_source_timer_update(t, 1500);   /* (a few timers at most: one per app) */
     return "";
@@ -246,9 +247,9 @@ static const char *icon_for(const char *app)
 
 static bool listable(struct toplevel *t)
 {
-    if (!t->mapped || !t->xdg->app_id) return t->mapped;
-    const char *a = t->xdg->app_id;
-    bool wps_own = desktop_is(wl_resource_get_client(t->xdg->resource));
+    if (!t->mapped || !view_app(t)) return t->mapped;
+    const char *a = view_app(t);
+    bool wps_own = desktop_is(view_client(t));
     return !(wps_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad")));
 }
 
@@ -266,10 +267,10 @@ void desktop_window(struct toplevel *t, const char *change)
         return;
     }
     char app[256], title[512], fields[1536];
-    clean(app, sizeof app, t->xdg->app_id);
-    clean(title, sizeof title, t->xdg->title);
+    clean(app, sizeof app, view_app(t));
+    clean(title, sizeof title, view_title(t));
     snprintf(fields, sizeof fields, "%u\t%s\t%s\t%d\t%d\t%s\t%d", t->id, app, title, t->minimized, t->activated,
-             icon_for(t->xdg->app_id), t->maximized);
+             icon_for(view_app(t)), t->maximized);
     if (t->sent && !strcmp(t->sent, fields)) return;   /* nothing new */
     snprintf(line, sizeof line, "W\t%s\t%s\n", t->listed ? "change" : "add", fields);
     t->listed = true;
@@ -318,8 +319,8 @@ static void command(char *line)
         if (!strcmp(arg, "logout")) { wl_display_terminate(server.display); return; }
         if (getenv("WPS_SESSION")) {   /* the WPS session: the machine too */
             wl_display_terminate(server.display);
-            pid_t p = fork();
-            if (p == 0) { execlp("systemctl", "systemctl", !strcmp(arg, "reboot") ? "reboot" : "poweroff", (char *)NULL); _exit(127); }
+            char *argv[] = { "systemctl", !strcmp(arg, "reboot") ? "reboot" : "poweroff", NULL };
+            comp_spawn(argv, NULL, NULL);
         } else {
             fprintf(stderr, "wps-compositor: %s: only in the WPS session (nested, it ends only this)\n", arg);
             wl_display_terminate(server.display);
@@ -339,9 +340,14 @@ static void command(char *line)
         comp_focus(t);
     } else if (!strcmp(line, "close")) comp_close(t);
     else if (!strcmp(line, "terminate")) {
-        pid_t pid;
-        wl_client_get_credentials(wl_resource_get_client(t->xdg->resource), &pid, NULL, NULL);
-        if (pid > 0 && !desktop_is(wl_resource_get_client(t->xdg->resource))) kill(pid, SIGKILL);
+        /* an X11 window: its own process (_NET_WM_PID), never XWayland's,
+         * which would end every X11 program */
+        pid_t pid = 0;
+        if (t->xw) pid = t->xw->pid;
+        else wl_client_get_credentials(view_client(t), &pid, NULL, NULL);
+        DBG("terminate %u: pid %d\n", t->id, (int)pid);
+        if (pid > 0 && pid != getpid() && !desktop_is(view_client(t))) kill(pid, SIGKILL);
+        else if (t->xw) fprintf(stderr, "wps-compositor: terminate: the X11 program gives no process ID; closing instead\n"), comp_close(t);
     }
 }
 
@@ -396,6 +402,19 @@ static void on_client_destroy(struct wl_listener *l, void *data)
     d.client = NULL;
 }
 
+/* In the desktop's process: its standard input and output are the pipes,
+ * and its Wayland connection the socket. */
+static void child_fds(void *arg)
+{
+    int *fds = arg;
+    dup2(fds[0], 0);
+    dup2(fds[1], 1);
+    int fd = dup(fds[2]);   /* without close-on-exec */
+    char num[16];
+    snprintf(num, sizeof num, "%d", fd);
+    setenv("WAYLAND_SOCKET", num, 1);
+}
+
 static void start(void)
 {
     int sv[2], in[2], out[2];
@@ -404,25 +423,16 @@ static void start(void)
         return;
     }
     d.started = now_ms();
-    pid_t pid = fork();
-    if (pid == 0) {
-        signal(SIGCHLD, SIG_DFL);
-        dup2(in[0], 0);
-        dup2(out[1], 1);
-        int fd = dup(sv[1]);   /* without close-on-exec */
-        char num[16];
-        snprintf(num, sizeof num, "%d", fd);
-        setenv("WAYLAND_SOCKET", num, 1);
-        char *cmd;
-        if (asprintf(&cmd, "exec %s --events-stdin", d.command) < 0) _exit(127);
-        execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
-        _exit(127);
-    }
+    int fds[3] = { in[0], out[1], sv[1] };
+    char *cmd;
+    if (asprintf(&cmd, "exec %s --events-stdin", d.command) < 0) cmd = NULL;
+    char *argv[] = { "/bin/sh", "-c", cmd, NULL };
+    bool ok = cmd && comp_spawn(argv, child_fds, fds);
+    free(cmd);
     close(sv[1]);
     close(in[0]);
     close(out[1]);
-    if (pid < 0) { close(sv[0]); close(in[1]); close(out[0]); return; }
-    d.pid = pid;
+    if (!ok) { close(sv[0]); close(in[1]); close(out[0]); return; }
     d.client = wl_client_create(server.display, sv[0]);
     if (d.client) {
         d.client_destroy.notify = on_client_destroy;
@@ -454,6 +464,8 @@ void desktop_start(const char *command)
 void desktop_stop(void)
 {
     d.stopping = true;
-    if (d.pid > 0) kill(d.pid, SIGTERM);
+    pid_t pid = 0;   /* (not our child: its own connection says who it is) */
+    if (d.client) wl_client_get_credentials(d.client, &pid, NULL, NULL);
+    if (pid > 0) kill(pid, SIGTERM);
     stopped();
 }

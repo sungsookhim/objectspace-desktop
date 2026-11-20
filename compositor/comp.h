@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/xwayland.h>
 
 #include "ui.h"
 
@@ -63,6 +64,9 @@ struct server {
 
     struct wlr_keyboard *script_kb;   /* the script's own keyboard state (xkb) */
     struct wlr_xdg_activation_v1 *activation;
+    struct wlr_compositor *compositor;
+    struct wlr_xwayland *xwayland;    /* X11 programs (lazily started) */
+    struct wl_listener new_xsurface, xwayland_ready;
     struct wl_listener request_activate;
     bool focus_window_list;           /* Ctrl+Esc: the Window List takes the keyboard when it shows */
 };
@@ -77,7 +81,8 @@ struct output {
 struct toplevel {
     struct wl_list link;
     struct server *server;
-    struct wlr_xdg_toplevel *xdg;
+    struct wlr_xdg_toplevel *xdg;     /* a Wayland window, or */
+    struct wlr_xwayland_surface *xw;  /* an X11 one (xdg NULL) */
     struct wlr_scene_tree *tree;      /* the whole window, at its position */
     struct wlr_scene_tree *client;    /* the program's surfaces, inside the frame */
     struct wlr_scene_buffer *frame;   /* WPS's frame (server side), or disabled */
@@ -94,6 +99,7 @@ struct toplevel {
     struct wl_listener map, unmap, commit, destroy, request_move, request_resize, request_maximize,
         request_minimize, request_fullscreen, set_title, set_app_id;
     struct wl_listener deco_request_mode, deco_destroy;
+    struct wl_listener associate, dissociate, request_configure, request_activate, set_decorations;   /* X11 */
 };
 
 struct keyboard {
@@ -110,12 +116,23 @@ extern struct server server;
 extern bool comp_debug;
 #define DBG(...) do { if (comp_debug) fprintf(stderr, "wps-compositor: " __VA_ARGS__); } while (0)
 
-/* wps-compositor.c */
+/* wps-compositor.c: a window, Wayland or X11 */
+const char *view_title(struct toplevel *t);
+const char *view_app(struct toplevel *t);
+struct wl_client *view_client(struct toplevel *t);
+struct wlr_box view_geo(struct toplevel *t);       /* the program's own size (and its shadow's offset) */
 void comp_focus(struct toplevel *t);
 void comp_minimize(struct toplevel *t, bool on);
 void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);
 struct toplevel *comp_toplevel_of(struct wlr_surface *s);
+
+/* Start a program (sh -c COMMAND, or argv) apart from the compositor: a
+ * double fork, so it is never the compositor's child (no zombies, and
+ * SIGCHLD stays as it is: XWayland, which wlroots starts, needs it).
+ * prepare runs in the program's process before it starts (or NULL).
+ * Returns false if it could not be started. */
+bool comp_spawn(char *const argv[], void (*prepare)(void *), void *arg);
 
 /* desktop.c: WPS's desktop process, started and followed as the GNOME
  * extension does (the same lines on its standard input and output). */
