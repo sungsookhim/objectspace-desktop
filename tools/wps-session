@@ -66,10 +66,18 @@ mkdir -p "$DESK"
 # the session runs (as gnome-session's targets do).
 UNITS=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 mkdir -p "$UNITS"
+# It is bound to the compositor's scope (wps-compositor.scope, below): when
+# the compositor ends, however the session ends (killed at log out before
+# this script's last lines), the target stops, and graphical-session.target
+# with it. Left active, it kept GNOME from starting at the next login
+# ("A graphical session is already running!").
 printf '%s\n' '[Unit]' 'Description=The WPS session (wps-linux)' \
+    'BindsTo=wps-compositor.scope' 'After=wps-compositor.scope' \
     'BindsTo=graphical-session.target' 'Before=graphical-session.target' \
     'Wants=graphical-session-pre.target' 'After=graphical-session-pre.target' > "$UNITS/wps-session.target"
 systemctl --user daemon-reload 2>/dev/null
+# (one left from a session that ended badly: away before this one starts)
+systemctl --user stop wps-session.target 2>/dev/null
 
 # Once the compositor is up: services started by D-Bus or systemd get its
 # display; the session's target starts (the portal follows); GDM is told
@@ -79,7 +87,13 @@ systemctl --user start wps-session.target; \
 gdbus call --system --dest org.gnome.DisplayManager --object-path /org/gnome/DisplayManager/Manager \
     --method org.gnome.DisplayManager.Manager.RegisterSession >/dev/null 2>&1; \
 systemctl --user restart xdg-desktop-portal.service 2>/dev/null"
-"$REPO/build/wps-compositor" -d "'$REPO/build/wps-shell' --desktop '$DESK'" -s "$READY"
+# The compositor in a scope of its own (what wps-session.target is bound to).
+if systemd-run --user --scope --quiet --collect --unit=wps-compositor true 2>/dev/null; then
+    systemd-run --user --scope --quiet --collect --unit=wps-compositor -- \
+        "$REPO/build/wps-compositor" -d "'$REPO/build/wps-shell' --desktop '$DESK'" -s "$READY"
+else
+    "$REPO/build/wps-compositor" -d "'$REPO/build/wps-shell' --desktop '$DESK'" -s "$READY"
+fi
 status=$?
 echo "wps-session: the compositor ended ($status)" >&2
 # What this session started and set for systemd goes with it.
