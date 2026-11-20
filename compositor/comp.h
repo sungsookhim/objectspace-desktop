@@ -115,7 +115,8 @@ struct tag { int type; struct toplevel *t; };   /* type 1: a frame */
 
 extern struct server server;
 extern bool comp_debug;
-#define DBG(...) do { if (comp_debug) fprintf(stderr, "wps-compositor: " __VA_ARGS__); } while (0)
+double comp_uptime(void);   /* seconds since the start, for the log */
+#define DBG(...) do { if (comp_debug) { fprintf(stderr, "wps-compositor: %.3f ", comp_uptime()); fprintf(stderr, __VA_ARGS__); } } while (0)
 
 /* wps-compositor.c: a window, Wayland or X11 */
 const char *view_title(struct toplevel *t);

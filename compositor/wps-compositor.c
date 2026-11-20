@@ -72,6 +72,8 @@
 struct server server;
 bool comp_debug;   /* WPS_COMP_DEBUG */
 static double start_ms;   /* (the session log says when, from here) */
+static double now_ms(void);
+double comp_uptime(void) { return (now_ms() - start_ms) / 1000; }
 
 static bool from_desktop(struct toplevel *t);
 static ui_rect client_rect(struct toplevel *t);
@@ -259,6 +261,7 @@ static void focus(struct toplevel *t)
     wl_list_insert(&s->toplevels, &t->link);
     set_activated(t, true);
     struct wlr_keyboard *kb = wlr_seat_get_keyboard(s->seat);
+    DBG("focus '%s' (%s)%s\n", view_title(t) ? view_title(t) : "", view_app(t) ? view_app(t) : "", kb ? "" : " - no keyboard on the seat");
     if (kb) wlr_seat_keyboard_notify_enter(s->seat, view_surface(t), kb->keycodes, kb->num_keycodes, &kb->modifiers);
 }
 
@@ -633,6 +636,8 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
     struct wlr_surface *surface;
     ui_hit part;
     struct toplevel *t = window_at(s->cursor->x, s->cursor->y, &surface, &sx, &sy, &part);
+    DBG("button %#x at %.0f,%.0f on %s%s%s\n", button, s->cursor->x, s->cursor->y, t ? "'" : "nothing",
+        t ? (view_title(t) ? view_title(t) : "") : "", t ? (surface ? "' (its surface)" : "' (WPS's frame)") : "");
     if (t && !t->activated) focus(t);
     else if (t && t->kind == KIND_NORMAL) wlr_scene_node_raise_to_top(&t->tree->node);
     if (t && !surface && button == 0x110 /* BTN_LEFT */) {
@@ -766,6 +771,13 @@ static void on_key(struct wl_listener *l, void *data)
     const xkb_keysym_t *syms;
     int n = xkb_state_key_get_syms(k->wlr_keyboard->xkb_state, keycode, &syms);
     uint32_t mods = wlr_keyboard_get_modifiers(k->wlr_keyboard);
+    if (comp_debug && e->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        char name[64] = "?";
+        if (n > 0) xkb_keysym_get_name(syms[0], name, sizeof name);
+        DBG("key %s (code %u, mods %#x) from %s, keyboard focus %s\n", name, keycode, mods,
+            k->wlr_keyboard->base.name ? k->wlr_keyboard->base.name : "?",
+            server.seat->keyboard_state.focused_surface ? "a window" : "none");
+    }
     if (lock_active()) {   /* the lock screen has every key (consoles still switch) */
         if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED)
             for (int i = 0; i < n; i++) {
