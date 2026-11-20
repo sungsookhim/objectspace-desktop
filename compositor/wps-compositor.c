@@ -1733,6 +1733,12 @@ int main(int argc, char **argv)
     } else {
         s->backend = wlr_backend_autocreate(s->loop, &s->session);
         if (s->backend) s->renderer = wlr_renderer_autocreate(s->backend);
+        if (s->backend && !s->renderer) {
+            /* no GPU drawing (a virtual machine without 3D, a missing
+             * driver): the software renderer, slower but the same picture */
+            fprintf(stderr, "wps-compositor: no GPU renderer: drawing in software (pixman)\n");
+            s->renderer = wlr_pixman_renderer_create();
+        }
     }
     if (!s->backend || !s->renderer) { fprintf(stderr, "wps-compositor: no backend or renderer\n"); return 1; }
     wlr_renderer_init_wl_display(s->renderer, s->display);
