@@ -72,6 +72,47 @@ export default class Probe {
             });
             return;
         }
+        if (GLib.getenv('PROBE_MODE') === 'drawer') {
+            // The LaunchPad's first drawer arrow: open, close by a click
+            // elsewhere; open, close by the arrow again.
+            const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+            const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            this._dev = dev;
+            const t = () => GLib.get_monotonic_time();
+            const click = (x, y) => {
+                // moved there, a pause, pressed and held a moment, as a hand
+                // does (a popup's grab needs the button down)
+                dev.notify_absolute_motion(t(), x, y);
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                    dev.notify_button(t(), 1, Clutter.ButtonState.PRESSED);
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                        dev.notify_button(t(), 1, Clutter.ButtonState.RELEASED);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                    return GLib.SOURCE_REMOVE;
+                });
+            };
+            const arrow = () => {
+                const lp = global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad');
+                if (!lp) return null;
+                const r = lp.get_frame_rect();
+                return [r.x + 12 + 4 * 40 + 8 + 27, r.y + 3 + 5];
+            };
+            const step = (s, f) => at(s, () => { const a = arrow(); console.log(`probe: drawer step at ${s}: arrow ${a}`); if (a) f(a); });
+            at(8, () => dev.notify_absolute_motion(t(), 640, 400));   // off the hot corner
+            // The first click (step 10) is lost in headless GNOME: the pointer
+            // enters the LaunchPad, then GNOME moves it to the desktop window
+            // before the press (not seen in a real session); step 13 on works.
+            step(10, a => click(...a));                  // open the first drawer
+            at(11, () => { if (out) shoot(out.replace('.png', '-open.png')); });
+            step(11.5, a => click(1150, 500));           // closed by a click elsewhere
+            step(13, a => click(...a));                  // open it again
+            step(14.5, a => click(a[0] + 56, a[1]));     // the next button's arrow, the first drawer still open
+            at(15.5, () => { if (out) shoot(out.replace('.png', '-open2.png')); });
+            step(16, a => click(a[0] + 56, a[1]));       // that arrow again: closed
+            at(17, () => { windows('drawer'); if (out) shoot(out); });
+            return;
+        }
         if (GLib.getenv('PROBE_MODE') === 'quiet') {
             at(Number(GLib.getenv('PROBE_SHOT_AT') ?? 13), () => { if (out) shoot(out); });
             at(14, () => windows('end'));

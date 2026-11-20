@@ -587,7 +587,17 @@ static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double
         return;
     }
     if (it->in_use) in_use(cr, x, y, sz);
-    if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
+    if (it->image && cairo_surface_status(it->image) == CAIRO_STATUS_SUCCESS) {
+        double iw = cairo_image_surface_get_width(it->image), ih = cairo_image_surface_get_height(it->image);
+        double k = sz / (iw > ih ? iw : ih);
+        cairo_save(cr);
+        cairo_translate(cr, x + (sz - iw * k) / 2, y + (sz - ih * k) / 2);
+        cairo_scale(cr, k, k);
+        cairo_set_source_surface(cr, it->image, 0, 0);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+        cairo_restore(cr);
+    } else if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
     else draw_icon(cr, it->kind == UI_KIND_LINK ? UI_KIND_FILE : it->kind, x, y, sz);
     if (it->link || it->kind == UI_KIND_LINK) link_mark(cr, x, y, sz);
 }

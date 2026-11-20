@@ -19,6 +19,8 @@ struct win {
     char app[128];
     char title[256];
     bool minimized, focused;
+    char icon_path[256];       /* the app's icon, a PNG the extension made */
+    cairo_surface_t *icon;
 };
 
 static ui_app *app;
@@ -52,7 +54,12 @@ void winlist_line(char **f, int n)
     if (n < 7 || strcmp(f[0], "W")) return;
     struct win *w = find(f[2]);
     if (!strcmp(f[1], "remove")) {
-        if (w) { size_t i = (size_t)(w - wins); memmove(w, w + 1, (nwins - i - 1) * sizeof *w); nwins--; }
+        if (w) {
+            if (w->icon) cairo_surface_destroy(w->icon);
+            size_t i = (size_t)(w - wins);
+            memmove(w, w + 1, (nwins - i - 1) * sizeof *w);
+            nwins--;
+        }
     } else {
         if (!w) {
             if (nwins == capwins) {
@@ -67,6 +74,16 @@ void winlist_line(char **f, int n)
         snprintf(w->title, sizeof w->title, "%s", f[4][0] ? f[4] : f[3]);
         w->minimized = !strcmp(f[5], "1");
         w->focused = !strcmp(f[6], "1");
+        const char *ip = n > 7 ? f[7] : "";
+        if (strcmp(ip, w->icon_path)) {
+            if (w->icon) cairo_surface_destroy(w->icon);
+            w->icon = NULL;
+            snprintf(w->icon_path, sizeof w->icon_path, "%s", ip);
+            if (*ip) {
+                w->icon = cairo_image_surface_create_from_png(ip);
+                if (cairo_surface_status(w->icon) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(w->icon); w->icon = NULL; }
+            }
+        }
     }
     for (int k = 0; k < 2; k++) if (lists[k].s && !lists[k].closing) refresh(&lists[k]);
 }
@@ -141,7 +158,9 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     if (i >= l->nrows) return;
     const struct win *w = &wins[l->rows[i]];
     out->loaded = out->detailed = true;
-    out->kind = UI_KIND_PROGRAM;
+    /* the app's own icon; WPS's folder windows as folders */
+    out->kind = !strcmp(w->app, "org.wps.shell") ? UI_KIND_FOLDER : UI_KIND_PROGRAM;
+    out->image = w->icon;
     out->name = w->app;
     out->title = w->title;
     out->in_use = w->focused;   /* the active window, emphasized */

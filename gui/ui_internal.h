@@ -33,6 +33,8 @@ struct ui_surface {
     struct xdg_surface *xs;
     struct xdg_toplevel *top;
     struct xdg_popup *popup;
+    ui_rect pop_anchor;    /* where it was put, for a new size */
+    bool pop_above;        /* opens above its anchor (drawers) */
     ui_surface *parent;
     double w, h;           /* logical: the window itself */
     double m;              /* a margin around it for its shadow (0: none) */

@@ -47,6 +47,8 @@ struct drawer {
     size_t n;
     bool loaded;
     ssize_t hot;
+    ssize_t down;              /* the row pressed in it (the release of the
+                                  click that opened it is not a choice) */
 };
 
 static struct {
@@ -291,7 +293,7 @@ static void drawer_layout(void)
 {
     struct drawer *d = &lp.drawer;
     double h = (double)(d->n ? d->n : 1) * DRAWER_ROW + 2 * PAD;
-    ui_window_set_size(d->s, DRAWER_W, h, true);
+    ui_popup_set_size(d->s, DRAWER_W, h);
 }
 
 static void drawer_got(void *arg, const cv *reply)
@@ -301,6 +303,7 @@ static void drawer_got(void *arg, const cv *reply)
     if (!d->s) return;
     d->n = parse(reply, d->items, MAX_ITEMS);
     d->loaded = true;
+    drawer_layout();
     ui_surface_damage_all(d->s);
 }
 
@@ -333,14 +336,17 @@ static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 static void drawer_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     struct drawer *d = ui_surface_data(s);
-    ssize_t row = e->y >= PAD ? (ssize_t)((e->y - PAD) / DRAWER_ROW) : -1;
-    if (row >= (ssize_t)d->n || e->x < 0 || e->x > DRAWER_W) row = -1;
+    double h = (double)(d->n ? d->n : 1) * DRAWER_ROW + 2 * PAD;
+    ssize_t row = e->y >= PAD && e->y < h - PAD ? (ssize_t)((e->y - PAD) / DRAWER_ROW) : -1;
+    if (row >= (ssize_t)d->n || e->x < 0 || e->x >= DRAWER_W) row = -1;
     if (e->kind == UI_MOTION || e->kind == UI_ENTER) {
         if (row != d->hot) { d->hot = row; ui_surface_damage_all(s); }
     } else if (e->kind == UI_LEAVE) {
         d->hot = -1;
         ui_surface_damage_all(s);
-    } else if (e->kind == UI_RELEASE && e->button == UI_BTN1 && row >= 0) {
+    } else if (e->kind == UI_PRESS && e->button == UI_BTN1) {
+        d->down = row;
+    } else if (e->kind == UI_RELEASE && e->button == UI_BTN1 && row >= 0 && row == d->down) {
         struct entry it = d->items[row];
         char dir[PATH_MAX];
         snprintf(dir, sizeof dir, "%s", d->dir);
@@ -349,19 +355,27 @@ static void drawer_pointer(ui_surface *s, const ui_pointer_event *e)
     }
 }
 
+/* A closed drawer's popup, until it is destroyed: not inside its own
+ * event, but before any new popup (Wayland: a new grabbing popup must be
+ * the child of the topmost one; another arrow clicked with a drawer open
+ * was a protocol error, and GNOME disconnected the desktop). */
+static ui_surface *dying;
+
 static void drawer_free(void *arg)
 {
-    ui_surface *s = arg;
-    ui_surface_destroy(s);
+    (void)arg;
+    if (dying) ui_surface_destroy(dying);
+    dying = NULL;
 }
 
 static void drawer_close(void)
 {
     struct drawer *d = &lp.drawer;
     if (!d->s) return;
-    ui_surface *s = d->s;
+    drawer_free(NULL);   /* an older one first */
+    dying = d->s;
     d->s = NULL;
-    ui_app_post(lp.app, drawer_free, s);   /* not inside its own event */
+    ui_app_post(lp.app, drawer_free, NULL);
     if (lp.s) ui_surface_damage_all(lp.s);
 }
 
@@ -373,17 +387,16 @@ static void drawer_open(size_t i, uint32_t serial)
 {
     bool same = lp.drawer.s && lp.drawer.button == i;
     drawer_close();
+    drawer_free(NULL);   /* gone now, not later: the new popup's parent must be the topmost */
     if (same) return;   /* its arrow again: closed */
     struct drawer *d = &lp.drawer;
     memset(d, 0, sizeof *d);
     d->button = i;
-    d->hot = -1;
+    d->hot = d->down = -1;
     drawer_dir(i, d->dir, sizeof d->dir);
     mkdirs(d->dir);
-    ui_rect a = arrow_rect(i);
-    a.w = 1;   /* anchored at its left edge: opens above (or below, if there is no room) */
-    d->s = ui_popup_new(lp.app, lp.s, &drawer_ops, d, a, DRAWER_W, DRAWER_ROW + 2 * PAD, serial);
-    drawer_layout();
+    /* above its button, as OS/2's drawers opened (below if there is no room) */
+    d->s = ui_popup_new_above(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial);
     svc_list(d->dir, 0, MAX_ITEMS, true, drawer_got, NULL);
     events_raise("menu.open", lp.items[i].title, "launchpad", (ui_rect){ 0, 0, 0, 0 });
     ui_surface_damage_all(lp.s);

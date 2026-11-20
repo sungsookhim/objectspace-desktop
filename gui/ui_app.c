@@ -414,22 +414,66 @@ void ui_window_set_size(ui_surface *s, double w, double h, bool fixed)
     ui_surface_damage_all(s);
 }
 
-ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
-                         double w, double h, uint32_t serial)
+static struct xdg_positioner *positioner(ui_surface *s, double w, double h)
 {
-    ui_surface *s = surface_new(a, ops, data, w, h);
-    s->parent = parent;
-    s->scale = parent->scale;
-    struct xdg_positioner *pos = xdg_wm_base_create_positioner(a->wm);
+    ui_rect anchor = s->pop_anchor;
+    struct xdg_positioner *pos = xdg_wm_base_create_positioner(s->app->wm);
     xdg_positioner_set_size(pos, (int32_t)w, (int32_t)h);
     xdg_positioner_set_anchor_rect(pos, (int32_t)anchor.x, (int32_t)anchor.y, anchor.w < 1 ? 1 : (int32_t)anchor.w,
                                    anchor.h < 1 ? 1 : (int32_t)anchor.h);
-    xdg_positioner_set_anchor(pos, anchor.w > 1 ? XDG_POSITIONER_ANCHOR_TOP_RIGHT : XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT);
-    xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    if (s->pop_above) {
+        /* above the anchor, its left edges lined up */
+        xdg_positioner_set_anchor(pos, XDG_POSITIONER_ANCHOR_TOP_LEFT);
+        xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_TOP_RIGHT);
+    } else {
+        xdg_positioner_set_anchor(pos, anchor.w > 1 ? XDG_POSITIONER_ANCHOR_TOP_RIGHT : XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT);
+        xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    }
     xdg_positioner_set_constraint_adjustment(pos, XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X |
                                                   XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y |
                                                   XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
                                                   XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+    return pos;
+}
+
+static ui_surface *popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
+                             double w, double h, uint32_t serial, bool above);
+
+ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
+                         double w, double h, uint32_t serial)
+{
+    return popup_new(a, parent, ops, data, anchor, w, h, serial, false);
+}
+
+ui_surface *ui_popup_new_above(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
+                               double w, double h, uint32_t serial)
+{
+    return popup_new(a, parent, ops, data, anchor, w, h, serial, true);
+}
+
+void ui_popup_set_size(ui_surface *s, double w, double h)
+{
+    if (!s->popup || (w == s->w && h == s->h)) return;
+    s->w = w;
+    s->h = h;
+    if (xdg_popup_get_version(s->popup) >= XDG_POPUP_REPOSITION_SINCE_VERSION) {
+        struct xdg_positioner *pos = positioner(s, w, h);
+        xdg_popup_reposition(s->popup, pos, 0);
+        xdg_positioner_destroy(pos);
+    }
+    if (s->ops->resized) s->ops->resized(s, w, h);
+    ui_surface_damage_all(s);
+}
+
+static ui_surface *popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
+                             double w, double h, uint32_t serial, bool above)
+{
+    ui_surface *s = surface_new(a, ops, data, w, h);
+    s->parent = parent;
+    s->scale = parent->scale;
+    s->pop_anchor = anchor;
+    s->pop_above = above;
+    struct xdg_positioner *pos = positioner(s, w, h);
     s->popup = xdg_surface_get_popup(s->xs, parent->xs, pos);
     xdg_positioner_destroy(pos);
     xdg_popup_add_listener(s->popup, &pop_listener, s);

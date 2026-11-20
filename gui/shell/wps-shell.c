@@ -3624,6 +3624,21 @@ static void win_frame(ui_surface *s, double now)
         #undef GGET
         return;
     }
+    if (st && !strcmp(st, "lpfill")) {
+        /* Three objects in the first LaunchPad drawer, then nothing (for
+         * PROBE_MODE=drawer to click). */
+        static bool done;
+        if (!f->desktop || done || launchpad_count() < 2) return;
+        done = true;
+        const char *names[] = { "notes.txt", "Projects", "added-later.txt" };
+        for (int k = 0; k < 3; k++) {
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/%s", f->path, names[k]);
+            if (access(p, F_OK) == 0) launchpad_drawer(0, p);
+        }
+        fprintf(stderr, "selftest: first drawer filled\n");
+        return;
+    }
     if (st && !strcmp(st, "launchpad")) {
         /* The LaunchPad on the desktop: its first buttons, a button
          * pressed (a folder opens), a drop on it and on a drawer arrow. */
@@ -4121,10 +4136,10 @@ static void on_window_events(void *arg, int fd, short rev)
     char *line = ev_buf, *nl;
     while ((nl = strchr(line, '\n'))) {
         *nl = 0;
-        char *f[7] = { 0 };
+        char *f[8] = { 0 };
         int k = 0;
-        for (char *p = line, *t; k < 7 && (t = strsep(&p, "\t"));) f[k++] = t;
-        if (k == 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
+        for (char *p = line, *t; k < 8 && (t = strsep(&p, "\t"));) f[k++] = t;
+        if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };

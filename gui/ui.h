@@ -210,6 +210,12 @@ void ui_window_activate(ui_surface *s);
 ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
                          ui_rect anchor, double w, double h, uint32_t serial);
 
+/* The same, opening above the anchor (a LaunchPad drawer). */
+ui_surface *ui_popup_new_above(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
+                               ui_rect anchor, double w, double h, uint32_t serial);
+/* A popup's new size, placed again by the compositor. */
+void ui_popup_set_size(ui_surface *s, double w, double h);
+
 void ui_surface_destroy(ui_surface *s);
 void *ui_surface_data(ui_surface *s);
 ui_app *ui_surface_app(ui_surface *s);
@@ -367,6 +373,7 @@ typedef struct {
     bool link;                 /* a plain file-system link: drawn as what it points to, with a link mark */
     bool is_template;          /* a template: drawn on a pad of paper (OS/2) */
     bool in_use;               /* in-use emphasis (OS/2): a folder with a window open (drawn open), or a file open in a program */
+    cairo_surface_t *image;    /* its own icon (an app's), drawn instead of the kind's; NULL: the kind's */
     /* Tree view only. */
     int depth;
     bool expandable, expanded;

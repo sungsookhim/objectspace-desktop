@@ -23,7 +23,9 @@
 // The window list (G4): the desktop also gets every window's state, WPS's
 // own included (the desktop and WPS's window lists excepted), one line per
 // change:
-//     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized 0|1> TAB <focused 0|1>
+//     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized 0|1> TAB <focused 0|1> TAB <icon>
+// where <icon> is a PNG of the app's icon (GNOME's, from its .desktop file,
+// rendered once per app into $XDG_RUNTIME_DIR/wps-icons), or empty
 // and sends commands back on its standard output, one line each:
 //     activate TAB <id>   minimize TAB <id>   close TAB <id>
 // (only this process can: the pipes are the ones the extension made).
@@ -32,6 +34,8 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
+import GdkPixbuf from 'gi://GdkPixbuf';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -193,20 +197,55 @@ export default class WpsExtension extends Extension {
             this._tracked.delete(w);
             if (this._listed.has(w)) {
                 this._listed.delete(w);
-                this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0']);
+                this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0', '']);
             }
         });
         this._listLine(w);
     }
 
+    // The app's icon as a PNG the desktop can read (cairo reads PNG only):
+    // GNOME's icon for the window's app, looked up in the icon theme and
+    // rendered at 64 pixels, once per app.
+    _iconFor(w) {
+        try {
+            const cls = w.get_wm_class() ?? '';
+            if (cls.startsWith('org.wps.')) return '';   // WPS's own windows: WPS's icons
+            const app = Shell.WindowTracker.get_default().get_window_app(w);
+            if (!app || app.is_window_backed()) return '';
+            const id = app.get_id().replace(/[^A-Za-z0-9._-]/g, '_');
+            this._icons ??= new Map();
+            if (this._icons.has(id)) return this._icons.get(id);
+            let out = '';
+            const gicon = app.get_app_info()?.get_icon();
+            let file = null;
+            if (gicon instanceof Gio.FileIcon) {
+                file = gicon.get_file().get_path();
+            } else if (gicon) {
+                this._theme ??= new St.IconTheme();
+                file = this._theme.lookup_by_gicon(gicon, 64, St.IconLookupFlags.FORCE_SIZE)?.get_filename() ?? null;
+            }
+            if (file) {
+                const dir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'wps-icons']);
+                GLib.mkdir_with_parents(dir, 0o700);
+                out = GLib.build_filenamev([dir, `${id}.png`]);
+                GdkPixbuf.Pixbuf.new_from_file_at_size(file, 64, 64).savev(out, 'png', [], []);
+            }
+            this._icons.set(id, out);
+            return out;
+        } catch (e) {
+            console.log(`wps: no icon for ${w.get_wm_class()}: ${e.message}`);
+            return '';
+        }
+    }
+
     _listLine(w) {
         if (!this._listable(w)) {
-            if (this._listed.has(w)) { this._listed.delete(w); this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0']); }
+            if (this._listed.has(w)) { this._listed.delete(w); this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0', '']); }
             return;
         }
         const clean = v => String(v ?? '').replace(/[\t\n\r]/g, ' ');
         const f = [String(w.get_id()), clean(w.get_wm_class()), clean(w.get_title()), w.minimized ? '1' : '0',
-            w.appears_focused ? '1' : '0'];
+            w.appears_focused ? '1' : '0', clean(this._iconFor(w))];
         const was = this._listed.get(w);
         if (was && was.join('\t') === f.join('\t')) return;
         this._listed.set(w, f);

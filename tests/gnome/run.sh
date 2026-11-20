@@ -27,6 +27,8 @@ elif [ -n "$WLDEBUG" ]; then
   printf '{"command": ["env", "WAYLAND_DEBUG=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
 elif [ -n "$DESKENV" ]; then   # e.g. DESKENV=WPS_DEBUG_DND=1
   printf '{"command": ["env", "%s", "%s", "--desktop", "%s"]}\n' "$DESKENV" "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
+elif [ -n "$ASAN" ]; then   # the plain desktop, under the sanitizers
+  printf '{"command": ["env", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
 else
   printf '{"command": ["%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
 fi
@@ -55,6 +57,8 @@ dbus-run-session -- sh -c "
   SH=\$!
   sleep 5
   [ \"\$PROBE_MODE\" = interact ] || WAYLAND_DISPLAY=wps-hl '$REPO/build/wps-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
+  # APP=gnome-text-editor: another program's window too (the window list's icons)
+  [ -n \"\$APP\" ] && WAYLAND_DISPLAY=wps-hl \$APP > '$T/app.log' 2>&1 &
   if [ -n \"\$KILLTEST\" ]; then sleep 1; pkill -KILL -f -- 'wps-shell --deskto[p]'; fi
   sleep 4
   echo late > '$T/desk/added-later.txt'
