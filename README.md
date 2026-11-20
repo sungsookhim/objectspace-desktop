@@ -43,6 +43,21 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 
 ## Building
 
+On a new Fedora machine (45; GNOME), the packages for everything here:
+
+```
+sudo dnf install gcc make python3 sqlite-devel cairo-devel harfbuzz-devel freetype-devel fontconfig-devel \
+    wayland-devel wayland-protocols-devel libxkbcommon-devel pipewire-devel systemd-devel \
+    wlroots-devel libinput-devel libseat-devel pixman-devel libdrm-devel libxcb-devel xorg-x11-server-Xwayland \
+    pam-devel glycin-thumbnailer xdg-user-dirs libasan libubsan gdb
+make && make gui && make compositor
+tools/install-extension.sh             # the desktop in GNOME (and the wpsd user service)
+sudo tools/install-session.sh          # "WPS" on the login screen; then reboot (GDM reads its list at start)
+```
+
+The WPS session needs a real seat (a console, or a virtual machine's screen): over RDP, GDM starts sessions headless, which only GNOME's own compositor can serve (docs/open-issues.md).
+
+
 ```
 make          # runtime, classes, service, plug-ins, tests (needs gcc, python3, sqlite-devel)
 make test     # unit tests
@@ -53,6 +68,9 @@ tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB 
 tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-in hosts
 make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, wayland, xkbcommon, pipewire -devel)
 make gui      # wps-shell (optimised) and wps-shell-asan
+make compositor     # wps-compositor (G5, wlroots) and its test clients
+tests/comp/run.sh SCRIPT  # the compositor headless, with WPS's desktop, played by a script
+tools/try-compositor.sh   # the compositor nested in a window of your session
 tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private headless GNOME Shell
 tests/gnome/with-gnome.sh -- tests/gui/selftest.sh MODE [SETUP]   # one GUI self-test, in a private headless GNOME
 ```

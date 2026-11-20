@@ -42,8 +42,11 @@ PORTALS=${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal
 mkdir -p "$PORTALS"
 [ -f "$PORTALS/wps-portals.conf" ] || printf '[preferred]\ndefault=gtk;\norg.freedesktop.impl.portal.Secret=oo7-portal;gnome-keyring;\n' > "$PORTALS/wps-portals.conf"
 
-# wpsd: the user service (tools/install.sh enables it).
-systemctl --user start wpsd.service 2>/dev/null
+# wpsd: the user service (tools/install-extension.sh installs it), or
+# started here if it is not installed.
+if ! systemctl --user start wpsd.service 2>/dev/null; then
+    "$REPO/build/wpsctl" ping >/dev/null 2>&1 || { "$REPO/build/wpsd" 2>> "$STATE/wpsd.log" & }
+fi
 
 DESK=$(xdg-user-dir DESKTOP 2>/dev/null)
 [ -d "$DESK" ] || DESK=$HOME/Desktop
