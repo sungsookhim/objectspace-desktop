@@ -523,6 +523,10 @@ static void begin_grab(struct toplevel *t, enum mode m, uint32_t edges)
     server.grab_y = server.cursor->y - (m == MODE_MOVE ? b.y : 0);
     server.grab_box = b;
     server.resize_edges = edges;
+    /* The pointer is the compositor's while it moves or sizes: the program
+     * is told it left (as GNOME does), so it does not wait for a release
+     * it will never get (its own buttons then did nothing). */
+    wlr_seat_pointer_clear_focus(server.seat);
 }
 
 static void do_resize(void)
@@ -633,7 +637,12 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
             s->grabbed = NULL;
             return;
         }
-        if (s->mode != MODE_PASS) { s->mode = MODE_PASS; s->grabbed = NULL; return; }
+        if (s->mode != MODE_PASS) {
+            s->mode = MODE_PASS;
+            s->grabbed = NULL;
+            process_motion(time);   /* the pointer enters what is under it again */
+            return;
+        }
         wlr_seat_pointer_notify_button(s->seat, time, button, WL_POINTER_BUTTON_STATE_RELEASED);
         return;
     }
