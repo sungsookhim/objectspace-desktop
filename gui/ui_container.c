@@ -45,7 +45,8 @@ struct ui_container {
     double bx0, by0, bx1, by1;   /* rubber band, content coordinates */
     bool b2_down;
     double b2x, b2y;
-    uint32_t b2_serial;   /* the press's: GNOME grants a menu's grab for a press, not a release */
+    uint32_t b2_serial;
+    const char *name_head;   /* details view: the second column's title (NULL: "Name") */   /* the press's: GNOME grants a menu's grab for a press, not a release */
     size_t vis_first, vis_last;
     ui_layer *layer;          /* rows are drawn here; NULL: on the surface */
     ui_entry *rename;         /* in-place rename, if active */
@@ -520,6 +521,8 @@ static ui_rect rename_rect(ui_container *c)
 
 static const char *heads[] = { "", "Title", "Name", "Size", "Last write" };
 
+void ui_container_set_name_head(ui_container *c, const char *title) { c->name_head = title; }
+
 static void columns(ui_container *c, double *x)
 {
     ui_rect l = list_rect(c);
@@ -886,7 +889,7 @@ void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip)
             ui_rect cell = { x[i] - 4, h.y, x[i + 1] - x[i], h.h };
             ui_bevel(cr, cell, true);
             ui_set_color(cr, k->text);
-            ui_text_draw(cr, UI_FONT_REGULAR, x[i], h.y + (h.h + ui_text_ascent()) / 2 - 1, heads[i], cell.w - 8);
+            ui_text_draw(cr, UI_FONT_REGULAR, x[i], h.y + (h.h + ui_text_ascent()) / 2 - 1, i == 2 && c->name_head ? c->name_head : heads[i], cell.w - 8);
         }
     }
     ui_rect l = list_rect(c);
@@ -1282,6 +1285,13 @@ void ui_container_set_view(ui_container *c, ui_view v)
 }
 
 ui_view ui_container_view(ui_container *c) { return c->view; }
+
+void ui_container_set_focused(ui_container *c, bool on)
+{
+    if (c->focused == on) return;
+    c->focused = on;
+    damage_list(c);
+}
 
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view)
 {

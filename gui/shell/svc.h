@@ -44,6 +44,10 @@ void svc_vmove(const char *target, const char *folder, bool copy, svc_fn fn, voi
 void svc_job_decide(int64_t job, const char *decision, bool all);                                 /* "skip", "rename" */
 void svc_job_cancel(int64_t job);
 void svc_subscribe_jobs(svc_fn fn, void *arg);
+/* A search (G4): replies {find: ID}; the matches come as "found" events
+ * with that ID as their sub (svc_on_event). kind: any, folder, file, program. */
+void svc_find(const char *folder, const char *name, bool subfolders, const char *kind, int64_t limit, svc_fn fn, void *arg);
+void svc_find_cancel(int64_t find);
 void svc_layout(const char *folder, svc_fn fn, void *arg);
 void svc_arrange(const char *folder, svc_fn fn, void *arg);
 void svc_place(const char *folder, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg);

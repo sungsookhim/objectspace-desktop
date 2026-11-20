@@ -25,6 +25,7 @@ typedef enum { WPS_FIND_ANY, WPS_FIND_FOLDER, WPS_FIND_FILE, WPS_FIND_PROGRAM } 
 typedef struct {
     const char *path;
     const char *type;        /* "folder", "file", "link", "other" */
+    int64_t size, mtime;
 } wps_found;
 
 /* A batch, on the loop thread. `done`: the last call (the search ended,

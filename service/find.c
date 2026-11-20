@@ -37,6 +37,7 @@ struct batch {
     struct find *f;
     char **paths;
     const char **types;
+    int64_t *sizes, *mtimes;
     size_t n, cap;
     bool done, truncated;
     uint64_t scanned;
@@ -71,6 +72,8 @@ static void batch_free(struct batch *b)
     for (size_t i = 0; i < b->n; i++) free(b->paths[i]);
     free(b->paths);
     free(b->types);
+    free(b->sizes);
+    free(b->mtimes);
     free(b);
 }
 
@@ -79,7 +82,7 @@ static void deliver(void *arg)
     struct batch *b = arg;
     struct find *f = b->f;
     wps_found *items = calloc(b->n ? b->n : 1, sizeof *items);
-    for (size_t i = 0; i < b->n; i++) items[i] = (wps_found){ b->paths[i], b->types[i] };
+    for (size_t i = 0; i < b->n; i++) items[i] = (wps_found){ b->paths[i], b->types[i], b->sizes[i], b->mtimes[i] };
     f->fn(f->arg, f->id, items, b->n, b->done, b->scanned, b->truncated, b->err);
     free(items);
     if (b->done) {
@@ -123,15 +126,19 @@ static void post(struct walk *w, bool done)
     w->last_post = now_ms();
 }
 
-static void add(struct walk *w, const char *path, const char *type)
+static void add(struct walk *w, const char *path, const char *type, const struct stat *st)
 {
     struct batch *b = w->b;
     if (b->n == b->cap) {
         b->cap = b->cap ? b->cap * 2 : BATCH;
         b->paths = realloc(b->paths, b->cap * sizeof *b->paths);
         b->types = realloc(b->types, b->cap * sizeof *b->types);
+        b->sizes = realloc(b->sizes, b->cap * sizeof *b->sizes);
+        b->mtimes = realloc(b->mtimes, b->cap * sizeof *b->mtimes);
     }
     b->paths[b->n] = strdup(path);
+    b->sizes[b->n] = st ? (int64_t)st->st_size : 0;
+    b->mtimes[b->n] = st ? (int64_t)st->st_mtime : 0;
     b->types[b->n++] = type;
     w->found++;
     if (b->n >= BATCH) post(w, false);
@@ -178,9 +185,12 @@ static void walk_dir(struct walk *w, const char *dir, int depth)
                 size_t nl = strlen(e->d_name);
                 if (t != DT_REG) want = false;
                 else if (nl > 8 && !strcmp(e->d_name + nl - 8, ".desktop")) want = true;
-                else want = (have_st || fstatat(dirfd(d), e->d_name, &st, 0) == 0) && (st.st_mode & 0111);
+                else want = (have_st || (have_st = fstatat(dirfd(d), e->d_name, &st, AT_SYMLINK_NOFOLLOW) == 0)) && (st.st_mode & 0111);
             }
-            if (want) add(w, path, t == DT_DIR ? "folder" : t == DT_REG ? "file" : t == DT_LNK ? "link" : "other");
+            if (want) {
+                if (!have_st) have_st = fstatat(dirfd(d), e->d_name, &st, AT_SYMLINK_NOFOLLOW) == 0;
+                add(w, path, t == DT_DIR ? "folder" : t == DT_REG ? "file" : t == DT_LNK ? "link" : "other", have_st ? &st : NULL);
+            }
         }
         if (f->subfolders && t == DT_DIR && depth < MAX_DEPTH) {
             if (nsubs == capsubs) {

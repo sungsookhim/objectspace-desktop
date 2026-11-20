@@ -14,6 +14,7 @@
 #include "events.h"
 #include "svc.h"
 #include "winlist.h"
+#include "findwin.h"
 
 #define GRIP_W 12.0
 #define SYS_W 40.0           /* OS/2's own buttons */
@@ -214,6 +215,11 @@ static void press_sys(size_t i)
 {
     events_raise("launchpad.button", sys_names[i], "launchpad", (ui_rect){ 0, 0, 0, 0 });
     if (i == 3) { winlist_open(false); return; }
+    if (i == 1) {   /* WPS's own Find, from the home folder */
+        const char *home = getenv("HOME");
+        findwin_open(home && *home ? home : "/", NULL);
+        return;
+    }
     if (!winlist_ext(sys_cmds[i], NULL))
         fprintf(stderr, "wps-shell: LaunchPad: %s needs the WPS GNOME Shell extension\n", sys_names[i]);
 }

@@ -80,5 +80,11 @@ G2's planned items are all built. What remains are the issues above.
 - No tooltips: titles are drawn under the icons, cut short.
 - Not yet a setting: shown on every desktop start (`WPS_NO_LAUNCHPAD` turns it off); OS/2 had it as an object with its own notebook (orientation, small icons, text, float on top).
 - Drawers are read when opened, not followed; a duplicate in a drawer is not refused.
-- Find opens GNOME's overview search; WPS's own Find (G4 search) replaces it.
+
+## Find (G4 search)
+
+- Names only: object titles (which can differ from file names), classes and settings are not searched yet; the design asks for all four.
+- No search field inside folder windows: Ctrl+F opens a Find window on that folder, which searches as you type. Filtering a folder's own view in place would need the folder model to show a subset (it maps view rows to listing rows one to one).
+- Results cannot be dragged out yet, nor saved as a folder of shadows (OS/2's Find made its results a folder).
+- Each search walks the file system; nothing is indexed. A home folder of about 13,000 entries (hidden ones skipped) takes about 50 ms; very large trees stop at 2,000 results.
 

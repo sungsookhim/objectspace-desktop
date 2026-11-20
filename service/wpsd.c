@@ -38,7 +38,7 @@
  *   {op:"create", folder, class, title, command}   a new object (file, folder,
  *                      .desktop program or .wpobj abstract object), never overwriting
  *   {op:"find", folder, name, subfolders, kind:"any"|"folder"|"file"|"program", limit}
- *       -> {find:ID}; then "found" events (sub: the ID) with items [{path, type}],
+ *       -> {find:ID}; then "found" events (sub: the ID) with items [{path, type, size, mtime}],
  *       done, scanned, truncated
  *   {op:"find_cancel", find:ID}
  *   {op:"stats"}
@@ -2254,9 +2254,11 @@ static void found(void *arg, int64_t find, const wps_found *items, size_t n, boo
         cb_text(&b, "items");
         cb_array(&b, n);
         for (size_t i = 0; i < n; i++) {
-            cb_map(&b, 2);
+            cb_map(&b, 4);
             cb_text(&b, "path"); cb_text(&b, items[i].path);
             cb_text(&b, "type"); cb_text(&b, items[i].type);
+            cb_text(&b, "size"); cb_int(&b, items[i].size);
+            cb_text(&b, "mtime"); cb_int(&b, items[i].mtime);
         }
         cb_text(&b, "done"); cb_bool(&b, done);
         cb_text(&b, "scanned"); cb_uint(&b, scanned);

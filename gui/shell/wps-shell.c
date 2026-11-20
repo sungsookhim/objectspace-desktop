@@ -26,6 +26,7 @@
 #include "wallpaper.h"
 #include "events.h"
 #include "winlist.h"
+#include "findwin.h"
 #include "launchpad.h"
 #include "gnome.h"
 #include "sound.h"
@@ -640,6 +641,7 @@ static void on_event(void *arg, const cv *ev)
     int64_t sub;
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
+    if (findwin_event(ev)) return;   /* a search's results (its own IDs) */
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     if (setup_event(ev)) return;
     if (launchpad_event(name, sub)) return;
@@ -2478,6 +2480,8 @@ static void win_key(ui_surface *s, const ui_key_event *e)
     struct folder *f = ui_surface_data(s);
     size_t before = ui_container_selected_count(f->cont);
     if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_w || e->sym == XKB_KEY_W)) { win_close(s); return; }
+    /* Find in this folder and its subfolders (G4) */
+    if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_f || e->sym == XKB_KEY_F)) { findwin_open(f->path, NULL); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_1) { set_view(f, UI_VIEW_ICON); return; }
     /* In the order the View menu lists them (OS/2's): icon, tree, details. */
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
@@ -3695,6 +3699,38 @@ static void win_frame(ui_surface *s, double now)
         #undef LROWS
         return;
     }
+    if (st && !strcmp(st, "find")) {
+        /* Find (G4 search) on the folder: typed as a user types (each key
+         * a new search), then a pattern, then folders only. */
+        static double t0;
+        static int step;
+        if (f != folders || f->closing) return;
+        if (!t0) t0 = now;
+        double t = now - t0;
+        static const char *const typed[] = { "note", "*.TXT", "a" };
+        if (step == 0 && t > 500) {
+            findwin_open(f->path, NULL);
+            findwin_type(typed[0]);
+            step++;
+            t0 = now;
+        } else if (step >= 1 && step <= 3 && (t > 5000 || (!findwin_searching() && t > 300))) {
+            char rows[1200] = "";
+            size_t pl = strlen(f->path);
+            for (size_t i = 0; findwin_result(i); i++)
+                snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i ? ", " : "", findwin_result(i) + pl);
+            fprintf(stderr, "selftest: find '%s'%s: %zu: %s\n", typed[step - 1], step == 3 ? " (folders)" : "", findwin_count(), rows);
+            if (step == 1 && getenv("WPS_SHELL_SHOT")) findwin_snapshot(getenv("WPS_SHELL_SHOT"));
+            if (step == 1) findwin_type(typed[1]);
+            else if (step == 2) {
+                /* Type: Folders (the type field, as Space there does), then the name */
+                findwin_kind(1);
+                findwin_type(typed[2]);
+            } else { ui_app_quit(app); }
+            step++;
+            t0 = now;
+        }
+        return;
+    }
     if (st && !strcmp(st, "winlist")) {
         /* The Window List and the Minimized Window Viewer, with the
          * extension: the folder window run.sh opens, minimized and restored. */
@@ -4214,6 +4250,7 @@ int main(int argc, char **argv)
     } else {
         winlist_init(app, -1);
     }
+    findwin_init(app, launchpad_open_folder);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

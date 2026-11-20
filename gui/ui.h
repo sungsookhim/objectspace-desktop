@@ -417,11 +417,16 @@ typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view);
 void ui_container_free(ui_container *c);
 void ui_container_layout(ui_container *c, ui_rect r);
+/* Details view: the title of the second column ("Name"), e.g. "Folder"; a
+ * string that lives as long as the container. */
+void ui_container_set_name_head(ui_container *c, const char *title);
 void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip);
 bool ui_container_pointer(ui_container *c, const ui_pointer_event *e);
 bool ui_container_key(ui_container *c, const ui_key_event *e);
 void ui_container_set_view(ui_container *c, ui_view v);
 ui_view ui_container_view(ui_container *c);
+/* Whether it has the keyboard (its cursor is drawn); a new one has. */
+void ui_container_set_focused(ui_container *c, bool on);
 /* The model changed: items first..last (or the count). */
 void ui_container_changed(ui_container *c, size_t first, size_t last);
 void ui_container_count_changed(ui_container *c);

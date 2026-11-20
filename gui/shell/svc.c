@@ -420,6 +420,26 @@ void svc_job_cancel(int64_t job)
     send_req(o, id, ignore, NULL);
 }
 
+void svc_find(const char *folder, const char *name, bool subfolders, const char *kind, int64_t limit, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("find", 5, &id);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    cb_text(&o->b, "name"); cb_text(&o->b, name);
+    cb_text(&o->b, "subfolders"); cb_bool(&o->b, subfolders);
+    cb_text(&o->b, "kind"); cb_text(&o->b, kind);
+    cb_text(&o->b, "limit"); cb_int(&o->b, limit);
+    send_req(o, id, fn, arg);
+}
+
+void svc_find_cancel(int64_t find)
+{
+    int64_t id;
+    struct out *o = begin("find_cancel", 1, &id);
+    cb_text(&o->b, "find"); cb_int(&o->b, find);
+    send_req(o, id, ignore, NULL);
+}
+
 void svc_subscribe_jobs(svc_fn fn, void *arg)
 {
     int64_t id;
