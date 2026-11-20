@@ -3738,6 +3738,31 @@ static void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 4 && t > 1500) {
             fprintf(stderr, "selftest: after restoring: %zu minimized\n", winlist_count(true));
+            fprintf(stderr, "selftest: maximize Projects: sent %d\n", winlist_command("maximize", "Projects"));
+            step++;
+            t0 = now;
+        } else if (step == 5 && t > 1500) {
+            bool mn = false, mx = false;
+            winlist_state("Projects", &mn, &mx);
+            fprintf(stderr, "selftest: after maximizing: minimized %d maximized %d\n", mn, mx);
+            fprintf(stderr, "selftest: restore Projects: sent %d\n", winlist_command("restore", "Projects"));
+            step++;
+            t0 = now;
+        } else if (step == 6 && t > 1500) {
+            bool mn = false, mx = false;
+            winlist_state("Projects", &mn, &mx);
+            fprintf(stderr, "selftest: after restoring: minimized %d maximized %d\n", mn, mx);
+            /* another program (run.sh APP=), ended unasked */
+            const char *other = getenv("WPS_SELFTEST_TERMINATE");
+            if (other && !*other) other = NULL;
+            if (other) fprintf(stderr, "selftest: terminate %s: sent %d\n", other, winlist_command("terminate", other));
+            step++;
+            t0 = now;
+        } else if (step == 7 && t > 2000) {
+            const char *other = getenv("WPS_SELFTEST_TERMINATE");
+            if (other && !*other) other = NULL;
+            bool mn, mx;
+            if (other) fprintf(stderr, "selftest: after terminating: %s %s\n", other, winlist_state(other, &mn, &mx) ? "still there" : "gone");
             ui_app_quit(app);
             step++;
         }
@@ -4136,9 +4161,9 @@ static void on_window_events(void *arg, int fd, short rev)
     char *line = ev_buf, *nl;
     while ((nl = strchr(line, '\n'))) {
         *nl = 0;
-        char *f[8] = { 0 };
+        char *f[9] = { 0 };
         int k = 0;
-        for (char *p = line, *t; k < 8 && (t = strsep(&p, "\t"));) f[k++] = t;
+        for (char *p = line, *t; k < 9 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {

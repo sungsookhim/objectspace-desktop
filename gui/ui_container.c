@@ -45,6 +45,7 @@ struct ui_container {
     double bx0, by0, bx1, by1;   /* rubber band, content coordinates */
     bool b2_down;
     double b2x, b2y;
+    uint32_t b2_serial;   /* the press's: GNOME grants a menu's grab for a press, not a release */
     size_t vis_first, vis_last;
     ui_layer *layer;          /* rows are drawn here; NULL: on the surface */
     ui_entry *rename;         /* in-place rename, if active */
@@ -1029,7 +1030,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
             if (fabs(e->x - c->b2x) < 5 && fabs(e->y - c->b2y) < 5 && c->src->menu) {
                 size_t i = item_at(c, e->x, e->y);
                 if (i != SIZE_MAX && !sel_get(c, i)) move_cursor(c, i, 0);
-                c->src->menu(c->ctx, i, e->x, e->y, e->serial);
+                c->src->menu(c->ctx, i, e->x, e->y, c->b2_serial);
             }
             return true;
         }
@@ -1078,6 +1079,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         c->b2_down = true;   /* a click (press and release in place) opens the menu */
         c->b2x = e->x;
         c->b2y = e->y;
+        c->b2_serial = e->serial;
         return true;
     }
     if (!ui_mouse_is(UI_ACT_SELECT, e)) return true;

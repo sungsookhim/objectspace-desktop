@@ -23,11 +23,12 @@
 // The window list (G4): the desktop also gets every window's state, WPS's
 // own included (the desktop and WPS's window lists excepted), one line per
 // change:
-//     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized 0|1> TAB <focused 0|1> TAB <icon>
+//     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized 0|1> TAB <focused 0|1> TAB <icon> TAB <maximized 0|1>
 // where <icon> is a PNG of the app's icon (GNOME's, from its .desktop file,
 // rendered once per app into $XDG_RUNTIME_DIR/wps-icons), or empty
 // and sends commands back on its standard output, one line each:
-//     activate TAB <id>   minimize TAB <id>   close TAB <id>
+//     activate TAB <id>   minimize TAB <id>   maximize TAB <id>
+//     restore TAB <id>    close TAB <id>      terminate TAB <id>
 // (only this process can: the pipes are the ones the extension made).
 
 import Gio from 'gi://Gio';
@@ -191,13 +192,14 @@ export default class WpsExtension extends Extension {
         if (this._tracked?.has(w)) { this._listLine(w); return; }
         this._tracked ??= new Set();
         this._tracked.add(w);
-        for (const sig of ['notify::title', 'notify::minimized', 'notify::appears-focused', 'notify::wm-class'])
+        for (const sig of ['notify::title', 'notify::minimized', 'notify::appears-focused', 'notify::wm-class',
+            'notify::maximized-horizontally', 'notify::maximized-vertically'])
             this._connect(w, sig, () => this._listLine(w));
         this._connect(w, 'unmanaged', () => {
             this._tracked.delete(w);
             if (this._listed.has(w)) {
                 this._listed.delete(w);
-                this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0', '']);
+                this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0', '', '0']);
             }
         });
         this._listLine(w);
@@ -240,12 +242,12 @@ export default class WpsExtension extends Extension {
 
     _listLine(w) {
         if (!this._listable(w)) {
-            if (this._listed.has(w)) { this._listed.delete(w); this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0', '']); }
+            if (this._listed.has(w)) { this._listed.delete(w); this._send(['W', 'remove', String(w.get_id()), '', '', '0', '0', '', '0']); }
             return;
         }
         const clean = v => String(v ?? '').replace(/[\t\n\r]/g, ' ');
         const f = [String(w.get_id()), clean(w.get_wm_class()), clean(w.get_title()), w.minimized ? '1' : '0',
-            w.appears_focused ? '1' : '0', clean(this._iconFor(w))];
+            w.appears_focused ? '1' : '0', clean(this._iconFor(w)), w.is_maximized() ? '1' : '0'];
         const was = this._listed.get(w);
         if (was && was.join('\t') === f.join('\t')) return;
         this._listed.set(w, f);
@@ -308,7 +310,20 @@ export default class WpsExtension extends Extension {
                     w.activate(now);
                 }
                 else if (cmd === 'minimize') w.minimize();
+                else if (cmd === 'maximize') {
+                    if (w.minimized) w.unminimize();
+                    if (w.can_maximize()) w.maximize();
+                    w.activate(now);
+                }
+                else if (cmd === 'restore') {
+                    // OS/2's Restore: back to the normal size, from
+                    // minimized or maximized
+                    if (w.minimized) w.unminimize();
+                    else if (w.is_maximized()) w.unmaximize();
+                    w.activate(now);
+                }
                 else if (cmd === 'close') w.delete(now);
+                else if (cmd === 'terminate') w.kill();   // the program, not asked
             }
             next();
         });

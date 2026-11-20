@@ -6,8 +6,9 @@
  * In a GNOME session a program cannot see other programs' windows; the
  * wps@wps-linux extension can, and tells the desktop process about every
  * window on its standard input ("W" lines: add, change, remove, with an
- * ID, the app, the title, minimized, focused). Commands go back on the
- * desktop's standard output (activate, minimize, close an ID), so even
+ * ID, the app, the title, minimized, focused, the icon, maximized). Commands go back on the
+ * desktop's standard output (activate, restore, minimize, maximize,
+ * close, terminate an ID), so even
  * WPS's own windows are restored through GNOME (no program can
  * unminimize itself). Without the extension the lists say so.
  */
@@ -35,6 +36,8 @@ bool winlist_ext(const char *cmd, const char *arg);
  * command for the window whose title contains `title`. */
 size_t winlist_count(bool minimized_only);
 bool winlist_command(const char *cmd, const char *title);
+/* Whether a window whose title contains `title` is known, and its state. */
+bool winlist_state(const char *title, bool *minimized, bool *maximized);
 bool winlist_is_open(bool minimized_only);
 const char *winlist_title(size_t i, bool minimized_only);
 bool winlist_snapshot(bool minimized_only, const char *png);

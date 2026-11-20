@@ -18,7 +18,7 @@ struct win {
     char id[32];
     char app[128];
     char title[256];
-    bool minimized, focused;
+    bool minimized, focused, maximized;
     char icon_path[256];       /* the app's icon, a PNG the extension made */
     cairo_surface_t *icon;
 };
@@ -74,6 +74,7 @@ void winlist_line(char **f, int n)
         snprintf(w->title, sizeof w->title, "%s", f[4][0] ? f[4] : f[3]);
         w->minimized = !strcmp(f[5], "1");
         w->focused = !strcmp(f[6], "1");
+        w->maximized = n > 8 && !strcmp(f[8], "1");
         const char *ip = n > 7 ? f[7] : "";
         if (strcmp(ip, w->icon_path)) {
             if (w->icon) cairo_surface_destroy(w->icon);
@@ -117,6 +118,13 @@ bool winlist_command(const char *cmd, const char *title)
 {
     for (size_t i = 0; i < nwins; i++)
         if (strstr(wins[i].title, title)) { command(cmd, wins[i].id); return true; }
+    return false;
+}
+
+bool winlist_state(const char *title, bool *minimized, bool *maximized)
+{
+    for (size_t i = 0; i < nwins; i++)
+        if (strstr(wins[i].title, title)) { *minimized = wins[i].minimized; *maximized = wins[i].maximized; return true; }
     return false;
 }
 
@@ -183,13 +191,13 @@ struct menu_ctx { struct listwin *l; char id[32]; };
 static void menu_chosen(void *arg, int64_t item)
 {
     struct menu_ctx *m = arg;
-    if (item == 1) command("activate", m->id);
-    else if (item == 2) command("minimize", m->id);
-    else if (item == 3) command("close", m->id);
+    static const char *const cmds[] = { NULL, "activate", "restore", "minimize", "maximize", "close", "terminate" };
+    if (item >= 1 && item <= 6) command(cmds[item], m->id);
     free(m);
 }
 
-/* Its menu: Show, Hide, Close (OS/2's window list had these). */
+/* Its menu: Show (forward), Restore, Minimize, Maximize, Close (asks the
+ * program), Terminate (ends it, unasked: for one that does not answer). */
 static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
 {
     struct listwin *l = ctx;
@@ -197,12 +205,18 @@ static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     struct menu_ctx *m = calloc(1, sizeof *m);
     m->l = l;
     snprintf(m->id, sizeof m->id, "%s", wins[l->rows[i]].id);
+    const struct win *w = &wins[l->rows[i]];
     ui_menu_item items[] = {
         { 1, "Show", true, false, NULL, 0 },
-        { 2, "Hide", !wins[l->rows[i]].minimized, false, NULL, 0 },
-        { 3, "Close", true, false, NULL, 0 },
+        { 0, "-", false, false, NULL, 0 },
+        { 2, "Restore", w->minimized || w->maximized, false, NULL, 0 },
+        { 3, "Minimize", !w->minimized, false, NULL, 0 },
+        { 4, "Maximize", !w->maximized || w->minimized, false, NULL, 0 },
+        { 0, "-", false, false, NULL, 0 },
+        { 5, "Close", true, false, NULL, 0 },
+        { 6, "Terminate", true, false, NULL, 0 },
     };
-    ui_menu_popup(l->s, items, 3, x, y, serial, menu_chosen, m);
+    ui_menu_popup(l->s, items, sizeof items / sizeof *items, x, y, serial, menu_chosen, m);
 }
 
 static const ui_container_src list_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, NULL, NULL, NULL, NULL };

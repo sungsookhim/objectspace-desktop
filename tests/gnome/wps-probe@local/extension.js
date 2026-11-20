@@ -3,6 +3,9 @@
 // PROBE_MODE unset: after 14 s, log what GNOME sees (Alt+Tab list,
 // stacking, window types and sizes, monitors) and take a screenshot to
 // $PROBE_SHOT.
+// PROBE_MODE=keys: Ctrl+Esc, then what has the focus; with PROBE_MENU=1
+// (or =aside: the folder window moved from under the list first) button 2
+// on the Window List's first row and its Maximize.
 // PROBE_MODE=interact: drive a virtual pointer like a user: double-click
 // the desktop's notes.txt and Projects, then drag notes.txt with button 2
 // (the right button, OS/2's drag button), with screenshots before, during
@@ -64,7 +67,55 @@ export default class Probe {
                 key(Clutter.KEY_Escape, false); key(Clutter.KEY_Control_L, false);
                 console.log('probe: pressed Ctrl+Esc');
             });
-            at(11, () => {
+            if (GLib.getenv('PROBE_MENU')) {
+                // then button 2 on the list's first row: its menu
+                // (made after Ctrl+Esc: a pointer device made earlier lost
+                // the key press in headless GNOME)
+                let ptr;
+                at(9.5, () => {
+                    ptr = this._ptr = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+                    ptr.notify_absolute_motion(GLib.get_monotonic_time(), 640, 400);   // off the hot corner
+                });
+                // A left click first (it selects the row): the first click
+                // of a new device is lost in headless GNOME (see drawer).
+                const rowClick = (b, tag) => {
+                    const wl = global.display.list_all_windows().find(w => w.get_title() === 'Window List');
+                    if (!wl) return;
+                    const r = wl.get_frame_rect();
+                    ptr.notify_absolute_motion(GLib.get_monotonic_time(), r.x + 80, r.y + 4 + 22 + 10);
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                        ptr.notify_button(GLib.get_monotonic_time(), b, Clutter.ButtonState.PRESSED);
+                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                            ptr.notify_button(GLib.get_monotonic_time(), b, Clutter.ButtonState.RELEASED);
+                            return GLib.SOURCE_REMOVE;
+                        });
+                        return GLib.SOURCE_REMOVE;
+                    });
+                    console.log(`probe: ${tag} on the Window List`);
+                };
+                if (GLib.getenv('PROBE_MENU') === 'aside')   // nothing but the desktop under the list
+                    at(9.2, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell')?.move_frame(true, 0, 400));
+                at(10, () => rowClick(1, 'button 1'));
+                at(10.6, () => rowClick(1, 'button 1'));
+                at(11.2, () => rowClick(3, 'button 2'));
+                // its Maximize (the fourth item; the menu opens at the click)
+                at(12, () => {
+                    const wl = global.display.list_all_windows().find(w => w.get_title() === 'Window List');
+                    if (!wl) return;
+                    const r = wl.get_frame_rect();
+                    ptr.notify_absolute_motion(GLib.get_monotonic_time(), r.x + 80 + 50, r.y + 36 + 89);
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                        ptr.notify_button(GLib.get_monotonic_time(), 1, Clutter.ButtonState.PRESSED);
+                        ptr.notify_button(GLib.get_monotonic_time(), 1, Clutter.ButtonState.RELEASED);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                });
+                at(12.8, () => {
+                    const p = global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell');
+                    console.log(`probe: after the menu: Projects maximized ${p?.is_maximized()}`);
+                });
+            }
+            at(GLib.getenv('PROBE_MENU') ? 13 : 11, () => {
                 const w = global.display.focus_window;
                 console.log(`probe: focused window: ${w ? `"${w.get_title()}" app ${w.get_wm_class()}` : 'none'}`);
                 windows('keys');
@@ -194,5 +245,6 @@ export default class Probe {
         for (const id of this._ids) GLib.source_remove(id);
         this._ids = [];
         this._dev = null;
+        this._ptr = null;
     }
 }

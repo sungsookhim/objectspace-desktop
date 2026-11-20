@@ -6,6 +6,7 @@
 # screenshot ($T/shot.png). A folder window opens on top; a file is added
 # to the desktop after the overview has closed.
 #   SELFTEST=desktop   the desktop runs WPS_SHELL_SELFTEST=desktop
+#   TERMINATE=<title>  (SELFTEST=winlist) a window to end from the Window List
 #   KILLTEST=1         the desktop is killed once: the extension restarts it
 #   WLDEBUG=1          the desktop's Wayland traffic goes to the log
 #   DESKENV=NAME=VALUE one more setting for the desktop (e.g. WPS_DEBUG_DND=1)
@@ -22,7 +23,7 @@ echo hi > "$T/desk/notes.txt"
 E="$T/data/gnome-shell/extensions/wps@wps-linux"
 mkdir -p "$E"; cp -r "$REPO/gnome-extension/wps@wps-linux/"* "$E/"; glib-compile-schemas "$E/schemas"
 if [ -n "$SELFTEST" ]; then   # the desktop runs a self-test (its output in shell.log)
-  printf '{"command": ["env", "WPS_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$SELFTEST" "$T/cache" "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
+  printf '{"command": ["env", "WPS_SELFTEST_TERMINATE=%s", "WPS_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$TERMINATE" "$SELFTEST" "$T/cache" "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
 elif [ -n "$WLDEBUG" ]; then
   printf '{"command": ["env", "WAYLAND_DEBUG=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
 elif [ -n "$DESKENV" ]; then   # e.g. DESKENV=WPS_DEBUG_DND=1
