@@ -30,6 +30,8 @@
 #include <assert.h>
 #include <cairo.h>
 #include <drm_fourcc.h>
+#include <xf86drm.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <getopt.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -962,6 +964,38 @@ static void on_output_frame(struct wl_listener *l, void *data)
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_scene_output_send_frame_done(so, &now);
+}
+
+/* Programs' GPU buffers: wlroots first imports each into the graphics card
+ * and closes it again, to see it is good. VirtualBox's card (vmwgfx) will
+ * not close such a handle ("Failed to close buffer handle"): every buffer
+ * then counted as bad, and GTK 4 programs (which offer theirs so that a bad
+ * one ends the connection) were disconnected at once; and each handle not
+ * closed kept its buffer in video memory, until drawing broke (Firefox).
+ * There the renderer's own import is the only check (as GNOME's). */
+static bool dmabuf_ok(struct wlr_dmabuf_attributes *attribs, void *data)
+{
+    (void)attribs; (void)data;
+    return true;
+}
+
+static void init_buffers(struct wlr_renderer *r, struct wl_display *display)
+{
+    int fd = wlr_renderer_get_drm_fd(r);
+    drmVersionPtr v = fd >= 0 ? drmGetVersion(fd) : NULL;
+    bool vmwgfx = v && v->name && !strcmp(v->name, "vmwgfx");
+    if (v) drmFreeVersion(v);
+    if (!vmwgfx && !getenv("WPS_COMP_NO_DMABUF_CHECK")) {
+        wlr_renderer_init_wl_display(r, display);
+        return;
+    }
+    wlr_renderer_init_wl_shm(r, display);
+    if (wlr_renderer_get_texture_formats(r, WLR_BUFFER_CAP_DMABUF)) {
+        struct wlr_linux_dmabuf_v1 *dm = wlr_linux_dmabuf_v1_create_with_renderer(display, 4, r);
+        if (dm) wlr_linux_dmabuf_v1_set_check_dmabuf_callback(dm, dmabuf_ok, NULL);
+    }
+    fprintf(stderr, "wps-compositor: %s: programs' GPU buffers are not checked by the card\n",
+            vmwgfx ? "vmwgfx (VirtualBox, VMware)" : "WPS_COMP_NO_DMABUF_CHECK");
 }
 
 static int on_pace(void *data)
@@ -1910,7 +1944,7 @@ int main(int argc, char **argv)
     if (!s->backend || !s->renderer) { fprintf(stderr, "wps-compositor: no backend or renderer\n"); return 1; }
     fprintf(stderr, "wps-compositor: renderer %s%s\n", wlr_renderer_is_pixman(s->renderer) ? "pixman (software)" : "GPU",
             s->session ? ", on a console (libseat)" : "");
-    wlr_renderer_init_wl_display(s->renderer, s->display);
+    init_buffers(s->renderer, s->display);
     s->allocator = wlr_allocator_autocreate(s->backend, s->renderer);
     if (!s->allocator) { fprintf(stderr, "wps-compositor: no allocator\n"); return 1; }
     s->compositor = wlr_compositor_create(s->display, 5, s->renderer);

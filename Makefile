@@ -255,6 +255,10 @@ $(G0)/xdg-decoration-unstable-v1-protocol.c: $(DECOXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
+# Everything the WPS session runs (tools/wps-session): after a pull, make session.
+session: all $(B)/wps-shell $(B)/wps-compositor
+.PHONY: session
+
 compositor: $(B)/wps-compositor $(TV)/ssd-client $(TV)/x11-client
 # An X11 test client (XWayland).
 $(TV)/x11-client: tests/comp/x11-client.c

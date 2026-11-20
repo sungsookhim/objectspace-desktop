@@ -69,6 +69,7 @@ tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-i
 make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, wayland, xkbcommon, pipewire -devel)
 make gui      # wps-shell (optimised) and wps-shell-asan
 make compositor     # wps-compositor (G5, wlroots) and its test clients
+make session        # everything the WPS session runs: after a pull, this
 tests/comp/run.sh SCRIPT  # the compositor headless, with WPS's desktop, played by a script
 tools/try-compositor.sh   # the compositor nested in a window of your session
 tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private headless GNOME Shell
