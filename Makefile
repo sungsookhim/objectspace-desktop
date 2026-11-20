@@ -224,7 +224,7 @@ g0: $(G0)/folderview $(G0)/soundlat
 
 # The GUI: libwpsui (gui/ui_*.c) and wps-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
-UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_a11y.c
+UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_a11y.c
 SHELLSRC := gui/shell/wps-shell.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/findwin.c gui/shell/icons.c gui/shell/iconpick.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon libsystemd
 UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
@@ -240,6 +240,27 @@ $(B)/wps-shell: $(UIDEPS)
 
 $(B)/wps-shell-asan: $(UIDEPS)
 	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS) $(SHLIBS)
+
+# G5: the compositor (wlroots 0.20). It draws frames with the toolkit's
+# frame code (gui/ui_framepaint.c), so it links the drawing part of it.
+COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig
+COMPSRC := compositor/wps-compositor.c gui/ui_draw.c gui/ui_framepaint.c
+DECOXML := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
+$(G0)/xdg-decoration-unstable-v1-client-protocol.h: $(DECOXML)
+	@mkdir -p $(G0)
+	wayland-scanner client-header $< $@
+$(G0)/xdg-decoration-unstable-v1-protocol.c: $(DECOXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+
+compositor: $(B)/wps-compositor $(TV)/ssd-client
+# A test client that asks for a server-side frame (tests/comp).
+$(TV)/ssd-client: tests/comp/ssd-client.c $(G0)/xdg-shell-client-protocol.h $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-client-protocol.h $(G0)/xdg-decoration-unstable-v1-protocol.c
+	@mkdir -p $(TV)
+	$(CC) $(G0FLAGS) -I$(G0) -o $@ tests/comp/ssd-client.c $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-protocol.c $$(pkg-config --cflags --libs wayland-client)
+$(B)/wps-compositor: $(COMPSRC) gui/ui.h
+	@mkdir -p $(B)
+	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $$(pkg-config --libs $(COMPPKG)) -lm
 
 $(TV)/test_ui_entry: tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c gui/ui.h
 	@mkdir -p $(TV)

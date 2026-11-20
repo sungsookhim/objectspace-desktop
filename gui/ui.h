@@ -270,6 +270,17 @@ void ui_surface_stats(ui_surface *s, const ui_frame_stat **stats, size_t *n);
 /* The window frame (title bar, buttons, sizing border), drawn by the
  * window's owner inside its draw callback with these helpers. */
 typedef enum { UI_HIT_NONE, UI_HIT_CLIENT, UI_HIT_TITLE, UI_HIT_SYSMENU, UI_HIT_MIN, UI_HIT_MAX, UI_HIT_CLOSE, UI_HIT_BORDER } ui_hit;
+/* A frame apart from any surface (ui_framepaint.c): what the toolkit's
+ * windows use, and what wps-compositor draws around other programs'. */
+typedef struct {
+    double w, h;               /* the whole window, frame included */
+    bool frameless, maximized, activated, pointer_inside;
+    ui_hit hover, pressed;     /* the part under the pointer, the button held */
+} ui_frame_geom;
+ui_rect ui_frame_geom_client(const ui_frame_geom *g);
+ui_hit ui_frame_geom_hit(const ui_frame_geom *g, double x, double y);
+ui_rect ui_frame_geom_button(const ui_frame_geom *g, int which);   /* 0 system menu, 1 min, 2 max, 3 close */
+void ui_frame_geom_draw(const ui_frame_geom *g, cairo_t *cr, ui_rect clip, const char *title);
 
 ui_rect ui_frame_client(ui_surface *s);              /* inside the frame */
 void ui_frame_draw(ui_surface *s, cairo_t *cr, ui_rect clip, const char *title);

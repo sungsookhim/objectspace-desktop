@@ -215,6 +215,11 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 
 - Later: animation hook API in detail; the GUI plug-in host; how plug-in settings pages draw custom controls.
 
+
+### G5 progress
+
+- **Step 1, the compositor core** (`compositor/wps-compositor.c`, wlroots 0.20). Windows of programs that agree to it (xdg-decoration, server side) get WPS's frame, drawn by the same code as the toolkit's own windows: the frame's geometry and painting moved to `gui/ui_framepaint.c` (`ui_frame_geom`), which the toolkit and the compositor both use. Programs that draw their own title bars (GTK 4, libadwaita, WPS's own windows) keep them. Click to focus and raise; the title bar moves a window (a maximized one is restored once dragged), the border sizes it, double-clicking the title maximizes and restores, the buttons minimize, maximize and close (double-clicking the system menu button closes, as on OS/2); Alt+Tab brings the window behind forward (a minimized one is restored); Alt+F4 closes; Ctrl+Alt+BackSpace ends the compositor. WPS's desktop (app ID org.wps.Desktop) covers the screen below every window, the LaunchPad (org.wps.LaunchPad) floats above them at the bottom centre; with no desktop the background is OS/2's teal. Runs nested in a session (`tools/try-compositor.sh`) or headless for tests (`WPS_COMP_HEADLESS`, with a script of input and screenshots: `tests/comp/run.sh`; `build/tests/ssd-client` asks for a server-side frame). Findings: a screen with no physical size or refresh rate (headless) made GTK 4 die of SIGFPE (it divides by the refresh rate), so the compositor gives such screens 60 Hz; SIGCHLD ignored in the compositor must be reset for the programs it starts (dbus-run-session could not wait for its child). Still to come in step 1: the system menu from the frame, keyboard input to programs in the test script, scaled (HiDPI) screens.
+
 ## Change log
 
 | Version | Date | Changes |

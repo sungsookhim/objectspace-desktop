@@ -8,59 +8,25 @@
 
 static double bw(void) { return ui_scheme_now.border; }
 
-ui_rect ui_frame_client(ui_surface *s)
+static ui_frame_geom geom(ui_surface *s)
 {
-    const ui_scheme *k = &ui_scheme_now;
-    if (s->frameless) return (ui_rect){ 0, 0, s->w, s->h };
-    double b = s->maximized ? 0 : bw();
-    ui_rect r = { b, b + k->title_h, s->w - 2 * b, s->h - 2 * b - k->title_h };
-    if (r.w < 0) r.w = 0;
-    if (r.h < 0) r.h = 0;
-    return r;
+    return (ui_frame_geom){ .w = s->w, .h = s->h, .frameless = s->frameless, .maximized = s->maximized,
+                            .activated = s->activated, .pointer_inside = s->pointer_inside, .hover = s->hover,
+                            .pressed = s->pressed };
 }
 
+ui_rect ui_frame_client(ui_surface *s) { ui_frame_geom g = geom(s); return ui_frame_geom_client(&g); }
+ui_hit ui_frame_hit(ui_surface *s, double x, double y) { ui_frame_geom g = geom(s); return ui_frame_geom_hit(&g, x, y); }
 static ui_rect title_rect(ui_surface *s)
 {
     double b = s->maximized ? 0 : bw();
-    ui_rect r = { b, b, s->w - 2 * b, ui_scheme_now.title_h };
-    return r;
+    return (ui_rect){ b, b, s->w - 2 * b, ui_scheme_now.title_h };
 }
-
-/* which: 0 system menu (left), 1 minimize, 2 maximize, 3 close (right). */
-static ui_rect button_rect(ui_surface *s, int which)
+static ui_rect button_rect(ui_surface *s, int which) { ui_frame_geom g = geom(s); return ui_frame_geom_button(&g, which); }
+void ui_frame_draw(ui_surface *s, cairo_t *cr, ui_rect clip, const char *title)
 {
-    const ui_scheme *k = &ui_scheme_now;
-    ui_rect t = title_rect(s);
-    double y = t.y + (t.h - k->button_h) / 2;
-    ui_rect r = which == 0 ? (ui_rect){ t.x + 3, y, k->button_h, k->button_h }
-                           : (ui_rect){ t.x + t.w - 3 - (4 - which) * (k->button_w + 2), y, k->button_w, k->button_h };
-    /* Mirrored layout: the system menu on the right, close first on the left. */
-    if (k->title_mirrored) r.x = t.x + t.w - (r.x - t.x) - r.w;
-    return r;
-}
-
-static bool buttons_shown(ui_surface *s)
-{
-    if (!ui_scheme_now.buttons_on_hover) return true;
-    return s->pointer_inside && s->hover >= UI_HIT_TITLE && s->hover <= UI_HIT_CLOSE;
-}
-
-ui_hit ui_frame_hit(ui_surface *s, double x, double y)
-{
-    if (x < 0 || y < 0 || x >= s->w || y >= s->h) return UI_HIT_NONE;
-    if (s->frameless) return UI_HIT_CLIENT;
-    double b = s->maximized ? 0 : bw();
-    if (x < b || y < b || x >= s->w - b || y >= s->h - b) return UI_HIT_BORDER;
-    ui_rect t = title_rect(s);
-    if (ui_rect_has(t, x, y)) {
-        for (int i = 0; i < 4; i++)
-            if (ui_rect_has(button_rect(s, i), x, y)) {
-                if (i && !buttons_shown(s) && ui_scheme_now.buttons_on_hover) return UI_HIT_TITLE;
-                return (ui_hit)(UI_HIT_SYSMENU + i);
-            }
-        return UI_HIT_TITLE;
-    }
-    return UI_HIT_CLIENT;
+    ui_frame_geom g = geom(s);
+    ui_frame_geom_draw(&g, cr, clip, title);
 }
 
 static unsigned edges_at(ui_surface *s, double x, double y)
@@ -93,121 +59,6 @@ void ui_frame_damage(ui_surface *s)
 {
     ui_rect t = title_rect(s);
     ui_surface_damage(s, t);
-}
-
-static void rounded(cairo_t *cr, double x, double y, double w, double h, double r)
-{
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2, 0);
-    cairo_arc(cr, x + w - r, y + h - r, r, 0, M_PI / 2);
-    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2, M_PI);
-    cairo_arc(cr, x + r, y + r, r, M_PI, 3 * M_PI / 2);
-    cairo_close_path(cr);
-}
-
-static void draw_button(cairo_t *cr, ui_surface *s, int which)
-{
-    const ui_scheme *k = &ui_scheme_now;
-    ui_rect r = button_rect(s, which);
-    bool down = s->pressed == (ui_hit)(UI_HIT_SYSMENU + which) && s->hover == s->pressed;
-    ui_fill(cr, r, k->face);
-    ui_bevel(cr, r, !down);
-    double o = down ? 1 : 0;
-    ui_set_color(cr, k->text);
-    cairo_set_line_width(cr, 1.5);
-    switch (which) {
-    case 0:   /* system menu: a small window */
-        cairo_rectangle(cr, r.x + 3.5 + o, r.y + 4.5 + o, r.w - 7, r.h - 8);
-        cairo_stroke(cr);
-        cairo_rectangle(cr, r.x + 3.5 + o, r.y + 4.5 + o, r.w - 7, 2);
-        cairo_fill(cr);
-        break;
-    case 1:   /* minimize: a dot low down */
-        cairo_rectangle(cr, r.x + r.w / 2 - 2 + o, r.y + r.h - 6 + o, 4, 3);
-        cairo_fill(cr);
-        break;
-    case 2:   /* maximize or restore */
-        if (s->maximized) {
-            cairo_rectangle(cr, r.x + 6.5 + o, r.y + 3.5 + o, r.w - 10, r.h - 9);
-            cairo_rectangle(cr, r.x + 3.5 + o, r.y + 6.5 + o, r.w - 10, r.h - 9);
-        } else {
-            cairo_rectangle(cr, r.x + 4.5 + o, r.y + 3.5 + o, r.w - 9, r.h - 7);
-        }
-        cairo_stroke(cr);
-        break;
-    case 3:   /* close */
-        cairo_move_to(cr, r.x + 5 + o, r.y + 4 + o);
-        cairo_line_to(cr, r.x + r.w - 5 + o, r.y + r.h - 4 + o);
-        cairo_move_to(cr, r.x + r.w - 5 + o, r.y + 4 + o);
-        cairo_line_to(cr, r.x + 5 + o, r.y + r.h - 4 + o);
-        cairo_stroke(cr);
-        break;
-    }
-}
-
-void ui_frame_draw(ui_surface *s, cairo_t *cr, ui_rect clip, const char *title)
-{
-    const ui_scheme *k = &ui_scheme_now;
-    if (s->frameless) return;
-    double rad = s->maximized ? 0 : k->corner_radius;
-    ui_rect c = ui_frame_client(s);
-    /* Only the frame: the client area is the owner's. */
-    bool frame_part = clip.x < c.x || clip.y < c.y || clip.x + clip.w > c.x + c.w || clip.y + clip.h > c.y + c.h;
-    if (!frame_part) return;
-    cairo_save(cr);
-    if (rad > 0) {
-        /* Rounded corners (a setting, off by default): outside is clear. */
-        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-        cairo_paint(cr);
-        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-        rounded(cr, 0, 0, s->w, s->h, rad);
-        cairo_clip(cr);
-    }
-    cairo_rectangle(cr, 0, 0, s->w, s->h);
-    cairo_rectangle(cr, c.x, c.y, c.w, c.h);
-    cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
-    ui_set_color(cr, k->face);
-    cairo_fill(cr);
-    cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING);
-    if (!s->maximized) {
-        ui_bevel(cr, (ui_rect){ 0, 0, s->w, s->h }, true);
-        ui_bevel(cr, (ui_rect){ bw() - 1, bw() - 1, s->w - 2 * bw() + 2, s->h - 2 * bw() + 2 }, false);
-    }
-    ui_rect t = title_rect(s);
-    ui_color tc = s->activated ? k->title_active : k->title_inactive;
-    if (k->translucency == 1) {
-        /* Translucent title bar: what is behind the window shows through. */
-        tc.a = 0.8;
-        cairo_save(cr);
-        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-        ui_fill(cr, t, tc);
-        cairo_restore(cr);
-    } else {
-        ui_fill(cr, t, tc);
-    }
-    ui_rect sys = button_rect(s, 0), mn = button_rect(s, 1);
-    double left, right;
-    if (!k->title_mirrored) {
-        left = sys.x + sys.w + 6;
-        right = buttons_shown(s) ? mn.x - 6 : t.x + t.w - 6;
-    } else {
-        left = buttons_shown(s) ? mn.x + mn.w + 6 : t.x + 6;
-        right = sys.x - 6;
-    }
-    ui_set_color(cr, s->activated ? k->title_text : k->title_text_inactive);
-    double tw = ui_text_width(UI_FONT_BOLD, title);
-    double tx = left + fmax(0, ((right - left) - tw) / 2);   /* centred, as in Warp 4 */
-    ui_text_draw(cr, UI_FONT_BOLD, tx, t.y + (t.h + ui_text_ascent()) / 2 - 1, title, right - tx);
-    draw_button(cr, s, 0);
-    if (buttons_shown(s))
-        for (int i = 1; i < 4; i++) draw_button(cr, s, i);
-    if (rad > 0) {
-        rounded(cr, 0.5, 0.5, s->w - 1, s->h - 1, rad);
-        ui_set_color(cr, k->dark);
-        cairo_set_line_width(cr, 1);
-        cairo_stroke(cr);
-    }
-    cairo_restore(cr);
 }
 
 static void system_menu_open(ui_surface *s, uint32_t serial);
