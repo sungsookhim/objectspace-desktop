@@ -1015,6 +1015,14 @@ static void on_new_output(struct wl_listener *l, void *data)
         wo->phys_width = (int)(wo->width * 25.4 / 96);
         wo->phys_height = (int)(wo->height * 25.4 / 96);
     }
+    /* The pointer drawn into the picture, not by the graphics card's cursor
+     * plane: virtual machines' cards (screens named Virtual-N: VirtualBox,
+     * VMware, QEMU) show no pointer that way; WPS_COMP_SOFTWARE_CURSOR=1
+     * asks for it anywhere. */
+    if (getenv("WPS_COMP_SOFTWARE_CURSOR") || !strncmp(wo->name, "Virtual-", 8)) {
+        wlr_output_lock_software_cursors(wo, true);
+        fprintf(stderr, "wps-compositor: %s: the pointer is drawn in software\n", wo->name);
+    }
     struct wlr_output_layout_output *lo = wlr_output_layout_add_auto(server.output_layout, wo);
     struct wlr_scene_output *so = wlr_scene_output_create(server.scene, wo);
     wlr_scene_output_layout_add_output(server.scene_layout, lo, so);
