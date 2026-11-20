@@ -6,7 +6,8 @@
 #   tools/try-compositor.sh ~/Desktop 1600x900 gnome-calculator
 # Ctrl+Alt+BackSpace (or closing the window) ends it. Inside: click to
 # focus, drag the title to move, the border to size, double-click the
-# title to maximize, Alt+Tab, Alt+F4.
+# title to maximize, Alt+Tab, Alt+F4, Ctrl+Esc for the Window List, Shift+Esc
+# for a framed window's system menu.
 #
 # usage: tools/try-compositor.sh [FOLDER] [WIDTHxHEIGHT] [COMMAND...]
 set -e
@@ -38,7 +39,10 @@ cleanup() {
 }
 trap cleanup EXIT
 for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
-CMD="'$REPO/build/wps-shell' --desktop '$DESK' 2> '$T/shell.log'"
-[ $# -gt 0 ] && CMD="$CMD & sleep 1; $*"
+DESKTOP="'$REPO/build/wps-shell' --desktop '$DESK' 2>> '$T/shell.log'"
 echo "WPS compositor: logs in $T"
-WPS_COMP_SIZE=$SIZE "$REPO/build/wps-compositor" -s "$CMD" 2> "$T/compositor.log"
+if [ $# -gt 0 ]; then
+    WPS_COMP_SIZE=$SIZE "$REPO/build/wps-compositor" -d "$DESKTOP" -s "sleep 1; $*" 2> "$T/compositor.log"
+else
+    WPS_COMP_SIZE=$SIZE "$REPO/build/wps-compositor" -d "$DESKTOP" 2> "$T/compositor.log"
+fi
