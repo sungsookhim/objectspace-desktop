@@ -77,6 +77,8 @@ struct output {
     struct server *server;
     struct wlr_output *wlr_output;
     struct wl_listener frame, request_state, destroy;
+    double last_frame_ms;               /* when the last frame was shown */
+    struct wl_event_source *pace;       /* a frame that came too soon waits for it */
 };
 
 struct toplevel {

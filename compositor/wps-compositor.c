@@ -920,6 +920,16 @@ static void on_output_frame(struct wl_listener *l, void *data)
     struct output *o = wl_container_of(l, o, frame);
     struct wlr_scene_output *so = wlr_scene_get_scene_output(server.scene, o->wlr_output);
     double t0 = now_ms();
+    /* No faster than the screen refreshes. Some screens (a VM's) say a
+     * frame was shown at once, without waiting for the refresh: programs,
+     * told so, drew again at once (Firefox: ~1300 frames a second), until
+     * VirtualBox's 3D gave out (black areas, frames stopped). A frame that
+     * comes too soon waits for the rest of the refresh period. */
+    double period = o->wlr_output->refresh > 0 ? 1e6 / o->wlr_output->refresh : 1000.0 / 60;
+    if (!shot_path && t0 - o->last_frame_ms < period - 1) {
+        wl_event_source_timer_update(o->pace, (int)(period - (t0 - o->last_frame_ms)) + 1);
+        return;
+    }
     if (!shot_path && !wlr_scene_output_needs_frame(so)) {
         /* nothing changed: no new frame (the scene asks for one when
          * something does). Committing anyway made the loop spin, frame
@@ -941,6 +951,7 @@ static void on_output_frame(struct wl_listener *l, void *data)
         }
     }
     wlr_output_state_finish(&st);
+    o->last_frame_ms = now_ms();
     /* how long frames take (a slow renderer makes everything seem dead):
      * the first, and the slow ones, now and then */
     double took = now_ms() - t0;
@@ -951,6 +962,13 @@ static void on_output_frame(struct wl_listener *l, void *data)
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_scene_output_send_frame_done(so, &now);
+}
+
+static int on_pace(void *data)
+{
+    struct output *o = data;
+    wlr_output_schedule_frame(o->wlr_output);   /* now it is time */
+    return 0;
 }
 
 static void on_output_request_state(struct wl_listener *l, void *data)
@@ -964,6 +982,7 @@ static void on_output_destroy(struct wl_listener *l, void *data)
 {
     (void)data;
     struct output *o = wl_container_of(l, o, destroy);
+    if (o->pace) wl_event_source_remove(o->pace);
     wl_list_remove(&o->frame.link);
     wl_list_remove(&o->request_state.link);
     wl_list_remove(&o->destroy.link);
@@ -1008,6 +1027,7 @@ static void on_new_output(struct wl_listener *l, void *data)
     wl_signal_add(&wo->events.request_state, &o->request_state);
     o->destroy.notify = on_output_destroy;
     wl_signal_add(&wo->events.destroy, &o->destroy);
+    o->pace = wl_event_loop_add_timer(server.loop, on_pace, o);
     wl_list_insert(&server.outputs, &o->link);
     /* A screen with no physical size (headless, some virtual ones): one
      * as at 96 dpi. Programs divide by it (GTK did, and died of SIGFPE). */
@@ -1988,7 +2008,7 @@ int main(int argc, char **argv)
         session_active.notify = on_session_active;
         wl_signal_add(&s->session->events.active, &session_active);
     }
-    if (!getenv("WPS_COMP_HEADLESS")) {
+    if (!getenv("WPS_COMP_HEADLESS") || comp_debug) {
         heartbeat = wl_event_loop_add_timer(s->loop, on_heartbeat, NULL);
         wl_event_source_timer_update(heartbeat, 5000);
     }
