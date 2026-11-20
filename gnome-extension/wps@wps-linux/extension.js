@@ -31,6 +31,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -63,11 +64,17 @@ export default class WpsExtension extends Extension {
         this._writing = false;
         this._listed = new Map();   // window -> its last line's fields
         this._connect(global.display, 'window-created', (_d, w) => this._track(w));
+        // OS/2's Ctrl+Esc: the Window List, from anywhere (a setting).
+        this._settings = this.getSettings();
+        Main.wm.addKeybinding('window-list', this._settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
+            () => this._showWindowList());
         this._start();
     }
 
     disable() {
         this._on = false;
+        Main.wm.removeKeybinding('window-list');
+        this._settings = null;
         for (const [obj, id] of this._signals) obj.disconnect(id);
         this._signals = [];
         if (this._restartId) GLib.source_remove(this._restartId);
@@ -167,6 +174,15 @@ export default class WpsExtension extends Extension {
 
     // Follow one window for the list: its title, minimized and focus.
     _track(w) {
+        if (this._focusList && this._client?.owns_window(w)) {
+            const id = w.connect('shown', () => {
+                w.disconnect(id);
+                if (w.get_wm_class() === 'org.wps.WindowList' && this._focusList) {
+                    this._focusList = false;
+                    w.activate(global.display.get_current_time_roundtrip());
+                }
+            });
+        }
         if (this._tracked?.has(w)) { this._listLine(w); return; }
         this._tracked ??= new Set();
         this._tracked.add(w);
@@ -201,6 +217,21 @@ export default class WpsExtension extends Extension {
         this._lines.push(fields.join('\t') + '\n');
         if (this._lines.length > 1024) this._lines.shift();
         this._flush();
+    }
+
+    // Ctrl+Esc: the list window if it is there (brought forward), else the
+    // desktop opens it and it is brought forward when it appears.
+    _showWindowList() {
+        const now = global.display.get_current_time_roundtrip();
+        const open = global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.WindowList' &&
+            w.get_title() === 'Window List');
+        if (open) {
+            if (open.minimized) open.unminimize();
+            open.activate(now);
+            return;
+        }
+        this._focusList = true;
+        this._send(['K', 'window-list']);
     }
 
     // Commands from the desktop: activate, minimize, close a window by ID.

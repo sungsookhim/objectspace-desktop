@@ -4053,6 +4053,7 @@ static void on_window_events(void *arg, int fd, short rev)
         int k = 0;
         for (char *p = line, *t; k < 7 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k == 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
+        else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };
             events_raise(f[0], f[1], "window", at);

@@ -29,6 +29,9 @@ done
 
 mkdir -p "$ext"
 cp "$here/gnome-extension/$uuid/metadata.json" "$here/gnome-extension/$uuid/extension.js" "$ext/"
+rm -rf "$ext/schemas"
+cp -r "$here/gnome-extension/$uuid/schemas" "$ext/"
+glib-compile-schemas "$ext/schemas"   # its settings (Ctrl+Esc for the Window List)
 printf '{"command": ["%s", "--desktop"]}\n' "$here/build/wps-shell" > "$ext/config.json"
 
 # Enabled from the next login (gnome-extensions enable only knows extensions

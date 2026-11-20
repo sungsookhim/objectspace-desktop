@@ -20,7 +20,7 @@ RT=$(mktemp -d "/run/user/$(id -u)/wps-hl-XXXX"); chmod 700 "$RT"
 mkdir -p "$T/config" "$T/data/gnome-shell/extensions" "$T/cache" "$T/desk/Projects" "$T/w"
 echo hi > "$T/desk/notes.txt"
 E="$T/data/gnome-shell/extensions/wps@wps-linux"
-mkdir -p "$E"; cp "$REPO/gnome-extension/wps@wps-linux/"* "$E/"
+mkdir -p "$E"; cp -r "$REPO/gnome-extension/wps@wps-linux/"* "$E/"; glib-compile-schemas "$E/schemas"
 if [ -n "$SELFTEST" ]; then   # the desktop runs a self-test (its output in shell.log)
   printf '{"command": ["env", "WPS_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$SELFTEST" "$T/cache" "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
 elif [ -n "$WLDEBUG" ]; then

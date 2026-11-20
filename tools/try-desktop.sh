@@ -33,6 +33,7 @@ fi
 mkdir -p "$T/config" "$T/data/gnome-shell/extensions/wps@wps-linux" "$T/cache" "$RT/wps"
 E="$T/data/gnome-shell/extensions/wps@wps-linux"
 cp "$REPO/gnome-extension/wps@wps-linux/metadata.json" "$REPO/gnome-extension/wps@wps-linux/extension.js" "$E/"
+cp -r "$REPO/gnome-extension/wps@wps-linux/schemas" "$E/" && glib-compile-schemas "$E/schemas"
 printf '{"command": ["env", "WPS_UI_DEBUG_EXIT=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$DESK" > "$E/config.json"
 
 cleanup() {

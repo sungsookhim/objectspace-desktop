@@ -53,6 +53,25 @@ export default class Probe {
         for (const t of [3, 4, 4.5, 5, 5.5])
             at(t, () => { if (Main.overview.visible) Main.overview.hide(); });
         at(5.8, () => console.log(`probe: overview visible ${Main.overview.visible}`));
+        if (GLib.getenv('PROBE_MODE') === 'keys') {
+            // Ctrl+Esc on a virtual keyboard: the WPS Window List, focused.
+            const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
+            const kb = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            this._dev = kb;
+            const key = (sym, down) => kb.notify_keyval(GLib.get_monotonic_time(), sym, down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
+            at(9, () => {
+                key(Clutter.KEY_Control_L, true); key(Clutter.KEY_Escape, true);
+                key(Clutter.KEY_Escape, false); key(Clutter.KEY_Control_L, false);
+                console.log('probe: pressed Ctrl+Esc');
+            });
+            at(11, () => {
+                const w = global.display.focus_window;
+                console.log(`probe: focused window: ${w ? `"${w.get_title()}" app ${w.get_wm_class()}` : 'none'}`);
+                windows('keys');
+                if (out) shoot(out);
+            });
+            return;
+        }
         if (GLib.getenv('PROBE_MODE') === 'quiet') {
             at(Number(GLib.getenv('PROBE_SHOT_AT') ?? 13), () => { if (out) shoot(out); });
             at(14, () => windows('end'));
