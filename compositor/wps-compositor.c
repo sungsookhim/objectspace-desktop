@@ -1936,7 +1936,11 @@ int main(int argc, char **argv)
         }
     }
     fprintf(stderr, "wps-compositor: WAYLAND_DISPLAY=%s\n", socket);
-    wlr_seat_set_capabilities(s->seat, WL_SEAT_CAPABILITY_POINTER);
+    /* (the capabilities are the devices': on_new_input sets them as each
+     * comes; setting pointer-only here, after the backend had added the
+     * keyboards, kept every program from asking for the keyboard) */
+    wlr_seat_set_capabilities(s->seat, WL_SEAT_CAPABILITY_POINTER |
+                              (wl_list_empty(&s->keyboards) ? 0 : WL_SEAT_CAPABILITY_KEYBOARD));
     if (startup) {
         char *argv_sh[] = { "/bin/sh", "-c", (char *)startup, NULL };
         comp_spawn(argv_sh, NULL, NULL);
