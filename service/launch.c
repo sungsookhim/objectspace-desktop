@@ -150,7 +150,7 @@ void wps_launch_shutdown(void)
     on_changed = NULL;
 }
 
-static pid_t spawn(char **argv, const char *cwd, const char *display)
+static pid_t spawn(char **argv, const char *cwd, const char *display, const char *x11)
 {
     posix_spawnattr_t at;
     posix_spawn_file_actions_t fa;
@@ -163,21 +163,29 @@ static pid_t spawn(char **argv, const char *cwd, const char *display)
     posix_spawnattr_setsigdefault(&at, &all);
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    /* Its output goes where the service's does (the journal, as a GNOME
+     * session's programs' does): why a program did not start is there. */
     if (cwd) posix_spawn_file_actions_addchdir_np(&fa, cwd);
     extern char **environ;
     /* The environment, with the asking GUI's display in place of ours. */
     size_t ne = 0;
     while (environ[ne]) ne++;
-    char **env = calloc(ne + 2, sizeof *env), wl[4200];
+    /* (and its X display: the service may have started before XWayland,
+     * and X programs need one) */
+    char **env = calloc(ne + 3, sizeof *env), wl[4200], xd[64];
     size_t k = 0;
-    if (env && display && *display) {
+    bool w = display && *display, x = x11 && *x11;
+    if (env && w) {
         snprintf(wl, sizeof wl, "WAYLAND_DISPLAY=%s", display);
         env[k++] = wl;
     }
+    if (env && x) {
+        snprintf(xd, sizeof xd, "DISPLAY=%s", x11);
+        env[k++] = xd;
+    }
     for (size_t i = 0; env && i < ne; i++)
-        if (!(display && *display && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16))) env[k++] = environ[i];
+        if (!(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)))
+            env[k++] = environ[i];
     pid_t pid = -1;
     int e = posix_spawnp(&pid, argv[0], &fa, &at, argv, env ? env : environ);
     free(env);
@@ -187,9 +195,9 @@ static pid_t spawn(char **argv, const char *cwd, const char *display)
     return pid;
 }
 
-pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display)
+pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11)
 {
-    pid_t pid = spawn(argv, cwd, display);
+    pid_t pid = spawn(argv, cwd, display, x11);
     if (pid < 0 || !path || !*path) return pid;
     struct use *u = NULL;
     for (struct use *x = uses; x && !u; x = x->next)

@@ -68,6 +68,7 @@
 #include <unistd.h>
 #include <linux/fs.h>
 #include <sys/syscall.h>
+#include <ctype.h>
 #include <spawn.h>
 #include <sys/xattr.h>
 
@@ -1364,7 +1365,16 @@ static void do_open(struct req *r, wpo_object *o)
     const char *disp = cv_text(&r->msg, "display");
     struct stat ds;
     if (disp && (disp[0] != '/' || stat(disp, &ds) != 0 || !S_ISSOCK(ds.st_mode) || ds.st_uid != geteuid())) disp = NULL;
-    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp);   /* as this user, in this user's session */
+    /* and its X display (":N" or ":N.S", nothing else) */
+    const char *x11 = cv_text(&r->msg, "x11");
+    if (x11) {
+        const char *q = x11;
+        bool ok = *q++ == ':' && isdigit((unsigned char)*q);
+        while (ok && isdigit((unsigned char)*q)) q++;
+        if (ok && *q == '.') { q++; ok = isdigit((unsigned char)*q); while (ok && isdigit((unsigned char)*q)) q++; }
+        if (!ok || *q || strlen(x11) > 16) x11 = NULL;
+    }
+    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     cbuf b;
     cb_init(&b);
