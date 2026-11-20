@@ -273,6 +273,24 @@ static void render(ui_surface *s)
         s->geo_w = s->w;
         s->geo_h = s->h;
     }
+    /* The window is opaque inside its margin (square corners, nothing
+     * translucent): the compositor need not draw what is behind it, nor
+     * blend it, which reads the screen back (slow on some screens: a
+     * virtual machine's took seconds a frame). */
+    bool opaque = (ui_scheme_now.corner_radius <= 0 || s->maximized || !s->top) && !ui_scheme_now.translucency;
+    char key[64] = "";
+    if (opaque) snprintf(key, sizeof key, "%d %d %d %d", (int)s->m, (int)s->m, (int)s->w, (int)s->h);
+    if (strcmp(key, s->opaque_key)) {
+        if (opaque) {
+            struct wl_region *op = wl_compositor_create_region(s->app->comp);
+            wl_region_add(op, (int)s->m, (int)s->m, (int)s->w, (int)s->h);
+            wl_surface_set_opaque_region(s->wl, op);
+            wl_region_destroy(op);
+        } else {
+            wl_surface_set_opaque_region(s->wl, NULL);
+        }
+        snprintf(s->opaque_key, sizeof s->opaque_key, "%s", key);
+    }
     wl_surface_set_buffer_scale(s->wl, s->scale);
     wl_surface_attach(s->wl, b->wb, 0, 0);
     s->frame_cb = wl_surface_frame(s->wl);

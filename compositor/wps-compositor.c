@@ -1161,10 +1161,27 @@ static void on_destroy(struct wl_listener *l, void *data)
     free(t);
 }
 
+/* A program asks to be moved or sized from its own title bar: only while
+ * a button is still held (the request comes after the press; after a
+ * quick click it can come after the release, and a move begun then never
+ * ended: the window followed the pointer, the next click only ended it),
+ * and for that press (Wayland: its serial). */
+static bool may_grab(struct toplevel *t, uint32_t serial, bool check_serial)
+{
+    if (server.seat->pointer_state.button_count == 0 || server.mode != MODE_PASS) return false;
+    if (check_serial && !wlr_seat_validate_pointer_grab_serial(server.seat, view_surface(t), serial)) return false;
+    return true;
+}
+
 static void on_request_move(struct wl_listener *l, void *data)
 {
-    (void)data;
     struct toplevel *t = wl_container_of(l, t, request_move);
+    if (t->xdg) {
+        struct wlr_xdg_toplevel_move_event *e = data;
+        if (!may_grab(t, e->serial, true)) return;
+    } else if (!may_grab(t, 0, false)) {
+        return;
+    }
     begin_grab(t, MODE_MOVE, 0);
 }
 
@@ -1172,6 +1189,7 @@ static void on_request_resize(struct wl_listener *l, void *data)
 {
     struct toplevel *t = wl_container_of(l, t, request_resize);
     struct wlr_xdg_toplevel_resize_event *e = data;
+    if (!may_grab(t, e->serial, true)) return;
     begin_grab(t, MODE_RESIZE, e->edges);
 }
 
@@ -1307,6 +1325,7 @@ static void x_request_resize(struct wl_listener *l, void *data)
 {
     struct toplevel *t = wl_container_of(l, t, request_resize);
     struct wlr_xwayland_resize_event *e = data;
+    if (!may_grab(t, 0, false)) return;
     begin_grab(t, MODE_RESIZE, e->edges);
 }
 

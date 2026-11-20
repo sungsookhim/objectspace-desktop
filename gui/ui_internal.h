@@ -40,6 +40,7 @@ struct ui_surface {
     double w, h;           /* logical: the window itself */
     double m;              /* a margin around it for its shadow (0: none) */
     double geo_m, geo_w, geo_h;   /* the window geometry last told the compositor */
+    char opaque_key[64];   /* the opaque region last told ("": none) */
     int scale;
     bool configured, maximized, activated, destroyed;
     bool frameless;          /* no frame at all (the desktop) */
