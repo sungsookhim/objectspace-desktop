@@ -153,7 +153,7 @@ Raised in `wps-shell` (and, in stage 1, received from the GNOME Shell extension)
 | G1 | Widget set 1–3: frames, containers, menus; one folder window from `wpsd`. **Done** ([results](../gui/RESULTS-G1.md)) | Stage 1 |
 | G2 | Desktop, all three folder views, notebooks, drag and drop, templates, shadows, trash | Stage 1 |
 | G3 | Action events, sound schemes, scheme objects, appearance settings, GNOME settings sync, the GNOME Shell extension. **Done** (2026-11-19) | Stage 1 |
-| G4 | Window list, launch bar, minimized window viewer, search, accessibility, input methods | Stage 1 |
+| G4 | Window list, launch bar, minimized window viewer, search, accessibility, input methods. **Done** (2026-11-19; also per-object icons, the LaunchPad's order and Log off) | Stage 1 |
 | G5 | `wps-compositor` on wlroots: frames for all apps, the WPS login session, portal settings | Stage 2 |
 
 ### G0 findings
