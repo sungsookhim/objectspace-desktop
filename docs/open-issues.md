@@ -73,3 +73,12 @@ G2's planned items are all built. What remains are the issues above.
 
 - **M4 scenario 38** (a job paused at logout resumes at the next start) timed out once without a result; not investigated.
 - **The two-window drag self-test** (`WPS_SHELL_SELFTEST=dnd`) was not rerun after the latest drag-and-drop changes; the headless GNOME drags (`PROBE_MODE=interact tests/gnome/run.sh`) cover dropping within the desktop and into a folder window.
+
+## LaunchPad (G4)
+
+- Buttons come in listing order; no reordering by drag yet (OS/2 allowed it).
+- No tooltips: titles are drawn under the icons, cut short.
+- Not yet a setting: shown on every desktop start (`WPS_NO_LAUNCHPAD` turns it off); OS/2 had it as an object with its own notebook (orientation, small icons, text, float on top).
+- Drawers are read when opened, not followed; a duplicate in a drawer is not refused.
+- Find opens GNOME's overview search; WPS's own Find (G4 search) replaces it.
+

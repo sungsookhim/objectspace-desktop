@@ -82,6 +82,13 @@ static void command(const char *cmd, const char *id)
     if (write(cmd_fd, line, (size_t)n) != n) fprintf(stderr, "wps-shell: the window command was not sent\n");
 }
 
+bool winlist_ext(const char *cmd, const char *arg)
+{
+    if (cmd_fd < 0) return false;
+    command(cmd, arg ? arg : "");
+    return true;
+}
+
 size_t winlist_count(bool minimized_only)
 {
     size_t n = 0;

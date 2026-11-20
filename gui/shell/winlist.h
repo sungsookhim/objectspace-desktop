@@ -27,6 +27,10 @@ void winlist_line(char **f, int n);
 /* Open (or bring forward) the Window List, or the Minimized Window Viewer. */
 void winlist_open(bool minimized_only);
 
+/* A command to the extension (activate, minimize, close, lock, find,
+ * shutdown); false without the extension. */
+bool winlist_ext(const char *cmd, const char *arg);
+
 /* Self-tests: how many windows are known (minimized ones), and send a
  * command for the window whose title contains `title`. */
 size_t winlist_count(bool minimized_only);

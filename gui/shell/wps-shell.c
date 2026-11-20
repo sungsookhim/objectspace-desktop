@@ -26,6 +26,7 @@
 #include "wallpaper.h"
 #include "events.h"
 #include "winlist.h"
+#include "launchpad.h"
 #include "gnome.h"
 #include "sound.h"
 #include "svc.h"
@@ -641,6 +642,7 @@ static void on_event(void *arg, const cv *ev)
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     if (setup_event(ev)) return;
+    if (launchpad_event(name, sub)) return;
     if (!strcmp(name, "folder_moved")) { folder_moved(cv_text(ev, "from"), cv_text(ev, "to")); return; }
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     for (struct folder *f = folders; f; f = f->next) {
@@ -3622,6 +3624,62 @@ static void win_frame(ui_surface *s, double now)
         #undef GGET
         return;
     }
+    if (st && !strcmp(st, "launchpad")) {
+        /* The LaunchPad on the desktop: its first buttons, a button
+         * pressed (a folder opens), a drop on it and on a drawer arrow. */
+        static double t0;
+        static int step;
+        if (!f->desktop) return;
+        if (!t0) { if (launchpad_count() < 3) return; t0 = now; }
+        double t = now - t0;
+        char rows[600] = "";
+        #define LROWS() do { rows[0] = 0; for (size_t i_ = 0; launchpad_title(i_); i_++) \
+            snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i_ ? ", " : "", launchpad_title(i_)); } while (0)
+        if (step == 0 && t > 500) {
+            LROWS();
+            fprintf(stderr, "selftest: LaunchPad (%zu): %s\n", launchpad_count(), rows);
+            char shot[PATH_MAX];
+            if (getenv("WPS_SHELL_SHOT")) {
+                snprintf(shot, sizeof shot, "%s-launchpad.png", getenv("WPS_SHELL_SHOT"));
+                launchpad_snapshot(shot);
+            }
+            size_t tb = SIZE_MAX;
+            for (size_t i = 0; launchpad_title(i); i++) if (!strcmp(launchpad_title(i), "templates")) tb = i;
+            fprintf(stderr, "selftest: press Templates: %d\n", tb != SIZE_MAX && launchpad_press(4 + tb));
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/notes.txt", f->path);
+            launchpad_add(p);
+            launchpad_drawer(0, p);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 2000) {
+            LROWS();
+            fprintf(stderr, "selftest: after the drop (%zu): %s\n", launchpad_count(), rows);
+            int open = 0;
+            for (struct folder *o = folders; o; o = o->next) open += !o->closing && !o->desktop && strstr(o->path, "templates");
+            fprintf(stderr, "selftest: templates window open: %d\n", open);
+            char d[PATH_MAX];
+            snprintf(d, sizeof d, "%s Drawers", launchpad_dir());
+            DIR *dd = opendir(d);
+            int drawers = 0;
+            struct dirent *de;
+            while (dd && (de = readdir(dd))) drawers += de->d_name[0] != '.';
+            if (dd) closedir(dd);
+            fprintf(stderr, "selftest: drawers made: %d\n", drawers);
+            if (getenv("WPS_SHELL_SHOT")) {
+                char shot[PATH_MAX];
+                snprintf(shot, sizeof shot, "%s-launchpad2.png", getenv("WPS_SHELL_SHOT"));
+                launchpad_snapshot(shot);
+            }
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            ui_app_quit(app);
+            step++;
+        }
+        #undef LROWS
+        return;
+    }
     if (st && !strcmp(st, "winlist")) {
         /* The Window List and the Minimized Window Viewer, with the
          * extension: the folder window run.sh opens, minimized and restored. */
@@ -3785,6 +3843,8 @@ static void apply_scheme(void);
 
 static void got_setup(void *arg, const cv *reply);
 static void desktop_setup_shadow(const char *folder);
+static void user_dir(const char *key, const char *fallback, char *out, size_t n);
+static void launchpad_open_folder(const char *path);
 static void got_setup_sub(void *arg, const cv *reply)
 {
     (void)arg;
@@ -3837,6 +3897,17 @@ static void got_setup(void *arg, const cv *reply)
     if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
     const char *folder = cv_text(res, "folder");
     if (folder) desktop_setup_shadow(folder);
+    /* The desktop's LaunchPad (G4), once System Setup is known (its first
+     * buttons include it). WPS_NO_LAUNCHPAD: none (tests). */
+    bool desktop = false;
+    for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
+    if (desktop && !getenv("WPS_NO_LAUNCHPAD")) {
+        char tdir[PATH_MAX];
+        const char *t = getenv("WPS_TEMPLATES_DIR");
+        if (t && *t) snprintf(tdir, sizeof tdir, "%s", t);
+        else user_dir("TEMPLATES", "Templates", tdir, sizeof tdir);
+        launchpad_open(app, launchpad_open_folder, tdir, folder);
+    }
 }
 
 /* The Scheme Palette's scheme: colours for every window; the desktop's
@@ -3892,6 +3963,7 @@ static void toolkit_action(const char *name, ui_surface *s, ui_rect at)
 
 static struct folder *open_window(const char *path, ui_view view, bool desktop);
 static struct folder *open_folder(const char *path, ui_view view) { return open_window(path, view, false); }
+static void launchpad_open_folder(const char *path) { open_folder(path, UI_VIEW_ICON); }
 
 static void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip) { (void)ctx; wallpaper_draw(cr, clip); }
 

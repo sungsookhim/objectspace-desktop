@@ -23,6 +23,7 @@ printf '[Default Applications]\ntext/plain=wps-hold.desktop\n' > "$W/xdg/config/
 [ -n "$2" ] && (cd "$W/d" && sh -c "$2")
 export WPS_TEMPLATES_DIR="$W/templates"   # never the user's own
 export WPS_SETUP_DIR="$W/setup"            # nor their settings objects
+export WPS_LAUNCHPAD_DIR="$W/launchpad"    # nor their LaunchPad
 [ -n "$TEMPLATES" ] && export WPS_TEMPLATES_DIR="$W/d/Templates" && SHELL_ARGS="$W/d/Templates"
 export LSAN_OPTIONS="suppressions=$PWD/tests/gui/lsan.supp:print_suppressions=0"
 export WPS_CONFIG_DIR="$W/config" WPS_STATE_DIR="$W/state" WPS_RUNTIME_DIR="$RT" WPS_SAVE_DELAY_MS=100

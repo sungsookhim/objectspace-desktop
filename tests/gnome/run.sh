@@ -32,7 +32,7 @@ else
 fi
 cp -r "$REPO/tests/gnome/wps-probe@local" "$T/data/gnome-shell/extensions/"
 export XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache"
-export WPS_TEMPLATES_DIR="$T/templates" WPS_SETUP_DIR="$T/setup"
+export WPS_TEMPLATES_DIR="$T/templates" WPS_SETUP_DIR="$T/setup" WPS_LAUNCHPAD_DIR="$T/launchpad"
 export WPS_CONFIG_DIR="$T/w/config" WPS_STATE_DIR="$T/w/state" WPS_RUNTIME_DIR="$RT/wps"
 export WPS_DEBUG_COMMANDS=1 PROBE_SHOT="$T/shot.png" WPS_WALLPAPER="${WALL:-/usr/share/backgrounds/f45/default/f45-01-day.jxl}"
 unset WAYLAND_DISPLAY DISPLAY JOURNAL_STREAM INVOCATION_ID

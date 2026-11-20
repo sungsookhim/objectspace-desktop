@@ -192,6 +192,9 @@ ui_surface *ui_window_new(ui_app *a, const ui_surface_ops *ops, void *data, cons
 void ui_window_set_title(ui_surface *s, const char *title);
 /* No frame at all, the client area the whole window (the desktop). */
 void ui_window_set_frameless(ui_surface *s, bool on);
+/* The window sets its own size (the compositor takes it on the next
+ * frame); fixed: the user cannot resize it (min = max). */
+void ui_window_set_size(ui_surface *s, double w, double h, bool fixed);
 void ui_window_set_maximized(ui_surface *s);
 void ui_window_move(ui_surface *s, uint32_t serial);
 void ui_window_resize(ui_surface *s, uint32_t serial, unsigned edges);   /* xdg resize edges */
@@ -370,6 +373,10 @@ typedef struct {
     bool last_child;           /* no sibling below it (for the joining lines) */
     uint32_t open_levels;      /* bit d: the ancestor at depth d has siblings below */
 } ui_item;
+
+/* An object's icon, drawn as a folder draws it (in-use, template, link
+ * and shadow marks included), anywhere: the LaunchPad, drawers. */
+void ui_draw_item_icon(cairo_t *cr, const ui_item *it, double x, double y, double size);
 
 typedef struct ui_container ui_container;
 

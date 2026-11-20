@@ -38,7 +38,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const DESKTOP_APP_ID = 'org.wps.Desktop';
 // WPS's window list and Minimized Window Viewer: not listed in themselves.
-const UNLISTED = new Set([DESKTOP_APP_ID, 'org.wps.WindowList']);
+const UNLISTED = new Set([DESKTOP_APP_ID, 'org.wps.WindowList', 'org.wps.LaunchPad']);
+const LAUNCHPAD_APP_ID = 'org.wps.LaunchPad';
 
 export default class WpsExtension extends Extension {
     enable() {
@@ -246,6 +247,18 @@ export default class WpsExtension extends Extension {
             }
             if (line === null) return;   // the desktop went away
             const [cmd, id] = line.split('\t');
+            // The LaunchPad's own buttons (no window): Lockup, Find, Shut down.
+            if (cmd === 'lock') { Main.screenShield?.lock(true); next(); return; }
+            if (cmd === 'find') { Main.overview.show(); next(); return; }
+            if (cmd === 'shutdown') {
+                try {
+                    GLib.spawn_command_line_async('gnome-session-quit --power-off');
+                } catch (e) {
+                    console.log(`wps: cannot ask to shut down: ${e.message}`);
+                }
+                next();
+                return;
+            }
             const w = global.display.list_all_windows().find(x => String(x.get_id()) === id);
             if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command ${cmd} ${id}: ${w ? w.get_title() : 'no such window'}`);
             if (w) {
@@ -283,6 +296,24 @@ export default class WpsExtension extends Extension {
 
     _windowCreated(w) {
         if (!this._client || !this._client.owns_window(w)) return;
+        const lp = () => {
+            if (w.get_wm_class() !== LAUNCHPAD_APP_ID || this._launchpads?.has(w)) return;
+            (this._launchpads ??= new Set()).add(w);
+            // The LaunchPad floats above windows, on every workspace, out of
+            // Alt+Tab; it starts at the bottom centre of the screen.
+            w.make_above();
+            w.stick();
+            w.hide_from_window_list();
+            this._connect(w, 'unmanaged', () => this._launchpads.delete(w));
+            const id = w.connect('shown', () => {
+                w.disconnect(id);
+                const mon = Main.layoutManager.primaryIndex;
+                const wa = w.get_work_area_for_monitor(mon), r = w.get_frame_rect();
+                w.move_frame(false, wa.x + Math.floor((wa.width - r.width) / 2), wa.y + wa.height - r.height - 8);
+            });
+        };
+        lp();
+        this._connect(w, 'notify::wm-class', lp);
         if (this._isDesktop(w)) this._makeDesktop(w);
         else this._connect(w, 'notify::wm-class', () => this._isDesktop(w) && this._makeDesktop(w));
     }

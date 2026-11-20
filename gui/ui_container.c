@@ -533,6 +533,15 @@ static void columns(ui_container *c, double *x)
 
 /* An item's icon: in use, it has the hatching behind it, and a folder is
  * drawn open (OS/2). */
+static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double sz);
+
+/* An object's icon anywhere (the LaunchPad, drawers): as in a folder. */
+void ui_draw_item_icon(cairo_t *cr, const ui_item *it, double x, double y, double size)
+{
+    item_icon(cr, it, x, y, size);
+    if (it->shadow) shadow_mark(cr, x, y, size);
+}
+
 /* A file-system link's mark: a green corner, bottom left. */
 static void link_mark(cairo_t *cr, double x, double y, double sz)
 {

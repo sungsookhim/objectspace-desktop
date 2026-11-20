@@ -400,6 +400,20 @@ ui_surface *ui_window_new(ui_app *a, const ui_surface_ops *ops, void *data, cons
     return s;
 }
 
+void ui_window_set_size(ui_surface *s, double w, double h, bool fixed)
+{
+    if (!s->top) return;
+    if (fixed) {
+        xdg_toplevel_set_min_size(s->top, (int32_t)w, (int32_t)h);
+        xdg_toplevel_set_max_size(s->top, (int32_t)w, (int32_t)h);
+    }
+    if (w == s->w && h == s->h) return;
+    s->w = w;
+    s->h = h;
+    if (s->ops->resized) s->ops->resized(s, w, h);
+    ui_surface_damage_all(s);
+}
+
 ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
                          double w, double h, uint32_t serial)
 {
