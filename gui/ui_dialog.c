@@ -2,6 +2,7 @@
  * set 5). Enter chooses the focused button, Escape the last one (by
  * convention the cancelling one), Tab and the arrows move between them. */
 #define _GNU_SOURCE
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -179,9 +180,16 @@ ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, con
     d->buttons = calloc(n ? n : 1, sizeof *d->buttons);
     d->nbuttons = n;
     for (size_t i = 0; i < n; i++) d->buttons[i] = strdup(buttons[i]);
-    wrap(d, message, WIDTH - 2 * MARGIN - 8);
+    /* As wide as its buttons need (five did not fit in WIDTH: the row ran
+     * off the left edge), and never narrower than WIDTH. */
+    double row = 0;
+    for (size_t i = 0; i < n; i++) row += button_w(d, i) + 8;
+    double w = row - 8 + 2 * MARGIN + 2 * ui_scheme_now.border;
+    if (w < WIDTH) w = WIDTH;
+    w = ceil(w);
+    wrap(d, message, w - 2 * MARGIN - 8);
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 2 * MARGIN + (double)d->nlines * LINE_H + 16 + BUTTON_H + MARGIN;
-    d->win = ui_window_new(a, &dlg_ops, d, "org.wps.dialog", WIDTH, h);
+    d->win = ui_window_new(a, &dlg_ops, d, "org.wps.dialog", w, h);
     ui_window_set_title(d->win, title);
     ui_a11y_window(d->win, UI_ROLE_DIALOG, message);   /* a screen reader reads the message with the title */
     a11y_button(d);
