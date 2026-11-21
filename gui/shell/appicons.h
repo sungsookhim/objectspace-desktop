@@ -13,5 +13,8 @@ void appicons_init(void (*changed)(void));
 /* The icon of the program whose desktop entry is at `desktop` (NULL: none,
  * or not ready yet). Cached by path. */
 cairo_surface_t *appicon_for(const char *desktop);
+/* An icon by its theme name ("dialog-information"), or a file's path or
+ * file:// URI (a notification's). */
+cairo_surface_t *appicon_named(const char *name);
 
 #endif

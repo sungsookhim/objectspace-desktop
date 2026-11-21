@@ -545,3 +545,64 @@ void svc_place(const char *folder, const char *const *targets, const int64_t *x,
     }
     send_req(o, id, fn, arg);
 }
+
+/* ---- messages (wpsd keeps them: messages.h) */
+
+void svc_msg_add(const svc_message *m, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("msg_add", 8, &id);
+    cb_text(&o->b, "app"); cb_text(&o->b, m->app ? m->app : "");
+    cb_text(&o->b, "icon"); cb_text(&o->b, m->icon ? m->icon : "");
+    cb_text(&o->b, "summary"); cb_text(&o->b, m->summary ? m->summary : "");
+    cb_text(&o->b, "body"); cb_text(&o->b, m->body ? m->body : "");
+    cb_text(&o->b, "urgency"); cb_int(&o->b, m->urgency);
+    cb_text(&o->b, "nid"); cb_int(&o->b, m->nid);
+    cb_text(&o->b, "sender"); cb_text(&o->b, m->sender ? m->sender : "");
+    cb_text(&o->b, "actions"); cb_array(&o->b, m->nactions);
+    for (size_t i = 0; i < m->nactions; i++) cb_text(&o->b, m->actions[i]);
+    send_req(o, id, fn, arg);
+}
+
+void svc_msg_list(svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("msg_list", 0, &id);
+    send_req(o, id, fn, arg);
+}
+
+/* ids (n of them), or every message when n is 0. */
+static void ids_or_all(struct out *o, const int64_t *ids, size_t n)
+{
+    if (!n) { cb_text(&o->b, "all"); cb_bool(&o->b, true); return; }
+    cb_text(&o->b, "ids");
+    cb_array(&o->b, n);
+    for (size_t i = 0; i < n; i++) cb_int(&o->b, ids[i]);
+}
+
+void svc_msg_set(const int64_t *ids, size_t n, int read, int closed, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("msg_set", 1 + (read >= 0) + (closed >= 0), &id);
+    ids_or_all(o, ids, n);
+    if (read >= 0) { cb_text(&o->b, "read"); cb_bool(&o->b, read); }
+    if (closed >= 0) { cb_text(&o->b, "closed"); cb_bool(&o->b, closed); }
+    send_req(o, id, fn, arg);
+}
+
+void svc_msg_delete(const int64_t *ids, size_t n, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("msg_delete", 1, &id);
+    ids_or_all(o, ids, n);
+    send_req(o, id, fn, arg);
+}
+
+void svc_msg_closed(int64_t nid, const char *sender, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("msg_closed", 2, &id);
+    cb_text(&o->b, "nid"); cb_int(&o->b, nid);
+    cb_text(&o->b, "sender"); cb_text(&o->b, sender ? sender : "");
+    send_req(o, id, fn, arg);
+}

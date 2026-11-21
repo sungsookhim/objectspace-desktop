@@ -253,7 +253,7 @@ static bool listable(struct toplevel *t)
     const char *a = view_app(t);
     bool wps_own = desktop_is(view_client(t));
     return !(wps_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad") ||
-                         !strcmp(a, "org.wps.WarpCenter")));
+                         !strcmp(a, "org.wps.WarpCenter") || !strcmp(a, "org.wps.Notice")));
 }
 
 void desktop_window(struct toplevel *t, const char *change)

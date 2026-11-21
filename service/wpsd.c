@@ -10,6 +10,10 @@
  *   {op:"drives"}                       the volumes udisks2 (or mountinfo) shows -> [{uuid, title, kind, mount, ...}]
  *   {op:"restore", target}              an item in a trash: back where it was; its new path
  *   {op:"empty_trash"}                  the home trash emptied (a delete job); the job's ID
+ *   {op:"msg_add", app, icon, summary, body, urgency, nid, sender, actions}   a message kept (messages.h); its ID
+ *   {op:"msg_list"} -> {messages:[...newest first], unread}
+ *   {op:"msg_set", ids|all, read, closed}  {op:"msg_delete", ids|all}  {op:"msg_closed", nid, sender}
+ *   {event:"messages_changed", sub, unread, total, added}   to each subscribed client once
  *   {op:"ping"}                         "pong", with version (WPS_VERSION) and protocol (a number)
  *   {op:"resolve", target:PATH|"id:ID"}
  *   {op:"call", target, method, args:[...], expect:N}  objects as {obj:PATH|"id:ID"}
@@ -102,6 +106,8 @@
 #include "WPTrashCan.h"
 #include "WPDrive.h"
 #include "WPMinWinViewer.h"
+#include "WPMessages.h"
+#include "messages.h"
 #include "WPDataFile.h"
 #include "wps_state.h"
 #include "tracker.h"
@@ -873,6 +879,24 @@ static void trash_check(const char *path)
     trash_broadcast(full);
 }
 
+/* The messages changed: every client with a subscription (each once). */
+static void messages_broadcast(int64_t added)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead) continue;
+        bool sent = false;
+        for (struct sub *y = subs; y != x && !sent; y = y->next) sent = y->c == x->c;
+        if (sent) continue;
+        cbuf b;
+        event_head(&b, "messages_changed", x->id, 3);
+        cb_text(&b, "unread"); cb_uint(&b, wps_messages_unread());
+        cb_text(&b, "total"); cb_uint(&b, wps_messages_count());
+        cb_text(&b, "added"); cb_int(&b, added);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
+
 static void on_object_changed(wpo_object *o)
 {
     if (wpo_is_a(o, WPTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
@@ -1500,6 +1524,10 @@ static void do_open(struct req *r, wpo_object *o)
             argv[2] = NULL;
             what = "xdg-open";
         }
+    } else if (wpo_is_a(o, WPMessagesClass)) {
+        reply_view(r, "messages");
+        wpo_unref(orig);
+        return;
     } else if (wpo_is_a(o, WPMinWinViewerClass)) {
         reply_view(r, "minimized-windows");
         wpo_unref(orig);
@@ -2760,8 +2788,11 @@ static void first_start_done(void *arg)
  * <class> = object ID). */
 static const char *const setup_classes[][2] = {
     { "WPSystem", "System" }, { "WPSound", "Sound" }, { "WPMouse", "Mouse" }, { "WPSchemePalette", "Scheme Palette" },
+    /* (0.2: in the System folder itself, v0.2-design 9 and 10) */
+    { "WPLaunchPad", "LaunchPad" }, { "WPWarpCenter", "WarpCenter" }, { "WPMessages", "Messages" },
 };
-#define NSETUP 4
+#define NSETUP 7
+#define SETUP_IN_SYSTEM 4   /* setup_classes from this one on */
 
 /* WPS's own folders in the user's data ($XDG_DATA_HOME/wps/<name>). */
 static void data_dir(const char *name, char *out, size_t n)
@@ -2833,7 +2864,15 @@ static void setup_objects_work(void *arg)
         if (wps_props_str(&known, setup_classes[i][0], &id) && id && wps_db_vobj_vol(db, id, vol, sizeof vol)) { free(id); continue; }
         free(id);
         char nid[WPS_ID_LEN + 1], key[256];
-        if (wps_central_create(fl.vol, fl.id, setup_classes[i][0], setup_classes[i][1], NULL, nid)) continue;
+        if (i >= SETUP_IN_SYSTEM) {
+            char sys[PATH_MAX];
+            system_dir(sys, sizeof sys);
+            wps_loaded sy;
+            wps_load(sys, true, &sy);
+            int rc = sy.err || !sy.id[0] ? -1 : wps_central_create(sy.vol, sy.id, setup_classes[i][0], setup_classes[i][1], NULL, nid);
+            wps_loaded_free(&sy);
+            if (rc) continue;
+        } else if (wps_central_create(fl.vol, fl.id, setup_classes[i][0], setup_classes[i][1], NULL, nid)) continue;
         wps_db_key(key, sizeof key, sloc, "WPS", setup_classes[i][0]);
         wps_db_put(db, fl.vol, key, 's', nid, WPS_ID_LEN);
     }
@@ -3149,6 +3188,36 @@ static void handle(struct client *c, cv *msg)
         wps_trash_home(j->files, sizeof j->files);
         strncat(j->files, "/files", sizeof j->files - strlen(j->files) - 1);
         wpo_defer(loop, "empty trash", empty_work, empty_done, j);
+    } else if (strcmp(op, "msg_add") == 0) {
+        int64_t mid = wps_messages_add(msg);
+        reply_int(c, id, mid);
+        messages_broadcast(mid);
+    } else if (strcmp(op, "msg_list") == 0) {
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result");
+        cb_map(&b, 2);
+        cb_text(&b, "unread"); cb_uint(&b, wps_messages_unread());
+        cb_text(&b, "messages"); wps_messages_encode(&b);
+        send_frame(c, &b);
+        cb_free(&b);
+    } else if (strcmp(op, "msg_set") == 0 || strcmp(op, "msg_delete") == 0 || strcmp(op, "msg_closed") == 0) {
+        const cv *all = cv_get(msg, "all"), *rd = cv_get(msg, "read"), *cl = cv_get(msg, "closed");
+        bool everything = all && all->k == CV_BOOL && all->b;
+        size_t n;
+        if (op[4] == 'd') n = wps_messages_delete(cv_get(msg, "ids"), everything);
+        else if (op[4] == 's') n = wps_messages_set(cv_get(msg, "ids"), everything, rd && rd->k == CV_BOOL ? rd->b : -1,
+                                                   cl && cl->k == CV_BOOL ? cl->b : -1);
+        else {
+            int64_t nid = 0;
+            cv_int(msg, "nid", &nid);
+            n = wps_messages_closed(nid, cv_text(msg, "sender"));
+        }
+        reply_int(c, id, (int64_t)n);
+        if (n) messages_broadcast(0);
     } else if (strcmp(op, "first_start") == 0) {
         const char *d = cv_text(msg, "desktop");
         struct first_start *j = calloc(1, sizeof *j);
@@ -3422,6 +3491,11 @@ int main(int argc, char **argv)
         wps_listing_folder_icon(pf, "programs.png");
         wps_programs_init(loop, pf, env.state_dir);
     }
+    {
+        char mf[PATH_MAX + 16];
+        snprintf(mf, sizeof mf, "%s/messages", env.state_dir);
+        wps_messages_init(mf);
+    }
     wps_listing_init(loop);
     wps_find_init(loop);
     wps_jobs_init(loop, db, env.identity);
@@ -3453,6 +3527,7 @@ int main(int argc, char **argv)
     wps_launch_shutdown();
     wps_tracker_shutdown();
     wps_programs_shutdown();
+    wps_messages_shutdown();
     wps_udisks_shutdown();
     wps_listing_shutdown();
     unlink(sock_path);

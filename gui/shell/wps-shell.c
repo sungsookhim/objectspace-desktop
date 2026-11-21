@@ -29,6 +29,8 @@
 #include "winlist.h"
 #include "appicons.h"
 #include "warpcenter.h"
+#include "notify.h"
+#include "messages.h"
 #include "findwin.h"
 #include "mime.h"
 #include "icons.h"
@@ -201,8 +203,9 @@ static void *page_arg(struct folder *f, bool shadow)
 
 static void request_more(struct folder *f, bool shadow);
 static bool setup_event(const cv *ev);
-static char setup_ids[4][64];   /* the settings objects (see below) */
-static char setup_cls[4][32];   /* their classes */
+#define NSETUP 8
+static char setup_ids[NSETUP][64];   /* the settings objects (see below) */
+static char setup_cls[NSETUP][32];   /* their classes */
 static void rename_new_now(struct folder *f);
 static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
@@ -695,6 +698,7 @@ static void on_event(void *arg, const cv *ev)
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (findwin_event(ev)) return;   /* a search's results (its own IDs) */
+    if (messages_event(ev)) return;   /* (once per client: on whichever subscription) */
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     if (setup_event(ev)) return;
     if (launchpad_event(name, sub)) return;
@@ -1102,6 +1106,10 @@ static void opened(void *arg, const cv *reply)
     }
     if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "minimized-windows")) {
         winlist_open(true);   /* the Minimized Window Viewer */
+        return;
+    }
+    if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "messages")) {
+        messages_open();
         return;
     }
     if (res && cv_text(res, "folder")) {   /* a shadow of a folder, or a link to one */
@@ -2353,7 +2361,9 @@ static void raise_in(struct folder *f, const char *name, const char *object, con
 static void report_error(long folder, const char *msg)
 {
     set_status(folder, msg);
-    raise_in(folder_by_id(folder), "alert.error", NULL, "");
+    struct folder *f = folder_by_id(folder);
+    raise_in(f, "alert.error", NULL, "");
+    if (f && f->desktop) messages_post(msg, "", 2);   /* (the desktop has no status line: Messages) */
 }
 
 /* A question to the user: alert.warning sounds, as OS/2's warning did. */
@@ -3014,7 +3024,10 @@ static bool deletion_event(struct jobtrack *t, const cv *st, const char *state, 
     else if (!strcmp(state, "failed")) snprintf(m, sizeof m, "Delete failed: %s", err ? err : "unknown error");
     else snprintf(m, sizeof m, "Delete cancelled after %lld", (long long)done);
     set_status(t->folder, m);
-    if (!strcmp(state, "failed")) raise_in(folder_by_id(t->folder), "job.failed", NULL, "");
+    if (!strcmp(state, "failed")) {
+        raise_in(folder_by_id(t->folder), "job.failed", NULL, "");
+        messages_post(m, err ? err : "", 2);   /* kept in Messages (a failure only: not every delete) */
+    }
     else if (!strcmp(state, "done") && ok > 0) raise_in(folder_by_id(t->folder), trash ? "object.trash" : "object.delete", NULL, "");
     close_gone_windows();
     if (nn) {
@@ -3068,6 +3081,7 @@ static void on_job_event(const cv *st)
         else snprintf(m, sizeof m, "%s cancelled after %lld", move ? "Move" : "Copy", (long long)done);
         set_status(t->folder, m);
         raise_in(folder_by_id(t->folder), !strcmp(state, "failed") ? "job.failed" : "job.done", NULL, "");
+        if (!strcmp(state, "failed")) messages_post(m, t->dest, 2);
         *pp = t->next;
         free(t);
         return;
@@ -4770,8 +4784,9 @@ static void notify_in_use(const char *path);
 
 /* The System, Sound, Mouse and Scheme Palette objects (G3): read at start
  * and whenever one changes (their notebooks), applied at once. */
-static char setup_ids[4][64];
 static int64_t setup_sub;
+/* The LaunchPad's and the WarpCenter's "Show at start" (automatic, yes, no). */
+static char lp_show[16] = "automatic", wc_show[16] = "automatic";
 static char scheme_name[32] = "classic";
 static void apply_scheme(void);
 
@@ -4802,6 +4817,12 @@ static void apply_setup_object(const char *cls, const cv *settings)
             winlist_ext("mouse", kv);
         }
         else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
+        else if (!strcmp(cls, "WPLaunchPad") && !strcmp(key, "show_at_start")) snprintf(lp_show, sizeof lp_show, "%s", val);
+        else if (!strcmp(cls, "WPWarpCenter")) {
+            if (!strcmp(key, "show_at_start")) snprintf(wc_show, sizeof wc_show, "%s", val);
+            else warpcenter_setting(key, val);
+        }
+        else if (!strcmp(cls, "WPMessages")) messages_setting(key, val);
         else if (!strcmp(cls, "WPSystem")) {
             if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */
                 char kv[160];   /* the compositor's frames too (WPS session) */
@@ -4819,9 +4840,9 @@ static void got_setup(void *arg, const cv *reply)
     (void)arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL, *objs = res ? cv_get(res, "objects") : NULL;
     if (!objs || objs->k != CV_MAP) return;
-    const char *ids[4];
+    const char *ids[NSETUP];
     size_t n = 0;
-    for (size_t i = 0; i < objs->n && i < 4; i++) {
+    for (size_t i = 0; i < objs->n && i < NSETUP; i++) {
         const cv *cls = &objs->items[2 * i], *o = &objs->items[2 * i + 1];
         if (cls->k != CV_TEXT) continue;
         apply_setup_object(cls->s, cv_get(o, "settings"));
@@ -4845,13 +4866,25 @@ static void got_setup(void *arg, const cv *reply)
     /* In the WPS session the WarpCenter, and not the LaunchPad (the
      * owner's decision for 0.2; the LaunchPad stays in System). Inside
      * GNOME, which has its own bar, the LaunchPad as before. */
+    /* The LaunchPad and WarpCenter objects' "Show at start" can say
+     * otherwise (only at start: closing them is not offered). */
     const char *wcs = getenv("WPS_WARPCENTER");
-    bool wpsession = wcs ? !strcmp(wcs, "1") : getenv("WPS_SESSION") != NULL;
-    if (desktop && wpsession && !warpcenter_is_open()) {
+    bool wpsession = getenv("WPS_SESSION") != NULL;
+    bool want_wc = wcs ? !strcmp(wcs, "1") : wpsession && strcmp(wc_show, "no");
+    bool want_lp = getenv("WPS_LAUNCHPAD") ? true : !strcmp(lp_show, "automatic") ? !wpsession : !strcmp(lp_show, "yes");
+    if (wcs && !strcmp(wcs, "1")) want_lp = want_lp && (getenv("WPS_LAUNCHPAD") || !strcmp(lp_show, "yes"));
+    static bool started;   /* (settings read again later change neither) */
+    bool first = !started && desktop;
+    if (desktop) started = true;
+    if (first && want_wc && !warpcenter_is_open()) {
         for (struct folder *f = folders; f; f = f->next)
-            if (f->desktop && !f->closing) { warpcenter_open(app, f->path, getenv("WPS_WARPCENTER_TOP") != NULL, launchpad_open_folder); break; }
+            if (f->desktop && !f->closing) {
+                warpcenter_open(app, f->path, getenv("WPS_WARPCENTER_TOP") != NULL || warpcenter_top(), launchpad_open_folder);
+                warpcenter_messages(messages_unread(), messages_open);
+                break;
+            }
     }
-    if (desktop && !getenv("WPS_NO_LAUNCHPAD") && (!wpsession || getenv("WPS_LAUNCHPAD"))) {
+    if (first && !getenv("WPS_NO_LAUNCHPAD") && want_lp) {
         char tdir[PATH_MAX];
         const char *t = getenv("WPS_TEMPLATES_DIR");
         if (t && *t) snprintf(tdir, sizeof tdir, "%s", t);
@@ -4882,7 +4915,7 @@ static void apply_scheme(void)
 /* GNOME changed a shared setting: the settings object takes it. */
 static void gnome_set_wps(const char *cls, const char *key, const char *value)
 {
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < NSETUP; i++)
         if (!strcmp(setup_cls[i], cls)) {
             cv v = { .k = CV_TEXT, .s = (char *)value, .len = strlen(value) };
             svc_settings_set(setup_ids[i], key, &v, -1, ignore_reply, NULL);
@@ -5122,6 +5155,10 @@ int main(int argc, char **argv)
      * desktop keeps the rest in step both ways. */
     gnome_start(app, desk, gnome_set_wps, gnome_font);
     if (desk) {
+        /* the desktop process: Messages, and in the WPS session the
+         * notification service */
+        messages_init(app);
+        notify_init(app);
         /* --desktop FOLDER: that folder as the desktop (tests) */
         struct folder *f = open_desktop(i < argc ? argv[i++] : NULL);
         if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);

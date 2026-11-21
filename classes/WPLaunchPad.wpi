@@ -1,0 +1,5 @@
+# The LaunchPad object (v0.2-design 10): the LaunchPad's settings, in
+# System; the desktop applies them.
+class WPLaunchPad : WPSetup
+version 1.0
+classoverride wpclsQueryTitle

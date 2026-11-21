@@ -24,7 +24,7 @@
 enum mode { MODE_PASS, MODE_MOVE, MODE_RESIZE, MODE_BUTTON };
 /* palette: the LaunchPad, above; panel: the WarpCenter, along an edge,
  * taken from the usable screen area (v0.2-design 8) */
-enum kind { KIND_NORMAL, KIND_DESKTOP, KIND_PALETTE, KIND_PANEL };
+enum kind { KIND_NORMAL, KIND_DESKTOP, KIND_PALETTE, KIND_PANEL, KIND_NOTICE };
 
 struct server {
     struct wl_display *display;

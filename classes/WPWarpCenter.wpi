@@ -1,0 +1,5 @@
+# The WarpCenter object (v0.2-design 10): the bar's settings (its edge,
+# parts, clock), in System; the desktop applies them.
+class WPWarpCenter : WPSetup
+version 1.0
+classoverride wpclsQueryTitle

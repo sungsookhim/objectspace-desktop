@@ -24,7 +24,7 @@
 #define METER_W 9
 #define NMETERS 4
 
-enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_KEYBOARD, P_CLOCK, NPARTS };
+enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, NPARTS };
 
 /* the Desktop menu, read ahead (the menu widget takes whole trees) */
 struct mnode {
@@ -45,9 +45,16 @@ static struct {
     /* keyboard */
     char key_label[16];
     int key_index, key_count;
-    /* clock */
-    char clock[16];
+    /* clock: 0 24 hours, 1 12 hours, 2 off */
+    char clock[64];
+    int clock_mode;
+    bool seconds, date;
     int timer;
+    /* the WarpCenter object's parts (meters, messages, keyboard) */
+    bool shown[NPARTS];
+    /* messages */
+    size_t unread;
+    void (*open_messages)(void);
     /* meters: 0..1 each */
     double meter[NMETERS];
     unsigned long long cpu_total, cpu_idle, disk, net;
@@ -64,32 +71,54 @@ static struct {
     ui_surface *pop;
     int pop_kind;                  /* P_CLOCK or P_METERS */
     int cal_month, cal_year;
-} wc = { .pressed = P_NONE, .timer = -1 };
+} wc = { .pressed = P_NONE, .timer = -1, .shown = { true, true, true, true, true, true } };
 
 /* ------------------------------------------------------------- layout */
 
 static double bar_h(void) { return ceil(ui_scheme_now.font_px * 1.9) + 2 * PAD; }
 
-static double clock_w(void) { return ui_text_width(UI_FONT_REGULAR, "88:88") + 20; }
+/* (the clock's text with its digits as 8s: it does not jitter as they change) */
+static double clock_w(void)
+{
+    char t[64];
+    snprintf(t, sizeof t, "%s", wc.clock);
+    for (char *q = t; *q; q++) if (*q >= '0' && *q <= '9') *q = '8';
+    return ui_text_width(UI_FONT_REGULAR, t) + 20;
+}
 
 /* The Desktop button: its picture and the desktop's name, as OS/2's
  * WarpCenter's first button. */
 static const char *desk_label(void) { return "Desktop"; }
 static double desk_w(void) { return wc.h - 2 * PAD + ui_text_width(UI_FONT_BOLD, desk_label()) + 14; }
 
+static double msg_w(void)
+{
+    char t[16];
+    snprintf(t, sizeof t, "%zu", wc.unread);
+    return wc.h - 2 * PAD + 6 + (wc.unread ? ui_text_width(UI_FONT_BOLD, t) + 4 : 0);
+}
+
+static bool part_shown(int p) { return p == P_CLOCK ? wc.clock_mode != 2 : wc.shown[p]; }
+
+/* From the right: the clock, the keyboard, messages, the meters; parts
+ * the WarpCenter object turned off take no room. */
 static ui_rect part_rect(int p)
 {
-    double h = wc.h - 2 * PAD, x;
+    double h = wc.h - 2 * PAD;
     switch (p) {
     case P_DESKTOP: return (ui_rect){ PAD, PAD, desk_w(), h };
     case P_WINDOWS: return (ui_rect){ PAD + desk_w() + 2, PAD, BTN_W, h };
-    case P_CLOCK: return (ui_rect){ wc.w - PAD - clock_w(), PAD, clock_w(), h };
-    case P_KEYBOARD: x = wc.w - PAD - clock_w() - 4 - KEY_W; return (ui_rect){ x, PAD, KEY_W, h };
-    case P_METERS: {
-        double mw = NMETERS * (METER_W + 3) + 7;
-        x = wc.w - PAD - clock_w() - 4 - KEY_W - 4 - mw;
-        return (ui_rect){ x, PAD, mw, h };
+    default: break;
     }
+    static const int order[] = { P_CLOCK, P_KEYBOARD, P_MESSAGES, P_METERS };
+    double x = wc.w - PAD;
+    for (size_t i = 0; i < sizeof order / sizeof *order; i++) {
+        int q = order[i];
+        if (!part_shown(q)) { if (q == p) return (ui_rect){ 0, 0, 0, 0 }; continue; }
+        double w = q == P_CLOCK ? clock_w() : q == P_KEYBOARD ? KEY_W : q == P_MESSAGES ? msg_w() : NMETERS * (METER_W + 3) + 7;
+        x -= w;
+        if (q == p) return (ui_rect){ x, PAD, w, h };
+        x -= 4;
     }
     return (ui_rect){ 0, 0, 0, 0 };
 }
@@ -98,6 +127,7 @@ static int part_at(double x, double y)
 {
     for (int p = 0; p < NPARTS; p++) {
         ui_rect r = part_rect(p);
+        if (r.w <= 0) continue;
         if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return p;
     }
     return P_NONE;
@@ -143,6 +173,23 @@ static void glyph_windows(cairo_t *cr, ui_rect r)
     }
 }
 
+static void glyph_envelope(cairo_t *cr, ui_rect r, bool unread)
+{
+    double s = fmin(r.w, r.h) / 26.0, w = 18 * s, h = 12 * s;
+    double x = round(r.x + (r.w - w) / 2) + 0.5, y = round(r.y + (r.h - h) / 2) + 0.5;
+    if (unread) cairo_set_source_rgb(cr, 1.0, 0.95, 0.6);
+    else cairo_set_source_rgb(cr, 1, 1, 1);
+    cairo_rectangle(cr, x, y, w, h);
+    cairo_fill_preserve(cr);
+    ui_set_color(cr, ui_scheme_now.text);
+    cairo_set_line_width(cr, 1);
+    cairo_stroke(cr);
+    cairo_move_to(cr, x, y);
+    cairo_line_to(cr, x + w / 2, y + h * 0.6);
+    cairo_line_to(cr, x + w, y);
+    cairo_stroke(cr);
+}
+
 static void centred_text(cairo_t *cr, ui_rect r, const char *t, double d)
 {
     double tw = ui_text_width(UI_FONT_REGULAR, t);
@@ -160,6 +207,7 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, (ui_rect){ 0, wc.top ? wc.h - 1 : 0, wc.w, 1 }, wc.top ? k->shadow : k->light);
     for (int p = 0; p < NPARTS; p++) {
         ui_rect r = part_rect(p);
+        if (r.w <= 0) continue;
         bool down = wc.pressed == p || (p == P_DESKTOP && ui_menu_is_open() && wc.want_menu) ||
                     ((p == P_CLOCK || p == P_METERS) && wc.pop && wc.pop_kind == p);
         double d = down ? 1 : 0;
@@ -176,6 +224,15 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         } else if (p == P_KEYBOARD) {
             ui_bevel(cr, r, down);
             centred_text(cr, r, wc.key_label[0] ? wc.key_label : "--", d);
+        } else if (p == P_MESSAGES) {
+            ui_bevel(cr, r, down);
+            glyph_envelope(cr, (ui_rect){ r.x + d + 2, r.y + d, r.h, r.h }, wc.unread > 0);
+            if (wc.unread) {
+                char t[16];
+                snprintf(t, sizeof t, "%zu", wc.unread);
+                ui_set_color(cr, ui_scheme_now.text);
+                ui_text_draw(cr, UI_FONT_BOLD, r.x + r.h + 2 + d, r.y + (r.h + ui_text_ascent()) / 2 - 1 + d, t, r.w - r.h);
+            }
         } else if (p == P_CLOCK) {
             ui_bevel(cr, r, false);
             centred_text(cr, r, wc.clock, d);
@@ -242,8 +299,12 @@ static bool read_clock(void)
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
-    char t[16];
-    strftime(t, sizeof t, "%H:%M", &tm);
+    char t[64] = "", hm[32] = "", f[16];
+    if (wc.date) strftime(t, sizeof t, "%b %e  ", &tm);
+    snprintf(f, sizeof f, "%s%s%s", wc.clock_mode == 1 ? "%I:%M" : "%H:%M", wc.seconds ? ":%S" : "", wc.clock_mode == 1 ? " %p" : "");
+    strftime(hm, sizeof hm, f, &tm);
+    /* 12 hours: "9:05 PM", not "09:05 PM" */
+    strncat(t, wc.clock_mode == 1 && hm[0] == '0' ? hm + 1 : hm, sizeof t - strlen(t) - 1);
     if (!strcmp(t, wc.clock)) return false;
     snprintf(wc.clock, sizeof wc.clock, "%s", t);
     return true;
@@ -604,6 +665,7 @@ static void opened(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { wc.open_folder(cv_text(res, "folder")); return; }
     if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "minimized-windows")) { winlist_open(true); return; }
+    if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "messages") && wc.open_messages) { wc.open_messages(); return; }
     if (!res && reply && cv_text(reply, "message")) fprintf(stderr, "wps-shell: WarpCenter: %s\n", cv_text(reply, "message"));
 }
 
@@ -666,6 +728,7 @@ static void press(int p, uint32_t serial, int button)
     case P_KEYBOARD: winlist_ext("keyboard", button == 2 ? "prev" : "next"); break;
     case P_CLOCK: open_pop(P_CLOCK, serial); break;
     case P_METERS: open_pop(P_METERS, serial); break;
+    case P_MESSAGES: if (wc.open_messages) wc.open_messages(); break;
     }
 }
 
@@ -736,7 +799,7 @@ bool warpcenter_is_open(void) { return wc.s != NULL; }
 
 bool warpcenter_press(const char *part)
 {
-    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "keyboard", "clock" };
+    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock" };
     if (!wc.s) return false;
     for (int p = 0; p < NPARTS; p++)
         if (!strcmp(part, names[p])) { press(p, ui_app_input_serial(wc.app), 1); return true; }
@@ -752,3 +815,52 @@ size_t warpcenter_menu_labels(char *out, size_t n)
                               wc.ready->kids[i].folder && wc.ready->kids[i].nkids ? " >" : "");
     return c;
 }
+
+/* ----------------------------------------------- the WarpCenter object */
+
+void warpcenter_setting(const char *key, const char *val)
+{
+    bool on = !strcmp(val, "1");
+    if (!strcmp(key, "edge")) {
+        bool top = !strcmp(val, "top");
+        if (top != wc.top) {
+            wc.top = top;
+            if (wc.pop) pop_free();
+            if (wc.s) winlist_ext("panel", top ? "top" : "bottom");
+        }
+    } else if (!strcmp(key, "meters")) wc.shown[P_METERS] = on;
+    else if (!strcmp(key, "keyboard")) wc.shown[P_KEYBOARD] = on;
+    else if (!strcmp(key, "messages")) wc.shown[P_MESSAGES] = on;
+    else if (!strcmp(key, "clock")) wc.clock_mode = !strcmp(val, "12 hours") ? 1 : !strcmp(val, "off") ? 2 : 0;
+    else if (!strcmp(key, "seconds")) wc.seconds = on;
+    else if (!strcmp(key, "date")) wc.date = on;
+    else return;
+    if (wc.pop && !part_shown(wc.pop_kind)) pop_free();
+    wc.clock[0] = 0;
+    read_clock();
+    damage();
+}
+
+bool warpcenter_top(void) { return wc.top; }
+
+void warpcenter_messages(size_t unread, void (*open_messages)(void))
+{
+    wc.open_messages = open_messages;
+    if (wc.unread == unread) return;
+    wc.unread = unread;
+    damage();
+}
+
+bool warpcenter_part_rect(const char *part, double *x, double *y, double *w, double *h)
+{
+    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock" };
+    for (int p = 0; p < NPARTS; p++) {
+        if (strcmp(part, names[p])) continue;
+        ui_rect r = part_rect(p);
+        *x = r.x; *y = r.y; *w = r.w; *h = r.h;
+        return wc.s && r.w > 0;
+    }
+    return false;
+}
+
+const char *warpcenter_clock_text(void) { return wc.clock; }

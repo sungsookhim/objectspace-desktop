@@ -55,13 +55,16 @@ static bool theme_file(const char *name, char *png, size_t n, char *svg, size_t 
     snprintf(fp, sizeof fp, "%s/.local/share/flatpak/exports/share/icons", home ? home : "/nonexistent");
     const char *roots[] = { user, "/usr/share/icons", "/usr/local/share/icons", "/var/lib/flatpak/exports/share/icons", fp };
     char p[PATH_MAX];
+    /* (programs' icons are "apps"; notifications name "status" ones too) */
+    static const char *const cats[] = { "apps", "status", "devices", "categories" };
+    for (size_t c = 0; c < sizeof cats / sizeof *cats; c++)
     for (size_t t = 0; t < 3; t++)
         for (size_t r = 0; r < 5; r++) {
             for (size_t z = 0; z < sizeof sizes / sizeof *sizes; z++) {
-                snprintf(p, sizeof p, "%s/%s/%s/apps/%s.png", roots[r], themes[t], sizes[z], name);
+                snprintf(p, sizeof p, "%s/%s/%s/%s/%s.png", roots[r], themes[t], sizes[z], cats[c], name);
                 if (exists(p)) { snprintf(png, n, "%s", p); return true; }
             }
-            snprintf(p, sizeof p, "%s/%s/scalable/apps/%s.svg", roots[r], themes[t], name);
+            snprintf(p, sizeof p, "%s/%s/scalable/%s/%s.svg", roots[r], themes[t], cats[c], name);
             if (!*svg && exists(p)) snprintf(svg, m, "%s", p);
         }
     if (*svg) return true;
@@ -79,18 +82,20 @@ static void made(void *ctx, const char *png)
     if (on_changed) on_changed();
 }
 
-cairo_surface_t *appicon_for(const char *desktop)
+/* By a desktop entry's path, or ("\x01" first) by an icon's name or path. */
+static cairo_surface_t *lookup(const char *key)
 {
-    if (!desktop || !*desktop) return NULL;
     for (size_t i = 0; i < ncache; i++)
-        if (!strcmp(cache[i].desktop, desktop)) return cache[i].png[0] ? icons_get(cache[i].png) : NULL;
+        if (!strcmp(cache[i].desktop, key)) return cache[i].png[0] ? icons_get(cache[i].png) : NULL;
     cache = realloc(cache, (ncache + 1) * sizeof *cache);
     size_t i = ncache++;
     struct entry *e = &cache[i];
     memset(e, 0, sizeof *e);
-    e->desktop = strdup(desktop);
+    e->desktop = strdup(key);
     char name[512], png[PATH_MAX], svg[PATH_MAX];
-    if (!icon_name(desktop, name, sizeof name) || !theme_file(name, png, sizeof png, svg, sizeof svg)) return NULL;
+    if (key[0] == '\x01') snprintf(name, sizeof name, "%s", key + 1);
+    else if (!icon_name(key, name, sizeof name)) return NULL;
+    if (!theme_file(name, png, sizeof png, svg, sizeof svg)) return NULL;
     if (png[0]) { snprintf(e->png, sizeof e->png, "%s", png); return icons_get(e->png); }
     char out[PATH_MAX];
     if (icons_preview(svg, 64, out, sizeof out, made, (void *)(uintptr_t)i)) {
@@ -98,4 +103,19 @@ cairo_surface_t *appicon_for(const char *desktop)
         return icons_get(cache[i].png);
     }
     return NULL;   /* being made */
+}
+
+cairo_surface_t *appicon_for(const char *desktop)
+{
+    if (!desktop || !*desktop) return NULL;
+    return lookup(desktop);
+}
+
+cairo_surface_t *appicon_named(const char *name)
+{
+    if (!name || !*name) return NULL;
+    if (!strncmp(name, "file://", 7)) name += 7;
+    char key[PATH_MAX + 2];
+    snprintf(key, sizeof key, "\x01%s", name);
+    return lookup(key);
 }

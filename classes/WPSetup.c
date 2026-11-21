@@ -9,6 +9,9 @@
 #include "WPSchemePalette.h"
 #include "WPSound.h"
 #include "WPSystem.h"
+#include "WPLaunchPad.h"
+#include "WPWarpCenter.h"
+#include "WPMessages.h"
 #include "wps_classes.h"
 #include "wps_state.h"
 
@@ -78,6 +81,32 @@ static const struct setting scheme_settings[] = {
     { NULL, NULL, NULL, NULL, NULL, NULL },
 };
 
+/* "automatic": the session's own choice (v0.2-design 10: in the WPS
+ * session the WarpCenter and not the LaunchPad; inside GNOME the
+ * LaunchPad). */
+static const struct setting launchpad_settings[] = {
+    { "LaunchPad", "show_at_start", "choice", "Show at start", "automatic", "automatic,yes,no" },
+    { NULL, NULL, NULL, NULL, NULL, NULL },
+};
+
+static const struct setting warpcenter_settings[] = {
+    { "WarpCenter", "show_at_start", "choice", "Show at start (WPS session)", "automatic", "automatic,yes,no" },
+    { "WarpCenter", "edge", "choice", "Screen edge", "bottom", "bottom,top" },
+    { "Parts", "meters", "checkbox", "Meters (processor, memory, disk, network)", "1", NULL },
+    { "Parts", "keyboard", "checkbox", "Keyboard (input source)", "1", NULL },
+    { "Parts", "messages", "checkbox", "Messages", "1", NULL },
+    { "Clock", "clock", "choice", "Clock", "24 hours", "24 hours,12 hours,off" },
+    { "Clock", "seconds", "checkbox", "Seconds", "0", NULL },
+    { "Clock", "date", "checkbox", "Date", "0", NULL },
+    { NULL, NULL, NULL, NULL, NULL, NULL },
+};
+
+static const struct setting messages_settings[] = {
+    { "Messages", "dnd", "checkbox", "Do not disturb (messages are kept, not shown)", "0", NULL },
+    { "Messages", "popup_seconds", "text", "Pop-ups stay (seconds)", "6", NULL },
+    { NULL, NULL, NULL, NULL, NULL, NULL },
+};
+
 static const struct setting *table(wpo_object *self)
 {
     const char *n = self->cls->name;
@@ -85,6 +114,9 @@ static const struct setting *table(wpo_object *self)
     if (!strcmp(n, "WPSound")) return sound_settings;
     if (!strcmp(n, "WPMouse")) return mouse_settings;
     if (!strcmp(n, "WPSchemePalette")) return scheme_settings;
+    if (!strcmp(n, "WPLaunchPad")) return launchpad_settings;
+    if (!strcmp(n, "WPWarpCenter")) return warpcenter_settings;
+    if (!strcmp(n, "WPMessages")) return messages_settings;
     return NULL;
 }
 
@@ -209,3 +241,6 @@ char *WPSystem__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdu
 char *WPSound__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Sound"); }
 char *WPMouse__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Mouse"); }
 char *WPSchemePalette__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Scheme Palette"); }
+char *WPLaunchPad__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("LaunchPad"); }
+char *WPWarpCenter__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("WarpCenter"); }
+char *WPMessages__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Messages"); }

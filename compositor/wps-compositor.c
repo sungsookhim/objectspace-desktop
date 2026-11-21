@@ -788,7 +788,7 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
     struct toplevel *t = window_at(s->cursor->x, s->cursor->y, &surface, &sx, &sy, &part);
     DBG("button %#x at %.0f,%.0f on %s%s%s\n", button, s->cursor->x, s->cursor->y, t ? "'" : "nothing",
         t ? (view_title(t) ? view_title(t) : "") : "", t ? (surface ? "' (its surface)" : "' (WPS's frame)") : "");
-    if (t && !t->activated) focus(t);
+    if (t && !t->activated && t->kind != KIND_NOTICE) focus(t);   /* (a notification does not take the keyboard) */
     else if (t && t->kind == KIND_NORMAL) wlr_scene_node_raise_to_top(&t->tree->node);
     if (t && !surface && button == 0x110 /* BTN_LEFT */) {
         double now = now_ms();
@@ -1231,6 +1231,7 @@ static void on_output_destroy(struct wl_listener *l, void *data)
 static void place_desktop(struct toplevel *t);
 static struct wlr_box first_output_box(void);
 static void place_panel(struct toplevel *t);
+static void place_notice(struct toplevel *t);
 static void refit_maximized(void);
 
 /* A screen's scale: WPS_SCALE, else GNOME's for it (Settings, Displays:
@@ -1403,6 +1404,8 @@ void comp_screens_changed(void)
             view_move(t, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
         } else if (t->kind == KIND_PANEL && t->mapped) place_panel(t);
     }
+    wl_list_for_each(t, &server.toplevels, link)
+        if (t->kind == KIND_NOTICE && t->mapped) place_notice(t);   /* (after the bar: by its edge) */
     refit_maximized();
     struct wlr_box all;
     wlr_output_layout_get_box(server.output_layout, NULL, &all);
@@ -1432,6 +1435,19 @@ static void place_panel(struct toplevel *t)
     view_set_size(t, b.width, h);
     view_move(t, b.x, server.panel_top ? b.y : b.y + b.height - h);
     server.panel_h = t->minimized ? 0 : h;
+}
+
+/* Notification pop-ups (org.wps.Notice): the usable area's corner by the
+ * WarpCenter (bottom right, or top right with the bar on top). */
+static void place_notice(struct toplevel *t)
+{
+    struct wlr_box ub = first_output_box();
+    if (!wl_list_empty(&server.outputs)) {
+        struct output *o = wl_container_of(server.outputs.next, o, link);
+        ub = usable_box(o->wlr_output);
+    }
+    struct wlr_box geo = view_geo(t);
+    view_move(t, ub.x + ub.width - geo.width - 8, server.panel_top ? ub.y + 8 : ub.y + ub.height - geo.height - 8);
 }
 
 /* The usable screen area changed: maximized windows fill it again. */
@@ -1479,7 +1495,7 @@ static enum kind kind_of(struct toplevel *t)
     const char *app = view_app(t) ? view_app(t) : "";
     if (!from_desktop(t) && !getenv("WPS_COMP_TRUST_APP_IDS")) return KIND_NORMAL;
     return !strcmp(app, "org.wps.Desktop") ? KIND_DESKTOP : !strcmp(app, "org.wps.LaunchPad") ? KIND_PALETTE
-           : !strcmp(app, "org.wps.WarpCenter") ? KIND_PANEL : KIND_NORMAL;
+           : !strcmp(app, "org.wps.WarpCenter") ? KIND_PANEL : !strcmp(app, "org.wps.Notice") ? KIND_NOTICE : KIND_NORMAL;
 }
 
 static void on_map(struct wl_listener *l, void *data)
@@ -1491,7 +1507,7 @@ static void on_map(struct wl_listener *l, void *data)
     t->kind = kind_of(t);
     if (t->kind != KIND_NORMAL) t->ssd = false;
     wlr_scene_node_reparent(&t->tree->node, t->kind == KIND_DESKTOP ? server.layer_desktop
-                                           : t->kind == KIND_PALETTE || t->kind == KIND_PANEL ? server.layer_palette
+                                           : t->kind == KIND_PALETTE || t->kind == KIND_PANEL || t->kind == KIND_NOTICE ? server.layer_palette
                                            : server.layer_normal);
     draw_frame(t);
     struct wlr_box ob = first_output_box();
@@ -1506,6 +1522,10 @@ static void on_map(struct wl_listener *l, void *data)
         desktop_window(t, "add");
         keymap_report();
         return;   /* (it does not take the keyboard) */
+    } else if (t->kind == KIND_NOTICE) {   /* a notification: by the bar, not focused */
+        place_notice(t);
+        wlr_scene_node_raise_to_top(&t->tree->node);
+        return;
     } else {
         /* a new window: centred, or cascaded from the one in front (in the usable area) */
         if (!wl_list_empty(&server.outputs)) {
@@ -1569,7 +1589,10 @@ static void on_commit(struct wl_listener *l, void *data)
     if (t->kind == KIND_PANEL && t->mapped && !t->minimized && geo.height > 0 && geo.height != server.panel_h) {
         place_panel(t);   /* its own height changed (a font): windows make room again */
         refit_maximized();
+        struct toplevel *n;
+        wl_list_for_each(n, &server.toplevels, link) if (n->kind == KIND_NOTICE && n->mapped) place_notice(n);
     }
+    if (t->kind == KIND_NOTICE && t->mapped) place_notice(t);   /* (its size follows what it shows) */
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
     if (t->ssd && !t->fullscreen && (w != t->fw || h != t->fh)) draw_frame(t);

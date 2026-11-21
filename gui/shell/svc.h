@@ -76,4 +76,19 @@ void svc_empty_trash(svc_fn fn, void *arg);
 void svc_setup(svc_fn fn, void *arg);
 void svc_unsubscribe(int64_t sub);
 
+/* Messages (wpsd's list; a "messages_changed" event follows each change).
+ * actions: key, label, key, label, ... */
+typedef struct {
+    const char *app, *icon, *summary, *body, *sender;
+    int64_t urgency, nid;
+    const char *const *actions;
+    size_t nactions;
+} svc_message;
+void svc_msg_add(const svc_message *m, svc_fn fn, void *arg);
+void svc_msg_list(svc_fn fn, void *arg);
+/* ids: n of them, or all messages when n is 0; read, closed: -1 unchanged. */
+void svc_msg_set(const int64_t *ids, size_t n, int read, int closed, svc_fn fn, void *arg);
+void svc_msg_delete(const int64_t *ids, size_t n, svc_fn fn, void *arg);
+void svc_msg_closed(int64_t nid, const char *sender, svc_fn fn, void *arg);
+
 #endif

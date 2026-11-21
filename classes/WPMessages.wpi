@@ -1,0 +1,6 @@
+# The Messages object (v0.2-design 9): opening it shows the messages
+# programs and WPS sent (the desktop's list window); its settings are the
+# notification pop-ups' (Do not disturb, how long they stay).
+class WPMessages : WPSetup
+version 1.0
+classoverride wpclsQueryTitle
