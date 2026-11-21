@@ -1313,6 +1313,13 @@ static void do_open(struct req *r, wpo_object *o)
     const cv *cf = cv_get(&r->msg, "confirm");
     bool confirmed = cf && cf->k == CV_BOOL && cf->b;
     char buf[8192], *argv[64], cwd[PATH_MAX] = "";
+    /* objects dropped on a program: it starts with them (files: absolute
+     * paths, at most 32) */
+    const char *files[32];
+    size_t nfiles = 0;
+    const cv *fl = cv_get(&r->msg, "files");
+    for (size_t i = 0; fl && fl->k == CV_ARRAY && i < fl->n && nfiles < 32; i++)
+        if (fl->items[i].k == CV_TEXT && fl->items[i].s[0] == '/' && strlen(fl->items[i].s) < PATH_MAX) files[nfiles++] = fl->items[i].s;
     const char *what;
     const char *tracked;   /* what shows as in use while it runs */
     const char *path = r->tgt.path;
@@ -1345,7 +1352,7 @@ static void do_open(struct req *r, wpo_object *o)
         const char *cmd = WPProgram_data(o)->command;
         if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); wpo_unref(orig); return; }
         if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, cmd, st->st_uid); wpo_unref(orig); return; }
-        int argc = wps_split_exec(cmd, NULL, buf, sizeof buf, argv, 64);
+        int argc = wps_split_exec_files(cmd, nfiles ? files : NULL, nfiles, buf, sizeof buf, argv, 64);
         if (argc == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
         size_t pl = strlen(path);
         if (pl > 8 && !strcmp(path + pl - 8, ".desktop") && wps_desktop_wants_terminal(path) &&
@@ -1363,9 +1370,11 @@ static void do_open(struct req *r, wpo_object *o)
              * own folder; one another user owns asks first. */
             if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, path, st->st_uid); wpo_unref(orig); return; }
             argv[0] = (char *)path;
-            argv[1] = NULL;
+            int na = 1;
+            for (size_t k = 0; k < nfiles && na < 60; k++) argv[na++] = (char *)files[k];   /* dropped on it */
+            argv[na] = NULL;
             what = path;
-            if (wps_program_needs_terminal(path) && !wps_terminal_wrap(argv, 1, 64)) {
+            if (wps_program_needs_terminal(path) && !wps_terminal_wrap(argv, na, 64)) {
                 reply_error(r->c, r->id, "failed", "a text-mode program, and no terminal program was found (set WPS_TERMINAL)");
                 wpo_unref(orig);
                 return;

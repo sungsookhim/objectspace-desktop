@@ -297,7 +297,7 @@ void wps_launch_moved(const char *from, const char *to)
 
 /* ------------------------------------------------------------ Exec lines */
 
-int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char **argv, int max)
+int wps_split_exec_files(const char *exec, const char *const *files, size_t nfiles, char *buf, size_t n, char **argv, int max)
 {
     int argc = 0;
     size_t o = 0;
@@ -315,9 +315,18 @@ int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char
             } else if (*p == '%' && p[1]) {
                 p++;
                 if (strchr("fFuU", *p)) {
-                    if (!file) continue;
+                    if (!nfiles) continue;
                     used = any = true;
-                    for (const char *f = file; *f && o + 1 < n; f++) buf[o++] = *f;
+                    /* the first here; the others (several dropped on it)
+                     * each an argument after it - %f and %u too, which most
+                     * programs take as well */
+                    for (const char *f = files[0]; *f && o + 1 < n; f++) buf[o++] = *f;
+                    for (size_t k = 1; k < nfiles && argc < max - 3 && o + strlen(files[k]) + 2 < n; k++) {
+                        buf[o++] = 0;
+                        argv[argc++] = buf + start;
+                        start = o;
+                        for (const char *f = files[k]; *f; f++) buf[o++] = *f;
+                    }
                     continue;
                 }
                 if (*p == 'i' || *p == 'c' || *p == 'k') { keep = false; continue; }   /* icon, name, desktop file */
@@ -330,13 +339,18 @@ int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char
         if (any && keep) argv[argc++] = buf + start;   /* "" stays an (empty) argument */
         else o = start;
     }
-    if (file && !used && argc > 0 && argc < max - 1 && o + strlen(file) + 1 < n) {
-        argv[argc++] = buf + o;
-        strcpy(buf + o, file);
-        o += strlen(file) + 1;
+    for (size_t k = 0; nfiles && !used && k < nfiles && argc > 0 && argc < max - 1 && o + strlen(files[k]) + 1 < n; k++) {
+        argv[argc++] = buf + o;   /* no field code: after the command */
+        strcpy(buf + o, files[k]);
+        o += strlen(files[k]) + 1;
     }
     argv[argc] = NULL;
     return argc;
+}
+
+int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char **argv, int max)
+{
+    return wps_split_exec_files(exec, file ? &file : NULL, file ? 1 : 0, buf, n, argv, max);
 }
 
 /* ------------------------------------------------------- default handler */

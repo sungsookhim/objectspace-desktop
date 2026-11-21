@@ -49,6 +49,8 @@ void wps_launch_moved(const char *from, const char *to);
  * when it is NULL; other field codes are dropped; %% is kept as %. A file
  * given to a line without file codes is appended. The argument count. */
 int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char **argv, int max);
+/* The same with several files (objects dropped on a program). */
+int wps_split_exec_files(const char *exec, const char *const *files, size_t nfiles, char *buf, size_t n, char **argv, int max);
 
 /* Arguments that open `file` with the default application for its type,
  * read from mimeapps.list and the installed .desktop files. 0 when there

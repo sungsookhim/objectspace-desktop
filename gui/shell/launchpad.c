@@ -798,6 +798,14 @@ static void reorder(size_t from, size_t to)
     events_raise("object.move", "", "launchpad", (ui_rect){ 0, 0, 0, 0 });
 }
 
+static void opened_with(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (!(ok && ok->k == CV_BOOL && ok->b))
+        fprintf(stderr, "wps-shell: LaunchPad: cannot start it: %s\n", reply ? cv_text(reply, "message") : "no wpsd");
+}
+
 static uint32_t lp_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
                                uint32_t src_actions, unsigned mods, const char **mime)
 {
@@ -835,6 +843,34 @@ static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, con
     if (lp.dragging >= 0 && !(h >= NSYS && arrow)) {   /* one of its own buttons: to this place */
         reorder((size_t)lp.dragging, slot_at(x));
         return UI_DND_COPY;   /* (nothing to remove: it stays, elsewhere in the row) */
+    }
+    if (h >= NSYS && !arrow && lp.items[h - NSYS].kind == UI_KIND_PROGRAM && !lp.items[h - NSYS].folder_target) {
+        /* on a program's button: it starts with the objects dropped (files) */
+        const char *files[32];
+        size_t nf = 0;
+        char *copy = strndup(data, len), *save = NULL;
+        for (char *line = strtok_r(copy, "\r\n", &save); line && nf < 32; line = strtok_r(NULL, "\r\n", &save)) {
+            line[strcspn(line, "\t")] = 0;
+            char path[PATH_MAX];
+            if (!strncmp(line, "file://", 7)) {
+                const char *u = line + 7;
+                if (!strncmp(u, "localhost", 9)) u += 9;
+                char *o = path;
+                for (; *u && o < path + sizeof path - 1; u++) {
+                    if (*u == '%' && u[1] && u[2]) { char hx[3] = { u[1], u[2], 0 }; *o++ = (char)strtol(hx, NULL, 16); u += 2; }
+                    else *o++ = *u;
+                }
+                *o = 0;
+            } else snprintf(path, sizeof path, "%s", line);
+            if (path[0] == '/') files[nf++] = strdup(path);
+        }
+        free(copy);
+        char a[PATH_MAX + 32];
+        address(lp.dir, &lp.items[h - NSYS], a, sizeof a);
+        if (nf) svc_open_files(a, false, files, nf, opened_with, NULL);
+        for (size_t k = 0; k < nf; k++) free((char *)files[k]);
+        events_raise("object.drop", lp.items[h - NSYS].title, "launchpad", (ui_rect){ 0, 0, 0, 0 });
+        return UI_DND_COPY;
     }
     if (h >= NSYS && arrow) {
         char d[PATH_MAX];

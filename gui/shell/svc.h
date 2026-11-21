@@ -26,6 +26,8 @@ void svc_resolve(const char *target, svc_fn fn, void *arg);
 void svc_menu(const char *target, svc_fn fn, void *arg);
 void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg);
 void svc_open(const char *target, bool confirm, svc_fn fn, void *arg);
+/* A program opened with objects dropped on it (paths). */
+void svc_open_files(const char *target, bool confirm, const char *const *files, size_t nfiles, svc_fn fn, void *arg);
 void svc_rename(const char *target, const char *name, svc_fn fn, void *arg);
 void svc_settings(const char *target, svc_fn fn, void *arg);
 void svc_shadow(const char *target, const char *folder, svc_fn fn, void *arg);

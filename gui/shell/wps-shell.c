@@ -1880,6 +1880,23 @@ static bool under(const char *path, const char *dir)
     return !strncmp(path, dir, l) && (path[l] == '/' || path[l] == 0);
 }
 
+/* A program's icon under (x, y) (a program object, a .desktop file, an
+ * executable, or a shadow of one): objects dropped on it start it with
+ * them, as in OS/2. */
+static bool program_at(struct folder *f, double x, double y, char *out, size_t n, size_t *item)
+{
+    size_t i = ui_container_item_at(f->cont, x, y);
+    if (i == SIZE_MAX || is_tree(f)) return false;
+    ui_item it = { 0 };
+    src_item(f, i, &it);
+    if (!it.loaded || it.kind != UI_KIND_PROGRAM) return false;
+    target_of(f, i, out, n);
+    *item = i;
+    /* not onto itself, dragged */
+    for (size_t k = 0; cur_drag && k < cur_drag->n; k++) if (!strcmp(cur_drag->paths[k], out)) return false;
+    return true;
+}
+
 static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
                                 uint32_t src_actions, unsigned mods, const char **mime)
 {
@@ -1890,6 +1907,11 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
     if (!*mime) return 0;
     char dest[PATH_MAX];
     size_t item;
+    if (program_at(f, x, y, dest, sizeof dest, &item)) {
+        /* (a copy, never a move: the objects stay where they are) */
+        ui_container_set_drop_target(f->cont, src_actions & UI_DND_COPY ? item : SIZE_MAX);
+        return src_actions & UI_DND_COPY ? UI_DND_COPY : 0;
+    }
     drop_dest(f, x, y, dest, sizeof dest, &item);
     /* As in OS/2, from the keys held (the Mouse object's mappings; by
      * default none moves, Ctrl copies, Ctrl+Shift makes a shadow, Alt
@@ -2112,6 +2134,32 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     ui_container_set_drop_target(f->cont, SIZE_MAX);
     char dest[PATH_MAX];
     size_t item;
+    char prog[PATH_MAX];
+    if (program_at(f, x, y, prog, sizeof prog, &item)) {
+        /* dropped on a program: it starts with them */
+        const char *files[32];
+        size_t nf = 0;
+        char *copy = strdup(data), *save = NULL;
+        for (char *line = strtok_r(copy, "\r\n", &save); line && nf < 32; line = strtok_r(NULL, "\r\n", &save)) {
+            if (!*line || *line == '#') continue;
+            char *tab = !strcmp(mime, MIME_URIS) ? NULL : strchr(line, '\t');
+            if (tab) *tab = 0;
+            char *p = !strcmp(mime, MIME_URIS) ? uri_path(line) : strdup(line);
+            if (p && p[0] == '/') files[nf++] = p;
+            else free(p);
+        }
+        free(copy);
+        if (nf) {
+            snprintf(f->pending_open, sizeof f->pending_open, "%s", prog);
+            raise_in(f, "object.drop", prog, "program");
+            svc_open_files(prog, false, files, nf, opened, as_arg(f));
+        } else {
+            snprintf(f->error, sizeof f->error, "Only files can be given to a program");
+            damage_status(f);
+        }
+        for (size_t k = 0; k < nf; k++) free((char *)files[k]);
+        return UI_DND_COPY;
+    }
     drop_dest(f, x, y, dest, sizeof dest, &item);
     int w = drop_how(action, start_action, mods);
     if (w == 0 && drag_copies_by_default(dest)) w = 1;

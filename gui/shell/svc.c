@@ -239,7 +239,7 @@ void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
-void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
+void svc_open_files(const char *target, bool confirm, const char *const *files, size_t nfiles, svc_fn fn, void *arg)
 {
     int64_t id;
     /* What opens appears on this GUI's display (wpsd may have been
@@ -259,7 +259,7 @@ void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
         const char *v = getenv(keys[i]);
         if (v && *v) snprintf(envs[ne++], sizeof envs[0], "%s=%s", keys[i], v);
     }
-    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0), &id);
+    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0) + (nfiles ? 1 : 0), &id);
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
     if (disp[0]) { cb_text(&o->b, "display"); cb_text(&o->b, disp); }
@@ -269,8 +269,15 @@ void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
         cb_array(&o->b, ne);
         for (size_t i = 0; i < ne; i++) cb_text(&o->b, envs[i]);
     }
+    if (nfiles) {   /* objects dropped on a program: it starts with them */
+        cb_text(&o->b, "files");
+        cb_array(&o->b, nfiles);
+        for (size_t i = 0; i < nfiles; i++) cb_text(&o->b, files[i]);
+    }
     send_req(o, id, fn, arg);
 }
+
+void svc_open(const char *target, bool confirm, svc_fn fn, void *arg) { svc_open_files(target, confirm, NULL, 0, fn, arg); }
 
 void svc_subscribe_folder(const char *folder, svc_fn fn, void *arg)
 {
