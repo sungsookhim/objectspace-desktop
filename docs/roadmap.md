@@ -188,7 +188,7 @@ A bar along the top or bottom of the screen, as OS/2 Warp 4's WarpCenter.
   - **Messages: M.** The WPS session has no notification service at all today: programs' notifications go nowhere. WPS becomes it (org.freedesktop.Notifications): pop-ups near the WarpCenter, and the Messages object keeps them.
   - **Tray: M–L.** Programs' status icons are StatusNotifierItem/AppIndicator (D-Bus), with their menus over dbusmenu. Few Fedora programs use it, so it can come last within 0.2, or in 0.3.
 - **Inside GNOME (stage 1):** GNOME has its own top bar, and a program cannot reserve screen space under GNOME. Proposed: the WarpCenter in the WPS session only for 0.2; inside GNOME, GNOME's own bar stands in.
-- **?** Whether the WarpCenter and the LaunchPad both show by default (OS/2 Warp 4 had both, the LaunchPad off at first).
+- **Decided by the owner:** the WarpCenter is shown by default and the LaunchPad is not (in the WPS session); the LaunchPad is later updated to share features with the WarpCenter.
 
 ### 4. The System folder (on the desktop by default)
 
@@ -263,6 +263,7 @@ A to do, after 0.2 (with network file systems below).
    - The icon layout.
    - Templates' "New" cascade and moving templates.
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
+   - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
 3. **0.4 Look of other programs:** the theming pieces above, and frames for GTK 4 programs.
 4. **0.5 Platform:**
    - RDP; more than one monitor; sharp X11 when scaled.
