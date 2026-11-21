@@ -229,6 +229,11 @@ static void draw_frame(struct toplevel *t)
         return;
     }
     struct wlr_box geo = view_geo(t);
+    if (t->mapped && (geo.width != t->rep_w || geo.height != t->rep_h)) {
+        t->rep_w = geo.width;
+        t->rep_h = geo.height;
+        desktop_window(t, "change");
+    }
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
     t->fw = w;
@@ -774,6 +779,7 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
             return;
         }
         if (s->mode != MODE_PASS) {
+            if (s->grabbed && s->grabbed->mapped) desktop_window(s->grabbed, "change");   /* moved or sized: where it is now */
             s->mode = MODE_PASS;
             s->grabbed = NULL;
             process_motion(time);   /* the pointer enters what is under it again */
@@ -1465,6 +1471,48 @@ static void refit_maximized(void)
     }
 }
 
+/* ---- places asked for by the desktop (windows reopened at login) */
+
+static struct { char app[128], title[256]; int x, y; double until; } places[32];
+static size_t nplaces;
+
+void comp_place_next(const char *app, const char *title, int x, int y)
+{
+    if (nplaces == sizeof places / sizeof *places) return;
+    snprintf(places[nplaces].app, sizeof places[0].app, "%s", app);
+    snprintf(places[nplaces].title, sizeof places[0].title, "%s", title);
+    places[nplaces].x = x;
+    places[nplaces].y = y;
+    places[nplaces].until = now_ms() + 20000;   /* (one never opened is forgotten) */
+    nplaces++;
+}
+
+/* Its place: by app and title; else (its title changed before it showed)
+ * the first for its app. */
+static bool take_place(struct toplevel *t, int *x, int *y)
+{
+    double now = now_ms();
+    const char *app = view_app(t), *title = view_title(t) ? view_title(t) : "";
+    ssize_t pick = -1;
+    for (size_t i = 0; i < nplaces && app; i++) {
+        if (places[i].until < now || strcmp(places[i].app, app)) continue;
+        if (!strcmp(places[i].title, title)) { pick = (ssize_t)i; break; }
+        if (pick < 0) pick = (ssize_t)i;
+    }
+    if (pick < 0) return false;
+    *x = places[pick].x;
+    *y = places[pick].y;
+    memmove(&places[pick], &places[pick + 1], (nplaces - (size_t)pick - 1) * sizeof *places);
+    nplaces--;
+    return true;
+}
+
+struct wlr_box comp_window_geometry(struct toplevel *t)
+{
+    struct wlr_box g = view_geo(t);
+    return (struct wlr_box){ t->tree->node.x, t->tree->node.y, g.width, g.height };
+}
+
 void comp_panel_edge(bool top)
 {
     if (server.panel_top == top) return;
@@ -1540,13 +1588,23 @@ static void on_map(struct wl_listener *l, void *data)
             ob = usable_box(fo->wlr_output);
         }
         struct wlr_box b = { 0, 0, t->ssd ? t->fw : geo.width, t->ssd ? t->fh : geo.height };
-        int x = ob.x + (ob.width - b.width) / 2, y = ob.y + (ob.height - b.height) / 3;
+        int x = ob.x + (ob.width - b.width) / 2, y = ob.y + (ob.height - b.height) / 3, px, py;
+        if (from_desktop(t) && take_place(t, &px, &py)) {
+            /* where it was at the last logout, kept on the screen */
+            if (px > ob.x + ob.width - 40) px = ob.x + ob.width - 40;
+            if (py > ob.y + ob.height - 40) py = ob.y + ob.height - 40;
+            x = px < ob.x - b.width + 40 ? ob.x : px;
+            y = py < ob.y ? ob.y : py;
+            view_move(t, x, y);
+            goto placed;
+        }
         struct toplevel *o;
         wl_list_for_each(o, &server.toplevels, link)
             if (o != t && o->mapped && o->kind == KIND_NORMAL && o->tree->node.x == x && o->tree->node.y == y) { x += 24; y += 24; }
         if (y < ob.y) y = ob.y;
         view_move(t, x, y);
     }
+placed:
     focus(t);
     if (t->kind == KIND_NORMAL && (t->xdg ? t->xdg->requested.fullscreen : t->xw->fullscreen)) set_fullscreen(t, true);
     desktop_window(t, "add");

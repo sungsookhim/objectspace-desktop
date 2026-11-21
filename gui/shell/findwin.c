@@ -777,3 +777,18 @@ bool findwin_key(uint32_t sym)
 }
 
 bool findwin_snapshot(const char *png) { return last && ui_surface_snapshot(last->s, png); }
+
+size_t findwin_each(void (*fn)(void *ctx, const char *folder, const char *name, ui_surface *s), void *ctx)
+{
+    size_t n = 0;
+    for (struct fw *w = wins; w; w = w->next) {
+        if (w->closing) continue;
+        const char *shown = ui_entry_text(w->folder), *home = getenv("HOME");
+        char folder[PATH_MAX];
+        if (shown[0] == '~' && home) snprintf(folder, sizeof folder, "%s%s", home, shown + 1);
+        else snprintf(folder, sizeof folder, "%s", shown);
+        fn(ctx, folder, ui_entry_text(w->name), w->s);
+        n++;
+    }
+    return n;
+}

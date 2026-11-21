@@ -44,5 +44,8 @@ bool findwin_type(const char *text);    /* as typed into the name field (replace
 bool findwin_kind(int kind);              /* 0 any, 1 folders, 2 files, 3 programs */
 bool findwin_key(uint32_t sym);           /* as if pressed */
 bool findwin_snapshot(const char *png);
+/* Each open Find window: the folder and name searched (windows restored
+ * at login). */
+size_t findwin_each(void (*fn)(void *ctx, const char *folder, const char *name, ui_surface *s), void *ctx);
 
 #endif

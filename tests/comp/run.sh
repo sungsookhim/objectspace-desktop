@@ -10,7 +10,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 SCRIPT=$(readlink -f "$1"); shift
-T=$(mktemp -d "${TMPDIR:-/tmp}/wps-comp-XXXX")
+T=${KEEP_T:-$(mktemp -d "${TMPDIR:-/tmp}/wps-comp-XXXX")}   # KEEP_T: a test folder again (a second login)
 RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-comp-XXXX")
 mkdir -p "$T/desk/Projects" "$T/config" "$T/state" "$T/xdg/config" "$T/xdg/data" "$T/cache"
 echo hi > "$T/desk/notes.txt"

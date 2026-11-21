@@ -19,6 +19,7 @@ struct win {
     char app[128];
     char title[256];
     bool minimized, focused, maximized;
+    int x, y, w, h;            /* where (the WPS session's compositor says; else -1) */
     char icon_path[256];       /* the app's icon, a PNG the extension made */
     cairo_surface_t *icon;
 };
@@ -75,6 +76,10 @@ void winlist_line(char **f, int n)
         w->minimized = !strcmp(f[5], "1");
         w->focused = !strcmp(f[6], "1");
         w->maximized = n > 8 && !strcmp(f[8], "1");
+        w->x = n > 12 ? atoi(f[9]) : -1;
+        w->y = n > 12 ? atoi(f[10]) : -1;
+        w->w = n > 12 ? atoi(f[11]) : -1;
+        w->h = n > 12 ? atoi(f[12]) : -1;
         const char *ip = n > 7 ? f[7] : "";
         if (strcmp(ip, w->icon_path)) {
             if (w->icon) cairo_surface_destroy(w->icon);
@@ -125,6 +130,18 @@ bool winlist_state(const char *title, bool *minimized, bool *maximized)
 {
     for (size_t i = 0; i < nwins; i++)
         if (strstr(wins[i].title, title)) { *minimized = wins[i].minimized; *maximized = wins[i].maximized; return true; }
+    return false;
+}
+
+bool winlist_where(const char *app, const char *title, int *x, int *y, bool *maximized)
+{
+    for (size_t i = 0; i < nwins; i++)
+        if (!strcmp(wins[i].app, app) && !strcmp(wins[i].title, title) && wins[i].x >= -100000 && wins[i].w > 0) {
+            *x = wins[i].x;
+            *y = wins[i].y;
+            *maximized = wins[i].maximized;
+            return true;
+        }
     return false;
 }
 

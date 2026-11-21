@@ -272,8 +272,11 @@ void desktop_window(struct toplevel *t, const char *change)
     char app[256], title[512], fields[1536];
     clean(app, sizeof app, view_app(t));
     clean(title, sizeof title, view_title(t));
-    snprintf(fields, sizeof fields, "%u\t%s\t%s\t%d\t%d\t%s\t%d", t->id, app, title, t->minimized, t->activated,
-             icon_for(view_app(t)), t->maximized);
+    /* (then where it is: x, y of its frame, and its size, for the desktop
+     * to put its own windows back at the next login) */
+    struct wlr_box g = comp_window_geometry(t);
+    snprintf(fields, sizeof fields, "%u\t%s\t%s\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d", t->id, app, title, t->minimized, t->activated,
+             icon_for(view_app(t)), t->maximized, g.x, g.y, g.width, g.height);
     if (t->sent && !strcmp(t->sent, fields)) return;   /* nothing new */
     snprintf(line, sizeof line, "W\t%s\t%s\n", t->listed ? "change" : "add", fields);
     t->listed = true;
@@ -347,6 +350,16 @@ static void command(char *line)
         return;
     }
     if (!strcmp(line, "panel")) { comp_panel_edge(!strcmp(arg, "top")); return; }
+    if (!strcmp(line, "place")) {   /* "place APP TITLE X Y": the desktop's next such window goes there */
+        char app[128], title[256] = "";
+        int x, y;
+        const char *t1 = strchr(arg, '\t'), *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+        if (!t1 || !t2 || (size_t)(t1 - arg) >= sizeof app) return;
+        snprintf(app, sizeof app, "%.*s", (int)(t1 - arg), arg);
+        snprintf(title, sizeof title, "%.*s", (int)(t2 - t1 - 1), t1 + 1);
+        if (sscanf(t2 + 1, "%d\t%d", &x, &y) == 2) comp_place_next(app, title, x, y);
+        return;
+    }
     if (!strcmp(line, "find")) return;   /* WPS's own Find answers it */
     /* the desktop's scheme, font and frame options: the frames follow */
     if (!strcmp(line, "scheme")) { if (ui_scheme_use(arg)) comp_redraw_frames(); return; }

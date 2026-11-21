@@ -541,6 +541,7 @@ void ui_window_set_title(ui_surface *s, const char *title)
     if (s->top) xdg_toplevel_set_title(s->top, title);
     ui_frame_damage(s);
 }
+const char *ui_window_title(ui_surface *s) { return s->title; }
 void ui_window_move(ui_surface *s, uint32_t serial) { xdg_toplevel_move(s->top, s->app->seat, serial); }
 void ui_window_resize(ui_surface *s, uint32_t serial, unsigned edges) { xdg_toplevel_resize(s->top, s->app->seat, serial, edges); }
 static ui_action_fn action_hook;

@@ -848,3 +848,5 @@ void ui_notebook_set_status(ui_notebook *nb, const char *msg)
 void ui_notebook_show_page(ui_notebook *nb, size_t page) { show_page(nb, page); }
 
 ui_surface *ui_notebook_surface(ui_notebook *nb) { return nb->win; }
+
+size_t ui_notebook_page(ui_notebook *nb) { return nb ? nb->page : 0; }

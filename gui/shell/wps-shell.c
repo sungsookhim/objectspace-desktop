@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -1433,6 +1434,7 @@ struct props {
     char title[256];
     int64_t changes;
     ui_notebook *nb;
+    size_t want_page;        /* reopened at login: the page it showed */
 };
 
 static struct props *props_open;
@@ -1613,6 +1615,7 @@ static void got_settings(void *arg, const cv *reply)
     size_t n;
     ui_page_desc *pages = pages_from(res, &n);
     p->nb = ui_notebook_open(app, p->title, pages, n, props_set, props_closed, p);
+    if (p->want_page && p->want_page < n) ui_notebook_show_page(p->nb, p->want_page);
     pages_free(pages, n);
 }
 
@@ -4886,6 +4889,9 @@ static void notify_in_use(const char *path);
 /* The System, Sound, Mouse and Scheme Palette objects (G3): read at start
  * and whenever one changes (their notebooks), applied at once. */
 static int64_t setup_sub;
+static double next_w, next_h;   /* the next folder window's size (0: the default) */
+static bool restore_windows = true;   /* System: "Restore open windows at login" */
+static void windows_at_login(void);
 /* The LaunchPad's and the WarpCenter's "Show at start" (automatic, yes, no). */
 static char lp_show[16] = "automatic", wc_show[16] = "automatic";
 static char scheme_name[32] = "classic";
@@ -4932,6 +4938,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
             }
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
+            else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
         }
     }
 }
@@ -4985,6 +4992,7 @@ static void got_setup(void *arg, const cv *reply)
                 break;
             }
     }
+    if (first) windows_at_login();
     if (first && !getenv("WPS_NO_LAUNCHPAD") && want_lp) {
         char tdir[PATH_MAX];
         const char *t = getenv("WPS_TEMPLATES_DIR");
@@ -5152,6 +5160,176 @@ static void first_started(void *arg, const cv *reply)
 
 static void desktop_first_start(const char *desk) { svc_first_start(desk, first_started, NULL); }
 
+/* ---- open windows restored at login (v0.2-design 7.2)
+ *
+ * The desktop's own windows - folder windows (folder, view, size, place),
+ * Find windows (folder, name), notebooks (object, page) - are written to
+ * <state>/open-windows when they change (looked at every 2 s, so a crash
+ * loses little; the end of a session closes none of them, so the list
+ * stands as it was). At the next login (once a session) they open again;
+ * in the WPS session the compositor puts each where it was ("place"),
+ * inside GNOME GNOME places them. Lines: F path view w h x y maximized,
+ * S folder name x y, N target page x y (x -1: not known). */
+static int rec_timer = -1;
+static char *rec_last;
+
+static void open_windows_file(char *out, size_t n)
+{
+    const char *sd = getenv("WPS_STATE_DIR"), *xs = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
+    char dir[PATH_MAX];
+    if (sd && *sd) snprintf(dir, sizeof dir, "%s", sd);
+    else if (xs && *xs) snprintf(dir, sizeof dir, "%s/wps", xs);
+    else snprintf(dir, sizeof dir, "%s/.local/state/wps", home ? home : "");
+    char *q = dir;
+    while ((q = strchr(q + 1, '/'))) { *q = 0; mkdir(dir, 0700); *q = '/'; }
+    mkdir(dir, 0700);
+    snprintf(out, n, "%s/open-windows", dir);
+}
+
+static bool plain(const char *s) { return s && !strpbrk(s, "\t\n"); }
+
+struct rec { char *buf; size_t len, cap; };
+
+static void rec_add(struct rec *r, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char line[PATH_MAX * 2 + 128];
+    int n = vsnprintf(line, sizeof line, fmt, ap);
+    va_end(ap);
+    if (n <= 0 || (size_t)n >= sizeof line) return;
+    if (r->len + (size_t)n + 1 > r->cap) {
+        r->cap = (r->len + (size_t)n + 1) * 2;
+        r->buf = realloc(r->buf, r->cap);
+    }
+    memcpy(r->buf + r->len, line, (size_t)n + 1);
+    r->len += (size_t)n;
+}
+
+static void where_is(ui_surface *s, const char *app_id, int *x, int *y, bool *max)
+{
+    *x = *y = -1;
+    *max = false;
+    if (!winlist_where(app_id, ui_window_title(s), x, y, max)) *x = *y = -1;
+}
+
+static void rec_find(void *ctx, const char *folder, const char *name, ui_surface *s)
+{
+    int x, y;
+    bool mx;
+    where_is(s, "org.wps.Find", &x, &y, &mx);
+    if (plain(folder) && plain(name)) rec_add(ctx, "S\t%s\t%s\t%d\t%d\n", folder, name, x, y);
+}
+
+static char *describe_windows(void)
+{
+    struct rec r = { 0 };
+    rec_add(&r, "# WPS's open windows (the desktop writes this; they reopen at login)\n");
+    /* oldest first: they reopen in the same order (the list is newest first) */
+    size_t n = 0;
+    for (struct folder *f = folders; f; f = f->next) n++;
+    struct folder **all = calloc(n ? n : 1, sizeof *all);
+    n = 0;
+    for (struct folder *f = folders; f; f = f->next) all[n++] = f;
+    for (size_t i = n; i-- > 0;) {
+        struct folder *f = all[i];
+        if (f->desktop || f->closing || !plain(f->path)) continue;
+        int x, y;
+        bool mx;
+        where_is(f->win, "org.wps.shell", &x, &y, &mx);
+        rec_add(&r, "F\t%s\t%d\t%d\t%d\t%d\t%d\t%d\n", f->path, (int)ui_container_view(f->cont), (int)ui_surface_width(f->win),
+                (int)ui_surface_height(f->win), x, y, mx || ui_window_maximized(f->win));
+    }
+    free(all);
+    findwin_each(rec_find, &r);
+    for (struct props *p = props_open; p; p = p->next) {
+        if (!p->nb || !plain(p->target)) continue;
+        int x, y;
+        bool mx;
+        where_is(ui_notebook_surface(p->nb), "org.wps.notebook", &x, &y, &mx);
+        rec_add(&r, "N\t%s\t%zu\t%d\t%d\n", p->target, ui_notebook_page(p->nb), x, y);
+    }
+    return r.buf;
+}
+
+static void on_rec_timer(void *arg, int fd, short rev)
+{
+    (void)arg; (void)rev;
+    uint64_t x;
+    if (read(fd, &x, sizeof x) < 0) {}
+    char *now = describe_windows();
+    if (!now || (rec_last && !strcmp(now, rec_last))) { free(now); return; }
+    char path[PATH_MAX], tmp[PATH_MAX + 8];
+    open_windows_file(path, sizeof path);
+    snprintf(tmp, sizeof tmp, "%s.new", path);
+    FILE *f = fopen(tmp, "w");
+    if (f && fputs(now, f) >= 0 && fclose(f) == 0 && rename(tmp, path) == 0) { free(rec_last); rec_last = now; return; }
+    if (f) unlink(tmp);
+    free(now);
+}
+
+static void start_recording(void)
+{
+    if (rec_timer >= 0) return;
+    rec_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (rec_timer < 0) return;
+    struct itimerspec its = { { 2, 0 }, { 2, 0 } };
+    timerfd_settime(rec_timer, 0, &its, NULL);
+    ui_app_watch_fd(app, rec_timer, POLLIN, on_rec_timer, NULL);
+}
+
+static void place_next(const char *app_id, const char *title, int x, int y)
+{
+    if (x < 0 && y < 0) return;
+    char arg[600];
+    snprintf(arg, sizeof arg, "%s\t%s\t%d\t%d", app_id, plain(title) ? title : "", x, y);
+    winlist_ext("place", arg);   /* (the WPS session's compositor; GNOME's extension ignores it) */
+}
+
+/* At login: what was open opens again (once a session), then the
+ * recording goes on. */
+static void windows_at_login(void)
+{
+    const char *rt = getenv("WPS_RUNTIME_DIR");
+    if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
+    const char *sid = getenv("XDG_SESSION_ID");
+    char marker[PATH_MAX], was[64] = "";
+    snprintf(marker, sizeof marker, "%s/wps-windows-restored", rt && *rt ? rt : "/tmp");
+    FILE *m = fopen(marker, "r");
+    if (m) { if (!fgets(was, sizeof was, m)) was[0] = 0; fclose(m); }
+    was[strcspn(was, "\n")] = 0;
+    bool again = m && !strcmp(was, sid ? sid : "");   /* (the desktop started again in this session) */
+    if ((m = fopen(marker, "w"))) { fprintf(m, "%s\n", sid ? sid : ""); fclose(m); }
+    char path[PATH_MAX];
+    open_windows_file(path, sizeof path);
+    FILE *f = again || !restore_windows || getenv("WPS_NO_RESTORE") ? NULL : fopen(path, "r");
+    char line[PATH_MAX * 2 + 128];
+    while (f && fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\n")] = 0;
+        char *fl[9] = { 0 };
+        int k = 0;
+        for (char *p = line, *t; k < 9 && (t = strsep(&p, "\t"));) fl[k++] = t;
+        struct stat st;
+        if (k >= 8 && !strcmp(fl[0], "F") && stat(fl[1], &st) == 0 && S_ISDIR(st.st_mode)) {
+            int v = atoi(fl[2]);
+            next_w = atof(fl[3]);
+            next_h = atof(fl[4]);
+            struct folder *nf = open_folder(fl[1], v == 1 ? UI_VIEW_DETAILS : v == 2 ? UI_VIEW_TREE : UI_VIEW_ICON);
+            /* (asked once it has its title; it shows only after a round trip) */
+            if (nf) place_next("org.wps.shell", ui_window_title(nf->win), atoi(fl[5]), atoi(fl[6]));
+            if (nf && atoi(fl[7])) ui_window_set_maximized(nf->win);
+        } else if (k >= 5 && !strcmp(fl[0], "S")) {
+            place_next("org.wps.Find", "Find", atoi(fl[3]), atoi(fl[4]));
+            findwin_open(fl[1], fl[2]);
+        } else if (k >= 5 && !strcmp(fl[0], "N")) {
+            place_next("org.wps.notebook", "", atoi(fl[3]), atoi(fl[4]));   /* (its title comes with its pages) */
+            if (open_properties(fl[1])) props_open->want_page = (size_t)atoll(fl[2]);
+        }
+    }
+    if (f) fclose(f);
+    start_recording();   /* (also with restoring off: turned on again, it has the list) */
+}
+
 static struct folder *open_desktop(const char *path)
 {
     char d[PATH_MAX];
@@ -5179,6 +5357,8 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
     double w = view == UI_VIEW_ICON ? 640 : 760, h = 480;
     const char *sz = getenv("WPS_SHELL_SIZE");
     if (sz) sscanf(sz, "%lfx%lf", &w, &h);
+    if (next_w > 0 && next_h > 0 && !desktop) { w = next_w; h = next_h; }   /* (reopened at login: its size) */
+    next_w = next_h = 0;
     f->desktop = desktop;
     if (desktop) findwin_set_desktop(path);   /* Find's saved results go there */
     if (desktop) {
@@ -5232,9 +5412,9 @@ static void on_window_events(void *arg, int fd, short rev)
     char *line = ev_buf, *nl;
     while ((nl = strchr(line, '\n'))) {
         *nl = 0;
-        char *f[9] = { 0 };
+        char *f[13] = { 0 };
         int k = 0;
-        for (char *p = line, *t; k < 9 && (t = strsep(&p, "\t"));) f[k++] = t;
+        for (char *p = line, *t; k < 13 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
         else if (k >= 5 && !strcmp(f[0], "I")) warpcenter_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);

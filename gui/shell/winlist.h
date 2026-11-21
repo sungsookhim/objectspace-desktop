@@ -39,6 +39,9 @@ bool winlist_command(const char *cmd, const char *title);
 /* Whether a window whose title contains `title` is known, and its state. */
 bool winlist_state(const char *title, bool *minimized, bool *maximized);
 bool winlist_is_open(bool minimized_only);
+/* Where a window of this app and title is (the WPS session: the
+ * compositor tells; inside GNOME, unknown). */
+bool winlist_where(const char *app, const char *title, int *x, int *y, bool *maximized);
 const char *winlist_title(size_t i, bool minimized_only);
 bool winlist_snapshot(bool minimized_only, const char *png);
 

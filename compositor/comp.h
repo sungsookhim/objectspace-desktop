@@ -104,7 +104,8 @@ struct toplevel {
     enum kind kind;
     struct wlr_box restore;           /* the frame box before maximizing */
     unsigned id;                      /* for the desktop's Window List */
-    char *sent;                       /* the last window line sent for it */
+    char *sent;
+    int rep_w, rep_h;          /* the size last told to the desktop */                       /* the last window line sent for it */
     bool listed;                      /* in the desktop's Window List */
     ui_hit hover, pressed;
     int fw, fh;                       /* the frame drawn, its size */
@@ -140,7 +141,13 @@ void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);
 void comp_redraw_frames(void);
 double comp_scale_at(double x, double y);   /* the scale of the screen there */
-void comp_panel_edge(bool top);   /* the desktop says where the WarpCenter goes */
+void comp_panel_edge(bool top);
+/* The desktop's next window with this app ID (and title, if one is
+ * given) maps at (x, y) (its frame), not centred: a window reopened at
+ * login, where it was. */
+void comp_place_next(const char *app, const char *title, int x, int y);
+/* A window's frame position and client size. */
+struct wlr_box comp_window_geometry(struct toplevel *t);   /* the desktop says where the WarpCenter goes */
 void comp_screens_changed(void);   /* sizes changed: the desktop, LaunchPad, lock screen fit again */   /* the scheme or font changed */
 void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);

@@ -198,6 +198,7 @@ typedef struct {
 
 ui_surface *ui_window_new(ui_app *a, const ui_surface_ops *ops, void *data, const char *app_id, double w, double h);
 void ui_window_set_title(ui_surface *s, const char *title);
+const char *ui_window_title(ui_surface *s);
 /* No frame at all, the client area the whole window (the desktop). */
 void ui_window_set_frameless(ui_surface *s, bool on);
 /* The window sets its own size (the compositor takes it on the next
@@ -405,6 +406,7 @@ void ui_notebook_set_status(ui_notebook *nb, const char *msg);
 void ui_notebook_close(ui_notebook *nb);
 ui_surface *ui_notebook_surface(ui_notebook *nb);
 void ui_notebook_show_page(ui_notebook *nb, size_t page);
+size_t ui_notebook_page(ui_notebook *nb);     /* the page shown */
 
 typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
 
