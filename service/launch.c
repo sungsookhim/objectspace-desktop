@@ -177,7 +177,14 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     size_t k = 0;
     bool w = display && *display, x = x11 && *x11;
     if (env && w) {
-        snprintf(wl, sizeof wl, "WAYLAND_DISPLAY=%s", display);
+        /* by its name when it is in the runtime folder, as the session
+         * gives it: IBus finds its daemon by a file named after it
+         * ("...-unix-wayland-0"); a full path named another, and programs
+         * said IBus was not running */
+        const char *rt = getenv("XDG_RUNTIME_DIR"), *name = display;
+        size_t rl = rt ? strlen(rt) : 0;
+        if (rl && !strncmp(display, rt, rl) && display[rl] == '/' && !strchr(display + rl + 1, '/')) name = display + rl + 1;
+        snprintf(wl, sizeof wl, "WAYLAND_DISPLAY=%s", name);
         env[k++] = wl;
     }
     if (env && x) {
