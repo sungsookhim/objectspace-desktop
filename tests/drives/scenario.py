@@ -88,4 +88,69 @@ r = c.request(op="drive", uuid="AAAA-0001", action="mount")
 check("mount not authorized: said so", not r.get("ok") and r.get("error") == "not authorized", r)
 fake.SetAuth(True)
 
+
+# ---- the objects: Computer and Drives (first start), kept in step
+SYS = T + "/xdg/data/wps/System"
+c.request(op="first_start", desktop=T + "/desk")
+
+
+def listing(folder):
+    r = c.request(op="list", target=folder, offset=0, count=100, details=True).get("result") or {}
+    return {x.get("title") or x["name"]: x for x in r.get("items", [])}
+
+
+def wait_list(folder, cond, secs=4):
+    t = time.time()
+    while time.time() - t < secs:
+        it = listing(folder)
+        if cond(it):
+            return it
+        time.sleep(0.15)
+    return listing(folder)
+
+
+it = wait_list(SYS, lambda it: "Computer" in it)
+check("System holds Computer", "Computer" in it, sorted(it))
+check("Computer has its own icon", (it.get("Computer", {}).get("icon") or "").endswith("computer.png"), it.get("Computer"))
+r = c.request(op="resolve", target=SYS + "/Computer")["result"]
+check("Computer is a WPComputer", r.get("class") == "WPComputer", r.get("class"))
+r = c.request(op="resolve", target=SYS + "/Computer/Drives")["result"]
+check("Drives is a WPDrives", r.get("class") == "WPDrives", r.get("class"))
+it = wait_list(SYS + "/Computer", lambda it: "Root" in it)
+check("Computer: Drives and Root", "Drives" in it and "Root" in it, sorted(it))
+check("Root's icon: the root drive, lit", (it.get("Root", {}).get("icon") or "").endswith("drive-root.png"), it.get("Root"))
+it = wait_list(SYS + "/Computer/Drives", lambda it: "STICK" in it and "1.1 GB Encrypted Volume" in it)
+check("Drives: the stick and the LUKS volume (not root)", sorted(it) == ["1.1 GB Encrypted Volume", "STICK"], sorted(it))
+stick = it.get("STICK", {})
+stick_addr = stick.get("name", "")[1:]
+check("the stick's icon: usb, not lit", (stick.get("icon") or "").endswith("drive-usb-off.png"), stick.get("icon"))
+
+m = c.request(op="menu", target=stick_addr).get("result") or []
+labels = [x.get("label") for x in m]
+check("stick's menu: Mount, Eject, Safely remove; no Delete", "Mount" in labels and "Eject" in labels
+      and "Safely remove" in labels and "Delete..." not in labels, labels)
+st = c.request(op="settings", target=stick_addr).get("result") or []
+pg = {p["title"]: {f["key"]: f.get("value") for f in p.get("fields", [])} for p in st}
+check("stick's Drive page: device, size, UUID", pg.get("Drive", {}).get("device") == "/dev/sdc1"
+      and pg["Drive"].get("size") == "16 GB" and pg["Drive"].get("uuid") == "AAAA-0001", pg.get("Drive"))
+
+r = c.request(op="open", target=stick_addr)
+check("open the stick: mounted, its folder", (r.get("result") or {}).get("folder") == T + "/mnt/STICK", r)
+it = wait_list(SYS + "/Computer/Drives", lambda it: (it.get("STICK", {}).get("icon") or "").endswith("drive-usb.png"))
+check("mounted: its icon lit", (it.get("STICK", {}).get("icon") or "").endswith("drive-usb.png"), it.get("STICK", {}).get("icon"))
+m = c.request(op="menu", target=stick_addr).get("result") or []
+check("mounted: Unmount in its menu", "Unmount" in [x.get("label") for x in m])
+r = c.request(op="drive", target=stick_addr, action="unmount")
+check("unmount by its object", r.get("ok"), r)
+
+fake.Pull("stick")
+it = wait_list(SYS + "/Computer/Drives", lambda it: "STICK" not in it)
+check("pulled out: gone from Drives", "STICK" not in it, sorted(it))
+fake.Plug("stick")
+it = wait_list(SYS + "/Computer/Drives", lambda it: "STICK" in it)
+check("plugged in again: back, the same object", it.get("STICK", {}).get("name", "")[1:] == stick_addr, it.get("STICK"))
+
+r = c.request(op="open", target=it["1.1 GB Encrypted Volume"]["name"][1:])
+check("open a locked volume: says locked", r.get("error") == "locked", r)
+
 sys.exit(1 if fails else 0)

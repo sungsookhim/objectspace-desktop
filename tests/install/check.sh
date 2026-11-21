@@ -23,6 +23,17 @@ want='./etc/pam.d/wps-lock
 ./usr/share/gnome-shell/extensions/wps@wps-linux/schemas/gschemas.compiled
 ./usr/share/gnome-shell/extensions/wps@wps-linux/schemas/org.gnome.shell.extensions.wps.gschema.xml
 ./usr/share/wayland-sessions/wps.desktop
+./usr/share/wps/icons/computer.png
+./usr/share/wps/icons/drive-disk-off.png
+./usr/share/wps/icons/drive-disk.png
+./usr/share/wps/icons/drive-optical-off.png
+./usr/share/wps/icons/drive-optical.png
+./usr/share/wps/icons/drive-root-off.png
+./usr/share/wps/icons/drive-root.png
+./usr/share/wps/icons/drive-sd-off.png
+./usr/share/wps/icons/drive-sd.png
+./usr/share/wps/icons/drive-usb-off.png
+./usr/share/wps/icons/drive-usb.png
 ./usr/share/wps/icons/trash-empty.png
 ./usr/share/wps/icons/trash-full.png'
 want=$(echo "$want" | LC_ALL=C sort)

@@ -380,7 +380,8 @@ ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect
  * owner's `set` gets value.text "" for Default, the path of an image
  * dropped on it (to be made into an icon), or NULL when Choose... was
  * pressed; the notebook shows the new icon when ui_notebook_update says. */
-typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON } ui_field_kind;
+/* UI_FIELD_INFO: value.text shown, not changed (a drive's size, ...). */
+typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO } ui_field_kind;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */
 typedef struct {
     const char *key, *label;

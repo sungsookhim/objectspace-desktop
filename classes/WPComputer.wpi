@@ -1,0 +1,7 @@
+# OS/2's Drives, as Computer (v0.2-design 5): a folder in System holding
+# Drives and the root file system; its notebook shows the machine.
+class WPComputer : WPFolder
+version 1.0
+override wpModifyPopupMenu
+override wpAddSettingsPages
+classoverride wpclsQueryTitle

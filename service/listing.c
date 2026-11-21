@@ -4,11 +4,13 @@
 #define WPS_ICONDIR "/usr/share/wps/icons"
 #endif
 #include "trash.h"
+#include "udisks.h"
 #include "launch.h"
 #include "objects.h"
 #include "shadows.h"
 
 #include <dirent.h>
+#include <pthread.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -100,6 +102,9 @@ static const wps_props *props_of(const wps_loaded *ld, const char *cls)
     return NULL;
 }
 
+static void drive_icon(const wps_loaded *ld, char *out, size_t n);
+static bool special_icon(const char *path, char *out, size_t n);
+
 static void central_details(wps_entry *e)
 {
     wps_loaded ld;
@@ -120,6 +125,7 @@ static void central_details(wps_entry *e)
     t = NULL;
     if (wp && wps_props_str(wp, "makes", &t)) { snprintf(e->makes, sizeof e->makes, "%s", t); e->is_template = true; }
     free(t);
+    if (!e->icon[0] && !strcmp(ld.obj_class, "WPDrive")) drive_icon(&ld, e->icon, sizeof e->icon);
     if (ld.shadow_of[0]) {
         e->shadow = true;
         e->target_type = DT_UNKNOWN;
@@ -142,6 +148,8 @@ static void central_details(wps_entry *e)
             char own[sizeof e->icon] = "";
             if (op) { t = NULL; if (wps_props_str(op, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
             if (!own[0] && S_ISDIR(tg.st.st_mode) && wps_is_trash_files_dir(tg.path)) wps_trash_icon(tg.path, e->icon, sizeof e->icon);
+            else if (!own[0] && S_ISDIR(tg.st.st_mode) && special_icon(tg.path, e->icon, sizeof e->icon)) {}
+            else if (!own[0] && !strcmp(tg.obj_class, "WPDrive")) drive_icon(&tg, e->icon, sizeof e->icon);
         }
         wps_loaded_free(&tg);
     }
@@ -167,7 +175,7 @@ bool wps_trash_full(const char *files)
     return full;
 }
 
-static void default_icon(const char *name, char *out, size_t n)
+void wps_default_icon(const char *name, char *out, size_t n)
 {
     snprintf(out, n, "%s/%s", WPS_ICONDIR, name);
     if (access(out, R_OK) == 0) return;
@@ -194,7 +202,49 @@ void wps_trash_icon(const char *files, char *out, size_t n)
         free(t);
         wps_props_free(&ps);
     }
-    if (!out[0]) default_icon(full ? "trash-full.png" : "trash-empty.png", out, n);
+    if (!out[0]) wps_default_icon(full ? "trash-full.png" : "trash-empty.png", out, n);
+}
+
+/* A drive's icon: its kind's, lit when mounted (v0.2-design 5). */
+static void drive_icon(const wps_loaded *ld, char *out, size_t n)
+{
+    const wps_props *dp = props_of(ld, "WPDrive");
+    char *u = NULL;
+    wps_drive_info d;
+    char name[64];
+    if (dp && wps_props_str(dp, "uuid", &u) && wps_udisks_find(u, &d))
+        snprintf(name, sizeof name, "drive-%s%s.png", d.kind, d.mount[0] ? "" : "-off");
+    else snprintf(name, sizeof name, "drive-disk-off.png");   /* not present */
+    free(u);
+    wps_default_icon(name, out, n);
+}
+
+/* WPS's special folders' own icons (Computer, ...), by path. */
+static struct { char path[PATH_MAX]; char png[64]; } special[8];
+static int nspecial;
+static pthread_mutex_t special_mu = PTHREAD_MUTEX_INITIALIZER;
+
+void wps_listing_folder_icon(const char *path, const char *png)
+{
+    pthread_mutex_lock(&special_mu);
+    int i = 0;
+    while (i < nspecial && strcmp(special[i].path, path)) i++;
+    if (i == nspecial && nspecial < 8) nspecial++;
+    if (i < 8) {
+        snprintf(special[i].path, sizeof special[i].path, "%s", path);
+        snprintf(special[i].png, sizeof special[i].png, "%s", png);
+    }
+    pthread_mutex_unlock(&special_mu);
+}
+
+static bool special_icon(const char *path, char *out, size_t n)
+{
+    char png[64] = "";
+    pthread_mutex_lock(&special_mu);
+    for (int i = 0; i < nspecial; i++) if (!strcmp(special[i].path, path)) snprintf(png, sizeof png, "%s", special[i].png);
+    pthread_mutex_unlock(&special_mu);
+    if (png[0]) wps_default_icon(png, out, n);
+    return png[0] != 0;
 }
 
 static void detail_work(void *arg)
@@ -243,6 +293,7 @@ static void detail_work(void *arg)
         }
         if (e->type == DT_REG) e->locked = wps_lock_file_present(p);
         if (e->type == DT_DIR && wps_is_trash_files_dir(p)) wps_trash_icon(p, e->icon, sizeof e->icon);
+        else if (e->type == DT_DIR && !e->icon[0]) special_icon(p, e->icon, sizeof e->icon);
         /* in the Trash Can: its name before it was deleted (trash names
          * may have a number added) */
         if (!e->title[0] && j->in_trash) {

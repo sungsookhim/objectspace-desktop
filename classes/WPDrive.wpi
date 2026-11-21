@@ -1,0 +1,17 @@
+# A volume (v0.2-design 5), known by its file system's UUID: opening it
+# mounts it if needed and opens its top folder; its menu mounts,
+# unmounts, ejects, powers off, unlocks and locks.
+class WPDrive : WPAbstract
+version 1.0
+include "wps_drive_hook.h"
+data {
+    char *uuid;
+}
+override wpUnInitData
+override wpSaveState
+override wpRestoreProperties
+override wpModifyPopupMenu
+override wpAddSettingsPages
+method wpQueryUUID() -> string
+method wpSetUUID(string uuid) -> bool
+classoverride wpclsQueryTitle

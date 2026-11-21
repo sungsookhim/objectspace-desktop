@@ -32,6 +32,12 @@
 #define WPS_MI_EMPTY_TRASH    60
 #define WPS_MI_RESTORE        61    /* an item in the trash: back where it was */
 #define WPS_MI_DELETE_FOREVER 62
+#define WPS_MI_MOUNT          63    /* drives (v0.2-design 5) */
+#define WPS_MI_UNMOUNT        64
+#define WPS_MI_EJECT          65
+#define WPS_MI_POWER_OFF      66
+#define WPS_MI_UNLOCK         67
+#define WPS_MI_LOCK           68
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

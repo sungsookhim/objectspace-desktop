@@ -1428,7 +1428,8 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
             d->key = cv_text(fd, "key");
             d->label = cv_text(fd, "label");
             d->kind = !type || !strcmp(type, "text") ? UI_FIELD_TEXT : !strcmp(type, "checkbox") ? UI_FIELD_CHECKBOX
-                      : !strcmp(type, "number") ? UI_FIELD_NUMBER : !strcmp(type, "icon") ? UI_FIELD_ICON : UI_FIELD_CHOICE;
+                      : !strcmp(type, "number") ? UI_FIELD_NUMBER : !strcmp(type, "icon") ? UI_FIELD_ICON
+                      : !strcmp(type, "info") ? UI_FIELD_INFO : UI_FIELD_CHOICE;
             if (v && v->k == CV_TEXT) d->value.text = (char *)v->s;
             else if (v && v->k == CV_INT) d->value.number = v->i;
             else if (v && v->k == CV_BOOL) d->value.checked = v->b;

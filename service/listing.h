@@ -88,4 +88,9 @@ bool wps_listing_has(const char *folder, const char *name);
 bool wps_trash_full(const char *files);
 void wps_trash_icon(const char *files, char *out, size_t n);
 
+/* One of WPS's own icons (data/icons/NAME; installed, or the tree's). */
+void wps_default_icon(const char *name, char *out, size_t n);
+/* A special folder's icon (NAME as above), shown for it and its shadows. */
+void wps_listing_folder_icon(const char *path, const char *png);
+
 #endif

@@ -333,6 +333,10 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         case UI_FIELD_TEXT:
             ui_entry_draw(f->entry, cr, r, focused);
             break;
+        case UI_FIELD_INFO:
+            ui_set_color(cr, k->text);
+            ui_text_draw(cr, UI_FONT_REGULAR, r.x, r.y + base_off, f->v.text ? f->v.text : "", r.w);
+            break;
         case UI_FIELD_ICON:
             draw_icon_field(nb, f, cr, r, focused);
             break;
@@ -458,6 +462,7 @@ static void a11y_nb(ui_notebook *nb)
         i.at = control_rect(nb, (size_t)nb->focus);
         switch (f->kind) {
         case UI_FIELD_TEXT: i.role = UI_ROLE_ENTRY; i.text = ui_entry_text(f->entry); break;
+        case UI_FIELD_INFO: i.role = UI_ROLE_ENTRY; i.text = f->v.text; break;   /* (read only) */
         case UI_FIELD_NUMBER:
             i.role = UI_ROLE_SPIN_BUTTON;
             snprintf(num, sizeof num, "%s", ui_entry_text(f->entry));
@@ -677,6 +682,8 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
             break;
         case UI_FIELD_ICON:
             break;   /* the picture: focused (Enter chooses) */
+        case UI_FIELD_INFO:
+            break;
         case UI_FIELD_NUMBER:
             if (ui_rect_has(spin_rect(r, true), e->x, e->y)) { step_number(nb, f, 1); break; }
             if (ui_rect_has(spin_rect(r, false), e->x, e->y)) { step_number(nb, f, -1); break; }
@@ -724,6 +731,8 @@ static void nb_key(ui_surface *s, const ui_key_event *e)
     switch (f->kind) {
     case UI_FIELD_CHECKBOX:
         if (e->sym == XKB_KEY_space) { f->v.checked = !f->v.checked; apply(nb, f); damage(nb); }
+        return;
+    case UI_FIELD_INFO:
         return;
     case UI_FIELD_ICON:   /* Enter or Space: Choose...; Delete: Default */
         if (e->sym == XKB_KEY_space || e->sym == XKB_KEY_Return || e->sym == XKB_KEY_KP_Enter) icon_action(nb, f, 0);

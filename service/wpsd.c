@@ -5,7 +5,8 @@
  * is a 4-byte big-endian length and a CBOR map. Requests:
  *   {op:"first_start", desktop}         the desktop's first-start steps not done yet (versioned); the
  *                                       version it was at
- *   {op:"drive", uuid, action, pass}   mount|unmount|eject|poweroff|unlock|lock -> its mount point
+ *   {event:"drives_changed", sub}       drives came, went, mounted or unmounted
+ *   {op:"drive", uuid|target, action, pass}   mount|unmount|eject|poweroff|unlock|lock -> its mount point
  *   {op:"drives"}                       the volumes udisks2 (or mountinfo) shows -> [{uuid, title, kind, mount, ...}]
  *   {op:"restore", target}              an item in a trash: back where it was; its new path
  *   {op:"empty_trash"}                  the home trash emptied (a delete job); the job's ID
@@ -71,6 +72,7 @@
 #include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/un.h>
 #include <dirent.h>
 #include <unistd.h>
@@ -96,6 +98,7 @@
 #include "WPProgram.h"
 #include "WPFolder.h"
 #include "WPTrashCan.h"
+#include "WPDrive.h"
 #include "WPMinWinViewer.h"
 #include "WPDataFile.h"
 #include "wps_state.h"
@@ -158,6 +161,8 @@ static void put_menu(cbuf *b, const char *text, const char *parent);
 static void put_settings(cbuf *b, const char *text);
 struct req;
 static void do_open(struct req *r, wpo_object *o);
+struct drive_req { struct client *c; int64_t id; bool open; char uuid[80], action[16], *pass; };
+static void drive_done(void *arg, int err, const char *msg, const char *mount);
 static void do_from_template(struct req *r, wpo_object *o);
 static void do_rename(struct req *r, wpo_object *o);
 static void do_layout(struct req *r, wpo_object *o);
@@ -1454,6 +1459,22 @@ static void do_open(struct req *r, wpo_object *o)
         reply_view(r, "minimized-windows");
         wpo_unref(orig);
         return;
+    } else if (wpo_is_a(o, WPDriveClass)) {
+        /* a drive: its top folder, mounted first if need be */
+        const char *u = WPDrive_data(o)->uuid;
+        wps_drive_info d;
+        if (!u || !wps_udisks_find(u, &d)) reply_error(r->c, r->id, "not found", "the drive is not there (plugged out?)");
+        else if (d.mount[0]) reply_folder(r, d.mount);
+        else if (d.encrypted && !d.unlocked) reply_error(r->c, r->id, "locked", "the volume is locked: unlock it first");
+        else {
+            struct drive_req *q = calloc(1, sizeof *q);
+            q->c = r->c; r->c->refs++;
+            q->id = r->id;
+            q->open = true;
+            wps_udisks_call(u, "mount", NULL, drive_done, q);
+        }
+        wpo_unref(orig);
+        return;
     } else {
         reply_error(r->c, r->id, "bad request", "this kind of object opens in the GUI");
         wpo_unref(orig);
@@ -2232,7 +2253,6 @@ static void drives_changed(void);
 
 /* A drive's action, answered when udisks2 is done: {mount} or an error
  * whose code says why ("not authorized", "busy", ...). */
-struct drive_req { struct client *c; int64_t id; };
 
 static void drive_done(void *arg, int err, const char *msg, const char *mount)
 {
@@ -2248,13 +2268,89 @@ static void drive_done(void *arg, int err, const char *msg, const char *mount)
             cb_map(&b, 3);
             cb_text(&b, "id"); cb_int(&b, q->id);
             cb_text(&b, "ok"); cb_bool(&b, true);
-            cb_text(&b, "result"); cb_text(&b, mount ? mount : "");
+            cb_text(&b, "result");
+            if (q->open) {   /* opened: its top folder, as a folder opens */
+                cb_map(&b, 1);
+                cb_text(&b, "folder"); cb_text(&b, mount ? mount : "/");
+            } else cb_text(&b, mount ? mount : "");
             send_frame(q->c, &b);
             cb_free(&b);
         }
     }
     client_unref(q->c);
+    if (q->pass) { explicit_bzero(q->pass, strlen(q->pass)); free(q->pass); }
     free(q);
+}
+
+/* {op:"drive", target} (a drive object): its UUID, read off the loop. */
+static void drive_target_work(void *arg)
+{
+    struct drive_req *q = arg;
+    wps_loaded ld;
+    wps_load(q->uuid, false, &ld);   /* (uuid holds the target until here) */
+    q->uuid[0] = 0;
+    if (!ld.err) {
+        const char *loc = ld.locator[0] ? ld.locator : ld.path;
+        wps_props ps;
+        wps_props_init(&ps);
+        char *u = NULL;
+        if (!strcmp(ld.obj_class, "WPDrive") && wps_db_get_class(db, ld.vol, loc, "WPDrive", &ps) > 0 && wps_props_str(&ps, "uuid", &u))
+            snprintf(q->uuid, sizeof q->uuid, "%s", u);
+        else if (ld.shadow_of[0]) {   /* a shadow of a drive */
+            char tl[WPS_ID_LEN + 8];
+            snprintf(tl, sizeof tl, "id:%s", ld.shadow_of);
+            wps_loaded tg;
+            wps_load(tl, false, &tg);
+            wps_props_free(&ps);
+            wps_props_init(&ps);
+            if (!tg.err && !strcmp(tg.obj_class, "WPDrive") &&
+                wps_db_get_class(db, tg.vol, tg.locator[0] ? tg.locator : tg.path, "WPDrive", &ps) > 0 && wps_props_str(&ps, "uuid", &u))
+                snprintf(q->uuid, sizeof q->uuid, "%s", u);
+            wps_loaded_free(&tg);
+        }
+        free(u);
+        wps_props_free(&ps);
+    }
+    wps_loaded_free(&ld);
+}
+
+static void drive_target_done(void *arg)
+{
+    struct drive_req *q = arg;
+    if (!q->uuid[0]) { drive_done(q, ENODEV, "not a drive", NULL); return; }
+    wps_udisks_call(q->uuid, q->action, q->pass, drive_done, q);
+}
+
+/* For WPDrive's menu and notebook (classes/wps_drive_hook.h). */
+static void human_size(uint64_t v, char *out, size_t n)
+{
+    const char *u[] = { "bytes", "kB", "MB", "GB", "TB", "PB" };
+    double s = (double)v;
+    int i = 0;
+    while (s >= 1000 && i < 5) { s /= 1000; i++; }
+    if (i && s < 10) snprintf(out, n, "%.1f %s", s, u[i]);
+    else snprintf(out, n, "%.0f %s", s, u[i]);
+}
+
+static bool drive_query(const char *uuid, wps_drive_state *st)
+{
+    wps_drive_info d;
+    if (!wps_udisks_find(uuid, &d)) return false;
+    st->present = true;
+    st->mounted = d.mount[0] != 0;
+    st->ejectable = d.ejectable;
+    st->can_poweroff = d.can_poweroff;
+    st->encrypted = d.encrypted;
+    st->unlocked = d.unlocked;
+    st->root = !strcmp(d.kind, "root");
+    snprintf(st->kind, sizeof st->kind, "%s", d.kind);
+    snprintf(st->device, sizeof st->device, "%s", d.device);
+    snprintf(st->fstype, sizeof st->fstype, "%s", d.fstype);
+    snprintf(st->mount, sizeof st->mount, "%s", d.mount);
+    human_size(d.size, st->size, sizeof st->size);
+    struct statvfs sv;
+    if (d.mount[0] && statvfs(d.mount, &sv) == 0) human_size((uint64_t)sv.f_bavail * sv.f_frsize, st->free, sizeof st->free);
+    return true;
 }
 
 /* ---- the Trash Can: putting an item back (v0.2-design 4) */
@@ -2383,9 +2479,10 @@ static void empty_done(void *arg)
  * deleted shadow) is not redone. Steps:
  *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
  *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5). */
-#define FIRST_START_VERSION 4
+#define FIRST_START_VERSION 5
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
+static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
 
 struct first_start {
     struct client *c;
@@ -2495,6 +2592,14 @@ static void first_start_work(void *arg)
             wps_load(j->trash, true, &j->tld);
         } else j->trash[0] = 0;
     }
+    if (j->from < 5) {
+        /* step 5 (0.2): Computer, with Drives, in System */
+        char comp[PATH_MAX], drv[PATH_MAX + 8];
+        computer_dirs(comp, sizeof comp, drv, sizeof drv);
+        wps_mkdirs(drv, 0700);
+        wps_set_folder_class(comp, "WPComputer");
+        wps_set_folder_class(drv, "WPDrives");
+    }
 }
 
 static void first_start_done(void *arg)
@@ -2527,6 +2632,15 @@ static void first_start_done(void *arg)
             wpo_object *tc = j->tld.err ? NULL : wps_object_from_loaded(&j->tld);
             if (tc && wpo_is_a(tc, WPObjectClass) && !WPObject_data(tc)->title) WPObject_wpSetTitle(tc, "Trash Can");
             wps_shadow_create(j->trash, j->desk, first_start_shadow_done, NULL);
+        }
+        if (j->from < 5) {
+            char comp[PATH_MAX], drv[PATH_MAX + 8];
+            computer_dirs(comp, sizeof comp, drv, sizeof drv);
+            for (int k = 0; k < 2; k++) {   /* (seen as plain folders before) */
+                sobj *old = wps_sobj_by_path(k ? drv : comp);
+                if (old) wps_sobj_forget(old);
+            }
+            drives_changed();
         }
         FILE *f = fopen(marker, "w");
         if (f) {
@@ -2898,11 +3012,19 @@ static void handle(struct client *c, cv *msg)
         wpo_defer(loop, "stats", stats_work, stats_done, j);
     } else if (strcmp(op, "drive") == 0) {
         const char *uuid = cv_text(msg, "uuid"), *action = cv_text(msg, "action"), *pass = cv_text(msg, "pass");
-        if (!uuid || !action) { reply_error(c, id, "bad request", "drive needs uuid and action"); cv_free(msg); return; }
+        const char *target = cv_text(msg, "target");
+        if ((!uuid && !target) || !action) { reply_error(c, id, "bad request", "drive needs uuid (or target) and action"); cv_free(msg); return; }
         struct drive_req *q = calloc(1, sizeof *q);
         q->c = c; c->refs++;
         q->id = id;
-        wps_udisks_call(uuid, action, pass, drive_done, q);
+        if (uuid) wps_udisks_call(uuid, action, pass, drive_done, q);
+        else {   /* a drive object (or its shadow): its UUID first */
+            snprintf(q->uuid, sizeof q->uuid, "%.79s", target);
+            snprintf(q->action, sizeof q->action, "%s", action);
+            q->pass = pass ? strdup(pass) : NULL;
+            if (strlen(target) >= sizeof q->uuid) { drive_done(q, EINVAL, "bad target", NULL); cv_free(msg); return; }
+            wpo_defer(loop, "drive target", drive_target_work, drive_target_done, q);
+        }
     } else if (strcmp(op, "drives") == 0) {
         wps_drive_info *ds = NULL;
         size_t n = wps_udisks_list(&ds);
@@ -3191,6 +3313,12 @@ int main(int argc, char **argv)
     start_volume_job(NULL);
     wps_shadows_init(loop, db);
     system_folder_init();
+    wps_drive_query = drive_query;
+    {
+        char comp[PATH_MAX], drv[PATH_MAX + 8];
+        computer_dirs(comp, sizeof comp, drv, sizeof drv);
+        wps_listing_folder_icon(comp, "computer.png");
+    }
     wps_udisks_init(loop, drives_changed);
     wps_listing_init(loop);
     wps_find_init(loop);
@@ -3234,6 +3362,192 @@ int main(int argc, char **argv)
     return quitting ? 0 : 1;
 }
 
+/* ---- Drives kept in step (v0.2-design 3, 5): a WPDrive central object
+ * per volume in Drives (the root file system's in Computer), found by
+ * its UUID (WPDrive "uuid"). A drive that goes away is parked (moved to
+ * a folder ID no folder has) and brought back when it returns, keeping
+ * its object ID and so its place. Titles follow the label unless the
+ * user renamed it (WPDrive "autotitle": the title WPS gave). */
+
+static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn)
+{
+    char sys[PATH_MAX];
+    system_dir(sys, sizeof sys);
+    snprintf(comp, cn, "%s/Computer", sys);
+    snprintf(drives, dn, "%s/Drives", comp);
+}
+
+#define DRIVES_PARKED "00000000-0000-4000-8000-0000000d15c0"
+
+struct drive_obj { char id[WPS_ID_LEN + 1], uuid[80], title[256], autotitle[256]; int where; bool seen; };
+struct drive_event { char folder[PATH_MAX]; char id[WPS_ID_LEN + 1]; char kind; };
+
+struct drives_sync {
+    wps_drive_info *ds;
+    size_t n;
+    char comp[PATH_MAX], drives[PATH_MAX + 8];
+    char vol[WPS_VOLID_MAX], cid[WPS_ID_LEN + 1], did[WPS_ID_LEN + 1];
+    struct drive_obj *objs;
+    size_t nobjs;
+    int collecting;   /* where the objects being listed are: 0 Drives, 1 Computer, 2 parked */
+    struct drive_event *ev;
+    size_t nev;
+    bool changed;
+};
+static bool drives_syncing, drives_again;
+
+static void drives_collect(const char *vol, const char *id, void *user)
+{
+    struct drives_sync *j = user;
+    char loc[WPS_ID_LEN + 8], key[PATH_MAX + 128];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_props ps;
+    wps_props_init(&ps);
+    char *v = NULL;
+    wps_db_key(key, sizeof key, loc, "WPS", "class");
+    bool drive = wps_db_get_class(db, vol, loc, "WPS", &ps) > 0 && wps_props_str(&ps, "class", &v) && !strcmp(v, "WPDrive");
+    free(v);
+    wps_props_free(&ps);
+    if (!drive) return;
+    struct drive_obj o;
+    memset(&o, 0, sizeof o);
+    snprintf(o.id, sizeof o.id, "%s", id);
+    o.where = j->collecting;
+    wps_props_init(&ps);
+    if (wps_db_get_class(db, vol, loc, "WPDrive", &ps) > 0) {
+        v = NULL;
+        if (wps_props_str(&ps, "uuid", &v)) snprintf(o.uuid, sizeof o.uuid, "%s", v);
+        free(v);
+        v = NULL;
+        if (wps_props_str(&ps, "autotitle", &v)) snprintf(o.autotitle, sizeof o.autotitle, "%s", v);
+        free(v);
+    }
+    wps_props_free(&ps);
+    wps_props_init(&ps);
+    v = NULL;
+    if (wps_db_get_class(db, vol, loc, "WPObject", &ps) > 0 && wps_props_str(&ps, "title", &v)) snprintf(o.title, sizeof o.title, "%s", v);
+    free(v);
+    wps_props_free(&ps);
+    j->objs = realloc(j->objs, (j->nobjs + 1) * sizeof *j->objs);
+    j->objs[j->nobjs++] = o;
+}
+
+static void drive_event(struct drives_sync *j, int where, const char *id, char kind)
+{
+    if (where == 2) return;   /* parked: no window shows it */
+    j->ev = realloc(j->ev, (j->nev + 1) * sizeof *j->ev);
+    struct drive_event *e = &j->ev[j->nev++];
+    snprintf(e->folder, sizeof e->folder, "%s", where ? j->comp : j->drives);
+    snprintf(e->id, sizeof e->id, "%s", id);
+    e->kind = kind;
+}
+
+static void put_str(const char *vol, const char *id, const char *cls, const char *prop, const char *v)
+{
+    char loc[WPS_ID_LEN + 8], key[PATH_MAX + 128];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_db_key(key, sizeof key, loc, cls, prop);
+    wps_db_put(db, vol, key, 's', v, (uint32_t)strlen(v));
+}
+
+static void drives_sync_work(void *arg)
+{
+    struct drives_sync *j = arg;
+    wps_loaded c, d;
+    wps_load(j->comp, true, &c);
+    wps_load(j->drives, true, &d);
+    bool ok = !c.err && !d.err && c.id[0] && d.id[0] && S_ISDIR(c.st.st_mode) && S_ISDIR(d.st.st_mode) && !strcmp(c.vol, d.vol);
+    if (ok) {
+        snprintf(j->vol, sizeof j->vol, "%s", d.vol);
+        snprintf(j->cid, sizeof j->cid, "%s", c.id);
+        snprintf(j->did, sizeof j->did, "%s", d.id);
+    }
+    wps_loaded_free(&c);
+    wps_loaded_free(&d);
+    if (!ok) return;   /* no Computer (the user removed it, or first start not yet) */
+    j->collecting = 0;
+    wps_central_in(j->vol, j->did, drives_collect, j);
+    j->collecting = 1;
+    wps_central_in(j->vol, j->cid, drives_collect, j);
+    j->collecting = 2;
+    wps_central_in(j->vol, DRIVES_PARKED, drives_collect, j);
+    for (size_t i = 0; i < j->n; i++) {
+        const wps_drive_info *v = &j->ds[i];
+        int where = !strcmp(v->kind, "root") ? 1 : 0;
+        char title[256];
+        wps_drive_title(v, title, sizeof title);
+        struct drive_obj *o = NULL;
+        for (size_t k = 0; k < j->nobjs && !o; k++)
+            if (!j->objs[k].seen && !strcmp(j->objs[k].uuid, v->uuid)) o = &j->objs[k];
+        char newid[WPS_ID_LEN + 1];
+        if (!o) {
+            if (wps_central_create(j->vol, where ? j->cid : j->did, "WPDrive", title, NULL, newid) != 0) continue;
+            put_str(j->vol, newid, "WPDrive", "uuid", v->uuid);
+            put_str(j->vol, newid, "WPDrive", "autotitle", title);
+            drive_event(j, where, newid, 'c');
+            j->changed = true;
+            continue;
+        }
+        o->seen = true;
+        if (o->where != where) {
+            if (wps_central_move(o->id, j->vol, where ? j->cid : j->did, false, newid) == 0) {
+                drive_event(j, o->where, o->id, 'd');
+                drive_event(j, where, o->id, 'c');
+                j->changed = true;
+            }
+        }
+        /* its label changed (and the user did not rename it) */
+        if (strcmp(o->autotitle, title) && (!o->title[0] || !strcmp(o->title, o->autotitle))) {
+            put_str(j->vol, o->id, "WPObject", "title", title);
+            put_str(j->vol, o->id, "WPDrive", "autotitle", title);
+            drive_event(j, where, o->id, 't');
+            j->changed = true;
+        }
+    }
+    for (size_t k = 0; k < j->nobjs; k++) {
+        struct drive_obj *o = &j->objs[k];
+        if (o->seen || o->where == 2) continue;
+        char newid[WPS_ID_LEN + 1];
+        if (wps_central_move(o->id, j->vol, DRIVES_PARKED, false, newid) == 0) {   /* gone: parked */
+            drive_event(j, o->where, o->id, 'd');
+            j->changed = true;
+        }
+    }
+}
+
+static void drives_broadcast(void)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead || (!x->nfolders && !x->ntargets)) continue;
+        cbuf b;
+        event_head(&b, "drives_changed", x->id, 0);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
+
+static void drives_sync_done(void *arg)
+{
+    struct drives_sync *j = arg;
+    for (size_t i = 0; i < j->nev; i++) {
+        wps_central_forget(j->ev[i].id);
+        if (j->ev[i].kind != 't') on_central_change(j->ev[i].folder, j->ev[i].id, j->ev[i].kind);
+    }
+    drives_broadcast();   /* mounted, unmounted, titles: the icons and rows again */
+    free(j->ev);
+    free(j->objs);
+    free(j->ds);
+    free(j);
+    drives_syncing = false;
+    if (drives_again) { drives_again = false; drives_changed(); }
+}
+
 static void drives_changed(void)
 {
+    if (drives_syncing) { drives_again = true; return; }
+    drives_syncing = true;
+    struct drives_sync *j = calloc(1, sizeof *j);
+    j->n = wps_udisks_list(&j->ds);
+    computer_dirs(j->comp, sizeof j->comp, j->drives, sizeof j->drives);
+    wpo_defer(loop, "drives sync", drives_sync_work, drives_sync_done, j);
 }
