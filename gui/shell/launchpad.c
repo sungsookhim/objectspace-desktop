@@ -296,14 +296,14 @@ static void ask_end(void)
                    0, end_chosen, NULL);
 }
 
-static void press_sys(size_t i)
+static void press_sys(size_t i, unsigned mods)
 {
     events_raise("launchpad.button", sys_names[i], "launchpad", (ui_rect){ 0, 0, 0, 0 });
     if (i == 3) { winlist_open(false); return; }
     if (i == 2) { ask_end(); return; }
     if (i == 1) {   /* WPS's own Find, from the home folder */
         const char *home = getenv("HOME");
-        findwin_open(home && *home ? home : "/", NULL);
+        findwin_show(home && *home ? home : "/", mods & UI_MOD_SHIFT);   /* Shift: another */
         return;
     }
     if (!winlist_ext(sys_cmds[i], NULL))
@@ -661,7 +661,7 @@ static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
         lp.pressed = -1;
         ui_surface_damage_all(s);
         if (was < 0 || was != h || arrow) return;
-        if (was < NSYS) press_sys((size_t)was);
+        if (was < NSYS) press_sys((size_t)was, e->mods);
         else open_entry(lp.dir, &lp.items[was - NSYS]);
     } else if (e->kind == UI_PRESS && e->button == UI_BTN2) {
         button_menu(s, h >= NSYS && !arrow ? (size_t)h : SIZE_MAX, e->x, e->y, e->serial);
@@ -765,7 +765,7 @@ static void lp_key(ui_surface *s, const ui_key_event *e)
     case XKB_KEY_Home: lp.kfocus = 0; break;
     case XKB_KEY_End: lp.kfocus = total - 1; break;
     case XKB_KEY_Return: case XKB_KEY_KP_Enter: case XKB_KEY_space:
-        if (k < NSYS) press_sys(k);
+        if (k < NSYS) press_sys(k, e->mods);
         else open_entry(lp.dir, &lp.items[k - NSYS]);
         return;
     case XKB_KEY_Up:
@@ -833,7 +833,7 @@ const char *launchpad_dir(void) { return lp.dir; }
 
 bool launchpad_press(size_t b)
 {
-    if (b < NSYS) { press_sys(b); return true; }
+    if (b < NSYS) { press_sys(b, 0); return true; }
     if (b - NSYS >= lp.n) return false;
     open_entry(lp.dir, &lp.items[b - NSYS]);
     return true;

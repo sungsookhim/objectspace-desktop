@@ -638,6 +638,13 @@ void findwin_open(const char *folder, const char *name)
     if (name && *name) search(w, false);
 }
 
+void findwin_show(const char *folder, bool fresh)
+{
+    struct fw *w = last ? last : wins;   /* the latest opened, else the latest still open */
+    if (!fresh && w) { ui_window_activate(w->s); return; }
+    findwin_open(folder, NULL);
+}
+
 /* ------------------------------------------------------------ self-tests */
 
 size_t findwin_count(void) { return last ? last->nres : 0; }

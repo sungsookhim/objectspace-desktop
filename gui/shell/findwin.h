@@ -26,6 +26,9 @@ void findwin_init(ui_app *a, void (*open_folder)(const char *path));
 
 /* A new Find window on `folder` (name: what to look for, or NULL). */
 void findwin_open(const char *folder, const char *name);
+/* The Find window already open brought forward (restored if minimized);
+ * a new one when there is none or `fresh` (Shift on the LaunchPad). */
+void findwin_show(const char *folder, bool fresh);
 
 /* A "found" event from wpsd: true if it was a search's. */
 bool findwin_event(const cv *ev);

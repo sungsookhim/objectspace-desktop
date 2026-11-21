@@ -1995,6 +1995,22 @@ int main(int argc, char **argv)
     } else {
         s->backend = wlr_backend_autocreate(s->loop, &s->session);
         if (s->backend) s->renderer = wlr_renderer_autocreate(s->backend);
+        /* VirtualBox's (and VMware's) 3D, vmwgfx: windows' pictures went
+         * stale in places as they changed (Firefox's "burn", windows black
+         * or see-through when dragged), and stayed right with the software
+         * renderer. There it draws in software unless WLR_RENDERER asks. */
+        if (s->renderer && !getenv("WLR_RENDERER") && !wlr_renderer_is_pixman(s->renderer)) {
+            int fd = wlr_renderer_get_drm_fd(s->renderer);
+            drmVersionPtr v = fd >= 0 ? drmGetVersion(fd) : NULL;
+            bool vmwgfx = v && v->name && !strcmp(v->name, "vmwgfx");
+            if (v) drmFreeVersion(v);
+            if (vmwgfx) {
+                fprintf(stderr, "wps-compositor: vmwgfx (VirtualBox, VMware): drawing in software "
+                                "(WLR_RENDERER=gles2 for the GPU)\n");
+                wlr_renderer_destroy(s->renderer);
+                s->renderer = wlr_pixman_renderer_create();
+            }
+        }
         if (s->backend && !s->renderer) {
             /* no GPU drawing (a virtual machine without 3D, a missing
              * driver): the software renderer, slower but the same picture */
