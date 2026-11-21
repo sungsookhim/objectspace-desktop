@@ -253,11 +253,31 @@ static bool ini_value(const char *text, const char *group, const char *key, char
     return false;
 }
 
+/* A desktop entry's Name in the user's language (Name[ko_KR], Name[ko]),
+ * else Name. */
+static bool ini_localized(const char *text, const char *key, char *out, size_t n)
+{
+    const char *lang = getenv("LC_ALL");
+    if (!lang || !*lang) lang = getenv("LC_MESSAGES");
+    if (!lang || !*lang) lang = getenv("LANG");
+    if (lang && *lang && strcmp(lang, "C") && strcmp(lang, "POSIX")) {
+        char l[64], k[96];
+        snprintf(l, sizeof l, "%s", lang);
+        l[strcspn(l, ".@")] = 0;   /* ko_KR.UTF-8 -> ko_KR */
+        for (int pass = 0; pass < 2; pass++) {
+            if (pass) { char *u = strchr(l, '_'); if (!u) break; *u = 0; }   /* then ko */
+            snprintf(k, sizeof k, "%s[%s]", key, l);
+            if (ini_value(text, "[Desktop Entry]", k, out, n) && *out) return true;
+        }
+    }
+    return ini_value(text, "[Desktop Entry]", key, out, n);
+}
+
 static void read_object_file(wps_loaded *ld)
 {
     bool desk = ends_with(ld->path, ".desktop"), wpobj = ends_with(ld->path, ".wpobj");
     if (!desk && !wpobj) return;
-    char buf[8192];
+    char buf[32768];   /* (entries with many languages) */
     int fd = open(ld->path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) return;
     ssize_t n = read(fd, buf, sizeof buf - 1);
@@ -269,7 +289,7 @@ static void read_object_file(wps_loaded *ld)
         ini_value(buf, "[Desktop Entry]", "Type", type, sizeof type);
         if (strcmp(type, "Application") != 0) return;   /* links and directories stay data files */
         snprintf(ld->obj_class, sizeof ld->obj_class, "WPProgram");
-        ini_value(buf, "[Desktop Entry]", "Name", ld->desk_name, sizeof ld->desk_name);
+        ini_localized(buf, "Name", ld->desk_name, sizeof ld->desk_name);
         ini_value(buf, "[Desktop Entry]", "Exec", ld->desk_exec, sizeof ld->desk_exec);
     } else if (!ini_value(buf, "[WPS Object]", "Class", ld->obj_class, sizeof ld->obj_class)) {
         snprintf(ld->obj_class, sizeof ld->obj_class, "WPAbstract");

@@ -143,6 +143,7 @@ static void central_details(wps_entry *e)
             t = NULL;
             if (!e->icon[0] && tp && wps_props_str(tp, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
+            if (!e->title[0] && tg.desk_name[0]) snprintf(e->title, sizeof e->title, "%s", tg.desk_name);   /* a program: its Name */
             if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
             /* the Trash Can's shadow: empty or full, unless it has its own */
             char own[sizeof e->icon] = "";

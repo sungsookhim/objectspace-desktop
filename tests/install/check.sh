@@ -34,6 +34,7 @@ want='./etc/pam.d/wps-lock
 ./usr/share/wps/icons/drive-sd.png
 ./usr/share/wps/icons/drive-usb-off.png
 ./usr/share/wps/icons/drive-usb.png
+./usr/share/wps/icons/programs.png
 ./usr/share/wps/icons/trash-empty.png
 ./usr/share/wps/icons/trash-full.png'
 want=$(echo "$want" | LC_ALL=C sort)

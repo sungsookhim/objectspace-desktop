@@ -20,6 +20,7 @@
 #include "WPComputer.h"
 #include "WPDrives.h"
 #include "WPDrive.h"
+#include "WPProgramsFolder.h"
 
 char *wps_strdup(const char *s)
 {
@@ -43,7 +44,7 @@ wpo_status wps_classes_register(void)
         WPObject_register, WPFileSystem_register, WPDataFile_register, WPFolder_register,
         WPAbstract_register, WPProgram_register, WPShadow_register,
         WPSetup_register, WPSystem_register, WPSound_register, WPMouse_register, WPSchemePalette_register,
-        WPMinWinViewer_register, WPTrashCan_register, WPComputer_register, WPDrives_register, WPDrive_register,
+        WPMinWinViewer_register, WPTrashCan_register, WPComputer_register, WPDrives_register, WPDrive_register, WPProgramsFolder_register,
     };
     for (size_t i = 0; i < sizeof regs / sizeof regs[0]; i++) {
         wpo_status st = regs[i]();

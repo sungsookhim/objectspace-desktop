@@ -27,6 +27,7 @@
 #include "wallpaper.h"
 #include "events.h"
 #include "winlist.h"
+#include "appicons.h"
 #include "findwin.h"
 #include "mime.h"
 #include "icons.h"
@@ -967,6 +968,13 @@ static size_t src_count(void *ctx)
     return is_tree(f) ? f->ntvis : f->m.total;
 }
 
+/* A program's icon was made (an SVG, by glycin): every window draws again. */
+static void appicons_ready(void)
+{
+    for (struct folder *f = folders; f; f = f->next)
+        if (!f->closing && f->cont) ui_container_changed(f->cont, 0, SIZE_MAX);
+}
+
 static void src_item(void *ctx, size_t i, ui_item *out)
 {
     struct folder *f = ctx;
@@ -1002,6 +1010,14 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->link = r->link;
     out->is_template = r->tpl;
     out->image = icons_get(r->icon);   /* its own icon, if it has one */
+    if (!out->image && r->kind == UI_KIND_PROGRAM) {
+        /* a program (or its shadow): its desktop entry's icon */
+        char p[PATH_MAX];
+        if (r->shadow || r->link) snprintf(p, sizeof p, "%s", r->target ? r->target : "");
+        else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
+        size_t l = strlen(p);
+        if (l > 8 && !strcmp(p + l - 8, ".desktop")) out->image = appicon_for(p);
+    }
     if (r->kind == UI_KIND_FOLDER) {
         /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];
@@ -5068,6 +5084,7 @@ int main(int argc, char **argv)
     }
     findwin_init(app, launchpad_open_folder, shell_drag_paths);
     icons_init(app);
+    appicons_init(appicons_ready);
     iconpick_init(app, launchpad_open_folder);
     if (!app) return 1;
     char err[512];

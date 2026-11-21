@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Draws the drive icons (data/icons/drive-KIND.png and drive-KIND-off.png:
-mounted, a green lamp; not mounted, grey) and the Computer's
-(computer.png), 128 pixels, in the style of make_trash.py.
+mounted, a green lamp; not mounted, grey), the Computer's
+(computer.png) and Programs' (programs.png), 128 pixels, in the style of make_trash.py.
 Run from the tree's top: python3 tools/icons/make_drives.py (needs Pillow)."""
 from PIL import Image, ImageDraw
 
@@ -67,6 +67,15 @@ def computer(d):   # a monitor on a stand
     d.rounded_rectangle(p(34, 102, 94, 112), radius=3 * S, fill=GREY, outline=INK, width=3 * S)
 
 
+def programs(d):   # a folder holding program tiles
+    FOLD, FOLD_D = (240, 200, 90, 255), (200, 160, 60, 255)
+    d.polygon(p(12, 30, 48, 30, 56, 40, 116, 40, 116, 106, 12, 106), fill=FOLD_D, outline=INK, width=3 * S)
+    d.rectangle(p(12, 48, 116, 106), fill=FOLD, outline=INK, width=3 * S)
+    cols = [(220, 80, 70, 255), (70, 150, 220, 255), (90, 180, 90, 255), (150, 100, 200, 255)]
+    for k, (x, y) in enumerate(((34, 58), (66, 58), (34, 82), (66, 82))):
+        d.rounded_rectangle(p(x, y, x + 26, y + 18), radius=3 * S, fill=cols[k], outline=INK, width=2 * S)
+
+
 def save(name, draw):
     im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
     draw(ImageDraw.Draw(im))
@@ -77,3 +86,4 @@ for kind, f in (("disk", disk), ("root", root), ("usb", usb), ("optical", optica
     save(f"drive-{kind}", lambda d, f=f: f(d, True))
     save(f"drive-{kind}-off", lambda d, f=f: f(d, False))
 save("computer", computer)
+save("programs", programs)

@@ -90,6 +90,7 @@
 #include "jobs.h"
 #include "trash.h"
 #include "udisks.h"
+#include "programs.h"
 #include "launch.h"
 #include "listing.h"
 #include "find.h"
@@ -2560,10 +2561,11 @@ static void empty_done(void *arg)
  * deleted shadow) is not redone. Steps:
  *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
  *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5). */
-#define FIRST_START_VERSION 5
+#define FIRST_START_VERSION 6
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
 static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
+static void data_dir(const char *name, char *out, size_t n);
 
 struct first_start {
     struct client *c;
@@ -2576,6 +2578,7 @@ struct first_start {
     char sys[PATH_MAX], autostart[PATH_MAX];
     wps_loaded asld;                /* the autostart folder (titled Startup) */
     char trash[PATH_MAX];           /* the Trash Can: the home trash's files folder */
+    char programs[PATH_MAX];        /* Programs (step 6) */
     wps_loaded tld;
 };
 
@@ -2681,6 +2684,12 @@ static void first_start_work(void *arg)
         wps_set_folder_class(comp, "WPComputer");
         wps_set_folder_class(drv, "WPDrives");
     }
+    if (j->from < 6) {
+        /* step 6 (0.2): Programs, on the desktop */
+        data_dir("Programs", j->programs, sizeof j->programs);
+        wps_mkdirs(j->programs, 0700);
+        if (wps_set_folder_class(j->programs, "WPProgramsFolder") != 0) j->programs[0] = 0;
+    }
 }
 
 static void first_start_done(void *arg)
@@ -2722,6 +2731,12 @@ static void first_start_done(void *arg)
                 if (old) wps_sobj_forget(old);
             }
             drives_changed();
+        }
+        if (j->from < 6 && j->programs[0]) {
+            sobj *old = wps_sobj_by_path(j->programs);
+            if (old) wps_sobj_forget(old);
+            wps_shadow_create(j->programs, j->desk, first_start_shadow_done, NULL);
+            wps_programs_sync();   /* filled now */
         }
         FILE *f = fopen(marker, "w");
         if (f) {
@@ -3401,6 +3416,12 @@ int main(int argc, char **argv)
         wps_listing_folder_icon(comp, "computer.png");
     }
     wps_udisks_init(loop, drives_changed);
+    {
+        char pf[PATH_MAX];
+        data_dir("Programs", pf, sizeof pf);
+        wps_listing_folder_icon(pf, "programs.png");
+        wps_programs_init(loop, pf, env.state_dir);
+    }
     wps_listing_init(loop);
     wps_find_init(loop);
     wps_jobs_init(loop, db, env.identity);
@@ -3431,6 +3452,7 @@ int main(int argc, char **argv)
     wps_plugins_shutdown();
     wps_launch_shutdown();
     wps_tracker_shutdown();
+    wps_programs_shutdown();
     wps_udisks_shutdown();
     wps_listing_shutdown();
     unlink(sock_path);
