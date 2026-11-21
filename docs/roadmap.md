@@ -184,7 +184,7 @@ A bar along the top or bottom of the screen, as OS/2 Warp 4's WarpCenter.
   - Covers the keyboard indicator the input methods lacked.
   - Lives beside the LaunchPad (both are OS/2's).
 - **Doable: yes, in parts; L in all.**
-  - **The bar, start menu, clock, meters, keyboard indicator: M.** Our toolkit; the compositor keeps windows clear of it (a work area), as it already places the LaunchPad.
+  - **The bar, start menu, clock, meters, keyboard indicator: M.** Our toolkit; the compositor keeps windows clear of it (the usable screen area), as it already places the LaunchPad.
   - **Messages: M.** The WPS session has no notification service at all today: programs' notifications go nowhere. WPS becomes it (org.freedesktop.Notifications): pop-ups near the WarpCenter, and the Messages object keeps them.
   - **Tray: M–L.** Programs' status icons are StatusNotifierItem/AppIndicator (D-Bus), with their menus over dbusmenu. Few Fedora programs use it, so it can come last within 0.2, or in 0.3.
 - **Inside GNOME (stage 1):** GNOME has its own top bar, and a program cannot reserve screen space under GNOME. Proposed: the WarpCenter in the WPS session only for 0.2; inside GNOME, GNOME's own bar stands in.
@@ -236,6 +236,16 @@ A to do, after 0.2 (with network file systems below).
   - **First start:** the default desktop objects (1–6) are made for a new user.
 - **?** Where it is published: a COPR repository (`dnf copr enable ...` then `dnf install wps`) or an RPM file to download.
 
+### Open windows restored at login (added 2026-11-21)
+
+- **What:** as OS/2 did, the windows open when the session ends come back at the next login: WPS's own windows - folder windows (view, size, position), Find windows, settings notebooks. A setting turns it off.
+- **Where:** 0.2, plan step 7 (with Startup: both are what happens at login).
+- **Doable: yes, M.**
+  - The desktop records its windows as they change and reopens them at login.
+  - In the WPS session the compositor places them where they were: Wayland does not let programs place their own windows, so one command on the desktop's link.
+  - Inside GNOME they reopen, and GNOME places them.
+- **Not in 0.2:** other programs' windows (Firefox, Text Editor). Wayland has no settled session-management protocol and most programs do not support one; restarting them belongs with Work Area folders.
+
 ### Still deferred for 0.2
 
 - **RDP:** after 0.2.
@@ -264,6 +274,11 @@ A to do, after 0.2 (with network file systems below).
    - Templates' "New" cascade and moving templates.
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
+   - **Work Area folders** (OS/2's; added 2026-11-21). A folder set as a work area treats the programs opened from it as one group, and also restores them at login (programs restarted in their folder). Opening, minimizing and closing the folder do the same to the group's windows.
+     - **Builds on:** wpsd's tracking of which programs were started from which object (the in-use emphasis), the compositor's per-program window control (step 6), and open windows restored at login (0.2).
+     - **New:** linking a program's process to its windows (the compositor), the folder's setting in its notebook, and the group's state kept at logout.
+     - **Inside GNOME:** through the extension.
+     - **Size: M–L.**
 3. **0.4 Look of other programs:** the theming pieces above, and frames for GTK 4 programs.
 4. **0.5 Platform:**
    - RDP; more than one monitor; sharp X11 when scaled.
