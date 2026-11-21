@@ -1460,12 +1460,16 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_OPEN: open_item(f, m->item, UI_VIEW_ICON); break;
         case WPS_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
         case WPS_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
-        case WPS_MI_PROPERTIES:
+        case WPS_MI_PROPERTIES: {
+            /* a shadow's are its original's (OS/2): renaming there renames it */
+            struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
+            if (rw && rw->shadow && rw->target && *rw->target) snprintf(t, sizeof t, "%s", rw->target);
             if (!open_properties(t)) {
                 snprintf(f->error, sizeof f->error, "Its settings notebook is already open");
                 damage_status(f);
             }
             break;
+        }
         case WPS_MI_OPEN_WITH:
             snprintf(f->error, sizeof f->error, "Open With comes in G2");
             damage_status(f);
@@ -1560,6 +1564,14 @@ static void src_rename(void *ctx, size_t i, const char *name)
     char t[PATH_MAX];
     target_of(f, i, t, sizeof t);
     const char *old = row_name(f, i);
+    /* A shadow has no name of its own (OS/2): renaming it renames the
+     * original, and the shadow shows the new name with it. */
+    struct row *rw = is_tree(f) ? NULL : row_at(f, i);
+    if (rw && rw->shadow && rw->target && *rw->target) {
+        if (rw->title && !strcmp(rw->title, name)) return;
+        svc_rename(rw->target, name, renamed, as_arg(f));
+        return;
+    }
     if (old && !strcmp(old, name)) return;
     svc_rename(t, name, renamed, as_arg(f));
 }
