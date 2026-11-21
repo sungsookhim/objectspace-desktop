@@ -4467,7 +4467,6 @@ static char scheme_name[32] = "classic";
 static void apply_scheme(void);
 
 static void got_setup(void *arg, const cv *reply);
-static void desktop_setup_shadow(const char *folder);
 static void user_dir(const char *key, const char *fallback, char *out, size_t n);
 static void launchpad_open_folder(const char *path);
 static void got_setup_sub(void *arg, const cv *reply)
@@ -4530,7 +4529,6 @@ static void got_setup(void *arg, const cv *reply)
     for (struct folder *f = folders; f; f = f->next) if (!f->closing) ui_surface_damage_all(f->win);
     if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
     const char *folder = cv_text(res, "folder");
-    if (folder) desktop_setup_shadow(folder);
     /* The desktop's LaunchPad (G4), once System Setup is known (its first
      * buttons include it). WPS_NO_LAUNCHPAD: none (tests). */
     bool desktop = false;
@@ -4641,47 +4639,9 @@ static void user_dir(const char *key, const char *fallback, char *out, size_t n)
 /* The desktop folder: XDG_DESKTOP_DIR, else ~/Desktop. */
 static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", out, n); }
 
-/* The desktop's first start: a shadow of the Templates folder on it, as
- * OS/2's desktop had (once: deleting it is the user's choice). */
-static void desktop_first_start(const char *desk)
-{
-    char cfgdir[PATH_MAX], marker[PATH_MAX + 32], tdir[PATH_MAX];
-    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
-    if (cfg && *cfg) snprintf(cfgdir, sizeof cfgdir, "%s", cfg);
-    else if (xdg && *xdg) snprintf(cfgdir, sizeof cfgdir, "%s/wps", xdg);
-    else snprintf(cfgdir, sizeof cfgdir, "%s/.config/wps", home ? home : "");
-    snprintf(marker, sizeof marker, "%s/desktop-made", cfgdir);
-    if (access(marker, F_OK) == 0) return;
-    const char *t = getenv("WPS_TEMPLATES_DIR");
-    if (t && *t) { snprintf(tdir, sizeof tdir, "%s", t); mkdir(tdir, 0755); }
-    else user_dir("TEMPLATES", "Templates", tdir, sizeof tdir);
-    svc_shadow(tdir, desk, ignore_reply, NULL);
-    char p[PATH_MAX];
-    snprintf(p, sizeof p, "%s", cfgdir);
-    for (char *q = p + 1; *q; q++) if (*q == '/') { *q = 0; mkdir(p, 0700); *q = '/'; }
-    mkdir(p, 0700);
-    FILE *m = fopen(marker, "w");
-    if (m) { fputs("The desktop was set up (a shadow of the Templates folder).\n", m); fclose(m); }
-}
-
-/* The System Setup folder on the desktop, once (as OS/2's desktop had it). */
-static void desktop_setup_shadow(const char *folder)
-{
-    struct folder *desk = NULL;
-    for (struct folder *o = folders; o && !desk; o = o->next) if (o->desktop && !o->closing) desk = o;
-    if (!desk) return;
-    char cfgdir[PATH_MAX], marker[PATH_MAX + 32];
-    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
-    if (cfg && *cfg) snprintf(cfgdir, sizeof cfgdir, "%s", cfg);
-    else if (xdg && *xdg) snprintf(cfgdir, sizeof cfgdir, "%s/wps", xdg);
-    else snprintf(cfgdir, sizeof cfgdir, "%s/.config/wps", home ? home : "");
-    snprintf(marker, sizeof marker, "%s/desktop-setup-made", cfgdir);
-    if (access(marker, F_OK) == 0) return;
-    svc_shadow(folder, desk->path, ignore_reply, NULL);
-    mkdir(cfgdir, 0700);
-    FILE *m = fopen(marker, "w");
-    if (m) { fputs("The desktop has a shadow of System Setup.\n", m); fclose(m); }
-}
+/* The desktop's first start (the Templates and System folders' shadows,
+ * and 0.2's objects): wpsd does it, once each step, versioned. */
+static void desktop_first_start(const char *desk) { svc_first_start(desk, ignore_reply, NULL); }
 
 static struct folder *open_desktop(const char *path)
 {

@@ -3,6 +3,8 @@
  *
  * Serves clients on $WPS_RUNTIME_DIR/wps.sock (or $WPS_SOCKET): each message
  * is a 4-byte big-endian length and a CBOR map. Requests:
+ *   {op:"first_start", desktop}         the desktop's first-start steps not done yet (versioned); the
+ *                                       version it was at
  *   {op:"ping"}                         "pong", with version (WPS_VERSION) and protocol (a number)
  *   {op:"resolve", target:PATH|"id:ID"}
  *   {op:"call", target, method, args:[...], expect:N}  objects as {obj:PATH|"id:ID"}
@@ -2137,6 +2139,80 @@ static void builtin_templates_work(void *arg)
     wps_loaded_free(&fl);
 }
 
+/* ---- the desktop's first start (v0.2-design 2): what a new desktop gets,
+ * in versioned steps, each done once for the user (<config>/desktop-made:
+ * "version N"; 0.1 wrote it without a version: 1). The desktop asks each
+ * time it opens ({op:"first_start", desktop}); a step the user undid (a
+ * deleted shadow) is not redone. Steps:
+ *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
+ *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5). */
+#define FIRST_START_VERSION 2
+static void setup_dir(char *out, size_t n);
+
+struct first_start { struct client *c; int64_t id; char desk[PATH_MAX]; int from; };
+
+static int first_start_done_version(char *marker, size_t n)
+{
+    snprintf(marker, n, "%s/desktop-made", env.config_dir);
+    FILE *f = fopen(marker, "r");
+    if (!f) return 0;
+    char line[128];
+    int v = 1;   /* 0.1's marker: no version */
+    while (fgets(line, sizeof line, f)) if (!strncmp(line, "version ", 8)) v = atoi(line + 8);
+    fclose(f);
+    return v;
+}
+
+static void first_start_shadow_done(void *arg, const char *link, const char *error)
+{
+    (void)arg;
+    if (!link && error) log_msg("first start: a shadow was not made: %s", error);
+}
+
+static void first_start_work(void *arg)
+{
+    struct first_start *j = arg;
+    char marker[PATH_MAX + 32];
+    j->from = first_start_done_version(marker, sizeof marker);
+    if (j->from >= FIRST_START_VERSION) return;
+    wps_mkdirs(env.config_dir, 0700);
+    char sd[PATH_MAX];
+    setup_dir(sd, sizeof sd);
+    wps_mkdirs(sd, 0700);
+    const char *td = wps_templates_dir();
+    if (td[0]) mkdir(td, 0755);
+}
+
+static void first_start_done(void *arg)
+{
+    struct first_start *j = arg;
+    if (j->from < FIRST_START_VERSION && j->desk[0]) {
+        char marker[PATH_MAX + 32], legacy[PATH_MAX + 32];
+        snprintf(marker, sizeof marker, "%s/desktop-made", env.config_dir);
+        snprintf(legacy, sizeof legacy, "%s/desktop-setup-made", env.config_dir);
+        if (j->from < 1) {   /* step 1: a new desktop (0.1's) */
+            const char *td = wps_templates_dir();
+            if (td[0]) wps_shadow_create(td, j->desk, first_start_shadow_done, NULL);
+        }
+        if (j->from < 1 || access(legacy, F_OK) != 0) {   /* (0.1 made this one later, with its own marker) */
+            char sd[PATH_MAX];
+            setup_dir(sd, sizeof sd);
+            wps_shadow_create(sd, j->desk, first_start_shadow_done, NULL);
+        }
+        /* step 2 (0.2's) comes with v0.2 steps 2-5 */
+        FILE *f = fopen(marker, "w");
+        if (f) {
+            fprintf(f, "version %d\n# The desktop's first-start steps done (wpsd); 0.1 wrote no version.\n", FIRST_START_VERSION);
+            fclose(f);
+        }
+        unlink(legacy);
+        log_msg("first start: the desktop %s brought from step %d to %d", j->desk, j->from, FIRST_START_VERSION);
+    }
+    if (!j->c->dead) reply_int(j->c, j->id, j->from);
+    client_unref(j->c);
+    free(j);
+}
+
 /* ---- settings objects (System, Sound, Mouse, Scheme Palette): one of each
  * per user, central objects in the System Setup folder
  * ($XDG_DATA_HOME/wps/System Setup; WPS_SETUP_DIR for tests), made once and
@@ -2447,6 +2523,13 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
+    } else if (strcmp(op, "first_start") == 0) {
+        const char *d = cv_text(msg, "desktop");
+        struct first_start *j = calloc(1, sizeof *j);
+        j->c = c; c->refs++;
+        j->id = id;
+        if (d && d[0] == '/') snprintf(j->desk, sizeof j->desk, "%s", d);
+        wpo_defer(loop, "first start", first_start_work, first_start_done, j);
     } else if (strcmp(op, "setup") == 0) {
         struct setup_req *r = calloc(1, sizeof *r);
         r->c = c; c->refs++;

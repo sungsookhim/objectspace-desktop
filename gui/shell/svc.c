@@ -299,6 +299,14 @@ void svc_subscribe_objects(const char *const *targets, size_t n, svc_fn fn, void
     send_req(o, id, fn, arg);
 }
 
+void svc_first_start(const char *desktop, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("first_start", 1, &id);
+    cb_text(&o->b, "desktop"); cb_text(&o->b, desktop);
+    send_req(o, id, fn, arg);
+}
+
 void svc_setup(svc_fn fn, void *arg)
 {
     int64_t id;
