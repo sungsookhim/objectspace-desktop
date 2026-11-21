@@ -76,7 +76,8 @@ mkdir -p "$UNITS"
 printf '%s\n' '[Unit]' 'Description=The WPS session (wps-linux)' \
     "BindsTo=$WATCH" "After=$WATCH" \
     'BindsTo=graphical-session.target' 'Before=graphical-session.target' \
-    'Wants=graphical-session-pre.target' 'After=graphical-session-pre.target' > "$UNITS/wps-session.target"
+    'Wants=graphical-session-pre.target' 'After=graphical-session-pre.target' \
+    'Wants=xdg-desktop-autostart.target' > "$UNITS/wps-session.target"
 systemctl --user daemon-reload 2>/dev/null
 # (one left from a session that ended badly: away before this one starts)
 systemctl --user stop wps-session.target 2>/dev/null

@@ -58,6 +58,10 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_control_v1.h>
+#include <wlr/types/wlr_ext_data_control_v1.h>
+#include <wlr/types/wlr_primary_selection.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
@@ -998,6 +1002,15 @@ static void on_request_set_selection(struct wl_listener *l, void *data)
     (void)l;
     struct wlr_seat_request_set_selection_event *e = data;
     wlr_seat_set_selection(server.seat, e->source, e->serial);
+}
+
+/* The primary selection: what is selected, pasted with the middle button
+ * (terminals, X11 programs). */
+static void on_request_set_primary(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_seat_request_set_primary_selection_event *e = data;
+    wlr_seat_set_primary_selection(server.seat, e->source, e->serial);
 }
 
 /* -------------------------------------------------------------- outputs */
@@ -2079,6 +2092,12 @@ int main(int argc, char **argv)
     s->compositor = wlr_compositor_create(s->display, 5, s->renderer);
     wlr_subcompositor_create(s->display);
     wlr_data_device_manager_create(s->display);
+    wlr_primary_selection_v1_device_manager_create(s->display);
+    /* Clipboard managers and helpers reading and setting the clipboard
+     * without a window (VirtualBox's shared clipboard, wl-clipboard,
+     * clipboard histories): both the wlroots and the ext protocol. */
+    wlr_data_control_manager_v1_create(s->display);
+    wlr_ext_data_control_manager_v1_create(s->display, 1);
 
     s->output_layout = wlr_output_layout_create(s->display);
     wl_list_init(&s->outputs);
@@ -2123,6 +2142,7 @@ int main(int argc, char **argv)
     s->seat = wlr_seat_create(s->display, "seat0");
     ON(s->seat->events.request_set_cursor, request_cursor, on_request_cursor);
     ON(s->seat->events.request_set_selection, request_set_selection, on_request_set_selection);
+    ON(s->seat->events.request_set_primary_selection, request_set_primary, on_request_set_primary);
     ON(s->seat->events.request_start_drag, request_start_drag, on_request_start_drag);
     ON(s->seat->events.start_drag, start_drag, on_start_drag);
 #undef ON
@@ -2197,7 +2217,7 @@ int main(int argc, char **argv)
     }
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
-                                 &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection,
+                                 &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection, &s->request_set_primary,
                                  &s->request_start_drag, &s->start_drag,
                                  &s->new_output, &s->new_toplevel, &s->new_popup, &s->new_decoration, &s->request_activate };
     for (size_t i = 0; i < sizeof ls / sizeof *ls; i++) wl_list_remove(&ls[i]->link);
