@@ -80,5 +80,7 @@ uint64_t wps_listing_version(const char *folder);
 long wps_listing_last_index(const char *folder);
 
 size_t wps_listing_count(void);
+/* Whether a folder's listing (as read) has this entry (e.g. "\x01vobj:ID"). */
+bool wps_listing_has(const char *folder, const char *name);
 
 #endif

@@ -800,7 +800,10 @@ static const ui_surface_ops lp_ops = { .draw = lp_draw, .pointer = lp_pointer, .
 
 void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char *templates, const char *setup)
 {
-    if (lp.s) { ui_window_activate(lp.s); return; }
+    /* once: the settings objects are read again whenever one changes (a
+     * rename in System Setup), and bringing it forward each time took the
+     * keyboard from the window being typed in */
+    if (lp.s) return;
     lp.app = a;
     lp.open_folder = open_folder;
     const char *d = getenv("WPS_LAUNCHPAD_DIR"), *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");

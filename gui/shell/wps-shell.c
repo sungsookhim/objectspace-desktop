@@ -665,6 +665,14 @@ static void on_event(void *arg, const cv *ev)
             const cv *o = cv_get(ev, "object");
             const char *p = o ? cv_text(o, "path") : NULL, *sl = p ? strrchr(p, '/') : NULL;
             ssize_t i = sl && !is_tree(f) && f->m.complete ? model_find(&f->m, sl + 1) : -1;
+            /* a central object (System Setup's): its row by its address */
+            const char *addr = o ? cv_text(o, "address") : NULL;
+            if (!p && addr && !strncmp(addr, "vobj:", 5) && !is_tree(f) && f->m.complete) {
+                char nm[128];
+                snprintf(nm, sizeof nm, "\x01%s", addr);
+                i = model_find(&f->m, nm);
+                if (i < 0) continue;   /* not in this window */
+            }
             if (i >= 0) {
                 row_stale(&f->m, (size_t)i);
                 fetch_visible(f, f->vis_first, f->vis_last);

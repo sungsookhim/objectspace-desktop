@@ -794,6 +794,13 @@ static void on_object_changed(wpo_object *o)
         for (size_t i = 0; i < x->ntargets && !hit; i++)
             hit = (id[0] && !strcmp(x->targets[i], id)) || (path && !strcmp(x->targets[i], path));
         for (size_t i = 0; i < x->nfolders && !hit && path; i++) hit = in_folder(path, x->folders[i]);
+        /* a central object (no file): the folders listing it, e.g. System
+         * Setup's objects renamed - their windows showed the old title */
+        if (!hit && rec && rec->central && id[0]) {
+            char nm[WPS_ID_LEN + 16];
+            snprintf(nm, sizeof nm, "\x01vobj:%s", id);
+            for (size_t i = 0; i < x->nfolders && !hit; i++) hit = wps_listing_has(x->folders[i], nm);
+        }
         if (!hit || x->c->dead) continue;
         cbuf b;
         event_head(&b, "object_changed", x->id, 1);

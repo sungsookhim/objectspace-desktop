@@ -54,6 +54,14 @@ static struct listing *find(const char *path)
     return NULL;
 }
 
+bool wps_listing_has(const char *folder, const char *name)
+{
+    struct listing *l = find(folder);
+    for (size_t i = 0; l && i < l->n; i++)
+        if (!strcmp(l->names[i], name)) return true;
+    return false;
+}
+
 static void clear(struct listing *l)
 {
     for (size_t i = 0; i < l->n; i++) free(l->names[i]);
