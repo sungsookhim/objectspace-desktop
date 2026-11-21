@@ -726,12 +726,14 @@ static void k_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surfac
     (void)k; (void)s; (void)keys;
     ui_app *a = d;
     a->key_focus = w ? wl_surface_get_user_data(w) : NULL;
+    if (a->key_focus && a->key_focus == a->ti_surface && a->ti_entry) ui_ibus_focus(a, true);
 }
 static void k_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w)
 {
     (void)k; (void)s; (void)w;
     ui_app *a = d;
     a->key_focus = NULL;
+    ui_ibus_focus(a, false);
     a->repeat_key = 0;
     struct itimerspec off = { 0 };
     timerfd_settime(a->repeat_fd, 0, &off, NULL);
@@ -742,6 +744,15 @@ static void k_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t, u
     ui_app *a = d;
     a->last_serial = serial;
     struct itimerspec its = { 0 };
+    /* an entry being typed in: IBus first (Hangul, ...), where the session uses it */
+    uint32_t sym = a->kstate ? xkb_state_key_get_one_sym(a->kstate, key + 8) : 0;
+    bool to_ibus = !ui_menu_key_surface();
+    if (state != WL_KEYBOARD_KEY_STATE_PRESSED && to_ibus) ui_ibus_key(a, key, sym, false);
+    if (state == WL_KEYBOARD_KEY_STATE_PRESSED && to_ibus && ui_ibus_key(a, key, sym, true)) {
+        a->repeat_key = 0;
+        timerfd_settime(a->repeat_fd, 0, &its, NULL);
+        return;
+    }
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         send_key(a, key, false);
         if (a->keymap && xkb_keymap_key_repeats(a->keymap, key + 8) && a->repeat_rate > 0) {

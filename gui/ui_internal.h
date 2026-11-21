@@ -151,6 +151,9 @@ void ui_textinput_bind(ui_app *a, struct wl_registry *r, uint32_t name, uint32_t
 void ui_textinput_seat(ui_app *a);
 void ui_textinput_surface_gone(ui_surface *s);
 void ui_textinput_key(ui_app *a, ui_surface *s, const char *utf8);   /* deliver text as keys */
+/* ui_ibus.c: IBus directly, where the session asks for it (GTK_IM_MODULE=ibus) */
+void ui_ibus_focus(ui_app *a, bool in);
+bool ui_ibus_key(ui_app *a, uint32_t key, uint32_t sym, bool pressed);   /* true: IBus took it */
 
 /* ui_a11y.c */
 void ui_a11y_init(ui_app *a);

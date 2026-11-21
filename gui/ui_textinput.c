@@ -98,6 +98,7 @@ void ui_text_input_focus(ui_surface *s, ui_entry *e, ui_rect r)
     a->ti_surface = e ? s : NULL;
     a->ti_rect = r;
     update(a);
+    ui_ibus_focus(a, e && s && s == a->key_focus);   /* (where the session uses IBus) */
 }
 
 void ui_textinput_surface_gone(ui_surface *s)
