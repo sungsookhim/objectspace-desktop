@@ -144,6 +144,16 @@ void layout_clear_placed(icon_layout *l) { map_free(&l->placed); }
 
 bool layout_is_placed(icon_layout *l, const char *name) { return map_slot(&l->placed, name, false) != NULL; }
 
+/* Renamed: the icon keeps its place (its grid spot or position) under its
+ * new name, as on OS/2, instead of going to the next free spot. */
+void layout_rename(icon_layout *l, const char *from, const char *to)
+{
+    int64_t *pv = map_slot(&l->placed, from, false);
+    if (pv) { int64_t v = *pv; *map_slot(&l->placed, to, true) = v; }
+    int64_t *sv = map_slot(&l->slots, from, false);
+    if (sv && *sv >= 0) { int64_t v = *sv; *map_slot(&l->slots, to, true) = v; }
+}
+
 static void grow_items(icon_layout *l, size_t n)
 {
     if (n <= l->cap) return;

@@ -1672,6 +1672,21 @@ static void src_rename(void *ctx, size_t i, const char *name)
         return;
     }
     if (old && !strcmp(old, name)) return;
+    /* Shown at once (the service's answer and the change's event follow
+     * in a moment; a refused rename reads the folder again, which puts
+     * the old title back). */
+    if (rw) {
+        free(rw->title);
+        rw->title = strdup(name);
+        ui_container_changed(f->cont, i, i);
+    }
+    /* its place goes with it (the file's new name; a line break is a space there) */
+    if (old) {
+        char fsname[NAME_MAX + 1];
+        snprintf(fsname, sizeof fsname, "%s", name);
+        for (char *q = fsname; *q; q++) if (*q == '\n' || *q == '\r') *q = ' ';
+        layout_rename(f->lay, old, fsname);
+    }
     svc_rename(t, name, renamed, as_arg(f));
 }
 
