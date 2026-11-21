@@ -28,6 +28,10 @@
 #define WPS_MI_SORT_SIZE      57
 #define WPS_MI_SORT_DATE      58
 #define WPS_MI_CLOSE          59    /* not the desktop's */
+/* The Trash Can (v0.2): carried out by the GUI (it asks first). */
+#define WPS_MI_EMPTY_TRASH    60
+#define WPS_MI_RESTORE        61    /* an item in the trash: back where it was */
+#define WPS_MI_DELETE_FOREVER 62
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

@@ -65,6 +65,9 @@ void svc_subscribe_objects(const char *const *targets, size_t n, svc_fn fn, void
 /* The settings objects' values: {folder, objects:{<class>:{address, settings}}}. */
 /* The desktop's first-start steps (wpsd: once each, versioned). */
 void svc_first_start(const char *desktop, svc_fn fn, void *arg);
+/* The Trash Can: an item back where it was; the home trash emptied (a job). */
+void svc_restore(const char *target, svc_fn fn, void *arg);
+void svc_empty_trash(svc_fn fn, void *arg);
 void svc_setup(svc_fn fn, void *arg);
 void svc_unsubscribe(int64_t sub);
 

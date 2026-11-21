@@ -307,6 +307,21 @@ void svc_first_start(const char *desktop, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+void svc_restore(const char *target, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("restore", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    send_req(o, id, fn, arg);
+}
+
+void svc_empty_trash(svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("empty_trash", 0, &id);
+    send_req(o, id, fn, arg);
+}
+
 void svc_setup(svc_fn fn, void *arg)
 {
     int64_t id;

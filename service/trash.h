@@ -24,4 +24,14 @@ int wps_trash(const char *path, char *out, size_t n);
  * for good: remove its info file. */
 void wps_trash_forget_info(const char *path);
 
+/* 0.2, the Trash Can: the home trash ($XDG_DATA_HOME/Trash); whether a
+ * folder is a trash's files folder; an item's original path and deletion
+ * date (from its info file); putting it back where it was (made again if
+ * gone, "name (2)" if taken). 0, or a negative errno value. */
+#include <stdbool.h>
+void wps_trash_home(char *out, size_t n);
+bool wps_is_trash_files_dir(const char *folder);
+int wps_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn);
+int wps_trash_restore(const char *item, char *out, size_t n);
+
 #endif

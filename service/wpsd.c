@@ -5,6 +5,8 @@
  * is a 4-byte big-endian length and a CBOR map. Requests:
  *   {op:"first_start", desktop}         the desktop's first-start steps not done yet (versioned); the
  *                                       version it was at
+ *   {op:"restore", target}              an item in a trash: back where it was; its new path
+ *   {op:"empty_trash"}                  the home trash emptied (a delete job); the job's ID
  *   {op:"ping"}                         "pong", with version (WPS_VERSION) and protocol (a number)
  *   {op:"resolve", target:PATH|"id:ID"}
  *   {op:"call", target, method, args:[...], expect:N}  objects as {obj:PATH|"id:ID"}
@@ -81,6 +83,7 @@
 #include "env.h"
 #include "objects.h"
 #include "jobs.h"
+#include "trash.h"
 #include "launch.h"
 #include "listing.h"
 #include "find.h"
@@ -2160,6 +2163,35 @@ static void builtin_templates_work(void *arg)
     wps_loaded_free(&fl);
 }
 
+/* ---- the Trash Can: putting an item back (v0.2-design 4) */
+struct restore_job { struct client *c; int64_t id; char path[PATH_MAX], out[PATH_MAX]; int err; };
+
+static void restore_work(void *arg)
+{
+    struct restore_job *j = arg;
+    j->err = j->path[0] == '/' ? -wps_trash_restore(j->path, j->out, sizeof j->out) : EINVAL;
+}
+
+static void restore_done(void *arg)
+{
+    struct restore_job *j = arg;
+    if (!j->c->dead) {
+        if (j->err) reply_error(j->c, j->id, "failed", strerror(j->err));
+        else {
+            cbuf b;
+            cb_init(&b);
+            cb_map(&b, 3);
+            cb_text(&b, "id"); cb_int(&b, j->id);
+            cb_text(&b, "ok"); cb_bool(&b, true);
+            cb_text(&b, "result"); cb_text(&b, j->out);
+            send_frame(j->c, &b);
+            cb_free(&b);
+        }
+    }
+    client_unref(j->c);
+    free(j);
+}
+
 /* ---- the desktop's first start (v0.2-design 2): what a new desktop gets,
  * in versioned steps, each done once for the user (<config>/desktop-made:
  * "version N"; 0.1 wrote it without a version: 1). The desktop asks each
@@ -2167,7 +2199,7 @@ static void builtin_templates_work(void *arg)
  * deleted shadow) is not redone. Steps:
  *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
  *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5). */
-#define FIRST_START_VERSION 3
+#define FIRST_START_VERSION 4
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
 
@@ -2181,6 +2213,8 @@ struct first_start {
     char viewer[WPS_ID_LEN + 1];    /* the Minimized Window Viewer, made */
     char sys[PATH_MAX], autostart[PATH_MAX];
     wps_loaded asld;                /* the autostart folder (titled Startup) */
+    char trash[PATH_MAX];           /* the Trash Can: the home trash's files folder */
+    wps_loaded tld;
 };
 
 static int first_start_done_version(char *marker, size_t n)
@@ -2253,6 +2287,18 @@ static void first_start_work(void *arg)
         wps_loaded_free(&sy);
         wps_load(j->autostart, true, &j->asld);
     }
+    if (j->from < 4) {
+        /* step 4 (0.2): the Trash Can - the home trash's files folder, of
+         * class WPTrashCan - on the desktop */
+        char home[PATH_MAX], info[PATH_MAX + 8];
+        wps_trash_home(home, sizeof home);
+        snprintf(j->trash, sizeof j->trash, "%s/files", home);
+        snprintf(info, sizeof info, "%s/info", home);
+        wps_mkdirs(j->trash, 0700);
+        wps_mkdirs(info, 0700);
+        if (wps_set_folder_class(j->trash, "WPTrashCan") == 0) wps_load(j->trash, true, &j->tld);
+        else j->trash[0] = 0;
+    }
 }
 
 static void first_start_done(void *arg)
@@ -2279,6 +2325,13 @@ static void first_start_done(void *arg)
             if (as && wpo_is_a(as, WPObjectClass) && !WPObject_data(as)->title) WPObject_wpSetTitle(as, "Startup");
             wps_shadow_create(j->autostart, j->sys, first_start_shadow_done, NULL);
         }
+        if (j->from < 4 && j->trash[0]) {
+            sobj *old = wps_sobj_by_path(j->trash);   /* (loaded as a plain folder before) */
+            if (old) wps_sobj_forget(old);
+            wpo_object *tc = j->tld.err ? NULL : wps_object_from_loaded(&j->tld);
+            if (tc && wpo_is_a(tc, WPObjectClass) && !WPObject_data(tc)->title) WPObject_wpSetTitle(tc, "Trash Can");
+            wps_shadow_create(j->trash, j->desk, first_start_shadow_done, NULL);
+        }
         FILE *f = fopen(marker, "w");
         if (f) {
             fprintf(f, "version %d\n# The desktop's first-start steps done (wpsd); 0.1 wrote no version.\n", FIRST_START_VERSION);
@@ -2288,6 +2341,7 @@ static void first_start_done(void *arg)
         log_msg("first start: the desktop %s brought from step %d to %d", j->desk, j->from, FIRST_START_VERSION);
     }
     wps_loaded_free(&j->asld);
+    wps_loaded_free(&j->tld);
     if (!j->c->dead) reply_int(j->c, j->id, j->from);
     client_unref(j->c);
     free(j);
@@ -2646,6 +2700,21 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
+    } else if (strcmp(op, "restore") == 0) {
+        const char *t = cv_text(msg, "target");
+        struct restore_job *j = calloc(1, sizeof *j);
+        j->c = c; c->refs++;
+        j->id = id;
+        snprintf(j->path, sizeof j->path, "%s", t ? t : "");
+        wpo_defer(loop, "restore", restore_work, restore_done, j);
+    } else if (strcmp(op, "empty_trash") == 0) {
+        char tf[PATH_MAX], errm[256] = "";
+        wps_trash_home(tf, sizeof tf);
+        strncat(tf, "/files", sizeof tf - strlen(tf) - 1);
+        int64_t sel = access(tf, F_OK) == 0 ? wps_select(tf, true, NULL, 0) : -1;
+        int64_t job = sel < 0 ? -1 : wps_job_start("delete", sel, NULL, errm, sizeof errm);
+        if (job < 0) reply_error(c, id, "failed", errm[0] ? errm : "the trash cannot be read");
+        else reply_int(c, id, job);
     } else if (strcmp(op, "first_start") == 0) {
         const char *d = cv_text(msg, "desktop");
         struct first_start *j = calloc(1, sizeof *j);

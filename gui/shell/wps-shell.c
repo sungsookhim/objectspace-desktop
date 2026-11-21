@@ -210,6 +210,13 @@ static void placed_reply(void *arg, const cv *reply);
 static void spots_later(void);
 static void new_spot(void *ctx, const char *name);
 static void sort_icons(struct folder *f, int key);
+static void set_status(long folder, const char *msg);
+static void empty_trash_ask(struct folder *f);
+static ui_dialog *last_dialog;   /* (declared again below, with the jobs) */
+static void restore_items(struct folder *f, size_t i);
+static bool is_trash_dir(const char *p);
+struct del;
+static void trash_dropped(struct folder *f, const char *mime, const char *data);
 static void win_close(ui_surface *s);
 
 /* WPS_DEBUG_TIMING: when the desktop's start-up steps happen. */
@@ -1640,6 +1647,9 @@ static void menu_chosen(void *arg, int64_t id)
             break;
         }
         case WPS_MI_DELETE: delete_request(f, m->item, false); break;
+        case WPS_MI_EMPTY_TRASH: empty_trash_ask(f); break;
+        case WPS_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
+        case WPS_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
         case WPS_MI_WINDOW_LIST: winlist_open(false); break;
         case WPS_MI_MINIMIZED: winlist_open(true); break;
@@ -1647,6 +1657,65 @@ static void menu_chosen(void *arg, int64_t id)
         }
     }
     free(m);
+}
+
+/* A trash's files folder (the Trash Can): .../files beside .../info. */
+static bool is_trash_dir(const char *p)
+{
+    size_t l = p ? strlen(p) : 0;
+    if (l < 7 || strcmp(p + l - 6, "/files")) return false;
+    char info[PATH_MAX];
+    snprintf(info, sizeof info, "%.*s/info", (int)(l - 6), p);
+    struct stat st;
+    return stat(info, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static void emptied(void *arg, const cv *reply)
+{
+    long folder = (long)(intptr_t)arg;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (!(ok && ok->k == CV_BOOL && ok->b)) {
+        char m[300];
+        snprintf(m, sizeof m, "Cannot empty the trash: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        set_status(folder, m);
+    } else set_status(folder, "Emptying the trash...");
+}
+
+static void empty_confirmed(void *arg, int choice)
+{
+    last_dialog = NULL;
+    if (choice == 0) svc_empty_trash(emptied, arg);
+}
+
+static void empty_trash_ask(struct folder *f)
+{
+    const char *buttons[] = { "Empty", "Cancel" };
+    last_dialog = ask("Empty trash", "Delete everything in the trash for good?\nThis cannot be undone.", buttons, 2, 1,
+                      empty_confirmed, (void *)(intptr_t)f->id);
+}
+
+static void restored(void *arg, const cv *reply)
+{
+    long folder = (long)(intptr_t)arg;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    char m[PATH_MAX + 64];
+    if (ok && ok->k == CV_BOOL && ok->b) snprintf(m, sizeof m, "Restored to %s", cv_text(reply, "result") ? cv_text(reply, "result") : "its folder");
+    else snprintf(m, sizeof m, "Cannot restore: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+    set_status(folder, m);
+}
+
+/* Restore item i (the selection if i is in it): each back where it was. */
+static void restore_items(struct folder *f, size_t i)
+{
+    bool whole = ui_container_is_selected(f->cont, i);
+    for (size_t k = whole ? 0 : i; whole ? k < f->m.total : k == i; k++) {
+        if (whole && !ui_container_is_selected(f->cont, k)) continue;
+        const char *nm = model_name(&f->m, k);
+        if (!nm || nm[0] == '\x01') continue;
+        char p[PATH_MAX];
+        snprintf(p, sizeof p, "%s/%s", f->path, nm);
+        svc_restore(p, restored, (void *)(intptr_t)f->id);
+    }
 }
 
 static void got_menu(void *arg, const cv *reply)
@@ -1658,6 +1727,28 @@ static void got_menu(void *arg, const cv *reply)
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
+    if (m->item != SIZE_MAX && is_trash_dir(f->path) && !is_tree(f)) {
+        /* in the Trash Can: put back, or delete for good (not into the
+         * trash again, nor Create another) */
+        size_t w = 0;
+        for (size_t k = 0; k < n; k++) {
+            if (items[k].id == WPS_MI_DELETE || items[k].id == WPS_MI_CREATE_ANOTHER) continue;
+            items[w++] = items[k];
+        }
+        n = w;
+        items = realloc(items, (n + 3) * sizeof *items);
+        items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_RESTORE, "Restore", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_DELETE_FOREVER, "Delete permanently...", true, false, NULL, 0 };
+    }
+    if (m->item != SIZE_MAX && !is_tree(f)) {
+        /* a shadow of the Trash Can (the desktop's): Empty trash too */
+        struct row *rw = row_at(f, m->item);
+        if (rw && rw->shadow && rw->target && is_trash_dir(rw->target)) {
+            items = realloc(items, (n + 1) * sizeof *items);
+            items[n++] = (ui_menu_item){ WPS_MI_EMPTY_TRASH, "Empty trash", true, false, NULL, 0 };
+        }
+    }
     if (m->item == SIZE_MAX) {
         /* Every folder's (the desktop's too), as OS/2's: Open parent after
          * Open, then Find, Sort; Close for a window (the desktop stays). */
@@ -2025,6 +2116,12 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
         return src_actions & UI_DND_COPY ? UI_DND_COPY : 0;
     }
     drop_dest(f, x, y, dest, sizeof dest, &item);
+    if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest))) {
+        /* onto the Trash Can: into the trash (a copy for the source: it
+         * removes nothing itself) */
+        ui_container_set_drop_target(f->cont, item);
+        return src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
+    }
     /* As in OS/2, from the keys held (the Mouse object's mappings; by
      * default none moves, Ctrl copies, Ctrl+Shift makes a shadow, Alt
      * asks). GNOME's own choice is not used: for a button 2 drag it says
@@ -2284,6 +2381,10 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
         return UI_DND_COPY;
     }
     drop_dest(f, x, y, dest, sizeof dest, &item);
+    if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest))) {
+        trash_dropped(f, mime, data);
+        return UI_DND_COPY;
+    }
     int w = drop_how(action, start_action, mods);
     if (w == 0 && drag_copies_by_default(dest)) w = 1;
     struct drop_at at = { item == SIZE_MAX && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON, 0, 0 };
@@ -2668,6 +2769,42 @@ static void delete_request(struct folder *f, size_t i, bool permanent)
                   any_folder ? "\nFolders go with everything in them." : "");
     const char *buttons[] = { "Delete", "Cancel" };
     last_dialog = ask(permanent ? "Delete for good" : "Delete", msg, buttons, 2, 0, delete_confirmed, d);
+}
+
+/* Objects dropped on the Trash Can go to the trash (shadows are deleted,
+ * as OS/2 did): one job per folder they came from. */
+static void trash_dropped(struct folder *f, const char *mime, const char *data)
+{
+    struct del *by[16];
+    size_t nb = 0;
+    char *copy = strdup(data), *save = NULL;
+    for (char *line = strtok_r(copy, "\r\n", &save); line; line = strtok_r(NULL, "\r\n", &save)) {
+        if (!*line || *line == '#') continue;
+        char *tab = !strcmp(mime, MIME_URIS) ? NULL : strchr(line, '\t');
+        if (tab) *tab = 0;
+        char *p = !strcmp(mime, MIME_URIS) ? uri_path(line) : strdup(line);
+        if (!p) continue;
+        if (!strncmp(p, "vobj:", 5)) {
+            if (!nb) { by[0] = calloc(1, sizeof **by); by[0]->folder = f->id; nb = 1; }
+            push(&by[0]->vobjs, &by[0]->nv, p);
+            free(p);
+            continue;
+        }
+        char *sl = strrchr(p, '/');
+        if (!sl || sl == p || !sl[1]) { free(p); continue; }
+        *sl = 0;
+        struct del *d = NULL;
+        for (size_t k = 0; k < nb && !d; k++) if (!strcmp(by[k]->parent, p) || (!by[k]->parent[0] && !by[k]->n)) d = by[k];
+        if (!d && nb < 16) { d = by[nb++] = calloc(1, sizeof *d); d->folder = f->id; }
+        if (d) {
+            if (!d->parent[0]) snprintf(d->parent, sizeof d->parent, "%s", p);
+            push(&d->names, &d->n, sl + 1);
+        }
+        free(p);
+    }
+    free(copy);
+    for (size_t k = 0; k < nb; k++) start_deletion(by[k]);
+    raise_in(f, "object.drop", "trash", "");
 }
 
 static void win_close(ui_surface *s);

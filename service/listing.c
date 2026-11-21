@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#include "trash.h"
 #include "launch.h"
 #include "objects.h"
 #include "shadows.h"
@@ -84,6 +85,7 @@ struct detail_job {
     wps_page_fn reply;
     void *arg;
     int pending;            /* slices not yet done (loop thread only) */
+    bool in_trash;          /* a trash's files folder: titles from its info files */
 };
 
 struct detail_slice { struct detail_job *j; size_t from, to; };
@@ -184,6 +186,15 @@ static void detail_work(void *arg)
             }
         }
         if (e->type == DT_REG) e->locked = wps_lock_file_present(p);
+        /* in the Trash Can: its name before it was deleted (trash names
+         * may have a number added) */
+        if (!e->title[0] && j->in_trash) {
+            char orig[PATH_MAX];
+            if (wps_trash_info(p, orig, sizeof orig, NULL, 0) == 0) {
+                const char *b = strrchr(orig, '/');
+                snprintf(e->title, sizeof e->title, "%s", b ? b + 1 : orig);
+            }
+        }
         size_t nl = strlen(e->name);
         char tid[WPS_ID_LEN + 1];
         if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".wpobj") &&
@@ -244,6 +255,7 @@ static void answer(struct listing *l, struct waiter *w)
     if (w->details && pg.n) {
         struct detail_job *j = calloc(1, sizeof *j);
         snprintf(j->folder, sizeof j->folder, "%s", l->path);
+        j->in_trash = wps_is_trash_files_dir(l->path);
         j->page = pg;
         j->reply = w->reply;
         j->arg = w->arg;

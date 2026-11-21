@@ -162,3 +162,88 @@ void wps_trash_forget_info(const char *path)
     snprintf(info, sizeof info, "%.*s/info%s.trashinfo", (int)(s - 6 - path), path, s);
     unlink(info);
 }
+
+/* ---- 0.2: the Trash Can's side (v0.2-design 4) */
+
+void wps_trash_home(char *out, size_t n)
+{
+    const char *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+    if (dh && *dh) snprintf(out, n, "%s/Trash", dh);
+    else snprintf(out, n, "%s/.local/share/Trash", home ? home : "");
+}
+
+bool wps_is_trash_files_dir(const char *folder)
+{
+    size_t l = strlen(folder);
+    if (l < 7 || strcmp(folder + l - 6, "/files")) return false;
+    char info[PATH_MAX];
+    snprintf(info, sizeof info, "%.*s/info", (int)(l - 6), folder);
+    struct stat st;
+    return stat(info, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static void decode(const char *s, char *out, size_t n)
+{
+    size_t o = 0;
+    for (; *s && o + 1 < n; s++) {
+        if (*s == '%' && s[1] && s[2]) { char h[3] = { s[1], s[2], 0 }; out[o++] = (char)strtol(h, NULL, 16); s += 2; }
+        else out[o++] = *s;
+    }
+    out[o] = 0;
+}
+
+int wps_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn)
+{
+    const char *s = strrchr(item, '/');
+    if (!s || s - item < 6 || strncmp(s - 6, "/files", 6)) return -EINVAL;
+    char info[PATH_MAX * 2], trash[PATH_MAX];
+    snprintf(trash, sizeof trash, "%.*s", (int)(s - 6 - item), item);
+    snprintf(info, sizeof info, "%s/info%s.trashinfo", trash, s);
+    FILE *f = fopen(info, "r");
+    if (!f) return -errno;
+    char line[PATH_MAX * 3], path[PATH_MAX] = "";
+    if (when && wn) when[0] = 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (!strncmp(line, "Path=", 5)) decode(line + 5, path, sizeof path);
+        else if (when && wn && !strncmp(line, "DeletionDate=", 13)) snprintf(when, wn, "%s", line + 13);
+    }
+    fclose(f);
+    if (!path[0]) return -EINVAL;
+    if (path[0] == '/') { snprintf(orig, n, "%s", path); return 0; }
+    /* relative: to the volume's top ($topdir/.Trash-UID or $topdir/.Trash/UID) */
+    char top[PATH_MAX];
+    snprintf(top, sizeof top, "%s", trash);
+    char *b = strrchr(top, '/');
+    if (b && !strncmp(b, "/.Trash-", 8)) *b = 0;
+    else if (b) { *b = 0; b = strrchr(top, '/'); if (b && !strcmp(b, "/.Trash")) *b = 0; }
+    snprintf(orig, n, "%s/%s", top[0] ? top : "", path);
+    return 0;
+}
+
+int wps_trash_restore(const char *item, char *out, size_t n)
+{
+    char orig[PATH_MAX];
+    int e = wps_trash_info(item, orig, sizeof orig, NULL, 0);
+    if (e) return e;
+    char dir[PATH_MAX];
+    snprintf(dir, sizeof dir, "%s", orig);
+    char *sl = strrchr(dir, '/');
+    if (!sl) return -EINVAL;
+    *sl = 0;
+    if (dir[0] && mkdirs(dir, 0755) != 0) return -errno;   /* its folder, made again if gone */
+    /* never over another: "name", then "name (2)" ... (before the extension) */
+    const char *base = sl + 1;
+    const char *dot = strrchr(base, '.');
+    size_t stem = dot && dot != base ? (size_t)(dot - base) : strlen(base);
+    for (int k = 1; k < 1000; k++) {
+        if (k == 1) snprintf(out, n, "%s", orig);
+        else snprintf(out, n, "%s/%.*s (%d)%s", dir, (int)stem, base, k, base + stem);
+        if (renameat2(AT_FDCWD, item, AT_FDCWD, out, RENAME_NOREPLACE) == 0) {
+            wps_trash_forget_info(item);
+            return 0;
+        }
+        if (errno != EEXIST) return -errno;
+    }
+    return -EEXIST;
+}

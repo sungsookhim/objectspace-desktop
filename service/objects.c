@@ -429,6 +429,13 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
         wps_props_remove(op, "@id");
     }
     free(dbid);
+    /* a special folder's class (WPS "class": Trash Can, Drives, ...) */
+    if (S_ISDIR(ld->st.st_mode)) {
+        wps_props *w = class_props(ld, "WPS");
+        char *cv = NULL;
+        if (w && wps_props_str(w, "class", &cv)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", cv);
+        free(cv);
+    }
 
     if (assign_id && !ld->id[0] && !wps_path_excluded(ld->path)) {
         char cand[WPS_ID_LEN + 1];
@@ -450,7 +457,15 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
 static wpo_class *class_for(const wps_loaded *ld)
 {
     mode_t m = ld->st.st_mode;
-    if (S_ISDIR(m)) return WPFolderClass;
+    if (S_ISDIR(m)) {
+        /* a special folder (Trash Can, Drives, ...): its class stored on it
+         * (WPS "class"), if it is a kind of folder */
+        if (ld->obj_class[0]) {
+            wpo_class *c = wpo_find_class(ld->obj_class);
+            if (c && !c->is_meta && wpo_subclass_of(c, WPFolderClass)) return c;
+        }
+        return WPFolderClass;
+    }
     if (S_ISREG(m) && ld->obj_class[0]) {
         wpo_class *c = wpo_find_class(ld->obj_class);
         return c && !c->is_meta && wpo_subclass_of(c, WPAbstractClass) ? c : WPAbstractClass;
@@ -1024,6 +1039,21 @@ bool wps_folder_keeps_files(const wps_loaded *folder)
         if (wps_props_int(&folder->c[i].props, "local", &v)) return v != 0;
     }
     return false;
+}
+
+int wps_set_folder_class(const char *path, const char *cls)
+{
+    wps_loaded ld;
+    wps_load(path, true, &ld);
+    int e = ld.err ? ld.err : !S_ISDIR(ld.st.st_mode) ? ENOTDIR : 0;
+    if (!e) {
+        char key[PATH_MAX + 128];
+        /* by its ID (just given, if it had none: the locator was made before) */
+        wps_db_key(key, sizeof key, ld.id[0] ? ld.id : ld.locator, "WPS", "class");
+        e = wps_db_put(db, ld.vol, key, 's', cls, (uint32_t)strlen(cls)) < 0 ? EIO : 0;
+    }
+    wps_loaded_free(&ld);
+    return e;
 }
 
 int wps_central_delete(const char *id)

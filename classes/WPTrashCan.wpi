@@ -1,0 +1,8 @@
+# The Trash Can (v0.2-design 4): the trash's files folder
+# (~/.local/share/Trash/files, as the freedesktop.org Trash specification
+# has it, GNOME's too), its items shown by their original names; Empty
+# trash in its menu.
+class WPTrashCan : WPFolder
+version 1.0
+override wpModifyPopupMenu
+classoverride wpclsQueryTitle

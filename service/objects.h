@@ -128,6 +128,9 @@ int wps_central_create(const char *vol, const char *folder_id, const char *cls, 
 bool wps_folder_keeps_files(const wps_loaded *folder);
 /* Worker: the central objects in a folder (by the folder's ID). */
 int wps_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user);
+/* Worker: a special folder's class (a WPFolder subclass), stored for this
+ * user as the folder's WPS "class". 0, or an errno value. */
+int wps_set_folder_class(const char *path, const char *cls);
 /* Worker: delete a central object (all its rows). 0, or an errno value. */
 int wps_central_delete(const char *id);
 /* Loop thread: drop a deleted central object from memory. */
