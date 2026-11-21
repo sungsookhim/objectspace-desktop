@@ -77,6 +77,9 @@ mkdir -p "$DESK"
 UNITS=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 WATCH=wps-session-watch-$$.service
 mkdir -p "$UNITS"
+# DefaultDependencies=no: a target is otherwise ordered after what it
+# wants, and the autostart programs come after graphical-session.target,
+# which comes after this one: a cycle systemd breaks by dropping them.
 # It is bound to a watcher (wps-session-watch-PID.service, a name of this
 # session's own), a user service that ends when this script does: when
 # the compositor ends, however the session ends (killed at log out before
@@ -87,7 +90,8 @@ printf '%s\n' '[Unit]' 'Description=The WPS session (wps-linux)' \
     "BindsTo=$WATCH" "After=$WATCH" \
     'BindsTo=graphical-session.target' 'Before=graphical-session.target' \
     'Wants=graphical-session-pre.target' 'After=graphical-session-pre.target' \
-    'Wants=xdg-desktop-autostart.target' > "$UNITS/wps-session.target"
+    'Wants=xdg-desktop-autostart.target' \
+    'DefaultDependencies=no' 'Conflicts=shutdown.target' 'Before=shutdown.target' > "$UNITS/wps-session.target"
 systemctl --user daemon-reload 2>/dev/null
 # (one left from a session that ended badly: away before this one starts)
 systemctl --user stop wps-session.target 2>/dev/null
