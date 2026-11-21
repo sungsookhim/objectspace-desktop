@@ -31,7 +31,8 @@ void wps_launch_shutdown(void);
 /* Loop thread: start argv (searched on PATH) for the object at `path`
  * (the file opened, or the program object), in folder `cwd` if given, on
  * Wayland display `display` (a socket path) if given, and track it. The pid, or -1 with errno set. */
-pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11);
+pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11,
+                 const char *const *envs, size_t nenvs);   /* envs: NAME=value, in place of ours */
 
 /* Whether `path` is a program to run: executable by this user, and a
  * binary (ELF) or a script (#!). */

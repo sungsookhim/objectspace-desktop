@@ -151,7 +151,7 @@ void wps_launch_shutdown(void)
     on_changed = NULL;
 }
 
-static pid_t spawn(char **argv, const char *cwd, const char *display, const char *x11)
+static pid_t spawn(char **argv, const char *cwd, const char *display, const char *x11, const char *const *envs, size_t nenvs)
 {
     posix_spawnattr_t at;
     posix_spawn_file_actions_t fa;
@@ -173,7 +173,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     while (environ[ne]) ne++;
     /* (and its X display: the service may have started before XWayland,
      * and X programs need one) */
-    char **env = calloc(ne + 4, sizeof *env), wl[4200], xd[64];
+    char **env = calloc(ne + 4 + nenvs, sizeof *env), wl[4200], xd[64];
     size_t k = 0;
     bool w = display && *display, x = x11 && *x11;
     if (env && w) {
@@ -190,10 +190,18 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     const char *b0 = strrchr(argv[0], '/');
     b0 = b0 ? b0 + 1 : argv[0];
     bool gnome_only = !strcmp(b0, "gnome-control-center");   /* (in GNOME itself: the same name) */
-    for (size_t i = 0; env && i < ne; i++)
-        if (!(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)) &&
+    for (size_t i = 0; env && i < ne; i++) {
+        bool replaced = false;
+        for (size_t j = 0; j < nenvs && !replaced; j++) {
+            size_t nl = strcspn(envs[j], "=") + 1;
+            replaced = !strncmp(environ[i], envs[j], nl);
+        }
+        if (!replaced && !(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)) &&
             !(gnome_only && !strncmp(environ[i], "XDG_CURRENT_DESKTOP=", 20)))
             env[k++] = environ[i];
+    }
+    for (size_t j = 0; env && j < nenvs; j++)
+        if (!(gnome_only && !strncmp(envs[j], "XDG_CURRENT_DESKTOP=", 20))) env[k++] = (char *)envs[j];
     if (env && gnome_only) env[k++] = "XDG_CURRENT_DESKTOP=GNOME";
     /* Each program in a group of its own (app.slice, as GNOME's are), not
      * in wpsd's: its memory is its own (a program using too much is what
@@ -234,9 +242,10 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     return pid;
 }
 
-pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11)
+pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11,
+                 const char *const *envs, size_t nenvs)
 {
-    pid_t pid = spawn(argv, cwd, display, x11);
+    pid_t pid = spawn(argv, cwd, display, x11, envs, nenvs);
     if (pid < 0 || !path || !*path) return pid;
     struct use *u = NULL;
     for (struct use *x = uses; x && !u; x = x->next)

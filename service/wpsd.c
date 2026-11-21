@@ -1394,7 +1394,21 @@ static void do_open(struct req *r, wpo_object *o)
         if (ok && *q == '.') { q++; ok = isdigit((unsigned char)*q); while (ok && isdigit((unsigned char)*q)) q++; }
         if (!ok || *q || strlen(x11) > 16) x11 = NULL;
     }
-    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11);   /* as this user, in this user's session */
+    /* and the asking session's input-method and desktop settings: these
+     * names only, short printable values */
+    const char *envs[8];
+    size_t nenv = 0;
+    const cv *ev = cv_get(&r->msg, "env");
+    static const char *const allowed[] = { "GTK_IM_MODULE=", "QT_IM_MODULE=", "XMODIFIERS=", "XDG_CURRENT_DESKTOP=", "XDG_SESSION_TYPE=" };
+    for (size_t i = 0; ev && ev->k == CV_ARRAY && i < ev->n && nenv < 8; i++) {
+        const cv *e = &ev->items[i];
+        if (e->k != CV_TEXT || strlen(e->s) > 280) continue;
+        bool ok = false;
+        for (size_t k = 0; k < 5 && !ok; k++) ok = !strncmp(e->s, allowed[k], strlen(allowed[k]));
+        for (const char *p = e->s; ok && *p; p++) ok = (unsigned char)*p >= 0x20 && *p != 0x7f;
+        if (ok) envs[nenv++] = e->s;
+    }
+    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs, nenv);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     cbuf b;
     cb_init(&b);

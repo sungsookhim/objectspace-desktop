@@ -249,11 +249,26 @@ void svc_open(const char *target, bool confirm, svc_fn fn, void *arg)
     if (wd && *wd) snprintf(disp, sizeof disp, "%s%s%s", wd[0] == '/' || !rt ? "" : rt, wd[0] == '/' || !rt ? "" : "/", wd);
     const char *x11 = getenv("DISPLAY");
     bool x = x11 && *x11;
-    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0), &id);
+    /* and this session's input-method and desktop settings (wpsd may have
+     * started before the session gave them: Hangul was not typed in
+     * programs opened from WPS) */
+    static const char *const keys[] = { "GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE" };
+    char envs[5][300];
+    size_t ne = 0;
+    for (size_t i = 0; i < 5; i++) {
+        const char *v = getenv(keys[i]);
+        if (v && *v) snprintf(envs[ne++], sizeof envs[0], "%s=%s", keys[i], v);
+    }
+    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0), &id);
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
     if (disp[0]) { cb_text(&o->b, "display"); cb_text(&o->b, disp); }
     if (x) { cb_text(&o->b, "x11"); cb_text(&o->b, x11); }
+    if (ne) {
+        cb_text(&o->b, "env");
+        cb_array(&o->b, ne);
+        for (size_t i = 0; i < ne; i++) cb_text(&o->b, envs[i]);
+    }
     send_req(o, id, fn, arg);
 }
 
