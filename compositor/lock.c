@@ -70,8 +70,10 @@ static const struct wlr_buffer_impl pb_impl = { .destroy = pb_destroy, .begin_da
 static void draw(void)
 {
     const ui_scheme *k = &ui_scheme_now;
-    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, PW, PH);
+    double sc = comp_scale_at(lk.panel->node.x + PW / 2.0, lk.panel->node.y + PH / 2.0);   /* sharp on a scaled screen */
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ceil(PW * sc), (int)ceil(PH * sc));
     cairo_t *cr = cairo_create(s);
+    cairo_scale(cr, sc, sc);
     ui_fill(cr, (ui_rect){ 0, 0, PW, PH }, k->face);
     ui_bevel(cr, (ui_rect){ 0, 0, PW, PH }, true);
     ui_rect t = { 4, 4, PW - 8, ui_scheme_now.title_h };
@@ -100,9 +102,10 @@ static void draw(void)
     cairo_destroy(cr);
     cairo_surface_flush(s);
     struct pbuf *p = calloc(1, sizeof *p);
-    wlr_buffer_init(&p->base, &pb_impl, PW, PH);
+    wlr_buffer_init(&p->base, &pb_impl, cairo_image_surface_get_width(s), cairo_image_surface_get_height(s));
     p->s = s;
     wlr_scene_buffer_set_buffer(lk.panel, &p->base);
+    wlr_scene_buffer_set_dest_size(lk.panel, PW, PH);
     wlr_buffer_drop(&p->base);
 }
 

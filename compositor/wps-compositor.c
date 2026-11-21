@@ -58,6 +58,8 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
@@ -230,17 +232,22 @@ static void draw_frame(struct toplevel *t)
     t->fw = w;
     t->fh = h;
     if (w <= 0 || h <= 0) return;
-    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    /* drawn at the scale of the screen it is on (sharp on a scaled one),
+     * shown at its size */
+    double sc = comp_scale_at(t->tree->node.x + w / 2.0, t->tree->node.y + h / 2.0);
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ceil(w * sc), (int)ceil(h * sc));
     cairo_t *cr = cairo_create(s);
+    cairo_scale(cr, sc, sc);
     ui_frame_geom g = geom_of(t, w, h);
     const char *title = view_title(t) && *view_title(t) ? view_title(t) : view_app(t) ? view_app(t) : "";
     ui_frame_geom_draw(&g, cr, (ui_rect){ 0, 0, w, h }, title);
     cairo_destroy(cr);
     cairo_surface_flush(s);
     struct cairo_buffer *cb = calloc(1, sizeof *cb);
-    wlr_buffer_init(&cb->base, &cairo_buffer_impl, w, h);
+    wlr_buffer_init(&cb->base, &cairo_buffer_impl, cairo_image_surface_get_width(s), cairo_image_surface_get_height(s));
     cb->surface = s;
     wlr_scene_buffer_set_buffer(t->frame, &cb->base);
+    wlr_scene_buffer_set_dest_size(t->frame, w, h);
     wlr_buffer_drop(&cb->base);
     wlr_scene_node_set_enabled(&t->frame->node, true);
     /* the program's surfaces go in the frame's client area */
@@ -448,8 +455,10 @@ static int menu_y(int i) { return 3 + (i > 2 ? 2 * MENU_ITEM_H + 8 : i * MENU_IT
 static void menu_draw(void)
 {
     const ui_scheme *k = &ui_scheme_now;
-    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, menu.w, menu.h);
+    double sc = comp_scale_at(menu.buf->node.x + menu.w / 2.0, menu.buf->node.y + menu.h / 2.0);
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ceil(menu.w * sc), (int)ceil(menu.h * sc));
     cairo_t *cr = cairo_create(s);
+    cairo_scale(cr, sc, sc);
     ui_fill(cr, (ui_rect){ 0, 0, menu.w, menu.h }, k->menu_bg);
     ui_bevel(cr, (ui_rect){ 0, 0, menu.w, menu.h }, true);
     for (int i = 0; i < 4; i++) {
@@ -467,9 +476,10 @@ static void menu_draw(void)
     cairo_destroy(cr);
     cairo_surface_flush(s);
     struct cairo_buffer *cb = calloc(1, sizeof *cb);
-    wlr_buffer_init(&cb->base, &cairo_buffer_impl, menu.w, menu.h);
+    wlr_buffer_init(&cb->base, &cairo_buffer_impl, cairo_image_surface_get_width(s), cairo_image_surface_get_height(s));
     cb->surface = s;
     wlr_scene_buffer_set_buffer(menu.buf, &cb->base);
+    wlr_scene_buffer_set_dest_size(menu.buf, menu.w, menu.h);
     wlr_buffer_drop(&cb->base);
 }
 
@@ -1203,6 +1213,50 @@ static void on_output_destroy(struct wl_listener *l, void *data)
 
 static void place_desktop(struct toplevel *t);
 
+/* A screen's scale: WPS_SCALE, else GNOME's for it (Settings, Displays:
+ * ~/.config/monitors.xml, the logical monitor whose monitor has this
+ * connector), else 1. */
+static double screen_scale(const char *connector)
+{
+    const char *env = getenv("WPS_SCALE");
+    if (env && atof(env) >= 0.5 && atof(env) <= 4) return atof(env);
+    char path[4096];
+    const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xdg && *xdg) snprintf(path, sizeof path, "%s/monitors.xml", xdg);
+    else snprintf(path, sizeof path, "%s/.config/monitors.xml", home ? home : "");
+    FILE *f = fopen(path, "r");
+    if (!f) return 1;
+    static char buf[1 << 16];
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    /* the first configuration that names this connector (GNOME writes the
+     * current one; others are for other sets of screens) */
+    char want[160];
+    snprintf(want, sizeof want, "<connector>%s</connector>", connector);
+    for (char *conf = strstr(buf, "<configuration>"); conf; conf = strstr(conf + 1, "<configuration>")) {
+        char *end = strstr(conf, "</configuration>");
+        if (!end) break;
+        for (char *lm = strstr(conf, "<logicalmonitor>"); lm && lm < end; lm = strstr(lm + 1, "<logicalmonitor>")) {
+            char *lend = strstr(lm, "</logicalmonitor>");
+            if (!lend || lend > end) break;
+            char *c = strstr(lm, want);
+            if (!c || c > lend) continue;
+            char *sc = strstr(lm, "<scale>");
+            double v = sc && sc < lend ? atof(sc + 7) : 1;
+            return v >= 0.5 && v <= 4 ? v : 1;
+        }
+    }
+    return 1;
+}
+
+double comp_scale_at(double x, double y)
+{
+    struct wlr_output *o = wlr_output_layout_output_at(server.output_layout, x, y);
+    if (!o) o = wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
+    return o && o->scale > 0 ? o->scale : 1;
+}
+
 static void on_new_output(struct wl_listener *l, void *data)
 {
     (void)l;
@@ -1211,6 +1265,8 @@ static void on_new_output(struct wl_listener *l, void *data)
     struct wlr_output_state st;
     wlr_output_state_init(&st);
     wlr_output_state_set_enabled(&st, true);
+    double scale = screen_scale(wo->name);
+    if (scale != 1) wlr_output_state_set_scale(&st, (float)scale);
     struct wlr_output_mode *mode = wlr_output_preferred_mode(wo);
     if (mode) wlr_output_state_set_mode(&st, mode);
     /* no modes (headless): its size at 60 Hz. A refresh rate of 0 is
@@ -1227,8 +1283,9 @@ static void on_new_output(struct wl_listener *l, void *data)
     }
     bool ok = wlr_output_commit_state(wo, &st);
     wlr_output_state_finish(&st);
-    fprintf(stderr, "wps-compositor: %.3f screen %s: %dx%d@%.1f Hz%s\n", (now_ms() - start_ms) / 1000, wo->name,
-            wo->width, wo->height, wo->refresh / 1000.0, ok ? "" : " (could not be set up)");
+    fprintf(stderr, "wps-compositor: %.3f screen %s: %dx%d@%.1f Hz, scale %g%s\n", (now_ms() - start_ms) / 1000, wo->name,
+            wo->width, wo->height, wo->refresh / 1000.0, wo->scale, ok ? "" : " (could not be set up)");
+    wlr_xcursor_manager_load(server.cursor_mgr, wo->scale);   /* the pointer, sharp at its scale */
     struct output *o = calloc(1, sizeof *o);
     o->server = &server;
     o->wlr_output = wo;
@@ -2153,10 +2210,14 @@ int main(int argc, char **argv)
     init_buffers(s->renderer, s->display);
     s->allocator = wlr_allocator_autocreate(s->backend, s->renderer);
     if (!s->allocator) { fprintf(stderr, "wps-compositor: no allocator\n"); return 1; }
-    s->compositor = wlr_compositor_create(s->display, 5, s->renderer);
+    s->compositor = wlr_compositor_create(s->display, 6, s->renderer);   /* 6: surfaces are told their preferred scale */
     wlr_subcompositor_create(s->display);
     wlr_data_device_manager_create(s->display);
     wlr_primary_selection_v1_device_manager_create(s->display);
+    /* scaled screens: programs draw at the screen's scale, fractional too
+     * (the scene tells each surface its screen's scale) */
+    wlr_viewporter_create(s->display);
+    wlr_fractional_scale_manager_v1_create(s->display, 1);
     /* Clipboard managers and helpers reading and setting the clipboard
      * without a window (VirtualBox's shared clipboard, wl-clipboard,
      * clipboard histories): both the wlroots and the ext protocol. */
