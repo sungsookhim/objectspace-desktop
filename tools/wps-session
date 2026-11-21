@@ -46,7 +46,11 @@ opts=$(gsettings get org.gnome.desktop.input-sources xkb-options 2>/dev/null | t
 # The compositor's Super+Space sets IBus's engine (compositor/keymap.c).
 IM_VARS=
 if command -v ibus-daemon >/dev/null && [ -f /usr/lib/systemd/user/org.freedesktop.IBus.session.generic.service ]; then
-    export GTK_IM_MODULE=ibus QT_IM_MODULE=ibus XMODIFIERS=@im=ibus IBUS_DAEMON_ARGS=--xim
+    # (its panel - the input method's menu and candidate lists, e.g. Hanja -
+    # is a package of its own, ibus-panel, which GNOME does not need: without
+    # it IBus will not start unless told to go without one)
+    panel=; [ -x /usr/libexec/ibus-ui-gtk3 ] || panel=' --panel disable'
+    export GTK_IM_MODULE=ibus QT_IM_MODULE=ibus XMODIFIERS=@im=ibus IBUS_DAEMON_ARGS="--xim$panel"
     IM_VARS="GTK_IM_MODULE QT_IM_MODULE XMODIFIERS IBUS_DAEMON_ARGS"
 fi
 # The pointer's look.
