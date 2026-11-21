@@ -58,6 +58,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <sys/inotify.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_viewporter.h>
@@ -1213,6 +1214,7 @@ static void on_output_destroy(struct wl_listener *l, void *data)
 }
 
 static void place_desktop(struct toplevel *t);
+static struct wlr_box first_output_box(void);
 
 /* A screen's scale: WPS_SCALE, else GNOME's for it (Settings, Displays:
  * ~/.config/monitors.xml, the logical monitor whose monitor has this
@@ -1249,6 +1251,58 @@ static double screen_scale(const char *connector)
         }
     }
     return 1;
+}
+
+/* GNOME's Settings, Displays saved a scale (monitors.xml written again):
+ * the screens take it at once, the desktop and the frames follow. */
+static int on_monitors_xml(int fd, uint32_t mask, void *data)
+{
+    (void)mask; (void)data;
+    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+    bool hit = false;
+    ssize_t n;
+    while ((n = read(fd, buf, sizeof buf)) > 0)
+        for (char *p = buf; p < buf + n;) {
+            struct inotify_event *ev = (struct inotify_event *)p;
+            if (ev->len && !strcmp(ev->name, "monitors.xml")) hit = true;
+            p += sizeof *ev + ev->len;
+        }
+    if (!hit) return 0;
+    bool changed = false;
+    struct output *o;
+    wl_list_for_each(o, &server.outputs, link) {
+        double sc = screen_scale(o->wlr_output->name);
+        if (fabs(sc - o->wlr_output->scale) < 0.001) continue;
+        struct wlr_output_state st;
+        wlr_output_state_init(&st);
+        wlr_output_state_set_scale(&st, (float)sc);
+        if (wlr_output_commit_state(o->wlr_output, &st)) {
+            changed = true;
+            wlr_xcursor_manager_load(server.cursor_mgr, (float)sc);
+            fprintf(stderr, "wps-compositor: %.1f screen %s: scale %g\n", comp_uptime(), o->wlr_output->name, sc);
+        }
+        wlr_output_state_finish(&st);
+    }
+    if (changed) {
+        comp_redraw_frames();
+        server.cursor_image = NULL;
+        set_cursor("default");
+        comp_screens_changed();   /* the desktop and the LaunchPad fit the new size */
+    }
+    return 0;
+}
+
+static void watch_monitors_xml(void)
+{
+    if (getenv("WPS_COMP_HEADLESS") && !getenv("WPS_COMP_WATCH_MONITORS")) return;
+    char dir[4096];
+    const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xdg && *xdg) snprintf(dir, sizeof dir, "%s", xdg);
+    else snprintf(dir, sizeof dir, "%s/.config", home ? home : "");
+    int fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (fd < 0) return;
+    if (inotify_add_watch(fd, dir, IN_CLOSE_WRITE | IN_MOVED_TO) < 0) { close(fd); return; }
+    wl_event_loop_add_fd(server.loop, fd, WL_EVENT_READABLE, on_monitors_xml, NULL);
 }
 
 double comp_scale_at(double x, double y)
@@ -1315,8 +1369,23 @@ static void on_new_output(struct wl_listener *l, void *data)
     struct wlr_output_layout_output *lo = wlr_output_layout_add_auto(server.output_layout, wo);
     struct wlr_scene_output *so = wlr_scene_output_create(server.scene, wo);
     wlr_scene_output_layout_add_output(server.scene_layout, lo, so);
+    comp_screens_changed();
+}
+
+/* The screens' sizes changed (one came, or a scale): the desktop covers
+ * them again, the LaunchPad goes back to the bottom centre, the lock
+ * screen and the background fit. */
+void comp_screens_changed(void)
+{
     struct toplevel *t;
-    wl_list_for_each(t, &server.toplevels, link) if (t->kind == KIND_DESKTOP) place_desktop(t);
+    struct wlr_box ob = first_output_box();
+    wl_list_for_each(t, &server.toplevels, link) {
+        if (t->kind == KIND_DESKTOP) place_desktop(t);
+        else if (t->kind == KIND_PALETTE && t->mapped) {
+            struct wlr_box geo = view_geo(t);
+            view_move(t, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
+        }
+    }
     struct wlr_box all;
     wlr_output_layout_get_box(server.output_layout, NULL, &all);
     wlr_scene_node_set_position(&server.background->node, all.x, all.y);
@@ -2335,6 +2404,7 @@ int main(int argc, char **argv)
     const char *socket = wl_display_add_socket_auto(s->display);
     if (!socket) { fprintf(stderr, "wps-compositor: no socket\n"); return 1; }
     keymap_init();   /* before the keyboards come (as the backend starts) */
+    watch_monitors_xml();
     if (!wlr_backend_start(s->backend)) { fprintf(stderr, "wps-compositor: the backend did not start\n"); return 1; }
     if (hw > 0) {
         wlr_headless_add_output(s->backend, (unsigned)hw, (unsigned)hh);

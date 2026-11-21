@@ -135,7 +135,8 @@ void comp_minimize(struct toplevel *t, bool on);
 void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);
 void comp_redraw_frames(void);
-double comp_scale_at(double x, double y);   /* the scale of the screen there */   /* the scheme or font changed */
+double comp_scale_at(double x, double y);   /* the scale of the screen there */
+void comp_screens_changed(void);   /* sizes changed: the desktop, LaunchPad, lock screen fit again */   /* the scheme or font changed */
 void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);
 
