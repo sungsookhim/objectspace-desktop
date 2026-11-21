@@ -72,12 +72,17 @@ static double bar_h(void) { return ceil(ui_scheme_now.font_px * 1.9) + 2 * PAD; 
 
 static double clock_w(void) { return ui_text_width(UI_FONT_REGULAR, "88:88") + 20; }
 
+/* The Desktop button: its picture and the desktop's name, as OS/2's
+ * WarpCenter's first button. */
+static const char *desk_label(void) { return "Desktop"; }
+static double desk_w(void) { return wc.h - 2 * PAD + ui_text_width(UI_FONT_BOLD, desk_label()) + 14; }
+
 static ui_rect part_rect(int p)
 {
     double h = wc.h - 2 * PAD, x;
     switch (p) {
-    case P_DESKTOP: return (ui_rect){ PAD, PAD, BTN_W, h };
-    case P_WINDOWS: return (ui_rect){ PAD + BTN_W + 2, PAD, BTN_W, h };
+    case P_DESKTOP: return (ui_rect){ PAD, PAD, desk_w(), h };
+    case P_WINDOWS: return (ui_rect){ PAD + desk_w() + 2, PAD, BTN_W, h };
     case P_CLOCK: return (ui_rect){ wc.w - PAD - clock_w(), PAD, clock_w(), h };
     case P_KEYBOARD: x = wc.w - PAD - clock_w() - 4 - KEY_W; return (ui_rect){ x, PAD, KEY_W, h };
     case P_METERS: {
@@ -162,8 +167,11 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             ui_bevel(cr, r, !down);
             cairo_save(cr);
             cairo_translate(cr, d, d);
-            if (p == P_DESKTOP) glyph_desktop(cr, r);
-            else glyph_windows(cr, r);
+            if (p == P_DESKTOP) {
+                glyph_desktop(cr, (ui_rect){ r.x + 2, r.y, r.h, r.h });
+                ui_set_color(cr, ui_scheme_now.text);
+                ui_text_draw(cr, UI_FONT_BOLD, r.x + r.h + 4, r.y + (r.h + ui_text_ascent()) / 2 - 1, desk_label(), r.w - r.h - 6);
+            } else glyph_windows(cr, r);
             cairo_restore(cr);
         } else if (p == P_KEYBOARD) {
             ui_bevel(cr, r, down);
@@ -661,11 +669,19 @@ static void press(int p, uint32_t serial, int button)
     }
 }
 
+/* A press in any of the desktop's other windows (the desktop, folders)
+ * closes the calendar or the meters' figures. */
+static void any_press(ui_surface *s)
+{
+    if (wc.pop && s != wc.pop && s != wc.s) ui_app_post(wc.app, (void (*)(void *))pop_free, NULL);
+}
+
 static void wc_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     (void)s;
     if (e->kind == UI_PRESS) {
         int p = part_at(e->x, e->y);
+        if (wc.pop && p != wc.pop_kind) pop_free();   /* another part, or the bar: it closes */
         if (p == P_NONE) return;
         if (p == P_DESKTOP || p == P_CLOCK || p == P_METERS) { press(p, e->serial, 1); return; }   /* (menus and pop-ups open on press) */
         wc.pressed = p;
@@ -702,6 +718,7 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
     wc.w = 1280;
     wc.h = bar_h();
     winlist_ext("panel", top ? "top" : "bottom");
+    ui_press_hook = any_press;
     wc.s = ui_window_new(a, &wc_ops, NULL, "org.wps.WarpCenter", wc.w, wc.h);
     ui_window_set_frameless(wc.s, true);
     ui_window_set_title(wc.s, "WarpCenter");

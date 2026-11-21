@@ -313,6 +313,10 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
                    ui_menu_fn fn, void *arg);
 void ui_menu_items_free(ui_menu_item *items, size_t n);
 bool ui_menu_is_open(void);
+/* Called with the surface of every button press in this program, first
+ * (a pop-up of its own closes when another of its windows is clicked:
+ * the compositor closes it only for other programs' windows). */
+extern void (*ui_press_hook)(ui_surface *s);
 
 /* ---------------------------------------------------------------- entries */
 

@@ -595,6 +595,8 @@ void ui_set_cursor(ui_app *a, const char *name)
 
 /* ----------------------------------------------------------------- pointer */
 
+void (*ui_press_hook)(ui_surface *s);
+
 static void send_ptr(ui_app *a, ui_pointer_event *e)
 {
     ui_surface *s = a->ptr_focus;
@@ -657,6 +659,7 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
         /* A press outside an open menu closes it and is used up, except the
          * second click of a double click: the first opened the menu (the
          * system menu button), and the double click means Close. */
+        if (ui_press_hook && a->ptr_focus) ui_press_hook(a->ptr_focus);
         if (a->ptr_focus && ui_menu_press_outside(a->ptr_focus) && e.clicks != 2) {
             a->swallow_release = b;
             return;
