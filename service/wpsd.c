@@ -61,6 +61,7 @@
  */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <pthread.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -662,7 +663,17 @@ static void stats_done(void *arg)
 /* ---- volumes: scan, attach portable ones, detach vanished ones */
 
 #define MAX_ATTACHED 32
-static struct { char uuid[WPS_VOLID_MAX]; bool ro; } attached[MAX_ATTACHED];   /* touched by volume jobs only */
+static struct { char uuid[WPS_VOLID_MAX]; bool ro; char mnt[PATH_MAX]; } attached[MAX_ATTACHED];   /* under vol_mu */
+/* Volumes let go of before an unmount (their database on them closed, or
+ * the unmount fails "busy"): not attached again while they stay mounted. */
+static char released[8][WPS_VOLID_MAX];
+static pthread_mutex_t vol_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static bool is_released(const char *uuid)
+{
+    for (int i = 0; i < 8; i++) if (released[i][0] && !strcmp(released[i], uuid)) return true;
+    return false;
+}
 static bool volume_job_running, volume_job_again;
 
 struct vol_job {
@@ -675,6 +686,10 @@ static void volume_work(void *arg)
 {
     struct vol_job *j = arg;
     if (wps_volumes_scan(&j->vs, &env) < 0) { snprintf(j->report, sizeof j->report, "cannot read mounts"); return; }
+    pthread_mutex_lock(&vol_mu);
+    /* released ones that are no longer mounted: done with */
+    for (int i = 0; i < 8; i++)
+        if (released[i][0] && !wps_volumes_by_uuid(&j->vs, released[i])) released[i][0] = 0;
     size_t off = 0;
     /* Detach volumes that are gone. */
     for (int a = 0; a < MAX_ATTACHED; a++) {
@@ -690,7 +705,7 @@ static void volume_work(void *arg)
      * state changed (a remount): pull, then push what waited. */
     for (size_t i = 0; i < j->vs.n; i++) {
         const wps_volume *v = &j->vs.v[i];
-        if (!v->portable) continue;
+        if (!v->portable || is_released(v->uuid)) continue;
         int slot = -1, free_slot = -1;
         for (int a = 0; a < MAX_ATTACHED; a++) {
             if (strcmp(attached[a].uuid, v->uuid) == 0) slot = a;
@@ -705,7 +720,11 @@ static void volume_work(void *arg)
         wps_sync_stats st;
         if (wps_db_attach_volume(db, v->uuid, file, writable, &st, err, sizeof err) == 0) {
             int s = slot >= 0 ? slot : free_slot;
-            if (s >= 0) { snprintf(attached[s].uuid, sizeof attached[s].uuid, "%s", v->uuid); attached[s].ro = v->ro; }
+            if (s >= 0) {
+                snprintf(attached[s].uuid, sizeof attached[s].uuid, "%s", v->uuid);
+                snprintf(attached[s].mnt, sizeof attached[s].mnt, "%s", v->mnt);
+                attached[s].ro = v->ro;
+            }
             off += (size_t)snprintf(j->report + off, sizeof j->report - off,
                                     "%s %s%s: pulled %d, pushed %d, conflicts %d; ", slot >= 0 ? "synced" : "attached",
                                     v->uuid, writable ? "" : " (read-only)", st.pulled, st.pushed, st.conflicts);
@@ -714,7 +733,32 @@ static void volume_work(void *arg)
         }
         if (off >= sizeof j->report) off = sizeof j->report - 1;
     }
+    pthread_mutex_unlock(&vol_mu);
     if (!off) snprintf(j->report, sizeof j->report, "no portable volumes");
+}
+
+/* Let go of the volume mounted at `mnt` (its database closed) before it
+ * is unmounted; worker thread. */
+static void volume_release(const char *mnt)
+{
+    pthread_mutex_lock(&vol_mu);
+    for (int a = 0; a < MAX_ATTACHED; a++) {
+        if (!attached[a].uuid[0] || strcmp(attached[a].mnt, mnt)) continue;
+        wps_db_detach_volume(db, attached[a].uuid);
+        log_msg("volumes: released %s for unmounting", attached[a].uuid);
+        for (int i = 0; i < 8; i++)
+            if (!released[i][0]) { snprintf(released[i], sizeof released[i], "%s", attached[a].uuid); break; }
+        attached[a].uuid[0] = 0;
+    }
+    pthread_mutex_unlock(&vol_mu);
+}
+
+/* The unmount failed: it may be attached again. */
+static void volume_unrelease_all(void)
+{
+    pthread_mutex_lock(&vol_mu);
+    for (int i = 0; i < 8; i++) released[i][0] = 0;
+    pthread_mutex_unlock(&vol_mu);
 }
 
 static void start_volume_job(struct simple *reply);
@@ -2251,6 +2295,43 @@ static void put_drive(cbuf *b, const wps_drive_info *d)
 
 static void drives_changed(void);
 
+/* A drive's action through udisks2; for one that unmounts, the volume is
+ * let go of first (wpsd's database on it closed), and taken up again if
+ * the unmount fails. */
+struct drive_call { char uuid[80], action[16], mount[PATH_MAX], *pass; wps_udisks_fn done; void *arg; };
+
+static void drive_call_done(void *arg, int err, const char *msg, const char *mount)
+{
+    struct drive_call *k = arg;
+    if (err) { volume_unrelease_all(); start_volume_job(NULL); }
+    k->done(k->arg, err, msg, mount);
+    if (k->pass) { explicit_bzero(k->pass, strlen(k->pass)); free(k->pass); }
+    free(k);
+}
+
+static void drive_release_work(void *arg) { volume_release(((struct drive_call *)arg)->mount); }
+
+static void drive_release_done(void *arg)
+{
+    struct drive_call *k = arg;
+    wps_udisks_call(k->uuid, k->action, k->pass, drive_call_done, k);
+}
+
+static void drive_call(const char *uuid, const char *action, const char *pass, wps_udisks_fn done, void *arg)
+{
+    wps_drive_info d;
+    bool unmounts = strcmp(action, "mount") && strcmp(action, "unlock");
+    if (!unmounts || !wps_udisks_find(uuid, &d) || !d.mount[0]) { wps_udisks_call(uuid, action, pass, done, arg); return; }
+    struct drive_call *k = calloc(1, sizeof *k);
+    snprintf(k->uuid, sizeof k->uuid, "%s", uuid);
+    snprintf(k->action, sizeof k->action, "%s", action);
+    snprintf(k->mount, sizeof k->mount, "%s", d.mount);
+    k->pass = pass ? strdup(pass) : NULL;
+    k->done = done;
+    k->arg = arg;
+    wpo_defer(loop, "release volume", drive_release_work, drive_release_done, k);
+}
+
 /* A drive's action, answered when udisks2 is done: {mount} or an error
  * whose code says why ("not authorized", "busy", ...). */
 
@@ -2318,7 +2399,7 @@ static void drive_target_done(void *arg)
 {
     struct drive_req *q = arg;
     if (!q->uuid[0]) { drive_done(q, ENODEV, "not a drive", NULL); return; }
-    wps_udisks_call(q->uuid, q->action, q->pass, drive_done, q);
+    drive_call(q->uuid, q->action, q->pass, drive_done, q);
 }
 
 /* For WPDrive's menu and notebook (classes/wps_drive_hook.h). */
@@ -2332,7 +2413,7 @@ static void human_size(uint64_t v, char *out, size_t n)
     else snprintf(out, n, "%.0f %s", s, u[i]);
 }
 
-static bool drive_query(const char *uuid, wps_drive_state *st)
+static bool drive_query(const char *uuid, wps_drive_state *st, bool details)
 {
     wps_drive_info d;
     if (!wps_udisks_find(uuid, &d)) return false;
@@ -2349,7 +2430,7 @@ static bool drive_query(const char *uuid, wps_drive_state *st)
     snprintf(st->mount, sizeof st->mount, "%s", d.mount);
     human_size(d.size, st->size, sizeof st->size);
     struct statvfs sv;
-    if (d.mount[0] && statvfs(d.mount, &sv) == 0) human_size((uint64_t)sv.f_bavail * sv.f_frsize, st->free, sizeof st->free);
+    if (details && d.mount[0] && statvfs(d.mount, &sv) == 0) human_size((uint64_t)sv.f_bavail * sv.f_frsize, st->free, sizeof st->free);
     return true;
 }
 
@@ -3017,7 +3098,7 @@ static void handle(struct client *c, cv *msg)
         struct drive_req *q = calloc(1, sizeof *q);
         q->c = c; c->refs++;
         q->id = id;
-        if (uuid) wps_udisks_call(uuid, action, pass, drive_done, q);
+        if (uuid) drive_call(uuid, action, pass, drive_done, q);
         else {   /* a drive object (or its shadow): its UUID first */
             snprintf(q->uuid, sizeof q->uuid, "%.79s", target);
             snprintf(q->action, sizeof q->action, "%s", action);

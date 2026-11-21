@@ -11,6 +11,7 @@ typedef struct {
     char device[64], fstype[32], mount[PATH_MAX], size[32], free[32], kind[12];
 } wps_drive_state;
 
-extern bool (*wps_drive_query)(const char *uuid, wps_drive_state *out);
+/* details: also its free space (reads the file system: the notebook only) */
+extern bool (*wps_drive_query)(const char *uuid, wps_drive_state *out, bool details);
 
 #endif

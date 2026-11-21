@@ -7,7 +7,7 @@
 #include "wps_classes.h"
 #include "wps_menu_ids.h"
 
-bool (*wps_drive_query)(const char *uuid, wps_drive_state *out);
+bool (*wps_drive_query)(const char *uuid, wps_drive_state *out, bool details);
 char *wps_menu_without(char *menu, const int *ids, int n);
 
 void WPDrive__wpUnInitData(wpo_object *self)
@@ -48,11 +48,11 @@ void WPDrive__wpRestoreProperties(wpo_object *self)
     WPDrive_data(self)->uuid = wps_state_get_str(self, "WPDrive", "uuid", &t) ? t : NULL;
 }
 
-static bool state_of(wpo_object *self, wps_drive_state *st)
+static bool state_of(wpo_object *self, wps_drive_state *st, bool details)
 {
     memset(st, 0, sizeof *st);
     const char *u = WPDrive_data(self)->uuid;
-    return u && wps_drive_query && wps_drive_query(u, st);
+    return u && wps_drive_query && wps_drive_query(u, st, details);
 }
 
 /* Open, Properties; then what the drive can do now. */
@@ -61,7 +61,7 @@ char *WPDrive__wpModifyPopupMenu(wpo_object *self, const char *menu)
     static const int gone[] = { WPS_MI_DELETE, WPS_MI_CREATE_ANOTHER };
     char *base = wps_menu_without(WPDrive_parent_wpModifyPopupMenu(self, menu), gone, 2);
     wps_drive_state st;
-    if (!state_of(self, &st) || st.root) return base;
+    if (!state_of(self, &st, false) || st.root) return base;
     char add[256] = "";
     size_t o = 0;
 #define ADD(id, label) o += (size_t)snprintf(add + o, sizeof add - o, "%d\t%s\n", id, label)
@@ -82,7 +82,7 @@ char *WPDrive__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     char *base = WPDrive_parent_wpAddSettingsPages(self, pages);
     wps_drive_state st;
-    bool known = state_of(self, &st);
+    bool known = state_of(self, &st, true);
     const char *u = WPDrive_data(self)->uuid;
     char page[PATH_MAX + 600];
     snprintf(page, sizeof page,
