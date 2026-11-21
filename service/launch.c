@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+#include <ctype.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -186,8 +187,38 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     for (size_t i = 0; env && i < ne; i++)
         if (!(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)))
             env[k++] = environ[i];
+    /* Each program in a group of its own (app.slice, as GNOME's are), not
+     * in wpsd's: its memory is its own (a program using too much is what
+     * the kernel stops, not wpsd with all the others), and it outlives
+     * wpsd. systemd-run --scope becomes the program (the same process). */
+    char *sargv[80], unit[96];
+    char **run = argv;
+    static unsigned serial;
+    if (getenv("INVOCATION_ID") && access("/usr/bin/systemd-run", X_OK) == 0) {
+        const char *b = strrchr(argv[0], '/');
+        b = b ? b + 1 : argv[0];
+        char name[40];
+        size_t j = 0;
+        for (; *b && j < sizeof name - 1; b++)
+            name[j++] = (isalnum((unsigned char)*b) || *b == '-' || *b == '.') ? *b : '_';
+        name[j] = 0;
+        snprintf(unit, sizeof unit, "app-wps-%s-%d-%u.scope", j ? name : "program", (int)getpid(), ++serial);
+        int n = 0;
+        sargv[n++] = "/usr/bin/systemd-run";
+        sargv[n++] = "--user";
+        sargv[n++] = "--scope";
+        sargv[n++] = "--quiet";
+        sargv[n++] = "--collect";
+        sargv[n++] = "--slice=app.slice";
+        sargv[n++] = "--unit";
+        sargv[n++] = unit;
+        sargv[n++] = "--";
+        for (int i = 0; argv[i] && n < 79; i++) sargv[n++] = argv[i];
+        sargv[n] = NULL;
+        run = sargv;
+    }
     pid_t pid = -1;
-    int e = posix_spawnp(&pid, argv[0], &fa, &at, argv, env ? env : environ);
+    int e = posix_spawnp(&pid, run[0], &fa, &at, run, env ? env : environ);
     free(env);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&at);
