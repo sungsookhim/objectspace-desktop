@@ -11,13 +11,16 @@
 #   make clean
 
 CC      ?= cc
+# The version (VERSION), in every program (--version, wpsd's ping).
+WPS_VERSION := $(shell cat VERSION 2>/dev/null || echo unknown)
+VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=2
 PYTHON  ?= python3
 B       := build
 GEN     := $(B)/gen
 CFLAGS  ?= -O1 -g
 CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation
 # Checked static calls (wpo_slot verifies the class) in these builds.
-CFLAGS  += -DWPO_CHECKED
+CFLAGS  += -DWPO_CHECKED $(VFLAGS)
 # AddressSanitizer and UBSan when their runtimes are installed (Fedora:
 # libasan, libubsan); otherwise a plain build. Override with SAN=.
 SAN     ?= $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=address,undefined -x c - \
@@ -172,7 +175,7 @@ m0:
 # frame and sound timing. Needs cairo, harfbuzz, freetype, fontconfig,
 # wayland, xkbcommon and pipewire development packages.
 G0      := $(B)/g0
-G0FLAGS := -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation
+G0FLAGS := -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation $(VFLAGS)
 XDGXML  := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/stable/xdg-shell/xdg-shell.xml
 
 $(G0)/xdg-shell-client-protocol.h: $(XDGXML)

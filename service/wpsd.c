@@ -3,7 +3,7 @@
  *
  * Serves clients on $WPS_RUNTIME_DIR/wps.sock (or $WPS_SOCKET): each message
  * is a 4-byte big-endian length and a CBOR map. Requests:
- *   {op:"ping"}
+ *   {op:"ping"}                         "pong", with version (WPS_VERSION) and protocol (a number)
  *   {op:"resolve", target:PATH|"id:ID"}
  *   {op:"call", target, method, args:[...], expect:N}  objects as {obj:PATH|"id:ID"}
  *   {op:"describe", class}
@@ -2346,9 +2346,18 @@ static void handle(struct client *c, cv *msg)
     if (!op) { reply_error(c, id, "bad request", "missing op"); cv_free(msg); return; }
 
     if (strcmp(op, "ping") == 0) {
-        struct simple *s = calloc(1, sizeof *s);
-        s->c = c; s->id = id; c->refs++;
-        reply_simple_ok(s, "pong");
+        /* "pong", and what this service is: a GUI newer than its service
+         * (during an upgrade, before logging out) can tell */
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 5);
+        cb_text(&b, "id"); cb_int(&b, id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result"); cb_text(&b, "pong");
+        cb_text(&b, "version"); cb_text(&b, WPS_VERSION);
+        cb_text(&b, "protocol"); cb_int(&b, WPS_PROTOCOL);
+        send_frame(c, &b);
+        cb_free(&b);
     } else if (strcmp(op, "describe") == 0) {
         do_describe(c, id, cv_text(msg, "class"));
     } else if (strcmp(op, "flush") == 0 || strcmp(op, "shutdown") == 0 || strcmp(op, "sync") == 0) {
@@ -2599,8 +2608,9 @@ static void on_watchdog(const char *label, double ms, void *user)
 
 /* ----------------------------------------------------------------- main */
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wpsd %s\n", WPS_VERSION); return 0; }
     char err[512];
     setvbuf(stderr, NULL, _IOLBF, 0);
     if (wps_env_load(&env, err, sizeof err) < 0) { log_msg("%s", err); return 1; }

@@ -112,6 +112,7 @@ static void put_arg(cbuf *b, const char *a)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--version")) { printf("wpsctl %s\n", WPS_VERSION); return 0; }
     if (argc < 2) return usage();
     const char *op = argv[1];
     cbuf b;

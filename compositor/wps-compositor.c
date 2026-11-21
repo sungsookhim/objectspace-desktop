@@ -2279,6 +2279,7 @@ static void on_session_active(struct wl_listener *l, void *data)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wps-compositor %s\n", WPS_VERSION); return 0; }
     const char *startup = NULL, *desktop = NULL;
     int c;
     while ((c = getopt(argc, argv, "s:d:h")) != -1) {

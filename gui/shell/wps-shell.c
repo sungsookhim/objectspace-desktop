@@ -4781,6 +4781,7 @@ static void on_window_events(void *arg, int fd, short rev)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wps-shell %s\n", WPS_VERSION); return 0; }
     /* --events-stdin (anywhere: the extension adds it last) */
     bool events_stdin = false;
     for (int k = 1; k < argc; k++)
