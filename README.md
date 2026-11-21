@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: object core done (M0–M5): kernel prototypes, object runtime, persistence and the service, change tracking, scale (shadows, object files, streaming listings, jobs), the service API (events, menus and settings as data, programs, templates) and sandboxed plug-in hosts. Next: the GUI design.
+Status: **version 0.1** (2026-11-21). The object core (M0–M5) and the GUI (G0–G5) are done: the desktop, folder windows, settings objects, the LaunchPad, Find, drag and drop, input methods and accessibility, running inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). What is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
 
 ## Documents
 
@@ -10,7 +10,8 @@ Status: object core done (M0–M5): kernel prototypes, object runtime, persisten
 |---|---|
 | [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.17: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
 | [docs/gui-design.md](docs/gui-design.md) | GUI design v0.6: OS/2 Warp 4–4.52 base, modern features, configurable appearance, action events; coexists with GNOME; own drawing; proposed architecture and milestones |
-| [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying G2, and what is planned for each |
+| [docs/roadmap.md](docs/roadmap.md) | Version 0.1's baseline, every open and deferred item, and a proposed order for what follows |
+| [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
 
@@ -24,7 +25,8 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 4. M3: change tracking with `wps-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
 5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
 6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
-7. GUI (docs/gui-design.md): G0 prototypes done (proto/g0/RESULTS.md); G1 done: the widget set's frames, icon and details views and menus, and wps-shell folder windows (gui/RESULTS-G1.md). Next G2: desktop, tree view, notebooks, drag and drop, live updates.
+7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `wps-compositor` and the WPS session. Done: version 0.1.
+8. Next: [docs/roadmap.md](docs/roadmap.md) (a draft), then a new design and implementation plan.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 

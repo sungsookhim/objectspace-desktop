@@ -1,10 +1,10 @@
 # Open issues
 
-Known problems and gaps found while building and trying G2, as of 2026-11-19. Each says where it showed up and what is planned. Fixed items move to the change log of the design document they belong to.
+Known problems and gaps found while building and trying the GUI (G2–G5), as of 2026-11-21; gathered with the deferred work in [roadmap.md](roadmap.md). Each says where it showed up and what is planned. Fixed items move to the change log of the design document they belong to.
 
 ## Reported by hand (trying the desktop and folder windows)
 
-- **Recalling minimized windows is awkward.** A minimized window disappears, as in OS/2, but getting it back means GNOME's Activities overview (top left), which does not feel like OS/2. OS/2 had the window list (Ctrl+Esc or both mouse buttons on the desktop) and the Minimized Window Viewer. Both are planned for G4 (window list, launch bar, minimized window viewer); consider moving the window list forward. In a GNOME session the window events come through the `wps@wps-linux` extension.
+- *Fixed in G4:* the Window List (Ctrl+Esc, the desktop's menu) brings minimized windows back. Was: **Recalling minimized windows is awkward.** A minimized window disappears, as in OS/2, but getting it back means GNOME's Activities overview (top left), which does not feel like OS/2. OS/2 had the window list (Ctrl+Esc or both mouse buttons on the desktop) and the Minimized Window Viewer. Both are planned for G4 (window list, launch bar, minimized window viewer); consider moving the window list forward. In a GNOME session the window events come through the `wps@wps-linux` extension.
 - **The desktop has no status line**, so messages a folder window shows there ("Moved to the trash: 2 objects", errors such as "Cannot delete: ...") are not shown on the desktop. Needs a place: a transient message, or a notification.
 - **The desktop's pop-up menu is the folder's own.** OS/2's desktop menu adds Lockup now, Shut down, System setup and the like; not there yet.
 
@@ -81,7 +81,7 @@ G2's planned items are all built. What remains are the issues above.
 
 ## LaunchPad (G4)
 
-- Buttons keep the order they were added in (the LaunchPad folder's icon positions); no reordering by drag yet (OS/2 allowed it).
+- *Fixed (2026-11-20):* buttons are reordered by dragging them along the bar (button 2).
 - No tooltips: titles are drawn under the icons, cut short.
 - Not yet a setting: shown on every desktop start (`WPS_NO_LAUNCHPAD` turns it off); OS/2 had it as an object with its own notebook (orientation, small icons, text, float on top).
 - Drawers are read when opened, not followed; a duplicate in a drawer is not refused.
@@ -90,7 +90,7 @@ G2's planned items are all built. What remains are the issues above.
 
 - Names only: object titles (which can differ from file names), classes and settings are not searched yet; the design asks for all four.
 - No search field inside folder windows: Ctrl+F opens a Find window on that folder, which searches as you type. Filtering a folder's own view in place would need the folder model to show a subset (it maps view rows to listing rows one to one).
-- Results cannot be dragged out yet, nor saved as a folder of shadows (OS/2's Find made its results a folder).
+- *Fixed (2026-11-20/21):* results can be dragged out, and saved as a folder of shadows on the desktop.
 - Each search walks the file system; nothing is indexed. A home folder of about 13,000 entries (hidden ones skipped) takes about 50 ms; very large trees stop at 2,000 results.
 
 ## Input methods and text (G4)
