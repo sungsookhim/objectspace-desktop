@@ -26,7 +26,7 @@ DATADIR    ?= $(PREFIX)/share
 SYSCONFDIR ?= /etc
 USERUNITDIR   ?= $(PREFIX)/lib/systemd/user
 SYSTEMUNITDIR ?= $(PREFIX)/lib/systemd/system
-VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=2 -DWPS_PLUGINDIR='"$(LIBDIR)/wps/plugins"'
+VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=2 -DWPS_PLUGINDIR='"$(LIBDIR)/wps/plugins"' -DWPS_ICONDIR='"$(DATADIR)/wps/icons"'
 PYTHON  ?= python3
 B       := build
 GEN     := $(B)/gen
@@ -326,6 +326,8 @@ install: $(INSTALLED)
 	$(subst) service/wps-watchd.service > $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	$(subst) data/wps.desktop.in > $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop
 	install -m 644 data/wps-lock.pam $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
+	install -d $(DESTDIR)$(DATADIR)/wps/icons
+	install -m 644 data/icons/*.png $(DESTDIR)$(DATADIR)/wps/icons/
 	install -d $(DESTDIR)$(EXTDIR)/schemas
 	install -m 644 $(EXT)/metadata.json $(EXT)/extension.js $(DESTDIR)$(EXTDIR)/
 	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/
@@ -340,7 +342,8 @@ uninstall:
 	rm -f $(addprefix $(DESTDIR)$(LIBEXECDIR)/,wpsd wps-watchd wps-plughost wps-compositor)
 	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
-	rm -rf $(DESTDIR)$(EXTDIR)
+	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons
+	-rmdir $(DESTDIR)$(DATADIR)/wps 2>/dev/null
 	-rmdir $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins $(DESTDIR)$(LIBDIR)/wps 2>/dev/null
 
 clean:

@@ -92,6 +92,7 @@
 #include "WPShadow.h"
 #include "WPProgram.h"
 #include "WPFolder.h"
+#include "WPTrashCan.h"
 #include "WPMinWinViewer.h"
 #include "WPDataFile.h"
 #include "wps_state.h"
@@ -790,8 +791,38 @@ static void event_head(cbuf *b, const char *name, int64_t sub, size_t extra)
     cb_text(b, "sub"); cb_int(b, sub);
 }
 
+/* The Trash Can went empty or full, or its icons changed: every window
+ * draws it (and its shadows) again. */
+static int trash_was_full = -1;
+
+static void trash_broadcast(bool full)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead || (!x->nfolders && !x->ntargets)) continue;
+        cbuf b;
+        event_head(&b, "trash_changed", x->id, 1);
+        cb_text(&b, "full"); cb_bool(&b, full);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
+
+static void trash_check(const char *path)
+{
+    char files[PATH_MAX];
+    wps_trash_home(files, sizeof files);
+    strncat(files, "/files", sizeof files - strlen(files) - 1);
+    size_t l = strlen(files);
+    if (!path || strncmp(path, files, l) || path[l] != '/' || strchr(path + l + 1, '/')) return;
+    bool full = wps_trash_full(files);
+    if (trash_was_full == (int)full) return;
+    trash_was_full = full;
+    trash_broadcast(full);
+}
+
 static void on_object_changed(wpo_object *o)
 {
+    if (wpo_is_a(o, WPTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
     sobj *rec = wps_sobj_of(o);
     const char *path = rec ? rec->path : wps_object_path(o);
     const char *id = wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "";
@@ -848,6 +879,8 @@ static void on_central_change(const char *folder, const char *id, char kind)
 static void on_fs_event(char kind, const char *from, const char *path)
 {
     if (kind == 'm') wps_launch_moved(from, path);
+    trash_check(path);
+    if (kind == 'm') trash_check(from);
     /* A folder moved or renamed: windows open on it (or inside it) follow,
      * wherever they are, so every subscriber hears it. */
     struct stat dst;

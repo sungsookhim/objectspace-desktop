@@ -22,7 +22,9 @@ want='./etc/pam.d/wps-lock
 ./usr/share/gnome-shell/extensions/wps@wps-linux/metadata.json
 ./usr/share/gnome-shell/extensions/wps@wps-linux/schemas/gschemas.compiled
 ./usr/share/gnome-shell/extensions/wps@wps-linux/schemas/org.gnome.shell.extensions.wps.gschema.xml
-./usr/share/wayland-sessions/wps.desktop'
+./usr/share/wayland-sessions/wps.desktop
+./usr/share/wps/icons/trash-empty.png
+./usr/share/wps/icons/trash-full.png'
 want=$(echo "$want" | LC_ALL=C sort)
 [ "$got" = "$want" ] || { echo "FAIL: installed files differ:"; diff <(echo "$want") <(echo "$got") || true; exit 1; }
 echo "ok   the installed files"

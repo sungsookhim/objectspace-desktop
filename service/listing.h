@@ -83,4 +83,9 @@ size_t wps_listing_count(void);
 /* Whether a folder's listing (as read) has this entry (e.g. "\x01vobj:ID"). */
 bool wps_listing_has(const char *folder, const char *name);
 
+/* The Trash Can (a trash's files folder): whether anything is in it; the
+ * icon it shows now - its own for that state, or WPS's default. */
+bool wps_trash_full(const char *files);
+void wps_trash_icon(const char *files, char *out, size_t n);
+
 #endif

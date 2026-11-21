@@ -6,3 +6,14 @@ class WPTrashCan : WPFolder
 version 1.0
 override wpModifyPopupMenu
 classoverride wpclsQueryTitle
+data {
+    char *full_icon;    /* its own icon when full (a PNG); NULL: WPS's */
+}
+override wpUnInitData
+override wpSaveState
+override wpRestoreProperties
+override wpAddSettingsPages
+# Its icon when something is in it (Icon, WPObject's, is when empty):
+# the path of a PNG, or "" for WPS's again.
+method wpQueryFullIcon() -> string
+method wpSetFullIcon(string path) -> bool

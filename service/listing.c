@@ -1,5 +1,8 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#ifndef WPS_ICONDIR
+#define WPS_ICONDIR "/usr/share/wps/icons"
+#endif
 #include "trash.h"
 #include "launch.h"
 #include "objects.h"
@@ -135,10 +138,63 @@ static void central_details(wps_entry *e)
             if (!e->icon[0] && tp && wps_props_str(tp, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
             if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
+            /* the Trash Can's shadow: empty or full, unless it has its own */
+            char own[sizeof e->icon] = "";
+            if (op) { t = NULL; if (wps_props_str(op, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
+            if (!own[0] && S_ISDIR(tg.st.st_mode) && wps_is_trash_files_dir(tg.path)) wps_trash_icon(tg.path, e->icon, sizeof e->icon);
         }
         wps_loaded_free(&tg);
     }
     wps_loaded_free(&ld);
+}
+
+/* ---- the Trash Can's icon: empty or full (v0.2-design 4) */
+
+static void any_central(const char *vol, const char *id, void *user) { (void)vol; (void)id; *(bool *)user = true; }
+
+bool wps_trash_full(const char *files)
+{
+    bool full = false;
+    DIR *d = opendir(files);
+    for (struct dirent *e; d && (e = readdir(d)) && !full;) full = strcmp(e->d_name, ".") && strcmp(e->d_name, "..");
+    if (d) closedir(d);
+    if (!full) {   /* trashed shadows and other central objects */
+        wps_loaded ld;
+        wps_load(files, false, &ld);
+        if (!ld.err && ld.id[0]) wps_central_in(ld.vol, ld.id, any_central, &full);
+        wps_loaded_free(&ld);
+    }
+    return full;
+}
+
+static void default_icon(const char *name, char *out, size_t n)
+{
+    snprintf(out, n, "%s/%s", WPS_ICONDIR, name);
+    if (access(out, R_OK) == 0) return;
+    /* not installed: the tree's (build/wpsd -> data/icons) */
+    char exe[PATH_MAX];
+    ssize_t l = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (l <= 0) return;
+    exe[l] = 0;
+    for (int up = 0; up < 2; up++) { char *s = strrchr(exe, '/'); if (s) *s = 0; }
+    char t[PATH_MAX + 64];
+    snprintf(t, sizeof t, "%s/data/icons/%s", exe, name);
+    if (access(t, R_OK) == 0) snprintf(out, n, "%s", t);
+}
+
+void wps_trash_icon(const char *files, char *out, size_t n)
+{
+    bool full = wps_trash_full(files);
+    wps_props ps;
+    char *t = NULL;
+    out[0] = 0;
+    /* its own: Icon (WPObject's) when empty, Full icon (WPTrashCan's) when full */
+    if (wps_attr_read(files, full ? "WPTrashCan" : "WPObject", &ps) == WPS_A_OK) {
+        if (wps_props_str(&ps, full ? "fullicon" : "icon", &t) && t[0]) snprintf(out, n, "%s", t);
+        free(t);
+        wps_props_free(&ps);
+    }
+    if (!out[0]) default_icon(full ? "trash-full.png" : "trash-empty.png", out, n);
 }
 
 static void detail_work(void *arg)
@@ -186,6 +242,7 @@ static void detail_work(void *arg)
             }
         }
         if (e->type == DT_REG) e->locked = wps_lock_file_present(p);
+        if (e->type == DT_DIR && wps_is_trash_files_dir(p)) wps_trash_icon(p, e->icon, sizeof e->icon);
         /* in the Trash Can: its name before it was deleted (trash names
          * may have a number added) */
         if (!e->title[0] && j->in_trash) {

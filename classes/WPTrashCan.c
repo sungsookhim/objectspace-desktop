@@ -34,3 +34,65 @@ char *WPTrashCan__wpclsQueryTitle(wpo_object *self)
     (void)self;
     return wps_strdup("Trash Can");
 }
+
+void WPTrashCan__wpUnInitData(wpo_object *self)
+{
+    free(WPTrashCan_data(self)->full_icon);
+    WPTrashCan_data(self)->full_icon = NULL;
+    WPTrashCan_parent_wpUnInitData(self);
+}
+
+char *WPTrashCan__wpQueryFullIcon(wpo_object *self)
+{
+    const char *i = WPTrashCan_data(self)->full_icon;
+    return wps_strdup(i ? i : "");
+}
+
+bool WPTrashCan__wpSetFullIcon(wpo_object *self, const char *path)
+{
+    if (path && *path && path[0] != '/') return false;
+    WPTrashCanData *d = WPTrashCan_data(self);
+    free(d->full_icon);
+    d->full_icon = path && *path ? wps_strdup(path) : NULL;
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+bool WPTrashCan__wpSaveState(wpo_object *self)
+{
+    WPTrashCan_parent_wpSaveState(self);
+    const char *i = WPTrashCan_data(self)->full_icon;
+    if (i) wps_state_put_str(self, "WPTrashCan", "fullicon", i);
+    else wps_state_remove(self, "WPTrashCan", "fullicon");
+    return true;
+}
+
+void WPTrashCan__wpRestoreProperties(wpo_object *self)
+{
+    WPTrashCan_parent_wpRestoreProperties(self);
+    char *t = NULL;
+    free(WPTrashCan_data(self)->full_icon);
+    WPTrashCan_data(self)->full_icon = wps_state_get_str(self, "WPTrashCan", "fullicon", &t) ? t : NULL;
+}
+
+/* The Icon page: two icons, for empty and for full. */
+char *WPTrashCan__wpAddSettingsPages(wpo_object *self, const char *pages)
+{
+    char *base = WPTrashCan_parent_wpAddSettingsPages(self, pages);
+    if (!base) return NULL;
+    const char *key = "field\ticon\ticon\tIcon\t";
+    char *at = strstr(base, key);
+    if (!at) return base;
+    char *eol = strchr(at, '\n');
+    size_t head = (size_t)(at - base), rest_at = eol ? (size_t)(eol - base) + 1 : strlen(base);
+    const char *fi = WPTrashCan_data(self)->full_icon;
+    size_t n = strlen(base) + strlen(fi ? fi : "") + 128;
+    char *r = malloc(n);
+    if (!r) return base;
+    /* the same line, labelled Empty; then Full */
+    snprintf(r, n, "%.*sfield\ticon\ticon\tEmpty\t%.*sfield\tfullicon\ticon\tFull\t%s\twpSetFullIcon\n%s",
+             (int)head, base, (int)(rest_at - head - strlen(key)), at + strlen(key), fi ? fi : "", base + rest_at);
+    free(base);
+    return r;
+}

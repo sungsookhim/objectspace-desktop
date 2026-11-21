@@ -204,6 +204,7 @@ static char setup_cls[4][32];   /* their classes */
 static void rename_new_now(struct folder *f);
 static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
+static struct row *row_at(struct folder *f, size_t i);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
 static void placed_reply(void *arg, const cv *reply);
@@ -217,6 +218,7 @@ static void restore_items(struct folder *f, size_t i);
 static bool is_trash_dir(const char *p);
 struct del;
 static void trash_dropped(struct folder *f, const char *mime, const char *data);
+static bool dragged_onto_itself(struct folder *f, size_t item);
 static void win_close(ui_surface *s);
 
 /* WPS_DEBUG_TIMING: when the desktop's start-up steps happen. */
@@ -659,6 +661,28 @@ static void folder_moved(const char *from, const char *to)
     notify_in_use(to);   /* icons of it, now open under the new name */
 }
 
+/* The Trash Can went empty or full: it and its shadows are read again
+ * (their icon). */
+static void trash_changed(void)
+{
+    for (struct folder *f = folders; f; f = f->next) {
+        if (f->closing || is_tree(f) || !f->m.complete) continue;
+        bool any = false;
+        for (size_t i = 0; i < f->m.total; i++) {
+            struct row *rw = row_at(f, i);
+            if (!rw || !rw->name) continue;
+            char p[PATH_MAX];
+            if (rw->shadow && rw->target) snprintf(p, sizeof p, "%s", rw->target);
+            else if (rw->kind == UI_KIND_FOLDER) snprintf(p, sizeof p, "%s/%s", f->path, rw->name);
+            else continue;
+            if (!is_trash_dir(p)) continue;
+            row_stale(&f->m, i);
+            any = true;
+        }
+        if (any) fetch_visible(f, f->vis_first, f->vis_last);
+    }
+}
+
 static void on_event(void *arg, const cv *ev)
 {
     (void)arg;
@@ -671,6 +695,7 @@ static void on_event(void *arg, const cv *ev)
     if (launchpad_event(name, sub)) return;
     if (!strcmp(name, "folder_moved")) { folder_moved(cv_text(ev, "from"), cv_text(ev, "to")); return; }
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
+    if (!strcmp(name, "trash_changed")) { trash_changed(); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
         if (f->sub != sub || f->closing) continue;
@@ -2117,7 +2142,7 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
         return src_actions & UI_DND_COPY ? UI_DND_COPY : 0;
     }
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest))) {
+    if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest)) && !dragged_onto_itself(f, item)) {
         /* onto the Trash Can: into the trash (a copy for the source: it
          * removes nothing itself) */
         ui_container_set_drop_target(f->cont, item);
@@ -2382,7 +2407,7 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
         return UI_DND_COPY;
     }
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest))) {
+    if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest)) && !dragged_onto_itself(f, item)) {
         trash_dropped(f, mime, data);
         return UI_DND_COPY;
     }
@@ -2776,6 +2801,21 @@ static void delete_request(struct folder *f, size_t i, bool permanent)
 
 /* Objects dropped on the Trash Can go to the trash (shadows are deleted,
  * as OS/2 did): one job per folder they came from. */
+/* Over one of the icons being dragged (the Trash Can dragged a little
+ * way): not a drop onto it. */
+static bool dragged_onto_itself(struct folder *f, size_t item)
+{
+    if (!cur_drag || item == SIZE_MAX || strcmp(cur_drag->src_folder, f->path)) return false;
+    const char *nm = model_name(&f->m, item);
+    if (!nm) return false;
+    char p[PATH_MAX];
+    if (nm[0] == '\x01') snprintf(p, sizeof p, "%s", nm + 1);   /* a central object: vobj:ID */
+    else snprintf(p, sizeof p, "%s/%s", f->path, nm);
+    for (size_t k = 0; k < cur_drag->n; k++)
+        if (!strcmp(cur_drag->paths[k], p)) return true;
+    return false;
+}
+
 static void trash_dropped(struct folder *f, const char *mime, const char *data)
 {
     struct del *by[16];
