@@ -52,6 +52,9 @@ struct server {
 
     struct wlr_seat *seat;
     struct wl_listener new_input, request_cursor, request_set_selection;
+    struct wl_listener request_start_drag, start_drag, drag_destroy;
+    struct wlr_scene_tree *layer_drag;   /* a dragged object's icon, above all windows */
+    struct wlr_scene_tree *drag_icon;
     struct wl_list keyboards;
 
     enum mode mode;

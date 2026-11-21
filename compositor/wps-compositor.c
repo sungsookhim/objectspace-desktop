@@ -511,6 +511,7 @@ static void set_hover(struct toplevel *t, ui_hit h)
 }
 
 static struct toplevel *hovered;
+static void drag_motion(uint32_t time);
 
 static void begin_grab(struct toplevel *t, enum mode m, uint32_t edges)
 {
@@ -555,6 +556,7 @@ static void process_motion(uint32_t time)
 {
     struct server *s = &server;
     if (lock_active()) { set_cursor("default"); return; }   /* no program sees the pointer */
+    if (s->seat->drag) { drag_motion(time); return; }
     if (s->mode == MODE_MOVE && s->grabbed->maximized) {
         /* a maximized window's title dragged (not just pressed): restored
          * under the pointer, at the same place across its title */
@@ -604,6 +606,22 @@ static void process_motion(uint32_t time)
     wlr_seat_pointer_notify_motion(s->seat, time, sx, sy);
 }
 
+/* While something is dragged (drag and drop between or within programs):
+ * the pointer goes to the program surface under it (the drag's grab turns
+ * that into the drag's enter, motion and leave); WPS's frames take no part. */
+static void drag_motion(uint32_t time)
+{
+    struct server *s = &server;
+    if (s->drag_icon) wlr_scene_node_set_position(&s->drag_icon->node, (int)s->cursor->x, (int)s->cursor->y);
+    double sx, sy;
+    struct wlr_surface *surface;
+    ui_hit part;
+    window_at(s->cursor->x, s->cursor->y, &surface, &sx, &sy, &part);
+    if (!surface) { wlr_seat_pointer_clear_focus(s->seat); return; }
+    wlr_seat_pointer_notify_enter(s->seat, surface, sx, sy);
+    wlr_seat_pointer_notify_motion(s->seat, time, sx, sy);
+}
+
 static void frame_button(struct toplevel *t, ui_hit part)
 {
     switch (part) {
@@ -621,6 +639,11 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
 {
     struct server *s = &server;
     if (lock_active()) return;
+    if (s->seat->drag) {   /* the release drops it */
+        wlr_seat_pointer_notify_button(s->seat, time, button,
+                                       pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED);
+        return;
+    }
     if (menu.t) {
         int i = menu_item_at(s->cursor->x, s->cursor->y);
         if (!pressed && menu_release_ignored) { menu_release_ignored = false; if (i < 0) return; }
@@ -886,6 +909,44 @@ static void on_request_cursor(struct wl_listener *l, void *data)
     struct wlr_seat_pointer_request_set_cursor_event *e = data;
     if (server.seat->pointer_state.focused_client == e->seat_client)
         wlr_cursor_set_surface(server.cursor, e->surface, e->hotspot_x, e->hotspot_y);
+}
+
+/* A program starts dragging: only from a button it holds down (the
+ * press's serial), as for moves; else the drag is refused. */
+static void on_request_start_drag(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_seat_request_start_drag_event *e = data;
+    if (wlr_seat_validate_pointer_grab_serial(server.seat, e->origin, e->serial)) {
+        wlr_seat_start_pointer_drag(server.seat, e->drag, e->serial);
+        return;
+    }
+    DBG("drag refused (serial %u not a held button's)\n", e->serial);
+    if (e->drag->source) wlr_data_source_destroy(e->drag->source);
+}
+
+static void on_drag_destroy(struct wl_listener *l, void *data)
+{
+    (void)l; (void)data;
+    wl_list_remove(&server.drag_destroy.link);
+    server.drag_icon = NULL;   /* (the scene's icon node goes with the icon) */
+    DBG("drag ended\n");
+}
+
+static void on_start_drag(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_drag *drag = data;
+    struct server *s = &server;
+    DBG("drag started\n");
+    if (s->mode == MODE_BUTTON && s->grabbed) { s->grabbed->pressed = UI_HIT_NONE; draw_frame(s->grabbed); }
+    s->mode = MODE_PASS;
+    s->grabbed = NULL;
+    if (hovered) { set_hover(hovered, UI_HIT_NONE); hovered = NULL; }
+    s->drag_icon = drag->icon ? wlr_scene_drag_icon_create(s->layer_drag, drag->icon) : NULL;
+    if (s->drag_icon) wlr_scene_node_set_position(&s->drag_icon->node, (int)s->cursor->x, (int)s->cursor->y);
+    s->drag_destroy.notify = on_drag_destroy;
+    wl_signal_add(&drag->events.destroy, &s->drag_destroy);
 }
 
 static void on_request_set_selection(struct wl_listener *l, void *data)
@@ -1962,6 +2023,7 @@ int main(int argc, char **argv)
     s->layer_desktop = wlr_scene_tree_create(&s->scene->tree);
     s->layer_normal = wlr_scene_tree_create(&s->scene->tree);
     s->layer_palette = wlr_scene_tree_create(&s->scene->tree);
+    s->layer_drag = wlr_scene_tree_create(&s->scene->tree);
     menu.buf = wlr_scene_buffer_create(&s->scene->tree, NULL);   /* above everything */
     wlr_scene_node_set_enabled(&menu.buf->node, false);
 
@@ -1993,6 +2055,8 @@ int main(int argc, char **argv)
     s->seat = wlr_seat_create(s->display, "seat0");
     ON(s->seat->events.request_set_cursor, request_cursor, on_request_cursor);
     ON(s->seat->events.request_set_selection, request_set_selection, on_request_set_selection);
+    ON(s->seat->events.request_start_drag, request_start_drag, on_request_start_drag);
+    ON(s->seat->events.start_drag, start_drag, on_start_drag);
 #undef ON
     s->mode = MODE_PASS;
 
@@ -2066,6 +2130,7 @@ int main(int argc, char **argv)
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
                                  &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection,
+                                 &s->request_start_drag, &s->start_drag,
                                  &s->new_output, &s->new_toplevel, &s->new_popup, &s->new_decoration, &s->request_activate };
     for (size_t i = 0; i < sizeof ls / sizeof *ls; i++) wl_list_remove(&ls[i]->link);
     wlr_scene_node_destroy(&s->scene->tree.node);
