@@ -152,6 +152,7 @@ test: all
 	tests/drives/run.sh
 	tests/programs/run.sh
 	tests/messages/run.sh
+	tests/firststart/run.sh
 
 # Everything that must stay true: the unit tests (with ASan/UBSan when
 # installed), the core building as strict C11 with only the C library, and

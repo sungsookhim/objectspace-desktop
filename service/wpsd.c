@@ -2588,8 +2588,10 @@ static void empty_done(void *arg)
  * time it opens ({op:"first_start", desktop}); a step the user undid (a
  * deleted shadow) is not redone. Steps:
  *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
- *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5). */
-#define FIRST_START_VERSION 6
+ *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5);
+ *   7: Templates in System, as on OS/2 (the desktop's shadows of it move
+ *      there); the desktop puts the Trash Can in its lower right corner. */
+#define FIRST_START_VERSION 7
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
 static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
@@ -2607,6 +2609,11 @@ struct first_start {
     wps_loaded asld;                /* the autostart folder (titled Startup) */
     char trash[PATH_MAX];           /* the Trash Can: the home trash's files folder */
     char programs[PATH_MAX];        /* Programs (step 6) */
+    char tpl_moved[8][WPS_ID_LEN + 1];   /* step 7: the desktop's Templates shadows */
+    char tpl_new[8][WPS_ID_LEN + 1];     /* each one's ID in System ("": deleted, one was there) */
+    int ntpl;
+    bool tpl_in_system;             /* System has one already */
+    bool scan_sys;
     wps_loaded tld;
 };
 
@@ -2644,6 +2651,25 @@ static void find_setup_shadow(const char *vol, const char *id, void *user)
     if (!ld.err && !sl.err && sl.id[0] && !strcmp(ld.shadow_of, sl.id) && j->ngone < 8)
         snprintf(j->gone[j->ngone++], sizeof j->gone[0], "%s", id);
     wps_loaded_free(&sl);
+    wps_loaded_free(&ld);
+}
+
+/* shadows of the Templates folder (on the desktop: to move; in System:
+ * there already) */
+static void find_tpl_shadow(const char *vol, const char *id, void *user)
+{
+    (void)vol;
+    struct first_start *j = user;
+    char loc[WPS_ID_LEN + 8];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_loaded ld, tl;
+    wps_load(loc, false, &ld);
+    wps_load(wps_templates_dir(), false, &tl);
+    if (!ld.err && !tl.err && tl.id[0] && !strcmp(ld.shadow_of, tl.id)) {
+        if (j->scan_sys) j->tpl_in_system = true;
+        else if (j->ntpl < 8) snprintf(j->tpl_moved[j->ntpl++], sizeof j->tpl_moved[0], "%s", id);
+    }
+    wps_loaded_free(&tl);
     wps_loaded_free(&ld);
 }
 
@@ -2718,6 +2744,27 @@ static void first_start_work(void *arg)
         wps_mkdirs(j->programs, 0700);
         if (wps_set_folder_class(j->programs, "WPProgramsFolder") != 0) j->programs[0] = 0;
     }
+    if (j->from < 7 && j->from >= 1 && wps_templates_dir()[0]) {
+        /* step 7 (0.2): the desktop's Templates shadows into System */
+        wps_loaded sy, fl;
+        wps_load(j->sys, true, &sy);
+        wps_load(j->desk, true, &fl);
+        if (!sy.err && sy.id[0]) { j->scan_sys = true; wps_central_in(sy.vol, sy.id, find_tpl_shadow, j); j->scan_sys = false; }
+        if (!fl.err && fl.id[0]) wps_central_in(fl.vol, fl.id, find_tpl_shadow, j);
+        int k = 0;
+        for (int i = 0; i < j->ntpl; i++) {
+            char nid[WPS_ID_LEN + 1] = "";
+            bool moved = !j->tpl_in_system && !sy.err && sy.id[0] && wps_central_move(j->tpl_moved[i], sy.vol, sy.id, false, nid) == 0;
+            if (moved) j->tpl_in_system = true;
+            else if (wps_central_delete(j->tpl_moved[i]) != 0) continue;   /* (one in System is enough) */
+            else nid[0] = 0;
+            if (k != i) memcpy(j->tpl_moved[k], j->tpl_moved[i], sizeof j->tpl_moved[0]);
+            snprintf(j->tpl_new[k++], sizeof j->tpl_new[0], "%s", nid);
+        }
+        j->ntpl = k;
+        wps_loaded_free(&sy);
+        wps_loaded_free(&fl);
+    }
 }
 
 static void first_start_done(void *arg)
@@ -2727,9 +2774,9 @@ static void first_start_done(void *arg)
         char marker[PATH_MAX + 32], legacy[PATH_MAX + 32];
         snprintf(marker, sizeof marker, "%s/desktop-made", env.config_dir);
         snprintf(legacy, sizeof legacy, "%s/desktop-setup-made", env.config_dir);
-        if (j->from < 1) {   /* step 1: a new desktop: Templates (System Setup is in System now) */
+        if (j->from < 1) {   /* step 1: a new desktop: Templates, in System since step 7 */
             const char *td = wps_templates_dir();
-            if (td[0]) wps_shadow_create(td, j->desk, first_start_shadow_done, NULL);
+            if (td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
         }
         /* step 2 (0.2's first): nothing */
         if (j->from < 3) {
@@ -2765,6 +2812,15 @@ static void first_start_done(void *arg)
             if (old) wps_sobj_forget(old);
             wps_shadow_create(j->programs, j->desk, first_start_shadow_done, NULL);
             wps_programs_sync();   /* filled now */
+        }
+        if (j->from < 7 && j->from >= 1) {
+            for (int i = 0; i < j->ntpl; i++) {
+                wps_central_forget(j->tpl_moved[i]);
+                on_central_change(j->desk, j->tpl_moved[i], 'd');
+                if (j->tpl_new[i][0]) on_central_change(j->sys, j->tpl_new[i], 'c');
+            }
+            const char *td = wps_templates_dir();
+            if (!j->tpl_in_system && !j->ntpl && td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
         }
         FILE *f = fopen(marker, "w");
         if (f) {

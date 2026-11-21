@@ -4992,7 +4992,63 @@ static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", ou
 
 /* The desktop's first start (the Templates and System folders' shadows,
  * and 0.2's objects): wpsd does it, once each step, versioned. */
-static void desktop_first_start(const char *desk) { svc_first_start(desk, ignore_reply, NULL); }
+/* First-start step 7 (0.2): the Trash Can in the desktop's lower right
+ * corner, as on OS/2. Done by the desktop, which knows its size: a moment
+ * after the first start (the WarpCenter has taken its edge by then, and
+ * the shadow is made), tried again a few times while it is not there. */
+static int corner_timer = -1, corner_tries;
+
+static bool trash_to_corner(void)
+{
+    struct folder *f = NULL;
+    for (struct folder *o = folders; o && !f; o = o->next) if (o->desktop && !o->closing) f = o;
+    if (!f || !f->m.complete) return false;
+    for (size_t i = 0; i < f->m.total; i++) {
+        struct row *rw = row_at(f, i);
+        const char *nm = model_name(&f->m, i);
+        if (!rw || !nm || !rw->shadow || !rw->target || !is_trash_dir(rw->target)) continue;
+        ui_rect c = ui_frame_client(f->win);
+        int64_t x = (int64_t)(c.w - UI_CELL_W - 8), y = (int64_t)(c.h - UI_CELL_H - 8);
+        if (x < 0 || y < 0) return false;
+        char addr[PATH_MAX];
+        if (nm[0] == '\x01') snprintf(addr, sizeof addr, "%s", nm + 1);
+        else snprintf(addr, sizeof addr, "%s/%s", f->path, nm);
+        const char *t[1] = { addr };
+        layout_place(f->lay, nm, (int)x, (int)y);
+        svc_place(f->path, t, &x, &y, 1, placed_reply, as_arg(f));
+        layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+        ui_container_layout_changed(f->cont);
+        ui_surface_damage_all(f->win);
+        return true;
+    }
+    return false;
+}
+
+static void on_corner_timer(void *arg, int fd, short rev)
+{
+    (void)arg; (void)rev;
+    uint64_t x;
+    if (read(fd, &x, sizeof x) < 0) {}
+    if (trash_to_corner() || ++corner_tries >= 8) {
+        ui_app_unwatch_fd(app, fd);
+        close(fd);
+        corner_timer = -1;
+    }
+}
+
+static void first_started(void *arg, const cv *reply)
+{
+    (void)arg;
+    int64_t from = -1;
+    if (!reply || !cv_int(reply, "result", &from) || from >= 7 || corner_timer >= 0) return;
+    corner_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (corner_timer < 0) return;
+    struct itimerspec its = { { 1, 500000000 }, { 2, 0 } };
+    timerfd_settime(corner_timer, 0, &its, NULL);
+    ui_app_watch_fd(app, corner_timer, POLLIN, on_corner_timer, NULL);
+}
+
+static void desktop_first_start(const char *desk) { svc_first_start(desk, first_started, NULL); }
 
 static struct folder *open_desktop(const char *path)
 {

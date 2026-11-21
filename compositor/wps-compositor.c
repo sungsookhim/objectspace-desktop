@@ -1454,6 +1454,7 @@ static void place_notice(struct toplevel *t)
 static void refit_maximized(void)
 {
     struct toplevel *t;
+    wl_list_for_each(t, &server.toplevels, link) if (t->kind == KIND_DESKTOP && t->mapped) place_desktop(t);
     wl_list_for_each(t, &server.toplevels, link) {
         if (!t->mapped || !t->maximized || t->fullscreen || t->kind != KIND_NORMAL) continue;
         struct wlr_output *o = output_at_window(t);
@@ -1471,9 +1472,15 @@ void comp_panel_edge(bool top)
     comp_screens_changed();
 }
 
+/* The desktop: the first screen less the WarpCenter (as on OS/2, its
+ * icons never go under the bar). */
 static void place_desktop(struct toplevel *t)
 {
     struct wlr_box b = first_output_box();
+    if (!wl_list_empty(&server.outputs)) {
+        struct output *o = wl_container_of(server.outputs.next, o, link);
+        b = usable_box(o->wlr_output);
+    }
     view_move(t, b.x, b.y);
     view_set_size(t, b.width, b.height);
 }
