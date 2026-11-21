@@ -37,7 +37,10 @@ typedef struct {
     int conflicts;   /* rows where both sides had changed */
 } wps_sync_stats;
 
+/* The databases' format version (SQLite's user_version); 0.1's had none. */
+#define WPS_DB_VERSION 2
 wps_db *wps_db_open(const char *path, const char *writer, char *err, size_t errlen);
+int64_t wps_db_version(wps_db *db);
 void wps_db_close(wps_db *db);
 
 /* Build a key "<locator>\x1f<cls>\x1f<prop>" (prop may be NULL for a prefix

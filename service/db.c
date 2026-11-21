@@ -93,6 +93,66 @@ static void save_clock(wps_db *db)
     }
 }
 
+/* The databases' format version (SQLite's user_version): 0.1's had none
+ * (0). One that is older is brought up step by step (each step in a
+ * transaction; the user's own database is copied to <path>.v<N>.bak
+ * first); one that is newer is refused, rather than guessed at. */
+static int64_t db_version(sqlite3 *h)
+{
+    sqlite3_stmt *s;
+    int64_t v = 0;
+    if (sqlite3_prepare_v2(h, "PRAGMA user_version", -1, &s, NULL) == SQLITE_OK) {
+        if (sqlite3_step(s) == SQLITE_ROW) v = sqlite3_column_int64(s, 0);
+        sqlite3_finalize(s);
+    }
+    return v;
+}
+
+/* The steps: from version N to N+1 (none yet change the tables: 0.1's
+ * format is 0.2's; versions 1 and 2 only mark it). */
+static int upgrade_step(sqlite3 *h, int64_t from)
+{
+    (void)h;
+    switch (from) {
+    case 0: case 1: return 0;
+    default: return -1;
+    }
+}
+
+static int upgrade(sqlite3 *h, const char *path, bool backup, char *err, size_t errlen)
+{
+    int64_t v = db_version(h);
+    if (v > WPS_DB_VERSION) {
+        snprintf(err, errlen, "%s was made by a newer WPS (database version %lld; this one reads up to %d)", path,
+                 (long long)v, WPS_DB_VERSION);
+        return -1;
+    }
+    if (v == WPS_DB_VERSION) return 0;
+    if (backup) {
+        char bak[PATH_MAX + 32], sql[PATH_MAX + 64];
+        snprintf(bak, sizeof bak, "%s.v%lld.bak", path, (long long)v);
+        unlink(bak);
+        char *q = sqlite3_mprintf("VACUUM INTO %Q", bak);
+        snprintf(sql, sizeof sql, "%s", q ? q : "");
+        sqlite3_free(q);
+        if (exec(h, sql) < 0) { snprintf(err, errlen, "%s: cannot keep a copy before upgrading it", path); return -1; }
+    }
+    for (; v < WPS_DB_VERSION; v++) {
+        exec(h, "BEGIN IMMEDIATE");
+        char sql[64];
+        snprintf(sql, sizeof sql, "PRAGMA user_version=%lld", (long long)v + 1);
+        if (upgrade_step(h, v) < 0 || exec(h, sql) < 0) {
+            exec(h, "ROLLBACK");
+            snprintf(err, errlen, "%s: cannot upgrade it from database version %lld", path, (long long)v);
+            return -1;
+        }
+        exec(h, "COMMIT");
+    }
+    return 0;
+}
+
+int64_t wps_db_version(wps_db *db) { return db_version(db->h); }
+
 static sqlite3 *open_handle(const char *path, bool create, bool wal, char *err, size_t errlen)
 {
     sqlite3 *h = NULL;
@@ -129,6 +189,11 @@ wps_db *wps_db_open(const char *path, const char *writer, char *err, size_t errl
     }
     /* Added in M3; ignore the error when the column already exists. */
     sqlite3_exec(db->h, "ALTER TABLE locations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0", NULL, NULL, NULL);
+    if (upgrade(db->h, path, true, err, errlen) < 0) {
+        sqlite3_close(db->h);
+        free(db);
+        return NULL;
+    }
     db->clock = meta_clock(db->h);
     return db;
 }
@@ -373,6 +438,16 @@ int wps_db_attach_volume(wps_db *db, const char *vol, const char *voldb_path, bo
     }
     a->h = open_handle(voldb_path, writable, false, err, errlen);
     if (!a->h) { pthread_mutex_unlock(&db->mu); return -1; }
+    /* a disk written by a newer WPS: left alone (read-only ones are only
+     * read, and are brought up by a writer that can) */
+    if (db_version(a->h) > WPS_DB_VERSION || (writable && upgrade(a->h, voldb_path, false, err, errlen) < 0)) {
+        if (db_version(a->h) > WPS_DB_VERSION)
+            snprintf(err, errlen, "%s was made by a newer WPS (database version %lld)", voldb_path, (long long)db_version(a->h));
+        sqlite3_close(a->h);
+        a->h = NULL;
+        pthread_mutex_unlock(&db->mu);
+        return -1;
+    }
     if (!writable) sqlite3_exec(a->h, "PRAGMA query_only=1", NULL, NULL, NULL);
     snprintf(a->vol, sizeof a->vol, "%s", vol);
     a->writable = writable;

@@ -2,6 +2,7 @@
  * "computers" (two main databases with different writers) share one volume
  * database, as a USB disk moved between them would. */
 #define _GNU_SOURCE
+#include <sqlite3.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -191,6 +192,33 @@ TEST(deletions_travel)
     wps_db_close(b);
 }
 
+/* 0.2: the databases' format version (user_version). */
+static void versions(void)
+{
+    char err[512];
+    wps_db *a = wps_db_open(p("v-new.db"), "w1", err, sizeof err);
+    CHECK(a && wps_db_version(a) == WPS_DB_VERSION);   /* a new one: the current version */
+    wps_db_close(a);
+    /* 0.1's (no version): brought up, a copy kept */
+    sqlite3 *h;
+    CHECK(sqlite3_open(p("v-old.db"), &h) == SQLITE_OK);
+    sqlite3_exec(h, "PRAGMA user_version=0", NULL, NULL, NULL);
+    sqlite3_close(h);
+    a = wps_db_open(p("v-old.db"), "w1", err, sizeof err);
+    CHECK(a && wps_db_version(a) == WPS_DB_VERSION);
+    wps_db_close(a);
+    struct stat st;
+    CHECK(stat(p("v-old.db.v0.bak"), &st) == 0);
+    /* a newer one: refused, with a message */
+    CHECK(sqlite3_open(p("v-future.db"), &h) == SQLITE_OK);
+    sqlite3_exec(h, "PRAGMA user_version=99", NULL, NULL, NULL);
+    sqlite3_close(h);
+    err[0] = 0;
+    a = wps_db_open(p("v-future.db"), "w1", err, sizeof err);
+    CHECK(!a && strstr(err, "newer WPS"));
+    if (a) wps_db_close(a);
+}
+
 int main(int argc, char **argv)
 {
     snprintf(dir, sizeof dir, "%s", argc > 1 ? argv[1] : "build/tests/db-tmp");
@@ -203,5 +231,6 @@ int main(int argc, char **argv)
     RUN(both_sides_changed);
     RUN(read_only_volume);
     RUN(deletions_travel);
+    RUN(versions);
     return CHECK_SUMMARY();
 }
