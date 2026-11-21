@@ -5,7 +5,7 @@
 # COMMAND (default: a GTK 4 dialog and the test client) runs
 # inside, with WAYLAND_DISPLAY; $T is the test folder (desk/ the desktop),
 # its logs and screenshots stay there (printed at the end).
-# Settings: SIZE (1280x800), SECS (time out, 30). GTK apps use their software
+# Settings: SIZE (1280x800), SECS (time out, 30), PRE (a command before the desktop). GTK apps use their software
 # renderer (GSK_RENDERER=cairo): the headless screen has no GPU buffers.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
@@ -20,6 +20,8 @@ export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_CACHE_HOM
 "$REPO/build/wpsd" 2> "$T/wpsd.log" &
 WP=$!
 for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
+# PRE: a command run once wpsd is up, before the desktop (to prepare objects)
+[ -n "$PRE" ] && sh -c "$PRE"
 CMD=${*:-"GDK_BACKEND=wayland GSK_RENDERER=cairo GTK_A11Y=none zenity --info --text 'A GTK 4 dialog' 2> '$T/app.log' & sleep 0.5; '$REPO/build/tests/ssd-client' Framed 3060a0 2> '$T/ssd.log'"}
 # WPS's desktop, as the session runs it (-d); DESKENV: settings for it only
 # (e.g. WPS_SHELL_SELFTEST=winlist), NODESK=1: none

@@ -606,3 +606,11 @@ void svc_msg_closed(int64_t nid, const char *sender, svc_fn fn, void *arg)
     cb_text(&o->b, "sender"); cb_text(&o->b, sender ? sender : "");
     send_req(o, id, fn, arg);
 }
+
+void svc_startup_add(const char *target, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("startup_add", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    send_req(o, id, fn, arg);
+}

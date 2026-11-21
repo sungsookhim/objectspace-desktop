@@ -5,6 +5,10 @@
 #include <string.h>
 
 #include "wps_classes.h"
+#include "wps_startup_hook.h"
+
+bool (*wps_startup_query)(wpo_object *o, bool *on);
+bool (*wps_startup_set)(wpo_object *o, bool on);
 
 void WPProgram__wpUnInitData(wpo_object *self)
 {
@@ -24,6 +28,13 @@ bool WPProgram__wpSetCommand(wpo_object *self, const char *command)
     free(WPProgram_data(self)->command);
     WPProgram_data(self)->command = c;
     WPObject_wpSaveDeferred(self);
+    return true;
+}
+
+bool WPProgram__wpSetStartAtLogin(wpo_object *self, bool on)
+{
+    if (!wps_startup_set || !wps_startup_set(self, on)) return false;
+    WPObject_wpObjectChanged(self);
     return true;
 }
 
@@ -51,6 +62,13 @@ char *WPProgram__wpAddSettingsPages(wpo_object *self, const char *pages)
     size_t n = (c ? strlen(c) : 0) + 128;
     char *line = malloc(n);
     snprintf(line, n, "page\tProgram\nfield\tcommand\ttext\tCommand\t%s\twpSetCommand\n", c ? c : "");
+    bool on = false;
+    if (wps_startup_query && wps_startup_query(self, &on)) {   /* an entry in Startup */
+        char *l2 = wps_concat(line, on ? "field\tstart_at_login\tcheckbox\tStart at login\t1\twpSetStartAtLogin\n"
+                                       : "field\tstart_at_login\tcheckbox\tStart at login\t0\twpSetStartAtLogin\n");
+        free(line);
+        line = l2;
+    }
     char *r = wps_concat(base, line);
     free(base);
     free(line);

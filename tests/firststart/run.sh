@@ -1,5 +1,6 @@
 #!/bin/sh
-# The desktop's first start, step 7 (0.2): Templates in System. Part
+# The desktop's first start, step 7 (0.2): Templates in System; and
+# Startup (drops make entries or shadows; Start at login). Part
 # "new": a new desktop; part "old": a desktop at step 6 with Templates on
 # it, which moves into System. Played by tests/firststart/scenario.py.
 cd "$(dirname "$0")/../.."
@@ -17,6 +18,7 @@ for part in new old; do
     WP=$!
     for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
     python3 tests/firststart/scenario.py $part || R=1
+    [ $part = new ] && { python3 tests/firststart/scenario.py startup || R=1; }
     "$REPO/build/wpsctl" shutdown >/dev/null 2>&1; wait $WP
     [ $R = 0 ] && rm -rf "$T" "$RT" || { echo "kept: $T"; tail -5 "$T/wpsd.log"; rm -rf "$RT"; }
 done

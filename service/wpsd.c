@@ -10,6 +10,8 @@
  *   {op:"drives"}                       the volumes udisks2 (or mountinfo) shows -> [{uuid, title, kind, mount, ...}]
  *   {op:"restore", target}              an item in a trash: back where it was; its new path
  *   {op:"empty_trash"}                  the home trash emptied (a delete job); the job's ID
+ *   {op:"startup_add", target}         into Startup: an autostart entry for a program or
+ *                                       executable, else a shadow; what was made
  *   {op:"msg_add", app, icon, summary, body, urgency, nid, sender, actions}   a message kept (messages.h); its ID
  *   {op:"msg_list"} -> {messages:[...newest first], unread}
  *   {op:"msg_set", ids|all, read, closed}  {op:"msg_delete", ids|all}  {op:"msg_closed", nid, sender}
@@ -108,6 +110,8 @@
 #include "WPMinWinViewer.h"
 #include "WPMessages.h"
 #include "messages.h"
+#include "startup.h"
+#include "wps_startup_hook.h"
 #include "WPDataFile.h"
 #include "wps_state.h"
 #include "tracker.h"
@@ -3092,6 +3096,71 @@ static void found(void *arg, int64_t find, const wps_found *items, size_t n, boo
     if (done) client_unref(c);
 }
 
+/* ---- Startup (startup.h) */
+
+struct startup_job {
+    struct client *c;
+    int64_t id;
+    char target[PATH_MAX], made[PATH_MAX], dir[PATH_MAX];
+    int err;
+};
+
+static void startup_work(void *arg)
+{
+    struct startup_job *j = arg;
+    wps_startup_dir(j->dir, sizeof j->dir);
+    wps_mkdirs(j->dir, 0755);
+    wps_loaded ld;
+    wps_load(j->target, false, &ld);
+    char path[PATH_MAX] = "";
+    if (!ld.err && ld.shadow_of[0]) {   /* a shadow: what it stands for */
+        char loc[WPS_ID_LEN + 8];
+        snprintf(loc, sizeof loc, "id:%s", ld.shadow_of);
+        wps_loaded tl;
+        wps_load(loc, false, &tl);
+        if (!tl.err && !tl.central) snprintf(path, sizeof path, "%s", tl.path);
+        wps_loaded_free(&tl);
+    } else if (!ld.err && !ld.central) snprintf(path, sizeof path, "%s", ld.path);
+    j->err = ld.err ? ld.err : path[0] ? wps_startup_add(path, j->made, sizeof j->made) : ENOEXEC;
+    wps_loaded_free(&ld);
+}
+
+static void startup_done(void *arg)
+{
+    struct startup_job *j = arg;
+    if (j->err == ENOEXEC) {   /* not a program: a shadow, opened at login */
+        struct simple *s = calloc(1, sizeof *s);
+        s->c = j->c; s->id = j->id;   /* (takes the reference) */
+        wps_shadow_create(j->target, j->dir, shadow_made, s);
+        free(j);
+        return;
+    }
+    if (!j->c->dead) {
+        if (j->err) reply_error(j->c, j->id, "failed", strerror(j->err));
+        else {
+            struct simple *s = calloc(1, sizeof *s);
+            s->c = j->c; s->id = j->id; j->c->refs++;
+            reply_simple_ok(s, j->made);
+        }
+    }
+    client_unref(j->c);
+    free(j);
+}
+
+static bool startup_query(wpo_object *o, bool *on)
+{
+    const char *p = wps_object_path(o);
+    if (!p || !wps_startup_is_entry(p)) return false;
+    *on = wps_startup_enabled(p);
+    return true;
+}
+
+static bool startup_set(wpo_object *o, bool on)
+{
+    const char *p = wps_object_path(o);
+    return p && wps_startup_set_enabled(p, on) == 0;
+}
+
 static void handle(struct client *c, cv *msg)
 {
     int64_t id = 0;
@@ -3244,6 +3313,15 @@ static void handle(struct client *c, cv *msg)
         wps_trash_home(j->files, sizeof j->files);
         strncat(j->files, "/files", sizeof j->files - strlen(j->files) - 1);
         wpo_defer(loop, "empty trash", empty_work, empty_done, j);
+    } else if (strcmp(op, "startup_add") == 0) {
+        const char *t = cv_text(msg, "target");
+        if (!t) { reply_error(c, id, "bad request", "startup_add needs a target"); cv_free(msg); return; }
+        struct startup_job *j = calloc(1, sizeof *j);
+        j->c = c; c->refs++;
+        j->id = id;
+        sobj *known = strncmp(t, "id:", 3) == 0 ? wps_sobj_by_id(t + 3) : NULL;
+        snprintf(j->target, sizeof j->target, "%s", known ? known->path : t);
+        wpo_defer(loop, "startup", startup_work, startup_done, j);
     } else if (strcmp(op, "msg_add") == 0) {
         int64_t mid = wps_messages_add(msg);
         reply_int(c, id, mid);
@@ -3535,6 +3613,8 @@ int main(int argc, char **argv)
     wps_shadows_init(loop, db);
     system_folder_init();
     wps_drive_query = drive_query;
+    wps_startup_query = startup_query;
+    wps_startup_set = startup_set;
     {
         char comp[PATH_MAX], drv[PATH_MAX + 8];
         computer_dirs(comp, sizeof comp, drv, sizeof drv);

@@ -224,6 +224,8 @@ static void drives_changed_event(void);
 static ui_dialog *last_dialog;   /* (declared again below, with the jobs) */
 static void restore_items(struct folder *f, size_t i);
 static bool is_trash_dir(const char *p);
+static bool is_startup_dir(const char *p);
+static void startup_dropped(struct folder *f, const char *mime, const char *data);
 struct del;
 static void trash_dropped(struct folder *f, const char *mime, const char *data);
 static bool dragged_onto_itself(struct folder *f, size_t item);
@@ -1825,6 +1827,65 @@ static bool is_trash_dir(const char *p)
     return stat(info, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+/* Startup (v0.2-design 7.1): the XDG autostart folder. */
+static void startup_dir(char *out, size_t n)
+{
+    const char *xc = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xc && *xc) snprintf(out, n, "%s/autostart", xc);
+    else snprintf(out, n, "%s/.config/autostart", home ? home : "");
+}
+
+static bool is_startup_dir(const char *p)
+{
+    char d[PATH_MAX], a[PATH_MAX], b[PATH_MAX];
+    startup_dir(d, sizeof d);
+    return p && realpath(d, a) && realpath(p, b) && !strcmp(a, b);
+}
+
+/* At login (once a session: XDG_SESSION_ID), the desktop opens the
+ * shadows in Startup, as OS/2's Startup folder did; its program entries
+ * the session itself runs (systemd's XDG autostart). */
+static void startup_opened(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!res) return;
+    const char *v = cv_text(res, "view");
+    if (cv_text(res, "folder")) open_folder(cv_text(res, "folder"), UI_VIEW_ICON);
+    else if (v && !strcmp(v, "messages")) messages_open();
+    else if (v && !strcmp(v, "minimized-windows")) winlist_open(true);
+}
+
+static void got_startup(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
+    for (size_t i = 0; items && items->k == CV_ARRAY && i < items->n; i++) {
+        const cv *it = &items->items[i], *sh = cv_get(it, "shadow");
+        const char *nm = cv_text(it, "name");
+        if (!nm || nm[0] != '\x01' || !sh || sh->k != CV_BOOL || !sh->b) continue;
+        svc_open(nm + 1, false, startup_opened, NULL);
+    }
+}
+
+static void startup_at_login(void)
+{
+    const char *rt = getenv("WPS_RUNTIME_DIR");
+    if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
+    const char *sid = getenv("XDG_SESSION_ID");
+    char marker[PATH_MAX], was[64] = "";
+    snprintf(marker, sizeof marker, "%s/wps-startup-opened", rt && *rt ? rt : "/tmp");
+    FILE *m = fopen(marker, "r");
+    if (m) { if (!fgets(was, sizeof was, m)) was[0] = 0; fclose(m); }
+    was[strcspn(was, "\n")] = 0;
+    if (m && !strcmp(was, sid ? sid : "")) return;   /* (the desktop started again in this session) */
+    m = fopen(marker, "w");
+    if (m) { fprintf(m, "%s\n", sid ? sid : ""); fclose(m); }
+    char d[PATH_MAX];
+    startup_dir(d, sizeof d);
+    svc_list(d, 0, 500, true, got_startup, NULL);
+}
+
 static void emptied(void *arg, const cv *reply)
 {
     long folder = (long)(intptr_t)arg;
@@ -2281,6 +2342,11 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
         ui_container_set_drop_target(f->cont, item);
         return src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
     }
+    if (is_startup_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest)) && !dragged_onto_itself(f, item)) {
+        /* onto Startup: an entry or a shadow is made there (a copy for the source) */
+        ui_container_set_drop_target(f->cont, item);
+        return src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
+    }
     /* As in OS/2, from the keys held (the Mouse object's mappings; by
      * default none moves, Ctrl copies, Ctrl+Shift makes a shadow, Alt
      * asks). GNOME's own choice is not used: for a button 2 drag it says
@@ -2544,6 +2610,10 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     drop_dest(f, x, y, dest, sizeof dest, &item);
     if (is_trash_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest)) && !dragged_onto_itself(f, item)) {
         trash_dropped(f, mime, data);
+        return UI_DND_COPY;
+    }
+    if (is_startup_dir(dest) && !(cur_drag && !strcmp(cur_drag->src_folder, dest)) && !dragged_onto_itself(f, item)) {
+        startup_dropped(f, mime, data);
         return UI_DND_COPY;
     }
     int w = drop_how(action, start_action, mods);
@@ -2949,6 +3019,37 @@ static bool dragged_onto_itself(struct folder *f, size_t item)
     for (size_t k = 0; k < cur_drag->n; k++)
         if (!strcmp(cur_drag->paths[k], p)) return true;
     return false;
+}
+
+static void startup_added(void *arg, const cv *reply)
+{
+    long folder = (long)(intptr_t)arg;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (ok && ok->k == CV_BOOL && ok->b) {
+        set_status(folder, "Added to Startup: it starts (or opens) at login");
+        raise_in(folder_by_id(folder), "object.create", NULL, "");
+    } else {
+        char m[600];
+        snprintf(m, sizeof m, "Cannot add to Startup: %s", reply && cv_text(reply, "message") ? cv_text(reply, "message") : "lost the connection to wpsd");
+        report_error(folder, m);
+    }
+}
+
+/* Dropped on Startup: programs and scripts become autostart entries,
+ * other objects shadows (wpsd decides); nothing moves. */
+static void startup_dropped(struct folder *f, const char *mime, const char *data)
+{
+    char *copy = strdup(data), *save = NULL;
+    for (char *line = strtok_r(copy, "\r\n", &save); line; line = strtok_r(NULL, "\r\n", &save)) {
+        if (!*line || *line == '#') continue;
+        char *tab = !strcmp(mime, MIME_URIS) ? NULL : strchr(line, '\t');
+        if (tab) *tab = 0;
+        char *p = !strcmp(mime, MIME_URIS) ? uri_path(line) : strdup(line);
+        if (!p) continue;
+        svc_startup_add(p, startup_added, (void *)(intptr_t)f->id);
+        free(p);
+    }
+    free(copy);
 }
 
 static void trash_dropped(struct folder *f, const char *mime, const char *data)
@@ -5039,6 +5140,7 @@ static void on_corner_timer(void *arg, int fd, short rev)
 static void first_started(void *arg, const cv *reply)
 {
     (void)arg;
+    if (!getenv("WPS_NO_STARTUP")) startup_at_login();
     int64_t from = -1;
     if (!reply || !cv_int(reply, "result", &from) || from >= 7 || corner_timer >= 0) return;
     corner_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);

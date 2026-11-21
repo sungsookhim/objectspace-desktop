@@ -84,6 +84,8 @@ typedef struct {
     const char *const *actions;
     size_t nactions;
 } svc_message;
+/* Into Startup: an autostart entry for a program or script, else a shadow. */
+void svc_startup_add(const char *target, svc_fn fn, void *arg);
 void svc_msg_add(const svc_message *m, svc_fn fn, void *arg);
 void svc_msg_list(svc_fn fn, void *arg);
 /* ids: n of them, or all messages when n is 0; read, closed: -1 unchanged. */

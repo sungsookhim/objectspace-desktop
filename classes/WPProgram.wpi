@@ -9,5 +9,7 @@ override wpSaveState
 override wpRestoreProperties
 method wpQueryCommand() -> string
 method wpSetCommand(string command) -> bool
+# An autostart entry (in Startup): whether it starts at login.
+method wpSetStartAtLogin(bool on) -> bool
 override wpAddSettingsPages
 classoverride wpclsQueryTitle
