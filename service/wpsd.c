@@ -19,6 +19,8 @@
  *   {op:"job_decide", job, decision:"skip"|"rename", all}
  *   {op:"subscribe", objects:[...], folders:[...], jobs} -> sub; events follow:
  *       {event:"object_changed"|"content_added"|"content_removed"|"object_moved"|"job"|"volumes", sub, ...}
+ *       {event:"layout_changed", sub, folder}  icon positions in a watched folder were stored
+ *                                              (items a copy or move job dropped there)
  *   {op:"unsubscribe", sub}
  *   {op:"menu"|"settings", target}            menus and settings pages as data
  *   {op:"menu_select", target, item}  {op:"settings_set", target, values:{key:value}, expect}
@@ -802,6 +804,24 @@ static void on_object_changed(wpo_object *o)
 }
 
 static void on_fs_event(char kind, const char *from, const char *path);
+
+/* Icon positions were stored in a folder without a client asking (a job's
+ * dropped items, placed after the job reported it was done): windows on
+ * it read them again, else they keep the spot they gave the new icon. */
+static void on_layout_changed(const char *folder)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead) continue;
+        bool hit = false;
+        for (size_t i = 0; i < x->nfolders && !hit; i++) hit = !strcmp(x->folders[i], folder);
+        if (!hit) continue;
+        cbuf b;
+        event_head(&b, "layout_changed", x->id, 1);
+        cb_text(&b, "folder"); cb_text(&b, folder);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
 
 /* A central object appeared in or left a folder: like a file doing so. */
 static void on_central_change(const char *folder, const char *id, char kind)
@@ -1704,6 +1724,7 @@ static void place_done(void *arg)
             wpo_object *o = j->items[i].err ? NULL : wps_object_from_loaded(&j->items[i]);
             if (o) WPFolder_wpSetIconPos(f, o, j->x[i], j->y[i]);
         }
+        if (f && wpo_is_a(f, WPFolderClass)) on_layout_changed(j->folder);
     } else if (!j->c->dead) {
         if (!f || !wpo_is_a(f, WPFolderClass)) reply_error(j->c, j->id, "failed", "the folder cannot be loaded");
         else {

@@ -658,6 +658,8 @@ static void on_event(void *arg, const cv *ev)
         if (f->sub != sub || f->closing) continue;
         if (!strcmp(name, "content_added") || !strcmp(name, "content_removed") || !strcmp(name, "object_moved")) {
             queue_change(f, name, ev);
+        } else if (!strcmp(name, "layout_changed")) {
+            svc_layout(f->path, got_layout, as_arg(f));   /* positions stored for it (a job's drop) */
         } else if (!strcmp(name, "object_changed")) {
             /* One object's details: its row is read again, not the folder. */
             const cv *o = cv_get(ev, "object");
