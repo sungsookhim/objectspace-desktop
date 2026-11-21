@@ -2178,6 +2178,9 @@ static void drop_dest(struct folder *f, double x, double y, char *out, size_t n,
     size_t i = ui_container_item_at(f->cont, x, y);
     ui_item it = { 0 };
     if (i != SIZE_MAX) src_item(f, i, &it);
+    /* onto its own icon (a short drag): the folder it is in, not what it
+     * is (a folder's shadow would otherwise go into its own original) */
+    if (i != SIZE_MAX && dragged_onto_itself(f, i)) i = SIZE_MAX;
     if (i != SIZE_MAX && it.loaded && it.kind == UI_KIND_FOLDER) {
         struct row *rw = row_at(f, i);
         if (rw && rw->shadow && rw->target) snprintf(out, n, "%s", rw->target);   /* into the original */
