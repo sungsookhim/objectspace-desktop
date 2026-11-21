@@ -8,12 +8,25 @@
 #   make m0       build the M0 prototypes (see proto/m0)
 #   make g0       build the G0 GUI prototypes (see proto/g0; optimised, no sanitizers)
 #   make gui      build wps-shell (optimised) and wps-shell-asan (sanitizers)
+#   make session  everything the WPS session runs
+#   make install  DESTDIR=... PREFIX=/usr (build with the same PREFIX); make uninstall
+#   make install-check  install into a scratch root and run a session from it
 #   make clean
 
 CC      ?= cc
 # The version (VERSION), in every program (--version, wpsd's ping).
 WPS_VERSION := $(shell cat VERSION 2>/dev/null || echo unknown)
-VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=2
+# Where make install puts things (v0.2-design.md 11.1); run from the tree,
+# the programs find each other in build/ as before.
+PREFIX     ?= /usr/local
+BINDIR     ?= $(PREFIX)/bin
+LIBEXECDIR ?= $(PREFIX)/libexec/wps
+LIBDIR     ?= $(PREFIX)/lib64
+DATADIR    ?= $(PREFIX)/share
+SYSCONFDIR ?= /etc
+USERUNITDIR   ?= $(PREFIX)/lib/systemd/user
+SYSTEMUNITDIR ?= $(PREFIX)/lib/systemd/system
+VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=2 -DWPS_PLUGINDIR='"$(LIBDIR)/wps/plugins"'
 PYTHON  ?= python3
 B       := build
 GEN     := $(B)/gen
@@ -296,7 +309,41 @@ gui-test: gui
 	$(TV)/test_ui_mouse
 	$(TV)/test_layout
 
+# make install DESTDIR=... PREFIX=/usr: the programs, the user service,
+# the session on the login screen, the lock screen's PAM file and the
+# GNOME Shell extension (which then starts wps-shell from the PATH).
+INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-shell $(B)/wps-compositor
+EXT := gnome-extension/wps@wps-linux
+EXTDIR = $(DATADIR)/gnome-shell/extensions/wps@wps-linux
+subst = sed -e 's|@BINDIR@|$(BINDIR)|g' -e 's|@LIBEXECDIR@|$(LIBEXECDIR)|g'
+install: $(INSTALLED)
+	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins
+	install -m 755 $(B)/wpsctl $(B)/wps-shell $(DESTDIR)$(BINDIR)/
+	install -m 755 $(B)/wpsd $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-compositor $(DESTDIR)$(LIBEXECDIR)/
+	$(subst) tools/wps-session > $(DESTDIR)$(BINDIR)/wps-session && chmod 755 $(DESTDIR)$(BINDIR)/wps-session
+	install -d $(DESTDIR)$(USERUNITDIR) $(DESTDIR)$(SYSTEMUNITDIR) $(DESTDIR)$(DATADIR)/wayland-sessions $(DESTDIR)$(SYSCONFDIR)/pam.d
+	$(subst) data/wpsd.service.in > $(DESTDIR)$(USERUNITDIR)/wpsd.service
+	$(subst) service/wps-watchd.service > $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
+	$(subst) data/wps.desktop.in > $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop
+	install -m 644 data/wps-lock.pam $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
+	install -d $(DESTDIR)$(EXTDIR)/schemas
+	install -m 644 $(EXT)/metadata.json $(EXT)/extension.js $(DESTDIR)$(EXTDIR)/
+	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/
+	glib-compile-schemas $(DESTDIR)$(EXTDIR)/schemas
+
+# make install into a scratch root, then a headless session from it
+install-check: $(INSTALLED)
+	tests/install/check.sh
+
+uninstall:
+	rm -f $(addprefix $(DESTDIR)$(BINDIR)/,wpsctl wps-shell wps-session)
+	rm -f $(addprefix $(DESTDIR)$(LIBEXECDIR)/,wpsd wps-watchd wps-plughost wps-compositor)
+	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
+	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
+	rm -rf $(DESTDIR)$(EXTDIR)
+	-rmdir $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins $(DESTDIR)$(LIBDIR)/wps 2>/dev/null
+
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test check m0 m2 m3 g0 gui gui-test clean
+.PHONY: all plugins test check m0 m2 m3 g0 gui gui-test clean install uninstall install-check

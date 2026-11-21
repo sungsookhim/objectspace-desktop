@@ -12,7 +12,16 @@
 #
 # Its log: ~/.local/state/wps/session.log (the last session's; the one
 # before is session.log.old).
-REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+# Where the programs are: installed (make install fills these in), or this
+# source tree's build/ (run from the tree); WPS_LIBEXEC and WPS_BINDIR
+# override both (tests of an install in a scratch root).
+LIBEXEC=${WPS_LIBEXEC:-@LIBEXECDIR@}
+BINDIR=${WPS_BINDIR:-@BINDIR@}
+case $LIBEXEC in @*)
+    REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+    LIBEXEC=$REPO/build
+    BINDIR=$REPO/build ;;
+esac
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/wps
 mkdir -p "$STATE"
 [ -f "$STATE/session.log" ] && mv "$STATE/session.log" "$STATE/session.log.old"
@@ -98,7 +107,7 @@ fi
 # wpsd: the user service (tools/install-extension.sh installs it), or
 # started here if it is not installed.
 if ! systemctl --user start wpsd.service 2>/dev/null; then
-    "$REPO/build/wpsctl" ping >/dev/null 2>&1 || { "$REPO/build/wpsd" 2>> "$STATE/wpsd.log" & }
+    "$BINDIR/wpsctl" ping >/dev/null 2>&1 || { "$LIBEXEC/wpsd" 2>> "$STATE/wpsd.log" & }
 fi
 
 DESK=$(xdg-user-dir DESKTOP 2>/dev/null)
@@ -150,7 +159,7 @@ systemctl --user start wps-session.target; \
 gdbus call --system --dest org.gnome.DisplayManager --object-path /org/gnome/DisplayManager/Manager \
     --method org.gnome.DisplayManager.Manager.RegisterSession >/dev/null 2>&1; \
 systemctl --user restart xdg-desktop-portal.service 2>/dev/null"
-"$REPO/build/wps-compositor" -d "'$REPO/build/wps-shell' --desktop '$DESK'" -s "$READY"
+"$LIBEXEC/wps-compositor" -d "'$BINDIR/wps-shell' --desktop '$DESK'" -s "$READY"
 status=$?
 echo "wps-session: the compositor ended ($status)" >&2
 # What this session started and set for systemd goes with it (the

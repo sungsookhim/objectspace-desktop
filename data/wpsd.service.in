@@ -1,0 +1,11 @@
+[Unit]
+Description=WPS object service (wpsd)
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+
+[Service]
+ExecStart=@LIBEXECDIR@/wpsd
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

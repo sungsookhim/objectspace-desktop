@@ -1,4 +1,7 @@
 #define _GNU_SOURCE
+#ifndef WPS_PLUGINDIR
+#define WPS_PLUGINDIR "/usr/lib/wps/plugins"
+#endif
 #include "plugins.h"
 
 #include <dirent.h>
@@ -440,7 +443,7 @@ void wps_plugins_init(wpo_loop *l, const wps_env *e)
         char p[PATH_MAX + 16];
         snprintf(p, sizeof p, "%s/plugins", env->config_dir);
         scan_dir(p);
-        scan_dir("/usr/lib/wps/plugins");
+        scan_dir(WPS_PLUGINDIR);   /* the installed ones (make install: $(LIBDIR)/wps/plugins) */
     }
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     struct itimerspec its = { .it_interval = { 0, 100 * 1000 * 1000 }, .it_value = { 0, 100 * 1000 * 1000 } };

@@ -74,6 +74,8 @@ make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, 
 make gui      # wps-shell (optimised) and wps-shell-asan
 make compositor     # wps-compositor (G5, wlroots) and its test clients
 make session        # everything the WPS session runs: after a pull, this
+make install DESTDIR=... PREFIX=/usr   # into /usr (or a staging root): programs, user service, session, PAM file, GNOME extension
+make install-check  # install into a scratch root and run a headless session from it
 tests/comp/run.sh SCRIPT  # the compositor headless, with WPS's desktop, played by a script
 tools/try-compositor.sh   # the compositor nested in a window of your session
 tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private headless GNOME Shell
