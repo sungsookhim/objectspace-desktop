@@ -339,6 +339,16 @@ static void command(char *line)
         if (ui_scheme_set_option(key, eq + 1)) comp_redraw_frames();
         return;
     }
+    /* the Mouse object's settings (its keys for copy, shadow and the drop
+     * menu show on the pointer during a drag) */
+    if (!strcmp(line, "mouse")) {
+        char key[64];
+        const char *eq = strchr(arg, '=');
+        if (!eq || (size_t)(eq - arg) >= sizeof key) return;
+        snprintf(key, sizeof key, "%.*s", (int)(eq - arg), arg);
+        ui_mouse_set(key, eq + 1);
+        return;
+    }
     if (!strcmp(line, "font")) {
         double px = atof(arg);
         const char *fam = strchr(arg, ' ');

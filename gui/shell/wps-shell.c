@@ -1701,7 +1701,7 @@ static void drop_dest(struct folder *f, double x, double y, char *out, size_t n,
     }
 }
 
-static bool shadow_mods(unsigned mods) { return (mods & UI_MOD_CTRL) && (mods & UI_MOD_SHIFT); }
+static bool shadow_mods(unsigned mods) { return ui_mouse_drop_how(mods) == 2; }
 
 static bool under(const char *path, const char *dir)
 {
@@ -1720,10 +1720,13 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
     char dest[PATH_MAX];
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
-    /* As in OS/2, from the keys held: none moves, Ctrl copies, Ctrl+Shift
-     * makes a shadow; Alt asks. GNOME's own choice is not used: for a
-     * button 2 drag it says "ask", and now and then "copy", with no key held. */
-    uint32_t act = (mods & UI_MOD_ALT) ? UI_DND_ASK : (mods & UI_MOD_CTRL) ? UI_DND_COPY : UI_DND_MOVE;
+    /* As in OS/2, from the keys held (the Mouse object's mappings; by
+     * default none moves, Ctrl copies, Ctrl+Shift makes a shadow, Alt
+     * asks). GNOME's own choice is not used: for a button 2 drag it says
+     * "ask", and now and then "copy", with no key held. A shadow is
+     * answered as a copy (nothing is removed from the source). */
+    int how = ui_mouse_drop_how(mods);
+    uint32_t act = how < 0 ? UI_DND_ASK : how ? UI_DND_COPY : UI_DND_MOVE;
     if (!(act & src_actions)) act = src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
     if (cur_drag) {
         for (size_t i = 0; i < cur_drag->n; i++) {
@@ -1754,6 +1757,7 @@ struct jobtrack {
     long folder;
     char kind[8];
     bool asking;
+    char dest[PATH_MAX];   /* where the objects go */
 };
 static struct jobtrack *jobs;
 static ui_dialog *last_dialog;   /* for self-tests */
@@ -1815,6 +1819,7 @@ static void got_job(void *arg, const cv *reply)
         t->job = res->i;
         t->folder = x->folder;
         snprintf(t->kind, sizeof t->kind, "%s", x->kind);
+        snprintf(t->dest, sizeof t->dest, "%s", x->dest);
         t->next = jobs;
         jobs = t;
     } else {
@@ -1910,16 +1915,15 @@ static void ask_chosen(void *arg, int64_t id)
     free(a);
 }
 
-/* How a drop is meant, as in OS/2: none moves, Ctrl copies, Ctrl+Shift
- * makes a shadow, Alt asks. Keys held when the drag began reach us; keys
+/* How a drop is meant, as the Mouse object maps the keys (OS/2's: none moves, Ctrl copies, Ctrl+Shift
+  * makes a shadow, Alt asks). Keys held when the drag began reach us; keys
  * pressed during it reach only GNOME, which then changes its choice: to
  * copy for Ctrl, to move for Shift or Ctrl+Shift (it cannot tell them
  * apart, so a change to move means a shadow). */
 static int drop_how(uint32_t action, uint32_t start_action, unsigned mods)
 {
-    if (mods & UI_MOD_ALT) return -1;   /* ask */
-    if ((mods & UI_MOD_CTRL) && (mods & UI_MOD_SHIFT)) return 2;
-    if (mods & UI_MOD_CTRL) return 1;
+    int how = ui_mouse_drop_how(mods);   /* the keys held, as mapped */
+    if (how) return how;
     if (start_action && action != start_action) {
         if (action == UI_DND_COPY) return 1;
         if (action == UI_DND_MOVE) return 2;
@@ -1941,7 +1945,7 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     struct drop_at at = { item == SIZE_MAX && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON, 0, 0 };
     if (at.place) ui_container_to_list(f->cont, x, y, &at.lx, &at.ly);
     int how = w == 2 ? DROP_SHADOW : w == 1 ? DROP_COPY : DROP_MOVE;
-    if (how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
+    if (w == 0 && how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
         reposition(f, x, y))
         return UI_DND_MOVE;
     if (w < 0) {
@@ -2400,6 +2404,12 @@ static void on_job_event(const cv *st)
         return;
     }
     if (!strcmp(state, "done") || !strcmp(state, "failed") || !strcmp(state, "cancelled")) {
+        /* The service keeps where the objects were dropped as the job
+         * ends: the windows on the destination read the positions again
+         * (the new icons may have appeared, in the next free spot, before
+         * their positions were kept). */
+        for (struct folder *o = folders; o; o = o->next)
+            if (!o->closing && t->dest[0] && !strcmp(o->path, t->dest) && !is_tree(o)) svc_layout(o->path, got_layout, as_arg(o));
         const cv *miss = cv_get(st, "missing"), *skip = cv_get(st, "skipped");
         size_t nm = miss && miss->k == CV_ARRAY ? miss->n : 0, ns = skip && skip->k == CV_ARRAY ? skip->n : 0;
         if (!strcmp(state, "done"))
@@ -4135,7 +4145,12 @@ static void apply_setup_object(const char *cls, const cv *settings)
         const char *key = k->s, *val = v->s;
         gnome_wps_value(cls, key, val);
         if (!strcmp(cls, "WPSound")) events_setup_set(key, val);
-        else if (!strcmp(cls, "WPMouse")) ui_mouse_set(key, val);
+        else if (!strcmp(cls, "WPMouse")) {
+            ui_mouse_set(key, val);
+            char kv[160];   /* the compositor's too (WPS session): its drag pointer follows them */
+            snprintf(kv, sizeof kv, "%s=%s", key, val);
+            winlist_ext("mouse", kv);
+        }
         else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
         else if (!strcmp(cls, "WPSystem")) {
             if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */

@@ -1078,7 +1078,10 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     }
     if (!ui_rect_has(l, e->x, e->y)) return true;
     size_t i = item_at(c, e->x, e->y);
-    if (i != SIZE_MAX && ui_mouse_is(UI_ACT_DRAG, e) && !(e->mods & UI_MOD_ALT)) {
+    /* (Alt too: a drag with Alt held asks what to do at the drop, as on
+     * OS/2; ui_mouse_is already keeps an Alt-action on the drag's button,
+     * such as Edit title mapped there, from starting one) */
+    if (i != SIZE_MAX && ui_mouse_is(UI_ACT_DRAG, e)) {
         c->drag_i = i;
         c->drag_x = e->x;
         c->drag_y = e->y;

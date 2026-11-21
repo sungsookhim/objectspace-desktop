@@ -609,10 +609,31 @@ static void process_motion(uint32_t time)
 /* While something is dragged (drag and drop between or within programs):
  * the pointer goes to the program surface under it (the drag's grab turns
  * that into the drag's enter, motion and leave); WPS's frames take no part. */
+/* What the drop would do, on the pointer (as GNOME shows it): a copy with
+ * Ctrl, a shadow with Ctrl+Shift (WPS's keys, as OS/2's), nothing where
+ * the place under it would not take it. */
+static void drag_cursor(void)
+{
+    struct server *s = &server;
+    struct wlr_drag *d = s->seat->drag;
+    if (!d) return;
+    struct wlr_keyboard *kb = wlr_seat_get_keyboard(s->seat);
+    uint32_t m = kb ? wlr_keyboard_get_modifiers(kb) : 0;
+    unsigned mods = (m & WLR_MODIFIER_CTRL ? UI_MOD_CTRL : 0) | (m & WLR_MODIFIER_SHIFT ? UI_MOD_SHIFT : 0) |
+                    (m & WLR_MODIFIER_ALT ? UI_MOD_ALT : 0);
+    int how = ui_mouse_drop_how(mods);   /* the Mouse object's mappings */
+    if (!d->focus || !d->source || !d->source->accepted) set_cursor("no-drop");
+    else if (how == 2) set_cursor("alias");
+    else if (how == 1) set_cursor("copy");
+    else if (how < 0) set_cursor("context-menu");
+    else set_cursor("default");
+}
+
 static void drag_motion(uint32_t time)
 {
     struct server *s = &server;
     if (s->drag_icon) wlr_scene_node_set_position(&s->drag_icon->node, (int)s->cursor->x, (int)s->cursor->y);
+    drag_cursor();
     double sx, sy;
     struct wlr_surface *surface;
     ui_hit part;
@@ -844,6 +865,17 @@ static void on_modifiers(struct wl_listener *l, void *data)
     (void)data;
     struct keyboard *k = wl_container_of(l, k, modifiers);
     wlr_seat_set_keyboard(server.seat, k->wlr_keyboard);
+    if (server.seat->drag) {
+        /* A drag holds the keyboard and passes no keys on: the modifiers
+         * go to the focused program all the same (WPS chooses move, copy
+         * or shadow by them), and the place under the pointer is asked
+         * again with them. */
+        wlr_seat_keyboard_send_modifiers(server.seat, &k->wlr_keyboard->modifiers);
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        drag_motion((uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000));
+        return;
+    }
     wlr_seat_keyboard_notify_modifiers(server.seat, &k->wlr_keyboard->modifiers);
 }
 
@@ -925,12 +957,24 @@ static void on_request_start_drag(struct wl_listener *l, void *data)
     if (e->drag->source) wlr_data_source_destroy(e->drag->source);
 }
 
+/* The pointer back to what is under it (its program sets its own again). */
+static void after_drag(void *data)
+{
+    (void)data;
+    server.cursor_image = NULL;
+    set_cursor("default");
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    process_motion((uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000));
+}
+
 static void on_drag_destroy(struct wl_listener *l, void *data)
 {
     (void)l; (void)data;
     wl_list_remove(&server.drag_destroy.link);
     server.drag_icon = NULL;   /* (the scene's icon node goes with the icon) */
     DBG("drag ended\n");
+    wl_event_loop_add_idle(server.loop, after_drag, NULL);   /* once the drag is gone */
 }
 
 static void on_start_drag(struct wl_listener *l, void *data)
@@ -1874,6 +1918,14 @@ static void script_step(const char *line)
         if (!strcmp(cmd, "dclick")) { process_button(t, btn, true); process_button(t, btn, false); }
     } else if (!strcmp(cmd, "key")) {
         script_key(arg);
+    } else if ((!strcmp(cmd, "press") || !strcmp(cmd, "release")) && server.script_kb) {
+        /* a key held (press) or let go (release) by name, e.g. Control_L
+         * through a drag */
+        uint32_t code = keycode_for(server.script_kb, xkb_keysym_from_name(arg, XKB_KEYSYM_NO_FLAGS));
+        if (code)
+            wlr_keyboard_notify_key(server.script_kb, &(struct wlr_keyboard_key_event){ t, code - 8, true,
+                                    !strcmp(cmd, "press") ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED });
+        else fprintf(stderr, "wps-compositor: script: no key %s\n", arg);
     } else if (!strcmp(cmd, "shot")) {
         static char path[480];
         snprintf(path, sizeof path, "%s", arg);

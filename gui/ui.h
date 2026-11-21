@@ -126,9 +126,14 @@ typedef struct {
     bool left_handed;          /* buttons 1 and 2 swapped */
     int double_click_ms;
     double wheel_speed;        /* lines per wheel step */
+    /* What a drop does, by the keys held at it (OS/2: none moves, Ctrl
+     * copies, Ctrl+Shift makes a shadow; Alt asks with a menu) */
+    unsigned copy_mods, shadow_mods, ask_mods;
 } ui_mouse_config;
+/* What a drop with these keys held does: 0 move, 1 copy, 2 shadow, -1 ask. */
+int ui_mouse_drop_how(unsigned mods);
 /* One mouse setting by name (an action's chord, left_handed,
- * double_click_ms, wheel_speed), as from the Mouse object; false when the
+ * double_click_ms, wheel_speed, copy/shadow/drop_menu keys), as from the Mouse object; false when the
  * value cannot be used. */
 bool ui_mouse_set(const char *key, const char *value);
 extern ui_mouse_config ui_mouse;

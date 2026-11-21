@@ -246,7 +246,7 @@ $(B)/wps-shell-asan: $(UIDEPS)
 COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig xcb
 # The lock screen checks passwords with PAM (pam-devel); without it, no locking.
 COMPPAM := $(shell test -f /usr/include/security/pam_appl.h && echo -DHAVE_PAM)
-COMPSRC := compositor/wps-compositor.c compositor/desktop.c compositor/lock.c gui/ui_draw.c gui/ui_framepaint.c
+COMPSRC := compositor/wps-compositor.c compositor/desktop.c compositor/lock.c gui/ui_draw.c gui/ui_framepaint.c gui/ui_mouse.c
 DECOXML := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 $(G0)/xdg-decoration-unstable-v1-client-protocol.h: $(DECOXML)
 	@mkdir -p $(G0)

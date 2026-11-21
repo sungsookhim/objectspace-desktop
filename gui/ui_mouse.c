@@ -11,6 +11,9 @@
  *   edit_title  = alt+button1
  *   drag        = button2
  *   window_list = button3
+ *   copy        = ctrl          # keys held at a drop
+ *   shadow      = ctrl+shift
+ *   drop_menu   = alt
  *   left_handed = no
  *   double_click_ms = 400
  *   wheel_speed = 3
@@ -32,6 +35,9 @@ ui_mouse_config ui_mouse = {
         [UI_ACT_DRAG] = { UI_BTN2, 0, 1 },
         [UI_ACT_WINDOW_LIST] = { UI_BTN3, 0, 1 },
     },
+    .copy_mods = UI_MOD_CTRL,
+    .shadow_mods = UI_MOD_CTRL | UI_MOD_SHIFT,
+    .ask_mods = UI_MOD_ALT,
     .left_handed = false,
     .double_click_ms = 400,
     .wheel_speed = 3,
@@ -61,6 +67,33 @@ bool ui_mouse_parse_chord(const char *s, ui_chord *out)
     if (!c.button) return false;
     *out = c;
     return true;
+}
+
+/* "ctrl+shift" -> its modifiers; false for anything else (or none). */
+static bool parse_mods(const char *s, unsigned *out)
+{
+    unsigned m = 0;
+    char buf[128];
+    snprintf(buf, sizeof buf, "%s", s);
+    for (char *p = buf; *p; p++) *p = (char)tolower((unsigned char)*p);
+    for (char *save = NULL, *t = strtok_r(buf, "+ \t", &save); t; t = strtok_r(NULL, "+ \t", &save)) {
+        if (!strcmp(t, "alt")) m |= UI_MOD_ALT;
+        else if (!strcmp(t, "ctrl") || !strcmp(t, "control")) m |= UI_MOD_CTRL;
+        else if (!strcmp(t, "shift")) m |= UI_MOD_SHIFT;
+        else return false;
+    }
+    if (!m) return false;
+    *out = m;
+    return true;
+}
+
+int ui_mouse_drop_how(unsigned mods)
+{
+    mods &= UI_MOD_CTRL | UI_MOD_SHIFT | UI_MOD_ALT;
+    if (mods && mods == ui_mouse.shadow_mods) return 2;
+    if (mods && mods == ui_mouse.copy_mods) return 1;
+    if (mods && mods == ui_mouse.ask_mods) return -1;
+    return 0;
 }
 
 static bool yes(const char *v) { return !strcasecmp(v, "yes") || !strcasecmp(v, "true") || !strcmp(v, "1"); }
@@ -97,6 +130,9 @@ bool ui_mouse_set(const char *k, const char *v)
 {
     for (int a = 0; a < UI_ACT_COUNT; a++)
         if (!strcmp(k, names[a])) return ui_mouse_parse_chord(v, &ui_mouse.act[a]);
+    if (!strcmp(k, "copy")) return parse_mods(v, &ui_mouse.copy_mods);
+    if (!strcmp(k, "shadow")) return parse_mods(v, &ui_mouse.shadow_mods);
+    if (!strcmp(k, "drop_menu")) return parse_mods(v, &ui_mouse.ask_mods);
     if (!strcmp(k, "left_handed")) ui_mouse.left_handed = yes(v);
     else if (!strcmp(k, "double_click_ms")) { int ms = atoi(v); if (ms < 100 || ms > 2000) return false; ui_mouse.double_click_ms = ms; }
     else if (!strcmp(k, "wheel_speed")) { double w = atof(v); if (w <= 0 || w > 20) return false; ui_mouse.wheel_speed = w; }
