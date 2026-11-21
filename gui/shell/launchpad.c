@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #include "launchpad.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -70,9 +71,15 @@ static struct {
     struct drawer drawer;
     size_t kfocus;             /* the button the keyboard is on (0..3 OS/2's, 4.. objects) */
     bool focused;              /* the bar has the keyboard */
-} lp = { .pressed = -1, .drop_at = -1 };
+    ssize_t r_press;           /* an object button pressed with the drag button: a drag or its menu */
+    double r_x, r_y;
+    uint32_t r_serial;
+    ssize_t dragging;          /* the object button being dragged (from this bar), -1 none */
+    char drag_wps[PATH_MAX + 64], drag_uri[3 * PATH_MAX + 64];
+} lp = { .pressed = -1, .drop_at = -1, .r_press = -1, .dragging = -1 };
 
 static void reload(void);
+static void start_drag(ui_surface *s, size_t i, uint32_t serial);
 static void drawer_close(void);
 
 /* -------------------------------------------------------------- geometry */
@@ -664,7 +671,17 @@ static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
         if (was < NSYS) press_sys((size_t)was, e->mods);
         else open_entry(lp.dir, &lp.items[was - NSYS]);
     } else if (e->kind == UI_PRESS && e->button == UI_BTN2) {
-        button_menu(s, h >= NSYS && !arrow ? (size_t)h : SIZE_MAX, e->x, e->y, e->serial);
+        /* on an object: a drag (moved while held) or its menu (released) */
+        if (h >= NSYS && !arrow) { lp.r_press = h - NSYS; lp.r_x = e->x; lp.r_y = e->y; lp.r_serial = e->serial; return; }
+        button_menu(s, SIZE_MAX, e->x, e->y, e->serial);
+    } else if (e->kind == UI_RELEASE && e->button == UI_BTN2 && lp.r_press >= 0) {
+        size_t i = (size_t)lp.r_press;
+        lp.r_press = -1;
+        if (i < lp.n) button_menu(s, NSYS + i, lp.r_x, lp.r_y, 0);   /* (no grab: the button is up) */
+    } else if (e->kind == UI_MOTION && lp.r_press >= 0 && hypot(e->x - lp.r_x, e->y - lp.r_y) > 4) {
+        size_t i = (size_t)lp.r_press;
+        lp.r_press = -1;
+        if (i < lp.n) start_drag(s, i, lp.r_serial);
     } else if (e->kind == UI_LEAVE && lp.pressed >= 0) {
         lp.pressed = -1;
         ui_surface_damage_all(s);
@@ -693,6 +710,93 @@ static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t se
 
 #define MIME_WPS "application/x-wps-objects"
 #define MIME_URIS "text/uri-list"
+
+/* An object button dragged: dropped on the bar it goes to that place
+ * (the buttons' order); elsewhere it is the LaunchPad's shadow that goes
+ * (moved out, copied, ... as the keys say), as in OS/2. */
+static void drag_send(void *ctx, const char *mime, int fd)
+{
+    (void)ctx;
+    const char *d = !strcmp(mime, MIME_WPS) ? lp.drag_wps : lp.drag_uri;
+    ui_app_write_async(lp.app, fd, d, strlen(d));
+}
+
+static void drag_end(void *ctx, bool dropped, uint32_t action)
+{
+    (void)ctx; (void)dropped; (void)action;
+    lp.dragging = -1;
+}
+
+static void start_drag(ui_surface *s, size_t i, uint32_t serial)
+{
+    const struct entry *e = &lp.items[i];
+    char a[PATH_MAX + 32];
+    address(lp.dir, e, a, sizeof a);
+    snprintf(lp.drag_wps, sizeof lp.drag_wps, "%s\n", a);
+    /* other programs get the file it stands for */
+    const char *f = e->target[0] == '/' ? e->target : a[0] == '/' ? a : NULL;
+    lp.drag_uri[0] = 0;
+    if (f) {
+        static const char hex[] = "0123456789ABCDEF";
+        size_t o = (size_t)snprintf(lp.drag_uri, sizeof lp.drag_uri, "file://");
+        for (const unsigned char *p = (const unsigned char *)f; *p && o + 4 < sizeof lp.drag_uri; p++) {
+            if (isalnum(*p) || strchr("/-._~", *p)) lp.drag_uri[o++] = (char)*p;
+            else { lp.drag_uri[o++] = '%'; lp.drag_uri[o++] = hex[*p >> 4]; lp.drag_uri[o++] = hex[*p & 15]; }
+        }
+        snprintf(lp.drag_uri + o, sizeof lp.drag_uri - o, "\r\n");
+    }
+    int sc = ui_surface_scale(s);
+    cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 40 * sc, 40 * sc);
+    cairo_surface_set_device_scale(img, sc, sc);
+    cairo_t *cr = cairo_create(img);
+    ui_draw_kind_icon(cr, e->kind, 4, 4, 32);
+    cairo_destroy(cr);
+    const char *mimes[] = { MIME_WPS, MIME_URIS };
+    lp.dragging = (ssize_t)i;
+    if (!ui_drag_start(s, serial, mimes, lp.drag_uri[0] ? 2 : 1, UI_DND_COPY | UI_DND_MOVE | UI_DND_ASK, img, sc, drag_send,
+                       drag_end, NULL))
+        lp.dragging = -1;
+    cairo_surface_destroy(img);
+}
+
+/* The place (0..n) a drop at x goes to: before the button whose middle
+ * it is left of. */
+static size_t slot_at(double x)
+{
+    for (size_t i = 0; i < lp.n; i++) {
+        ui_rect r = obj_rect(i);
+        if (x < r.x + r.w / 2) return i;
+    }
+    return lp.n;
+}
+
+static void reorder(size_t from, size_t to)
+{
+    if (from >= lp.n || to > lp.n || to == from || to == from + 1) return;
+    struct entry moved = lp.items[from];
+    if (to > from) {
+        memmove(&lp.items[from], &lp.items[from + 1], (to - 1 - from) * sizeof moved);
+        lp.items[to - 1] = moved;
+    } else {
+        memmove(&lp.items[to + 1], &lp.items[to], (from - to) * sizeof moved);
+        lp.items[to] = moved;
+    }
+    /* the order is the positions: every button's x, kept by wpsd */
+    char *t[MAX_ITEMS];
+    int64_t px[MAX_ITEMS], py[MAX_ITEMS];
+    for (size_t k = 0; k < lp.n; k++) {
+        char a[PATH_MAX + 32];
+        address(lp.dir, &lp.items[k], a, sizeof a);
+        t[k] = strdup(a);
+        px[k] = (int64_t)k * ORDER_CELL;
+        py[k] = 0;
+    }
+    svc_place(lp.dir, (const char *const *)t, px, py, lp.n, placed, NULL);
+    for (size_t k = 0; k < lp.n; k++) free(t[k]);
+    layout();
+    ui_surface_damage_all(lp.s);
+    events_raise("object.move", "", "launchpad", (ui_rect){ 0, 0, 0, 0 });
+}
 
 static uint32_t lp_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
                                uint32_t src_actions, unsigned mods, const char **mime)
@@ -728,6 +832,10 @@ static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, con
     ssize_t h = hit(x, y, &arrow);
     lp.drop_at = -1;
     ui_surface_damage_all(s);
+    if (lp.dragging >= 0 && !(h >= NSYS && arrow)) {   /* one of its own buttons: to this place */
+        reorder((size_t)lp.dragging, slot_at(x));
+        return UI_DND_COPY;   /* (nothing to remove: it stays, elsewhere in the row) */
+    }
     if (h >= NSYS && arrow) {
         char d[PATH_MAX];
         drawer_dir((size_t)h - NSYS, d, sizeof d);
