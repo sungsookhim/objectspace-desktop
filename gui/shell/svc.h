@@ -41,6 +41,8 @@ void svc_job_start(const char *kind, int64_t selection, const char *dest, const 
                    const int64_t *y, size_t n, svc_fn fn, void *arg);
 /* Move or copy a central object (vobj:ID) into a folder; the reply's
  * result is its address there. */
+/* A central object (a shadow, ...) into the Trash Can, restorable. */
+void svc_vtrash(const char *target, svc_fn fn, void *arg);
 void svc_vdelete(const char *target, svc_fn fn, void *arg);   /* a central object */
 void svc_vmove(const char *target, const char *folder, bool copy, svc_fn fn, void *arg);
 void svc_job_decide(int64_t job, const char *decision, bool all);                                 /* "skip", "rename" */

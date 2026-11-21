@@ -1711,9 +1711,10 @@ static void restore_items(struct folder *f, size_t i)
     for (size_t k = whole ? 0 : i; whole ? k < f->m.total : k == i; k++) {
         if (whole && !ui_container_is_selected(f->cont, k)) continue;
         const char *nm = model_name(&f->m, k);
-        if (!nm || nm[0] == '\x01') continue;
+        if (!nm) continue;
         char p[PATH_MAX];
-        snprintf(p, sizeof p, "%s/%s", f->path, nm);
+        if (nm[0] == '\x01') snprintf(p, sizeof p, "%s", nm + 1);   /* a central object: its address */
+        else snprintf(p, sizeof p, "%s/%s", f->path, nm);
         svc_restore(p, restored, (void *)(intptr_t)f->id);
     }
 }
@@ -2700,7 +2701,9 @@ static void vdeleted(void *arg, const cv *reply)
 
 static void start_deletion(struct del *d)
 {
-    for (size_t i = 0; i < d->nv; i++) svc_vdelete(d->vobjs[i], vdeleted, (void *)(intptr_t)d->folder);
+    /* central objects (shadows ...): into the Trash Can, or for good */
+    for (size_t i = 0; i < d->nv; i++)
+        (d->permanent ? svc_vdelete : svc_vtrash)(d->vobjs[i], vdeleted, (void *)(intptr_t)d->folder);
     if (d->n) {
         struct xfer *x = calloc(1, sizeof *x);
         x->folder = d->folder;
@@ -3025,7 +3028,7 @@ static void win_key(ui_surface *s, const ui_key_event *e)
         for (size_t k = 0; k < total && at == SIZE_MAX; k++)
             if (ui_container_is_selected(f->cont, k)) at = k;
         if (at == SIZE_MAX) at = ui_container_cursor(f->cont);
-        if (at != SIZE_MAX && at < total) delete_request(f, at, (e->mods & UI_MOD_SHIFT) != 0);
+        if (at != SIZE_MAX && at < total) delete_request(f, at, (e->mods & UI_MOD_SHIFT) != 0 || is_trash_dir(f->path));
         return;
     }
     ui_container_key(f->cont, e);

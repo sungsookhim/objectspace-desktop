@@ -1864,6 +1864,7 @@ struct vmove_job {
     int64_t id;
     char target[64], dest[PATH_MAX], from_folder[PATH_MAX];
     bool copy, del;         /* del: vdelete, the object is deleted */
+    bool trash;             /* vtrash: into the Trash Can, its folder noted (restore) */
     char new_id[WPS_ID_LEN + 1];
     int err;
 };
@@ -1896,6 +1897,12 @@ static void vmove_work(void *arg)
         if (!from.err) snprintf(j->from_folder, sizeof j->from_folder, "%s", from.path);
         wps_loaded_free(&from);
         j->err = wps_central_move(ld.id, dst.vol, dst.id, j->copy, j->new_id);
+        if (!j->err && j->trash) {   /* where it was, for Restore */
+            char loc[WPS_ID_LEN + 8], key[PATH_MAX + 128];
+            snprintf(loc, sizeof loc, "vobj:%s", j->new_id);
+            wps_db_key(key, sizeof key, loc, "WPS", "origin");
+            wps_db_put(db, dst.vol, key, 's', ld.folder_id, WPS_ID_LEN);
+        }
     }
     wps_loaded_free(&ld);
     wps_loaded_free(&dst);
@@ -2164,17 +2171,59 @@ static void builtin_templates_work(void *arg)
 }
 
 /* ---- the Trash Can: putting an item back (v0.2-design 4) */
-struct restore_job { struct client *c; int64_t id; char path[PATH_MAX], out[PATH_MAX]; int err; };
+struct restore_job { struct client *c; int64_t id; char path[PATH_MAX], out[PATH_MAX], from[PATH_MAX]; char new_id[WPS_ID_LEN + 1]; int err; };
 
 static void restore_work(void *arg)
 {
     struct restore_job *j = arg;
+    if (!strncmp(j->path, "vobj:", 5)) {
+        /* a central object (a shadow): back into the folder it came from */
+        wps_loaded ld;
+        wps_load(j->path, false, &ld);
+        wps_props ps;
+        wps_props_init(&ps);
+        char *origin = NULL;
+        if (ld.err || !ld.central) j->err = ENOENT;
+        else if (wps_db_get_class(db, ld.vol, ld.locator, "WPS", &ps) <= 0 || !wps_props_str(&ps, "origin", &origin))
+            j->err = ENOENT;
+        else {
+            char fid[WPS_ID_LEN + 8];
+            snprintf(fid, sizeof fid, "id:%s", origin);
+            wps_loaded of, tf;
+            wps_load(fid, false, &of);
+            char tfid[WPS_ID_LEN + 8];
+            snprintf(tfid, sizeof tfid, "id:%s", ld.folder_id);
+            wps_load(tfid, false, &tf);
+            if (of.err || !S_ISDIR(of.st.st_mode)) j->err = ENOENT;   /* its folder is gone */
+            else {
+                j->err = wps_central_move(ld.id, of.vol, of.id, false, j->new_id);
+                if (!j->err) {
+                    char key[PATH_MAX + 128];
+                    wps_db_key(key, sizeof key, ld.locator, "WPS", "origin");
+                    wps_db_delete(db, of.vol, key);
+                    snprintf(j->out, sizeof j->out, "%s", of.path);
+                    if (!tf.err) snprintf(j->from, sizeof j->from, "%s", tf.path);
+                }
+            }
+            wps_loaded_free(&of);
+            wps_loaded_free(&tf);
+        }
+        free(origin);
+        wps_props_free(&ps);
+        wps_loaded_free(&ld);
+        return;
+    }
     j->err = j->path[0] == '/' ? -wps_trash_restore(j->path, j->out, sizeof j->out) : EINVAL;
 }
 
 static void restore_done(void *arg)
 {
     struct restore_job *j = arg;
+    if (!j->err && !strncmp(j->path, "vobj:", 5)) {
+        wps_central_forget(j->path + 5);
+        if (j->from[0]) on_central_change(j->from, j->path + 5, 'd');
+        on_central_change(j->out, j->new_id, 'c');
+    }
     if (!j->c->dead) {
         if (j->err) reply_error(j->c, j->id, "failed", strerror(j->err));
         else {
@@ -2189,6 +2238,54 @@ static void restore_done(void *arg)
         }
     }
     client_unref(j->c);
+    free(j);
+}
+
+/* ---- Empty trash: its central objects (trashed shadows) deleted, then a
+ * delete job for its files */
+struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*gone)[WPS_ID_LEN + 1]; size_t ngone; };
+
+static void empty_collect(const char *vol, const char *vid, void *user)
+{
+    (void)vol;
+    struct empty_job *j = user;
+    j->gone = realloc(j->gone, (j->ngone + 1) * sizeof *j->gone);
+    snprintf(j->gone[j->ngone++], sizeof j->gone[0], "%s", vid);
+}
+
+static void empty_work(void *arg)
+{
+    struct empty_job *j = arg;
+    wps_loaded fl;
+    wps_load(j->files, false, &fl);
+    if (!fl.err && fl.id[0]) wps_central_in(fl.vol, fl.id, empty_collect, j);
+    wps_loaded_free(&fl);
+    for (size_t k = 0; k < j->ngone; k++) wps_central_delete(j->gone[k]);
+}
+
+static void empty_done(void *arg)
+{
+    struct empty_job *j = arg;
+    for (size_t k = 0; k < j->ngone; k++) {
+        wps_central_forget(j->gone[k]);
+        on_central_change(j->files, j->gone[k], 'd');
+    }
+    char errm[256] = "";
+    bool any_file = false;
+    DIR *d = opendir(j->files);
+    for (struct dirent *e; d && (e = readdir(d)) && !any_file;) any_file = strcmp(e->d_name, ".") && strcmp(e->d_name, "..");
+    if (d) closedir(d);
+    int64_t job = 0;
+    if (any_file) {
+        int64_t sel = wps_select(j->files, true, NULL, 0);
+        job = sel < 0 ? -1 : wps_job_start("delete", sel, NULL, errm, sizeof errm);
+    }
+    if (!j->c->dead) {
+        if (job < 0) reply_error(j->c, j->id, "failed", errm[0] ? errm : "the trash cannot be read");
+        else reply_int(j->c, j->id, job);   /* (0: no files, nothing more to do) */
+    }
+    client_unref(j->c);
+    free(j->gone);
     free(j);
 }
 
@@ -2296,8 +2393,20 @@ static void first_start_work(void *arg)
         snprintf(info, sizeof info, "%s/info", home);
         wps_mkdirs(j->trash, 0700);
         wps_mkdirs(info, 0700);
-        if (wps_set_folder_class(j->trash, "WPTrashCan") == 0) wps_load(j->trash, true, &j->tld);
-        else j->trash[0] = 0;
+        if (wps_set_folder_class(j->trash, "WPTrashCan") == 0) {
+            /* its title, on it at once (a shadow made next shows it: the
+             * object's own saving comes a moment later) */
+            wps_props cur, set;
+            wps_props_init(&cur);
+            wps_props_init(&set);
+            if (wps_attr_read(j->trash, "WPObject", &cur) != WPS_A_OK || !wps_props_get(&cur, "title")) {
+                wps_props_set_str(&set, "title", "Trash Can");
+                wps_attr_update(j->trash, "WPObject", &set, NULL, 2000, NULL, NULL);
+            }
+            wps_props_free(&cur);
+            wps_props_free(&set);
+            wps_load(j->trash, true, &j->tld);
+        } else j->trash[0] = 0;
     }
 }
 
@@ -2708,13 +2817,12 @@ static void handle(struct client *c, cv *msg)
         snprintf(j->path, sizeof j->path, "%s", t ? t : "");
         wpo_defer(loop, "restore", restore_work, restore_done, j);
     } else if (strcmp(op, "empty_trash") == 0) {
-        char tf[PATH_MAX], errm[256] = "";
-        wps_trash_home(tf, sizeof tf);
-        strncat(tf, "/files", sizeof tf - strlen(tf) - 1);
-        int64_t sel = access(tf, F_OK) == 0 ? wps_select(tf, true, NULL, 0) : -1;
-        int64_t job = sel < 0 ? -1 : wps_job_start("delete", sel, NULL, errm, sizeof errm);
-        if (job < 0) reply_error(c, id, "failed", errm[0] ? errm : "the trash cannot be read");
-        else reply_int(c, id, job);
+        struct empty_job *j = calloc(1, sizeof *j);
+        j->c = c; c->refs++;
+        j->id = id;
+        wps_trash_home(j->files, sizeof j->files);
+        strncat(j->files, "/files", sizeof j->files - strlen(j->files) - 1);
+        wpo_defer(loop, "empty trash", empty_work, empty_done, j);
     } else if (strcmp(op, "first_start") == 0) {
         const char *d = cv_text(msg, "desktop");
         struct first_start *j = calloc(1, sizeof *j);
@@ -2727,6 +2835,23 @@ static void handle(struct client *c, cv *msg)
         r->c = c; c->refs++;
         r->id = id;
         wpo_defer(loop, "settings objects", setup_req_work, setup_req_done, r);
+    } else if (strcmp(op, "vtrash") == 0) {
+        /* a central object (a shadow, ...) into the Trash Can, restorable */
+        const char *t = cv_text(msg, "target");
+        if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN) {
+            reply_error(c, id, "bad request", "vtrash needs a central object (vobj:ID)");
+            cv_free(msg);
+            return;
+        }
+        struct vmove_job *j = calloc(1, sizeof *j);
+        j->c = c; c->refs++;
+        j->id = id;
+        j->trash = true;
+        snprintf(j->target, sizeof j->target, "%s", t);
+        wps_trash_home(j->dest, sizeof j->dest);
+        strncat(j->dest, "/files", sizeof j->dest - strlen(j->dest) - 1);
+        wps_mkdirs(j->dest, 0700);
+        wpo_defer(loop, "trash central object", vmove_work, vmove_done, j);
     } else if (strcmp(op, "vdelete") == 0) {
         const char *t = cv_text(msg, "target");
         if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN) {

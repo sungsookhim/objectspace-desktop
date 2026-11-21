@@ -432,6 +432,14 @@ void svc_job_start(const char *kind, int64_t selection, const char *dest, const 
     send_req(o, id, fn, arg);
 }
 
+void svc_vtrash(const char *target, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("vtrash", 1, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    send_req(o, id, fn, arg);
+}
+
 void svc_vdelete(const char *target, svc_fn fn, void *arg)
 {
     int64_t id;
