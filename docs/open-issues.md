@@ -24,6 +24,8 @@ Known problems and gaps found while building and trying G2, as of 2026-11-19. Ea
 
 ## Opening and in-use emphasis
 
+- **To do (deferred by the user, 2026-11-20): details view sorting and columns.** Clicking a column heading sorts by it (again: reversed); which columns show is set globally (System Setup) and per folder (its Settings notebook). Sorting belongs in wpsd (rows are paged and the listing is shared by every window on a folder). Open choices: a sort kept per folder (OS/2's Sort page, "Always maintain sort order", also used by Arrange) or per window only; OS/2's column set (Icon, Title, Object class, Name, Size, Last write, Last access, Created, Flags) or today's plus Type.
+
 - **Programs that hand the file to an instance already running** (most single-window GNOME apps, Firefox) exit at once, so the file shows as open only for a moment unless the program writes a lock file.
 - **Types with no default application** still go through `xdg-open`, untracked.
 - **Text-mode or not is guessed** from the ELF dynamic section: programs that load their window library at run time (some Rust and Go programs) get a terminal window they do not need; scripts always get one, even those that only start a GUI program. OS/2 had a per-program "Program type" setting; add it to program settings.
