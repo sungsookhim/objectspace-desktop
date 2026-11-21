@@ -58,6 +58,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_data_control_v1.h>
@@ -1877,6 +1878,57 @@ static void on_new_decoration(struct wl_listener *l, void *data)
     set_decoration_mode(t);
 }
 
+/* GTK 3 programs never use xdg-decoration but do KDE's older server
+ * decoration protocol: with "server" as its default, a GTK 3 window with
+ * an ordinary title bar (no header bar) asks for it and gets WPS's frame
+ * (Firefox with its title bar on, Thunderbird, GIMP 2, ...); one with a
+ * header bar asks for "client" and keeps its own. */
+struct kde_deco { struct wlr_server_decoration *d; struct wl_listener mode, destroy; };
+static struct wl_listener new_kde;   /* the manager's (removed at the end) */
+
+static void kde_apply(struct kde_deco *k)
+{
+    struct toplevel *t = comp_toplevel_of(k->d->surface);
+    if (!t || !t->xdg || t->deco) return;   /* (xdg-decoration, if both: that one) */
+    bool want = k->d->mode == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER && (!t->mapped || t->kind == KIND_NORMAL);
+    if (t->ssd == want) return;
+    t->ssd = want;
+    DBG("'%s' asks for %s (KDE's protocol)\n", view_title(t) ? view_title(t) : "", want ? "WPS's frame" : "its own frame");
+    draw_frame(t);
+    if (!want && t->client) {
+        struct wlr_box geo = view_geo(t);
+        wlr_scene_node_set_position(&t->client->node, -geo.x, -geo.y);
+    }
+}
+
+static void on_kde_mode(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct kde_deco *k = wl_container_of(l, k, mode);
+    kde_apply(k);
+}
+
+static void on_kde_destroy(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct kde_deco *k = wl_container_of(l, k, destroy);
+    wl_list_remove(&k->mode.link);
+    wl_list_remove(&k->destroy.link);
+    free(k);
+}
+
+static void on_new_kde_decoration(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct kde_deco *k = calloc(1, sizeof *k);
+    k->d = data;
+    k->mode.notify = on_kde_mode;
+    wl_signal_add(&k->d->events.mode, &k->mode);
+    k->destroy.notify = on_kde_destroy;
+    wl_signal_add(&k->d->events.destroy, &k->destroy);
+    kde_apply(k);
+}
+
 /* ------------------------------------------------------------ spawning */
 
 bool comp_spawn(char *const argv[], void (*prepare)(void *), void *arg)
@@ -2250,6 +2302,12 @@ int main(int argc, char **argv)
     s->request_activate.notify = on_request_activate;
     wl_signal_add(&s->activation->events.request_activate, &s->request_activate);
     s->deco_mgr = wlr_xdg_decoration_manager_v1_create(s->display);
+    {   /* KDE's server decoration protocol, for GTK 3 programs */
+        struct wlr_server_decoration_manager *kd = wlr_server_decoration_manager_create(s->display);
+        wlr_server_decoration_manager_set_default_mode(kd, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+        new_kde.notify = on_new_kde_decoration;
+        wl_signal_add(&kd->events.new_decoration, &new_kde);
+    }
     s->new_decoration.notify = on_new_decoration;
     wl_signal_add(&s->deco_mgr->events.new_toplevel_decoration, &s->new_decoration);
 
@@ -2350,6 +2408,7 @@ int main(int argc, char **argv)
     }
     idle_fini();
     keymap_fini();
+    if (new_kde.link.next) wl_list_remove(&new_kde.link);
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
                                  &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection, &s->request_set_primary,
