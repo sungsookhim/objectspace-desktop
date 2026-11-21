@@ -477,7 +477,7 @@ typedef struct {
 } ui_container_src;
 
 #define UI_CELL_W 100            /* an icon's cell in icon view */
-#define UI_CELL_H 70
+#define UI_CELL_H 80             /* (room for a title on two lines) */
 
 typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
 

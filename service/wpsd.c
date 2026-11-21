@@ -1911,7 +1911,12 @@ static void rename_work(void *arg)
     char *slash = strrchr(dir, '/');
     if (!slash) { j->err = EINVAL; return; }
     *slash = 0;
-    snprintf(j->newpath, sizeof j->newpath, "%s/%s", dir[0] ? dir : "", j->name);
+    /* A title with line breaks (OS/2's): the file gets spaces in their
+     * place, the title keeps them. */
+    char fsname[NAME_MAX + 1];
+    snprintf(fsname, sizeof fsname, "%s", j->name);
+    for (char *p = fsname; *p; p++) if (*p == '\n' || *p == '\r') *p = ' ';
+    snprintf(j->newpath, sizeof j->newpath, "%s/%s", dir[0] ? dir : "", fsname);
     if (strcmp(j->newpath, j->path) != 0 &&
         syscall(SYS_renameat2, AT_FDCWD, j->path, AT_FDCWD, j->newpath, RENAME_NOREPLACE) != 0) {
         if (errno == EACCES || errno == EPERM || errno == EROFS) j->as_title = true;
@@ -1928,7 +1933,7 @@ static void rename_done(void *arg)
         if (!o && j->err == EEXIST) reply_error(j->c, j->id, "exists", "an object with that name is already there");
         else if (!o) reply_error(j->c, j->id, "failed", strerror(j->err ? j->err : j->ld.err));
         else {
-            if (j->as_title) WPObject_wpSetTitle(o, j->name);
+            if (j->as_title || strchr(j->name, '\n')) WPObject_wpSetTitle(o, j->name);
             else if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);   /* the title follows the name */
             struct req fake = { .c = j->c, .id = j->id };
             wpo_value v = wpo_v_bool(!j->as_title);   /* result: was the file renamed? */

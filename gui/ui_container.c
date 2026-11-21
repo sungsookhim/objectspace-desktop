@@ -14,6 +14,8 @@
 #include "ui_internal.h"
 
 #define ROW_H 20
+#define LABEL_H 16               /* a line of an icon's title */
+#define LABEL_MAX 12             /* lines of a whole title shown */
 #define HEAD_H 20
 #define SB_W 16
 #define SBW(c) ((c)->no_scrollbars ? 0 : SB_W)
@@ -277,6 +279,7 @@ static void sel_set(ui_container *c, size_t i, bool on)
 static void damage_item(ui_container *c, size_t i)
 {
     ui_rect r = item_crect(c, i);
+    if (c->view == UI_VIEW_ICON) r.h += LABEL_MAX * LABEL_H;   /* a whole title reaches below the cell */
     if (ui_rect_meets(r, window_crect(c))) damage_content(c, r);
 }
 
@@ -479,6 +482,14 @@ static void end_rename(ui_container *c, bool apply)
     damage_rename(c);
     damage_item(c, c->rename_i);
     char *name = apply ? strdup(ui_entry_text(c->rename)) : NULL;
+    if (name) {   /* ↵ back to a line break */
+        char *w = name;
+        for (const char *r = name; *r;) {
+            if (!strncmp(r, "\xe2\x86\xb5", 3)) { *w++ = '\n'; r += 3; }
+            else *w++ = *r++;
+        }
+        *w = 0;
+    }
     size_t i = c->rename_i;
     ui_entry_free(c->rename);
     c->rename = NULL;
@@ -495,7 +506,15 @@ void ui_container_begin_rename(ui_container *c, size_t i)
     ui_item it = { 0 };
     c->src->item(c->ctx, i, &it);
     if (!it.loaded) return;
-    c->rename = ui_entry_new(it.title ? it.title : it.name);
+    /* a line break in the title shows as ↵ while it is edited (Shift+Enter makes one) */
+    char shown[1024];
+    size_t o = 0;
+    for (const char *p = it.title ? it.title : it.name; p && *p && o + 4 < sizeof shown; p++) {
+        if (*p == '\n') { memcpy(shown + o, "\xe2\x86\xb5", 3); o += 3; }
+        else shown[o++] = *p;
+    }
+    shown[o] = 0;
+    c->rename = ui_entry_new(shown);
     if (it.kind == UI_KIND_FOLDER) ui_entry_select_all(c->rename);
     else ui_entry_select_stem(c->rename);
     c->rename_i = i;
@@ -626,7 +645,10 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
         item_icon(cr, &it, x[0], r.y + 2, 16);
         if (it.shadow) shadow_mark(cr, x[0], r.y + 2, 16);
         ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, it.title ? it.title : "", x[2] - x[1] - 6);
+        char one[512];   /* a title's line breaks: spaces on one line */
+        snprintf(one, sizeof one, "%s", it.title ? it.title : "");
+        for (char *q = one; *q; q++) if (*q == '\n') *q = ' ';
+        ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, one, x[2] - x[1] - 6);
         ui_set_color(cr, sel ? k->selection_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, x[2], base, it.name ? it.name : "", x[3] - x[2] - 6);
         if (it.detailed) {
@@ -755,6 +777,121 @@ static void shadow_mark(cairo_t *cr, double x, double y, double size)
     cairo_restore(cr);
 }
 
+/* An icon's title in lines of at most maxw: broken at line breaks (a
+ * title may have them, as on OS/2), between words, and within a word too
+ * long for a line. At most maxl lines; past them the rest goes on the last
+ * (drawn cut, with an ellipsis). Returns the number of lines; *all: the
+ * whole title fit. */
+static int wrap_title(const char *t, double maxw, char out[][256], int maxl, bool *all)
+{
+    int n = 0;
+    *all = true;
+    const char *p = t;
+    while (*p && n < maxl) {
+        while (*p == ' ') p++;   /* a line starts at a word */
+        char line[256];
+        size_t ll = 0;
+        line[0] = 0;
+        /* words while they fit */
+        while (*p && *p != '\n') {
+            const char *w = p;
+            while (*w == ' ') w++;
+            const char *we = w;
+            while (*we && *we != ' ' && *we != '\n') we++;
+            char trial[256];
+            snprintf(trial, sizeof trial, "%s%.*s", line, (int)(we - p), p);
+            if (ui_text_width(UI_FONT_REGULAR, trial) <= maxw) {
+                snprintf(line, sizeof line, "%s", trial);
+                ll = strlen(line);
+                p = we;
+                continue;
+            }
+            if (ll) break;   /* the word starts the next line */
+            /* a word longer than a line: as many characters as fit */
+            const char *q = p;
+            while (q < we) {
+                size_t cl = 1;
+                while ((q[cl] & 0xc0) == 0x80) cl++;
+                char t2[256];
+                snprintf(t2, sizeof t2, "%.*s", (int)(q + cl - p), p);
+                if (q > p && ui_text_width(UI_FONT_REGULAR, t2) > maxw) break;
+                q += cl;
+            }
+            snprintf(line, sizeof line, "%.*s", (int)(q - p), p);
+            ll = strlen(line);
+            p = q;
+            break;
+        }
+        if (n == maxl - 1 && *p && !(*p == '\n' && !p[1])) {
+            /* the last line allowed: the rest with it (cut when drawn) */
+            *all = false;
+            char rest[256];
+            snprintf(rest, sizeof rest, "%s%s", line, p);
+            for (char *x = rest; *x; x++) if (*x == '\n') *x = ' ';
+            snprintf(out[n++], 256, "%s", rest);
+            return n;
+        }
+        snprintf(out[n++], 256, "%s", line);
+        if (*p == '\n') p++;
+    }
+    if (*p) *all = false;
+    return n ? n : (snprintf(out[0], 256, "%s", ""), 1);
+}
+
+/* Whether item i shows its whole title over its neighbours (selected,
+ * and longer than two lines). */
+static bool label_expanded(ui_container *c, size_t i, const ui_item *it)
+{
+    if (c->view != UI_VIEW_ICON || !it->loaded || !it->title) return false;
+    if (!sel_get(c, i)) return false;
+    char lines[2][256];
+    bool all;
+    wrap_title(it->title, CELL_W - 8, lines, 2, &all);
+    return !all;
+}
+
+static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it, ui_rect r, bool full)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    char lines[LABEL_MAX][256];
+    bool all;
+    double maxw = r.w - 8;
+    int n = wrap_title(it->title ? it->title : "", maxw, lines, full ? LABEL_MAX : 2, &all);
+    double tw = 0;
+    for (int l = 0; l < n; l++) tw = fmax(tw, fmin(maxw, ui_text_width(UI_FONT_REGULAR, lines[l])));
+    double ty = r.y + ICON + 8, h = n * LABEL_H + 4;
+    double bx = r.x + (r.w - tw) / 2 - 2;
+    bool sel = sel_get(c, i);
+    if (sel) ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->selection);
+    else if (full) {   /* over its neighbours: on a ground of its own */
+        if (c->backdrop) { cairo_set_source_rgba(cr, 0, 0, 0, 0.55); cairo_rectangle(cr, bx, ty, tw + 4, h); cairo_fill(cr); }
+        else ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->client_bg);
+    }
+    for (int l = 0; l < n; l++) {
+        double lw = fmin(maxw, ui_text_width(UI_FONT_REGULAR, lines[l]));
+        double tx = r.x + (r.w - lw) / 2, by = ty + 2 + l * LABEL_H + (LABEL_H + ui_text_ascent()) / 2 - 2;
+        if (c->backdrop && !sel) {
+            /* on a picture: light text with a dark shadow reads on anything */
+            cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
+            ui_text_draw(cr, UI_FONT_REGULAR, tx + 1, by + 1, lines[l], maxw);
+            if (it->shadow) cairo_set_source_rgb(cr, 0.75, 0.85, 1.0);
+            else cairo_set_source_rgb(cr, 1, 1, 1);
+        } else {
+            ui_set_color(cr, sel ? k->selection_text : it->shadow ? k->shadow_text : k->text);
+        }
+        ui_text_draw(cr, UI_FONT_REGULAR, tx, by, lines[l], maxw);
+    }
+    if (c->focused && c->has_cursor && c->cursor == i) {
+        ui_set_color(cr, sel ? k->selection_text : k->cursor);
+        double dash = 1;
+        cairo_set_dash(cr, &dash, 1, 0);
+        cairo_set_line_width(cr, 1);
+        cairo_rectangle(cr, bx - 0.5, ty + 0.5, tw + 5, h - 1);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, NULL, 0, 0);
+    }
+}
+
 static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
 {
     const ui_scheme *k = &ui_scheme_now;
@@ -768,31 +905,23 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     }
     item_icon(cr, &it, ix, iy, ICON);
     if (it.shadow) shadow_mark(cr, ix, iy, ICON);
-    const char *t = it.title ? it.title : "";
-    double tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.w - 8;
-    if (tw > maxw) tw = maxw;
-    double tx = r.x + (r.w - tw) / 2, ty = r.y + ICON + 8;
-    bool sel = sel_get(c, i);
-    if (sel) ui_fill(cr, (ui_rect){ tx - 2, ty, tw + 4, ROW_H - 2 }, k->selection);
-    double by = ty + (ROW_H + ui_text_ascent()) / 2 - 2;
-    if (c->backdrop && !sel) {
-        /* on a picture: light text with a dark shadow reads on anything */
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
-        ui_text_draw(cr, UI_FONT_REGULAR, tx + 1, by + 1, t, maxw);
-        if (it.shadow) cairo_set_source_rgb(cr, 0.75, 0.85, 1.0);
-        else cairo_set_source_rgb(cr, 1, 1, 1);
-    } else {
-        ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
-    }
-    ui_text_draw(cr, UI_FONT_REGULAR, tx, by, t, maxw);
-    if (c->focused && c->has_cursor && c->cursor == i) {
-        ui_set_color(cr, sel ? k->selection_text : k->cursor);
-        double dash = 1;
-        cairo_set_dash(cr, &dash, 1, 0);
-        cairo_set_line_width(cr, 1);
-        cairo_rectangle(cr, tx - 2.5, ty + 0.5, tw + 5, ROW_H - 3);
-        cairo_stroke(cr);
-        cairo_set_dash(cr, NULL, 0, 0);
+    /* the whole title of a selected one is drawn last, over the others */
+    if (!label_expanded(c, i, &it)) draw_label(c, cr, i, &it, r, false);
+}
+
+/* After the cells: the whole titles of those selected (or the
+ * keyboard's) that do not fit in two lines, over their neighbours. */
+static void draw_expanded_labels(ui_container *c, cairo_t *cr, const size_t *items, size_t n, ui_rect clip)
+{
+    for (size_t k = 0; k < n; k++) {
+        size_t i = items[k];
+        if (i >= c->count) continue;
+        ui_item it = { 0 };
+        c->src->item(c->ctx, i, &it);
+        if (!label_expanded(c, i, &it)) continue;
+        ui_rect r = item_crect(c, i);
+        if (!ui_rect_meets((ui_rect){ r.x, r.y, r.w, r.h + LABEL_MAX * LABEL_H }, clip)) continue;
+        draw_label(c, cr, i, &it, r, true);
     }
 }
 
@@ -834,27 +963,36 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
     size_t kcols = cols(c);
     if (free_icons(c)) {
         ui_rect l = list_rect(c);
-        ui_rect q = { clip.x - l.x - 4 + c->hscroll, clip.y - 4, clip.w, clip.h };
+        /* (grown upward: a whole title reaches down from an icon above) */
+        ui_rect q = { clip.x - l.x - 4 + c->hscroll, clip.y - 4 - LABEL_MAX * LABEL_H, clip.w, clip.h + LABEL_MAX * LABEL_H };
         size_t found[8192], n = c->src->items_in(c->ctx, q, found, 8192);
         /* In index order, so overlapping icons stack the same way each time. */
         for (size_t a = 1; a < n; a++)
             for (size_t b = a; b > 0 && found[b - 1] > found[b]; b--) { size_t t = found[b]; found[b] = found[b - 1]; found[b - 1] = t; }
         for (size_t k = 0; k < n; k++)
-            if (found[k] < c->count) draw_icon_cell(c, cr, found[k], item_crect(c, found[k]));
+            if (found[k] < c->count && ui_rect_meets(item_crect(c, found[k]), clip)) draw_icon_cell(c, cr, found[k], item_crect(c, found[k]));
+        /* (titles reaching down from items above the clip are in found:
+         * items_in is asked with the clip grown upward) */
+        draw_expanded_labels(c, cr, found, n, clip);
         r0 = 1;
         r1 = 0;   /* nothing for the grid loop below */
     }
+    size_t shown[1024], nshown = 0;
+    if (c->view == UI_VIEW_ICON && r0 <= r1) r0 -= LABEL_MAX * LABEL_H / lh + 1;   /* titles from rows above */
     for (double row = r0 < 0 ? 0 : r0; row <= r1; row++) {
         for (size_t col = 0; col < kcols; col++) {
             size_t i = (size_t)row * kcols + col;
             if (i >= c->count) break;
             ui_rect r = item_crect(c, i);
             if (!ui_rect_meets(r, clip)) continue;
+            if (c->view == UI_VIEW_ICON && nshown < 1024) shown[nshown++] = i;
+            if (!ui_rect_meets(r, clip)) continue;
             if (c->view == UI_VIEW_DETAILS) draw_details_row(c, cr, i, r, x);
             else if (c->view == UI_VIEW_TREE) draw_tree_row(c, cr, i, r);
             else draw_icon_cell(c, cr, i, r);
         }
     }
+    if (nshown) draw_expanded_labels(c, cr, shown, nshown, clip);
     if (c->rename && c->rename_i < c->count) {
         ui_rect er = rename_crect(c, c->rename_i);
         if (ui_rect_meets(er, clip)) ui_entry_draw(c->rename, cr, er, true);
@@ -1183,6 +1321,12 @@ void ui_container_typeahead_reset(ui_container *c) { c->ta[0] = 0; }
 bool ui_container_key(ui_container *c, const ui_key_event *e)
 {
     if (c->rename) {
+        ui_key_event lb;
+        if ((e->sym == XKB_KEY_Return || e->sym == XKB_KEY_KP_Enter) && (e->mods & UI_MOD_SHIFT)) {
+            lb = (ui_key_event){ 0 };   /* Shift+Enter: a line break in the title */
+            memcpy(lb.utf8, "\xe2\x86\xb5", 4);
+            e = &lb;
+        }
         switch (ui_entry_key(c->rename, e)) {
         case UI_ENTRY_COMMIT: end_rename(c, true); break;
         case UI_ENTRY_CANCEL: end_rename(c, false); break;

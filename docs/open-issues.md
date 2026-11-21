@@ -24,6 +24,8 @@ Known problems and gaps found while building and trying G2, as of 2026-11-19. Ea
 
 ## Opening and in-use emphasis
 
+- **To do (the goal, agreed 2026-11-20): icon titles as OS/2 lays them out.** Now (the first step): titles wrap at spaces and line breaks onto two lines in a fixed cell, and a selected icon's whole title is shown over its neighbours. OS/2's way: the whole title always, on as many lines as it needs, each row of the icon grid as tall as its tallest title (and Arrange spacing to suit), so long names never overlap. Needs the icon layout (gui/shell/layout.c, hit testing, arrange) to work with rows of varying height.
+
 - **To do (deferred by the user, 2026-11-20): details view sorting and columns.** Clicking a column heading sorts by it (again: reversed); which columns show is set globally (System Setup) and per folder (its Settings notebook). Sorting belongs in wpsd (rows are paged and the listing is shared by every window on a folder). Open choices: a sort kept per folder (OS/2's Sort page, "Always maintain sort order", also used by Arrange) or per window only; OS/2's column set (Icon, Title, Object class, Name, Size, Last write, Last access, Created, Flags) or today's plus Type.
 
 - **Programs that hand the file to an instance already running** (most single-window GNOME apps, Firefox) exit at once, so the file shows as open only for a moment unless the program writes a lock file.
