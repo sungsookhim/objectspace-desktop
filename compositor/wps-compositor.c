@@ -2292,7 +2292,12 @@ int main(int argc, char **argv)
     unsetenv("DISPLAY");
     /* X11 programs: XWayland, started when the first one connects */
     if (!getenv("WPS_COMP_NO_X11")) {
-        s->xwayland = wlr_xwayland_create(s->display, s->compositor, true);
+        /* In the WPS session it starts at once and stays: started when the
+         * first X11 program comes, wlroots ends it again some seconds after
+         * the last goes, and IBus's X11 part (ibus-x11 --kill-daemon) took
+         * IBus down with it (Hangul stopped after a few letters). Nested
+         * and in tests it starts when needed. */
+        s->xwayland = wlr_xwayland_create(s->display, s->compositor, s->session == NULL);
         if (s->xwayland) {
             s->new_xsurface.notify = on_new_xsurface;
             wl_signal_add(&s->xwayland->events.new_surface, &s->new_xsurface);
