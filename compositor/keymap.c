@@ -3,8 +3,11 @@
  * as xkb's groups) and its xkb options, read from GNOME's settings and
  * followed while the session runs (`gsettings monitor`): a change in
  * GNOME's Settings, Keyboard applies at once to every keyboard. Super+Space
- * (Shift+Super+Space) goes to the next (previous) layout, as in GNOME.
- * Input methods (IBus sources such as Hangul) are not done here.
+ * (Shift+Super+Space) goes to the next (previous) input source, as in
+ * GNOME: an xkb source is a layout (an xkb group); an IBus one (Hangul,
+ * Anthy, ...) is set as IBus's engine (`ibus engine`), and going back to
+ * a layout sets IBus's engine for that layout, so keys pass as typed. The
+ * WPS session starts IBus (tools/wps-session).
  * Without gsettings (headless tests, WPS_NO_GSETTINGS) XKB_DEFAULT_* or US.
  */
 #define _GNU_SOURCE
@@ -26,6 +29,8 @@ static struct {
     char layout[128], variant[128], options[256];
     bool from_gnome;            /* else XKB_DEFAULT_* (or the compiled-in default) */
     int ngroups;
+    struct { bool ibus; char name[64]; int group; } srcs[16];   /* every input source, in GNOME's order */
+    int nsrc, cur;
     pid_t mon;
     int mon_fd;
     struct wl_event_source *src;
@@ -53,6 +58,26 @@ static void read_gnome(void)
     if (getenv("WPS_NO_GSETTINGS") || !gsettings_get("org.gnome.desktop.input-sources", "sources", s, sizeof s)) return;
     km.layout[0] = km.variant[0] = 0;
     km.ngroups = 0;
+    km.nsrc = 0;
+    km.cur = 0;
+    /* every source: ('xkb', 'us'), ('ibus', 'hangul') */
+    for (const char *p = s; (p = strstr(p, "('")) && km.nsrc < 16;) {
+        p += 2;
+        bool ibus = !strncmp(p, "ibus'", 5), xkb = !strncmp(p, "xkb'", 4);
+        const char *q = strstr(p, ", '");
+        if (!q) break;
+        q += 3;
+        const char *e = strchr(q, '\'');
+        if (!e) break;
+        if (ibus || xkb) {
+            km.srcs[km.nsrc].ibus = ibus;
+            snprintf(km.srcs[km.nsrc].name, sizeof km.srcs[km.nsrc].name, "%.*s", (int)(e - q), q);
+            km.srcs[km.nsrc].group = -1;
+            km.nsrc++;
+        }
+        p = e;
+    }
+    for (int i = 0, g = 0; i < km.nsrc && g < 4; i++) if (!km.srcs[i].ibus) km.srcs[i].group = g++;
     for (const char *p = s; (p = strstr(p, "('xkb', '")) && km.ngroups < 4;) {
         p += 9;
         const char *e = strchr(p, '\'');
@@ -114,19 +139,55 @@ static void apply_all(void)
             km.options[0] ? " options " : "", km.options);
 }
 
-/* The next (or previous) layout, on every keyboard. */
-void keymap_cycle(int dir)
+static void set_group(xkb_layout_index_t g)
 {
     struct keyboard *k;
     wl_list_for_each(k, &server.keyboards, link) {
         struct wlr_keyboard *wk = k->wlr_keyboard;
-        if (!wk->keymap) continue;
-        xkb_layout_index_t n = xkb_keymap_num_layouts(wk->keymap);
-        if (n < 2) continue;
-        xkb_layout_index_t g = (wk->modifiers.group + n + (dir < 0 ? n - 1 : 1)) % n;
-        wlr_keyboard_notify_modifiers(wk, wk->modifiers.depressed, wk->modifiers.latched, wk->modifiers.locked, g);
-        DBG("keyboard layout %u of %u\n", g + 1, n);
+        if (wk->keymap && g < xkb_keymap_num_layouts(wk->keymap))
+            wlr_keyboard_notify_modifiers(wk, wk->modifiers.depressed, wk->modifiers.latched, wk->modifiers.locked, g);
     }
+}
+
+/* IBus's engine: an input method, or for a layout the engine that types
+ * it as is (xkb:LAYOUT:VARIANT:LANG, as IBus lists it). */
+static void ibus_engine(int i)
+{
+    char cmd[512];
+    if (km.srcs[i].ibus) snprintf(cmd, sizeof cmd, "ibus engine '%s'", km.srcs[i].name);
+    else {
+        char lay[64], *var;
+        snprintf(lay, sizeof lay, "%s", km.srcs[i].name);
+        var = strchr(lay, '+');
+        if (var) *var++ = 0;
+        snprintf(cmd, sizeof cmd, "e=$(ibus list-engine | grep -o 'xkb:%s:%s:[a-zA-Z_]*' | head -1); [ -n \"$e\" ] && ibus engine \"$e\"",
+                 lay, var ? var : "");
+    }
+    char *argv[] = { "/bin/sh", "-c", cmd, NULL };
+    comp_spawn(argv, NULL, NULL);
+}
+
+/* The next (or previous) input source, as GNOME's Super+Space. */
+void keymap_cycle(int dir)
+{
+    if (km.nsrc < 2) {   /* (layouts from XKB_DEFAULT_*: their groups) */
+        struct keyboard *k;
+        wl_list_for_each(k, &server.keyboards, link) {
+            struct wlr_keyboard *wk = k->wlr_keyboard;
+            xkb_layout_index_t n = wk->keymap ? xkb_keymap_num_layouts(wk->keymap) : 0;
+            if (n >= 2) set_group((wk->modifiers.group + (dir < 0 ? n - 1 : 1)) % n);
+            break;
+        }
+        return;
+    }
+    km.cur = (km.cur + km.nsrc + (dir < 0 ? -1 : 1)) % km.nsrc;
+    int i = km.cur;
+    bool any_ibus = false;
+    for (int j = 0; j < km.nsrc; j++) any_ibus |= km.srcs[j].ibus;
+    if (!km.srcs[i].ibus) set_group((xkb_layout_index_t)km.srcs[i].group);
+    if (any_ibus) ibus_engine(i);
+    fprintf(stderr, "wps-compositor: %.1f input source %d of %d: %s%s\n", comp_uptime(), i + 1, km.nsrc,
+            km.srcs[i].ibus ? "IBus " : "", km.srcs[i].name);
 }
 
 static int on_monitor(int fd, uint32_t mask, void *data)
@@ -152,9 +213,25 @@ static int on_monitor(int fd, uint32_t mask, void *data)
     return 0;
 }
 
+/* As the session starts, IBus (started with it) on the first source. */
+static int first_engine(void *data)
+{
+    struct wl_event_source **t = data;
+    for (int j = 0; j < km.nsrc; j++)
+        if (km.srcs[j].ibus) { ibus_engine(km.cur); break; }
+    wl_event_source_remove(*t);
+    *t = NULL;
+    return 0;
+}
+
 void keymap_init(void)
 {
     read_gnome();
+    static struct wl_event_source *t;
+    if (getenv("WPS_SESSION") && !getenv("WPS_NO_GSETTINGS")) {
+        t = wl_event_loop_add_timer(server.loop, first_engine, &t);
+        wl_event_source_timer_update(t, 4000);
+    }
     if (km.from_gnome)
         fprintf(stderr, "wps-compositor: keyboard: %s (GNOME's input sources)%s%s\n", km.layout,
                 km.options[0] ? " options " : "", km.options);

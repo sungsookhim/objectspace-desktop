@@ -39,6 +39,16 @@ if [ -n "$src" ]; then
 fi
 opts=$(gsettings get org.gnome.desktop.input-sources xkb-options 2>/dev/null | tr -d "[]' " )
 [ -n "$opts" ] && [ "$opts" != "@as" ] && export XKB_DEFAULT_OPTIONS=$opts
+# Input methods (GNOME's IBus sources: Hangul, Anthy, ...): IBus's own
+# service for sessions other than GNOME, with XIM for X11 programs; GTK,
+# Qt and X11 programs reach it through their IBus modules (WPS's own
+# fields do not yet: they need the compositor's input-method support).
+# The compositor's Super+Space sets IBus's engine (compositor/keymap.c).
+IM_VARS=
+if command -v ibus-daemon >/dev/null && [ -f /usr/lib/systemd/user/org.freedesktop.IBus.session.generic.service ]; then
+    export GTK_IM_MODULE=ibus QT_IM_MODULE=ibus XMODIFIERS=@im=ibus IBUS_DAEMON_ARGS=--xim
+    IM_VARS="GTK_IM_MODULE QT_IM_MODULE XMODIFIERS IBUS_DAEMON_ARGS"
+fi
 # The pointer's look.
 theme=$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")
 size=$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null)
@@ -110,7 +120,7 @@ printf '%s\n' '[Unit]' 'Description=The WPS session (wps-linux)' \
     "BindsTo=$WATCH" "After=$WATCH" \
     'BindsTo=graphical-session.target' 'Before=graphical-session.target' \
     'Wants=graphical-session-pre.target' 'After=graphical-session-pre.target' \
-    'Wants=xdg-desktop-autostart.target' \
+    'Wants=xdg-desktop-autostart.target' ${IM_VARS:+'Wants=org.freedesktop.IBus.session.generic.service'} \
     'DefaultDependencies=no' 'Conflicts=shutdown.target' 'Before=shutdown.target' > "$UNITS/wps-session.target"
 systemctl --user daemon-reload 2>/dev/null
 # (one left from a session that ended badly: away before this one starts)
@@ -124,14 +134,14 @@ systemctl --user stop wps-session.target 2>/dev/null
 # outright, as GNOME's session does at its end; else GNOME will not start
 # at the next login ("A graphical session is already running!").
 END="systemctl --user stop wps-session.target graphical-session.target; \
-systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP"
+systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP $IM_VARS"
 systemd-run --user --quiet --collect --unit="$WATCH" -- \
     sh -c "while kill -0 $$ 2>/dev/null; do sleep 1; done; $END" 2>/dev/null
 
 # Once the compositor is up: services started by D-Bus or systemd get its
 # display; the session's target starts (the portal follows); GDM is told
 # the session is up (it ends its login screen then, not after a time out).
-READY="dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP; \
+READY="dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP $IM_VARS; \
 systemctl --user start wps-session.target; \
 gdbus call --system --dest org.gnome.DisplayManager --object-path /org/gnome/DisplayManager/Manager \
     --method org.gnome.DisplayManager.Manager.RegisterSession >/dev/null 2>&1; \
