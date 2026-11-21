@@ -17,6 +17,7 @@
 #include "svc.h"
 #include "winlist.h"
 #include "findwin.h"
+#include "mime.h"
 #include "icons.h"
 
 #define GRIP_W 12.0
@@ -867,6 +868,11 @@ static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, con
         free(copy);
         char a[PATH_MAX + 32];
         address(lp.dir, &lp.items[h - NSYS], a, sizeof a);
+        const char *prog = lp.items[h - NSYS].target[0] == '/' ? lp.items[h - NSYS].target : a;
+        if (nf && !program_opens(prog, files, nf)) {   /* it does not open these: refused */
+            for (size_t k = 0; k < nf; k++) free((char *)files[k]);
+            return 0;
+        }
         if (nf) svc_open_files(a, false, files, nf, opened_with, NULL);
         for (size_t k = 0; k < nf; k++) free((char *)files[k]);
         events_raise("object.drop", lp.items[h - NSYS].title, "launchpad", (ui_rect){ 0, 0, 0, 0 });
