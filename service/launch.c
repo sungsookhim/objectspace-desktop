@@ -173,7 +173,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     while (environ[ne]) ne++;
     /* (and its X display: the service may have started before XWayland,
      * and X programs need one) */
-    char **env = calloc(ne + 3, sizeof *env), wl[4200], xd[64];
+    char **env = calloc(ne + 4, sizeof *env), wl[4200], xd[64];
     size_t k = 0;
     bool w = display && *display, x = x11 && *x11;
     if (env && w) {
@@ -184,9 +184,17 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
         snprintf(xd, sizeof xd, "DISPLAY=%s", x11);
         env[k++] = xd;
     }
+    /* GNOME's Settings will not start outside GNOME ("only supported under
+     * GNOME and Unity"); in the WPS session most of its panels work, so it
+     * is told it is in GNOME. */
+    const char *b0 = strrchr(argv[0], '/');
+    b0 = b0 ? b0 + 1 : argv[0];
+    bool gnome_only = !strcmp(b0, "gnome-control-center");   /* (in GNOME itself: the same name) */
     for (size_t i = 0; env && i < ne; i++)
-        if (!(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)))
+        if (!(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)) &&
+            !(gnome_only && !strncmp(environ[i], "XDG_CURRENT_DESKTOP=", 20)))
             env[k++] = environ[i];
+    if (env && gnome_only) env[k++] = "XDG_CURRENT_DESKTOP=GNOME";
     /* Each program in a group of its own (app.slice, as GNOME's are), not
      * in wpsd's: its memory is its own (a program using too much is what
      * the kernel stops, not wpsd with all the others), and it outlives
