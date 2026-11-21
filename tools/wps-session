@@ -61,6 +61,26 @@ PORTALS=${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal
 mkdir -p "$PORTALS"
 [ -f "$PORTALS/wps-portals.conf" ] || printf '[preferred]\ndefault=gtk;\norg.freedesktop.impl.portal.Secret=oo7-portal;gnome-keyring;\n' > "$PORTALS/wps-portals.conf"
 
+# VirtualBox's guest additions: its shared clipboard, started as usual
+# (VBoxClient-all), takes this session for X11 under XWayland and reaches
+# no clipboard here; in its Wayland mode (data control) it works. So in
+# this session (only) it starts that way, by two autostart entries of the
+# user's: the system's own, kept from WPS (NotShowIn), and WPS's. Neither
+# is written over once there (the user's own edits stay).
+AUTOSTART=${XDG_CONFIG_HOME:-$HOME/.config}/autostart
+if [ -c /dev/vboxguest ] && [ -f /etc/xdg/autostart/vboxclient.desktop ] && command -v VBoxClient >/dev/null; then
+    mkdir -p "$AUTOSTART"
+    [ -e "$AUTOSTART/vboxclient.desktop" ] || {
+        grep -v '^NotShowIn=' /etc/xdg/autostart/vboxclient.desktop
+        echo 'NotShowIn=WPS;'
+    } > "$AUTOSTART/vboxclient.desktop"
+    [ -e "$AUTOSTART/wps-vboxclient.desktop" ] || printf '%s\n' '[Desktop Entry]' 'Type=Application' \
+        'Name=VirtualBox shared clipboard (WPS)' \
+        'Comment=VirtualBox guest services, the clipboard in its Wayland mode' \
+        'Exec=sh -c "VBoxClient --clipboard --session-type wayland; VBoxClient --checkhostversion"' \
+        'OnlyShowIn=WPS;' > "$AUTOSTART/wps-vboxclient.desktop"
+fi
+
 # wpsd: the user service (tools/install-extension.sh installs it), or
 # started here if it is not installed.
 if ! systemctl --user start wpsd.service 2>/dev/null; then
