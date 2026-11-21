@@ -140,6 +140,12 @@ static void view_activate(struct toplevel *t, bool on)
     if (on) wlr_xwayland_surface_restack(t->xw, NULL, XCB_STACK_MODE_ABOVE);
 }
 
+static void view_set_fullscreen(struct toplevel *t, bool on)
+{
+    if (t->xdg) wlr_xdg_toplevel_set_fullscreen(t->xdg, on);
+    else wlr_xwayland_surface_set_fullscreen(t->xw, on);
+}
+
 static void view_set_maximized(struct toplevel *t, bool on)
 {
     if (t->xdg) wlr_xdg_toplevel_set_maximized(t->xdg, on);
@@ -203,15 +209,19 @@ static void frame_size(struct toplevel *t, int cw, int ch, int *w, int *h)
 
 static ui_rect client_rect(struct toplevel *t)
 {
-    if (!t->ssd) return (ui_rect){ 0, 0, 0, 0 };
+    if (!t->ssd || t->fullscreen) return (ui_rect){ 0, 0, 0, 0 };
     ui_frame_geom g = geom_of(t, t->fw, t->fh);
     return ui_frame_geom_client(&g);
 }
 
 static void draw_frame(struct toplevel *t)
 {
-    if (!t->ssd || !t->mapped) {
+    if (!t->ssd || !t->mapped || t->fullscreen) {
         wlr_scene_node_set_enabled(&t->frame->node, false);
+        if (t->fullscreen && t->client) {   /* the program's surfaces alone */
+            struct wlr_box geo = view_geo(t);
+            wlr_scene_node_set_position(&t->client->node, -geo.x, -geo.y);
+        }
         return;
     }
     struct wlr_box geo = view_geo(t);
@@ -243,7 +253,7 @@ static struct wlr_box window_box(struct toplevel *t)
 {
     struct wlr_box geo = view_geo(t);
     struct wlr_box b = { t->tree->node.x, t->tree->node.y, geo.width, geo.height };
-    if (t->ssd) { b.width = t->fw; b.height = t->fh; }
+    if (t->ssd && !t->fullscreen) { b.width = t->fw; b.height = t->fh; }
     return b;
 }
 
@@ -253,6 +263,10 @@ static void set_activated(struct toplevel *t, bool on)
 {
     if (t->activated == on) return;
     t->activated = on;
+    if (t->fullscreen && t->mapped) {   /* above all only while active */
+        wlr_scene_node_reparent(&t->tree->node, on ? server.layer_fullscreen : server.layer_normal);
+        wlr_scene_node_raise_to_top(&t->tree->node);
+    }
     view_activate(t, on);
     draw_frame(t);
     desktop_window(t, "change");
@@ -303,8 +317,11 @@ static struct wlr_output *output_at_window(struct toplevel *t)
     return o ? o : wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
 }
 
+static void set_fullscreen(struct toplevel *t, bool on);
+
 static void maximize(struct toplevel *t, bool on)
 {
+    if (t->fullscreen) set_fullscreen(t, false);
     if (t->maximized == on || t->kind != KIND_NORMAL) { view_schedule(t); return; }
     struct wlr_output *o = output_at_window(t);
     if (!o) return;
@@ -329,6 +346,48 @@ static void maximize(struct toplevel *t, bool on)
     }
     view_set_maximized(t, on);
     desktop_event(t, on ? "window.maximize" : "window.restore");
+    desktop_window(t, "change");
+}
+
+/* Fullscreen (a video, a presentation, a game, asked by the program): no
+ * frame, the whole screen it is on, above everything (the LaunchPad too)
+ * while it is the active window; back below when another is activated.
+ * Leaving it, the window has its box (or maximized size) again. */
+static void set_fullscreen(struct toplevel *t, bool on)
+{
+    if (t->kind != KIND_NORMAL || t->fullscreen == on) { view_set_fullscreen(t, t->fullscreen); view_schedule(t); return; }
+    struct wlr_output *o = output_at_window(t);
+    if (!o) return;
+    struct wlr_box ob;
+    wlr_output_layout_get_box(server.output_layout, o, &ob);
+    if (on) {
+        t->fs_restore = window_box(t);
+        t->fullscreen = true;
+        if (t->activated) wlr_scene_node_reparent(&t->tree->node, server.layer_fullscreen);
+        draw_frame(t);
+        view_move(t, ob.x, ob.y);
+        view_set_size(t, ob.width, ob.height);
+    } else {
+        t->fullscreen = false;
+        wlr_scene_node_reparent(&t->tree->node, server.layer_normal);
+        wlr_scene_node_raise_to_top(&t->tree->node);
+        draw_frame(t);
+        if (t->maximized) {
+            int ch = ob.height - (t->ssd ? (int)ui_scheme_now.title_h : 0);
+            view_move(t, ob.x, ob.y);
+            view_set_size(t, ob.width, ch);
+        } else {
+            int cw = t->fs_restore.width, ch = t->fs_restore.height;
+            if (t->ssd) {
+                cw -= (int)(2 * ui_scheme_now.border);
+                ch -= (int)(2 * ui_scheme_now.border + ui_scheme_now.title_h);
+            }
+            view_move(t, t->fs_restore.x, t->fs_restore.y);
+            view_set_size(t, cw, ch);
+        }
+    }
+    view_set_fullscreen(t, on);
+    DBG("fullscreen %s '%s'\n", on ? "on" : "off", view_title(t) ? view_title(t) : "");
     desktop_window(t, "change");
 }
 
@@ -1283,6 +1342,7 @@ static void on_map(struct wl_listener *l, void *data)
         view_move(t, x, y);
     }
     focus(t);
+    if (t->kind == KIND_NORMAL && (t->xdg ? t->xdg->requested.fullscreen : t->xw->fullscreen)) set_fullscreen(t, true);
     desktop_window(t, "add");
     desktop_event(t, "window.open");
     server.focus_window_list = false;
@@ -1293,6 +1353,7 @@ static void on_unmap(struct wl_listener *l, void *data)
     (void)data;
     struct toplevel *t = wl_container_of(l, t, unmap);
     t->mapped = false;
+    t->fullscreen = false;
     if (server.grabbed == t) { server.mode = MODE_PASS; server.grabbed = NULL; }
     if (hovered == t) hovered = NULL;
     if (server.last_click_on == t) server.last_click_on = NULL;
@@ -1327,8 +1388,8 @@ static void on_commit(struct wl_listener *l, void *data)
     struct wlr_box geo = view_geo(t);
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
-    if (t->ssd && (w != t->fw || h != t->fh)) draw_frame(t);
-    else if (!t->ssd && t->client) wlr_scene_node_set_position(&t->client->node, -geo.x, -geo.y);
+    if (t->ssd && !t->fullscreen && (w != t->fw || h != t->fh)) draw_frame(t);
+    else if ((!t->ssd || t->fullscreen) && t->client) wlr_scene_node_set_position(&t->client->node, -geo.x, -geo.y);
 }
 
 static void on_destroy(struct wl_listener *l, void *data)
@@ -1412,7 +1473,9 @@ static void on_request_fullscreen(struct wl_listener *l, void *data)
 {
     (void)data;
     struct toplevel *t = wl_container_of(l, t, request_fullscreen);
-    if (view_ready(t)) view_schedule(t);   /* not yet: answered as is */
+    bool want = t->xdg ? t->xdg->requested.fullscreen : t->xw->fullscreen;
+    if (t->mapped) set_fullscreen(t, want);
+    else if (view_ready(t)) view_schedule(t);   /* before it shows: done as it maps */
 }
 
 static void on_set_title(struct wl_listener *l, void *data)
@@ -2121,6 +2184,7 @@ int main(int argc, char **argv)
     s->layer_desktop = wlr_scene_tree_create(&s->scene->tree);
     s->layer_normal = wlr_scene_tree_create(&s->scene->tree);
     s->layer_palette = wlr_scene_tree_create(&s->scene->tree);
+    s->layer_fullscreen = wlr_scene_tree_create(&s->scene->tree);
     s->layer_drag = wlr_scene_tree_create(&s->scene->tree);
     menu.buf = wlr_scene_buffer_create(&s->scene->tree, NULL);   /* above everything */
     wlr_scene_node_set_enabled(&menu.buf->node, false);

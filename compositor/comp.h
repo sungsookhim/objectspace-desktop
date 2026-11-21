@@ -33,7 +33,7 @@ struct server {
     struct wlr_allocator *allocator;
     struct wlr_scene *scene;
     struct wlr_scene_output_layout *scene_layout;
-    struct wlr_scene_tree *layer_desktop, *layer_normal, *layer_palette;
+    struct wlr_scene_tree *layer_desktop, *layer_normal, *layer_palette, *layer_fullscreen;
     struct wlr_scene_rect *background;   /* under everything: a colour until WPS's desktop is there */
     struct wlr_output_layout *output_layout;
     struct wl_list outputs;
@@ -95,6 +95,8 @@ struct toplevel {
     struct wlr_xdg_toplevel_decoration_v1 *deco;
     bool ssd;                         /* our frame */
     bool mapped, minimized, maximized, activated;
+    bool fullscreen;                  /* the whole screen, no frame, above the rest while active */
+    struct wlr_box fs_restore;        /* the window box before it */
     enum kind kind;
     struct wlr_box restore;           /* the frame box before maximizing */
     unsigned id;                      /* for the desktop's Window List */
