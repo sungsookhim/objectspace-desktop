@@ -213,6 +213,9 @@ static void new_spot(void *ctx, const char *name);
 static void sort_icons(struct folder *f, int key);
 static void set_status(long folder, const char *msg);
 static void empty_trash_ask(struct folder *f);
+static void drive_action(struct folder *f, const char *target, const char *action, bool reopen);
+static void unlock_ask(struct folder *f, const char *target, bool reopen);
+static void drives_changed_event(void);
 static ui_dialog *last_dialog;   /* (declared again below, with the jobs) */
 static void restore_items(struct folder *f, size_t i);
 static bool is_trash_dir(const char *p);
@@ -696,6 +699,7 @@ static void on_event(void *arg, const cv *ev)
     if (!strcmp(name, "folder_moved")) { folder_moved(cv_text(ev, "from"), cv_text(ev, "to")); return; }
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     if (!strcmp(name, "trash_changed")) { trash_changed(); return; }
+    if (!strcmp(name, "drives_changed")) { drives_changed_event(); return; }
     for (struct folder *f = folders; f; f = f->next) {
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
         if (f->sub != sub || f->closing) continue;
@@ -1093,6 +1097,9 @@ static void opened(void *arg, const cv *reply)
         /* An abstract object with no view of its own (a built-in
          * template): its settings notebook. */
         open_properties(f->pending_open);
+        f->error[0] = 0;
+    } else if (!res && reply && cv_text(reply, "error") && !strcmp(cv_text(reply, "error"), "locked") && f->pending_open[0]) {
+        unlock_ask(f, f->pending_open, true);   /* a locked drive: its passphrase, then open it */
         f->error[0] = 0;
     } else if (!res && msg) {
         snprintf(f->error, sizeof f->error, "%s", msg);
@@ -1674,6 +1681,14 @@ static void menu_chosen(void *arg, int64_t id)
         }
         case WPS_MI_DELETE: delete_request(f, m->item, false); break;
         case WPS_MI_EMPTY_TRASH: empty_trash_ask(f); break;
+        case WPS_MI_MOUNT: case WPS_MI_UNMOUNT: case WPS_MI_EJECT: case WPS_MI_POWER_OFF: case WPS_MI_LOCK: case WPS_MI_UNLOCK: {
+            char t[PATH_MAX];
+            target_of(f, m->item, t, sizeof t);
+            if (id == WPS_MI_UNLOCK) unlock_ask(f, t, false);
+            else drive_action(f, t, id == WPS_MI_MOUNT ? "mount" : id == WPS_MI_UNMOUNT ? "unmount" : id == WPS_MI_EJECT ? "eject"
+                                    : id == WPS_MI_POWER_OFF ? "poweroff" : "lock", false);
+            break;
+        }
         case WPS_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
         case WPS_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
@@ -1683,6 +1698,95 @@ static void menu_chosen(void *arg, int64_t id)
         }
     }
     free(m);
+}
+
+/* ---- Drives (v0.2-design 5): their menu's actions, the passphrase */
+
+struct drive_ctx { long folder; char target[PATH_MAX], action[16]; bool reopen; ui_dialog *dlg; };
+
+static void drive_acted(void *arg, const cv *reply)
+{
+    struct drive_ctx *x = arg;
+    struct folder *f = folder_by_id(x->folder);
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (ok && ok->k == CV_BOOL && ok->b) {
+        const char *mp = cv_text(reply, "result");
+        char m[PATH_MAX + 64];
+        if (!strcmp(x->action, "mount")) snprintf(m, sizeof m, "Mounted at %s", mp && *mp ? mp : "?");
+        else if (!strcmp(x->action, "unmount")) snprintf(m, sizeof m, "Unmounted");
+        else if (!strcmp(x->action, "eject") || !strcmp(x->action, "poweroff")) snprintf(m, sizeof m, "It can be removed now");
+        else if (!strcmp(x->action, "unlock")) snprintf(m, sizeof m, "Unlocked");
+        else snprintf(m, sizeof m, "Locked");
+        if (f) set_status(f->id, m);
+        if (x->reopen && f) {   /* unlocked to open it: open it now */
+            snprintf(f->pending_open, sizeof f->pending_open, "%s", x->target);
+            svc_open(x->target, false, opened, as_arg(f));
+        }
+    } else {
+        const char *e = reply ? cv_text(reply, "error") : NULL, *msg = reply ? cv_text(reply, "message") : NULL;
+        char m[600];
+        if (e && !strcmp(e, "busy"))
+            snprintf(m, sizeof m, "The drive is in use. Close the windows and programs using it, then try again.");
+        else if (e && !strcmp(e, "not authorized"))
+            snprintf(m, sizeof m, "This needs an administrator's permission, which WPS cannot ask for yet. "
+                                  "Removable drives work; for this one, use GNOME's Disks or Files.");
+        else snprintf(m, sizeof m, "%s", msg && *msg ? msg : reply ? "it failed" : "lost the connection to wpsd");
+        if (!strcmp(x->action, "unlock") && e && !strcmp(e, "failed") && f) {
+            unlock_ask(f, x->target, x->reopen);   /* (a wrong passphrase: again) */
+            set_status(f->id, "Wrong passphrase?");
+        } else {
+            const char *b[] = { "OK" };
+            ask("Drive", m, b, 1, 0, NULL, NULL);
+        }
+    }
+    free(x);
+}
+
+static void drive_action(struct folder *f, const char *target, const char *action, bool reopen)
+{
+    struct drive_ctx *x = calloc(1, sizeof *x);
+    x->folder = f->id;
+    x->reopen = reopen;
+    snprintf(x->target, sizeof x->target, "%s", target);
+    snprintf(x->action, sizeof x->action, "%s", action);
+    svc_drive(target, action, NULL, drive_acted, x);
+}
+
+static void unlock_chosen(void *arg, int choice)
+{
+    struct drive_ctx *x = arg;
+    if (choice != 0) { free(x); return; }
+    snprintf(x->action, sizeof x->action, "unlock");
+    svc_drive(x->target, "unlock", ui_dialog_text(x->dlg), drive_acted, x);   /* (wiped when the dialog goes) */
+}
+
+static void unlock_ask(struct folder *f, const char *target, bool reopen)
+{
+    struct drive_ctx *x = calloc(1, sizeof *x);
+    x->folder = f->id;
+    x->reopen = reopen;
+    snprintf(x->target, sizeof x->target, "%s", target);
+    const char *b[] = { "Unlock", "Cancel" };
+    events_raise("alert.warning", "", "", (ui_rect){ 0, 0, 0, 0 });
+    x->dlg = ui_dialog_open_entry(app, "Unlock", "This volume is encrypted. Its passphrase:", true, b, 2, 0, unlock_chosen, x);
+    last_dialog = x->dlg;
+}
+
+/* Drives came, went, were mounted or unmounted: drive objects and
+ * shadows are read again (their icons and titles). */
+static void drives_changed_event(void)
+{
+    for (struct folder *f = folders; f; f = f->next) {
+        if (f->closing || is_tree(f) || !f->m.complete) continue;
+        bool any = false;
+        for (size_t i = 0; i < f->m.total; i++) {
+            struct row *rw = row_at(f, i);
+            if (!rw || !rw->name || !(rw->shadow || rw->name[0] == '\x01')) continue;
+            row_stale(&f->m, i);
+            any = true;
+        }
+        if (any) fetch_visible(f, f->vis_first, f->vis_last);
+    }
 }
 
 /* A trash's files folder (the Trash Can): .../files beside .../info. */

@@ -422,6 +422,11 @@ typedef struct ui_dialog ui_dialog;
 typedef void (*ui_dialog_fn)(void *ctx, int choice);
 ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
                           int default_button, ui_dialog_fn fn, void *ctx);
+/* With a text field (secret: a passphrase, shown as dots); its text is
+ * ui_dialog_text(d), read in fn (it is wiped after). */
+ui_dialog *ui_dialog_open_entry(ui_app *a, const char *title, const char *message, bool secret, const char *const *buttons,
+                                size_t n, int default_button, ui_dialog_fn fn, void *ctx);
+const char *ui_dialog_text(ui_dialog *d);
 ui_surface *ui_dialog_surface(ui_dialog *d);
 void ui_dialog_key(ui_dialog *d, const ui_key_event *e);   /* as if typed (self-tests) */
 

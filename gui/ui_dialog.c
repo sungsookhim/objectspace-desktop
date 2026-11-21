@@ -1,6 +1,9 @@
 /* Message dialogs: a message and a row of buttons (gui-design.md, Widget
  * set 5). Enter chooses the focused button, Escape the last one (by
- * convention the cancelling one), Tab and the arrows move between them. */
+ * convention the cancelling one), Tab and the arrows move between them.
+ * With a text field (ui_dialog_open_entry), typing goes to the field;
+ * a secret one (a passphrase) shows dots, cannot be copied, does not go
+ * through input methods, and is wiped when the dialog closes. */
 #define _GNU_SOURCE
 #include <math.h>
 #include <stdio.h>
@@ -26,7 +29,11 @@ struct ui_dialog {
     ui_dialog_fn fn;
     void *ctx;
     bool done;
+    ui_entry *entry;          /* a text field (NULL: none) */
+    bool secret;
 };
+
+#define ENTRY_H 26
 
 /* Word-wrap the message to the dialog's width (paragraphs on \n). */
 static void wrap(ui_dialog *d, const char *msg, double width)
@@ -64,6 +71,28 @@ static ui_rect button_rect(ui_dialog *d, size_t i)
     return (ui_rect){ x, c.y + c.h - MARGIN - BUTTON_H, button_w(d, i), BUTTON_H };
 }
 
+static ui_rect entry_rect(ui_dialog *d)
+{
+    ui_rect c = ui_frame_client(d->win);
+    return (ui_rect){ c.x + MARGIN, c.y + MARGIN + (double)d->nlines * LINE_H + 10, c.w - 2 * MARGIN, ENTRY_H };
+}
+
+static void draw_secret(ui_dialog *d, cairo_t *cr, ui_rect r)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_fill(cr, r, k->client_bg);
+    ui_bevel(cr, r, false);
+    size_t n = 0;
+    for (const unsigned char *p = (const unsigned char *)ui_entry_text(d->entry); *p; p++) n += (*p & 0xc0) != 0x80;
+    double x = r.x + 6, y = r.y + r.h / 2;
+    ui_set_color(cr, k->text);
+    for (size_t i = 0; i < n && x < r.x + r.w - 10; i++, x += 10) {
+        cairo_arc(cr, x + 3, y, 3, 0, 2 * M_PI);
+        cairo_fill(cr);
+    }
+    ui_fill(cr, (ui_rect){ x + 1, r.y + 5, 1, r.h - 10 }, k->text);   /* the caret, at the end */
+}
+
 /* For screen readers: the button with the focus. */
 static void a11y_button(ui_dialog *d)
 {
@@ -83,6 +112,10 @@ static void dlg_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_set_color(cr, k->text);
     for (size_t i = 0; i < d->nlines; i++)
         ui_text_draw(cr, UI_FONT_REGULAR, c.x + MARGIN, c.y + MARGIN + (double)(i + 1) * LINE_H - 4, d->lines[i], c.w - 2 * MARGIN);
+    if (d->entry) {
+        if (d->secret) draw_secret(d, cr, entry_rect(d));
+        else ui_entry_draw(d->entry, cr, entry_rect(d), true);
+    }
     for (size_t i = 0; i < d->nbuttons; i++) {
         ui_rect b = button_rect(d, i);
         bool down = d->pressed == (int)i;
@@ -106,6 +139,11 @@ static void destroy_later(void *arg)
     ui_dialog *d = arg;
     for (size_t i = 0; i < d->nlines; i++) free(d->lines[i]);
     for (size_t i = 0; i < d->nbuttons; i++) free(d->buttons[i]);
+    if (d->entry) {
+        const char *t = ui_entry_text(d->entry);
+        if (t) explicit_bzero((char *)t, strlen(t));   /* (a passphrase) */
+        ui_entry_free(d->entry);
+    }
     free(d->lines);
     free(d->buttons);
     ui_surface_destroy(d->win);
@@ -143,6 +181,15 @@ static void dlg_key(ui_surface *s, const ui_key_event *e)
 {
     ui_dialog *d = ui_surface_data(s);
     int n = (int)d->nbuttons;
+    if (d->entry && e->sym != XKB_KEY_Return && e->sym != XKB_KEY_KP_Enter && e->sym != XKB_KEY_Escape &&
+        e->sym != XKB_KEY_Tab && e->sym != XKB_KEY_ISO_Left_Tab) {
+        /* typing goes to the field (a secret one: no copying, no moving
+         * about in it - only typing and erasing) */
+        if (d->secret && (e->mods & (UI_MOD_CTRL | UI_MOD_ALT))) return;
+        if (d->secret && e->sym != XKB_KEY_BackSpace && !(e->utf8[0] && (unsigned char)e->utf8[0] >= 0x20)) return;
+        if (ui_entry_key(d->entry, e) != UI_ENTRY_NONE) ui_surface_damage_all(s);
+        return;
+    }
     switch (e->sym) {
     case XKB_KEY_Return: case XKB_KEY_KP_Enter: case XKB_KEY_space: finish(d, d->focus); return;
     case XKB_KEY_Escape: finish(d, n - 1); return;
@@ -168,10 +215,31 @@ static const ui_surface_ops dlg_ops = {
     .draw = dlg_draw, .pointer = dlg_pointer, .key = dlg_key, .close = dlg_close, .resized = dlg_resized, .focus = dlg_focus,
 };
 
+static ui_dialog *open_dialog(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
+                              int default_button, ui_dialog_fn fn, void *ctx, bool entry, bool secret);
+
+ui_dialog *ui_dialog_open_entry(ui_app *a, const char *title, const char *message, bool secret, const char *const *buttons,
+                                size_t n, int default_button, ui_dialog_fn fn, void *ctx)
+{
+    ui_dialog *d = open_dialog(a, title, message, buttons, n, default_button, fn, ctx, true, secret);
+    if (!secret) ui_text_input_focus(d->win, d->entry, entry_rect(d));
+    return d;
+}
+
+const char *ui_dialog_text(ui_dialog *d) { return d->entry ? ui_entry_text(d->entry) : ""; }
+
 ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
                           int default_button, ui_dialog_fn fn, void *ctx)
 {
+    return open_dialog(a, title, message, buttons, n, default_button, fn, ctx, false, false);
+}
+
+static ui_dialog *open_dialog(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
+                              int default_button, ui_dialog_fn fn, void *ctx, bool entry, bool secret)
+{
     ui_dialog *d = calloc(1, sizeof *d);
+    if (entry) d->entry = ui_entry_new("");
+    d->secret = secret;
     snprintf(d->title, sizeof d->title, "%s", title);
     d->fn = fn;
     d->ctx = ctx;
@@ -189,6 +257,7 @@ ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, con
     w = ceil(w);
     wrap(d, message, w - 2 * MARGIN - 8);
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 2 * MARGIN + (double)d->nlines * LINE_H + 16 + BUTTON_H + MARGIN;
+    if (entry) h += ENTRY_H + 10;
     d->win = ui_window_new(a, &dlg_ops, d, "org.wps.dialog", w, h);
     ui_window_set_title(d->win, title);
     ui_a11y_window(d->win, UI_ROLE_DIALOG, message);   /* a screen reader reads the message with the title */

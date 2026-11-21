@@ -307,6 +307,16 @@ void svc_first_start(const char *desktop, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+void svc_drive(const char *target, const char *action, const char *pass, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("drive", pass ? 3 : 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "action"); cb_text(&o->b, action);
+    if (pass) { cb_text(&o->b, "pass"); cb_text(&o->b, pass); }
+    send_req(o, id, fn, arg);
+}
+
 void svc_restore(const char *target, svc_fn fn, void *arg)
 {
     int64_t id;

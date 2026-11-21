@@ -334,6 +334,8 @@ static int errno_of(const sd_bus_error *e)
 }
 
 static int start(sd_bus *bus, struct req *r);
+static int read_all(sd_bus *bus, wps_drive_info **out, size_t *nout);
+static void publish(wps_drive_info *list, size_t n);
 
 static int call_done(sd_bus_message *m, void *arg, sd_bus_error *ret)
 {
@@ -354,6 +356,11 @@ static int call_done(sd_bus_message *m, void *arg, sd_bus_error *ret)
         const char *p = NULL;
         if (sd_bus_message_read_basic(m, 's', &p) >= 0 && p) snprintf(r->mount, sizeof r->mount, "%s", p);
     }
+    /* the list as it is now, before the answer (an open after an unlock
+     * must find it unlocked) */
+    wps_drive_info *list = NULL;
+    size_t n = 0;
+    if (read_all(sd_bus_message_get_bus(m), &list, &n) >= 0) publish(list, n);
     finish(r, 0, NULL);
     return 0;
 }
