@@ -19,6 +19,8 @@ void layout_place(icon_layout *l, const char *name, int x, int y);   /* a stored
 void layout_clear_placed(icon_layout *l);
 bool layout_is_placed(icon_layout *l, const char *name);
 void layout_rename(icon_layout *l, const char *from, const char *to);   /* keeps its place */
+/* Called when a name gets a grid spot for the first time (not when arranging). */
+void layout_on_new_spot(icon_layout *l, void (*fn)(void *ctx, const char *name), void *ctx);
 /* Lay out items 0..n-1: all of them (full), or only those added since the
  * last call. `order` (full only) gives the order spots are handed out. */
 void layout_update(icon_layout *l, size_t n, layout_name_fn name_at, void *ctx, bool full, const size_t *order);

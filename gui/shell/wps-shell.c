@@ -19,6 +19,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <sys/timerfd.h>
 #include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -87,6 +88,8 @@ struct folder {
     bool lay_started;        /* its grid width is set */
     bool arranged_by_name;   /* the first, unstored arrangement was done */
     int sort_pending;        /* a Sort waiting for every row's details: its key + 1 */
+    char **spot_new;         /* new objects whose spots are to be stored (store_spots) */
+    size_t nspot_new;
     char error[256];
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
@@ -202,6 +205,9 @@ static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
+static void placed_reply(void *arg, const cv *reply);
+static void spots_later(void);
+static void new_spot(void *ctx, const char *name);
 static void sort_icons(struct folder *f, int key);
 static void win_close(ui_surface *s);
 
@@ -1161,10 +1167,81 @@ static void layout_follow(struct folder *f, bool full)
         layout_update(f->lay, f->m.total, lay_name, f, true, o);
         free(o);
         svc_layout(f->path, got_layout, as_arg(f));   /* stored positions win over it */
+        layout_on_new_spot(f->lay, new_spot, f);   /* from now on, new ones' spots are kept */
     } else {
         layout_update(f->lay, f->m.total, lay_name, f, full, NULL);
     }
     if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+}
+
+/* New objects' spots, stored a moment after they came (see layout_follow). */
+static int spot_timer = -1;
+
+static void store_spots(struct folder *f)
+{
+    /* every icon not placed yet, with its spot now (the new one with the
+     * others: stored and unstored mixed overlapped at the next login, the
+     * unstored ones arranged by name over the stored) */
+    for (size_t j = 0; j < f->nspot_new; j++) free(f->spot_new[j]);
+    free(f->spot_new);
+    f->spot_new = NULL;
+    f->nspot_new = 0;
+    size_t n = f->m.total;
+    if (!f->m.complete || !n || n > 2000) return;
+    char **t = calloc(n, sizeof *t);
+    int64_t *x = calloc(n, sizeof *x), *y = calloc(n, sizeof *y);
+    size_t k = 0;
+    for (size_t i = 0; i < n; i++) {
+        const char *nm = model_name(&f->m, i);
+        if (!nm || layout_is_placed(f->lay, nm)) continue;
+        double px, py;
+        layout_pos(f->lay, i, &px, &py);
+        if (nm[0] == '\x01') t[k] = strdup(nm + 1);   /* a central object: its address */
+        else if (asprintf(&t[k], "%s/%s", strcmp(f->path, "/") ? f->path : "", nm) < 0) continue;
+        x[k] = (int64_t)px;
+        y[k] = (int64_t)py;
+        layout_place(f->lay, nm, (int)px, (int)py);
+        k++;
+    }
+    if (k) svc_place(f->path, (const char *const *)t, x, y, k, placed_reply, as_arg(f));
+    for (size_t i = 0; i < k; i++) free(t[i]);
+    free(t);
+    free(x);
+    free(y);
+}
+
+static void on_spot_timer(void *arg, int fd, short rev)
+{
+    (void)arg; (void)rev;
+    uint64_t n;
+    if (read(fd, &n, sizeof n) < 0) { /* nothing */ }
+    for (struct folder *f = folders; f; f = f->next)
+        if (!f->closing && f->nspot_new) store_spots(f);
+}
+
+/* An object that comes after the first arrangement (made, copied, moved
+ * in) takes the next free spot; that spot is stored a moment later (a
+ * drop's own position, stored as its job ends, comes first), so it is
+ * there at the next login - unstored, the folder arranged by name then
+ * put it elsewhere, and the order changed. */
+static void new_spot(void *ctx, const char *name)
+{
+    struct folder *f = ctx;
+    if (!f->arranged_by_name || f->nspot_new >= 64) return;
+    f->spot_new = realloc(f->spot_new, (f->nspot_new + 1) * sizeof *f->spot_new);
+    f->spot_new[f->nspot_new++] = strdup(name);
+    spots_later();
+}
+
+static void spots_later(void)
+{
+    if (spot_timer < 0) {
+        spot_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+        if (spot_timer < 0) return;
+        ui_app_watch_fd(app, spot_timer, POLLIN, on_spot_timer, NULL);
+    }
+    struct itimerspec its = { .it_value = { 2, 0 } };   /* (each new one starts the 2 s again) */
+    timerfd_settime(spot_timer, 0, &its, NULL);
 }
 
 static void got_layout(void *arg, const cv *reply)
@@ -2802,6 +2879,8 @@ static void free_folder(struct folder *f)
     free(f->changes);
     tree_free(f);
     layout_free(f->lay);
+    for (size_t j = 0; j < f->nspot_new; j++) free(f->spot_new[j]);
+    free(f->spot_new);
     model_free(&f->m);
     if (f->sh) { model_free(f->sh); free(f->sh); }
     ui_container_free(f->cont);

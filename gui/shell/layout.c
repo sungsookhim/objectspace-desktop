@@ -81,7 +81,15 @@ struct icon_layout {
     size_t *placed_items;
     size_t nplaced, capplaced;
     double max_x, max_y;
+    void (*on_new)(void *ctx, const char *name);   /* a name given a spot for the first time */
+    void *on_new_ctx;
 };
+
+void layout_on_new_spot(icon_layout *l, void (*fn)(void *ctx, const char *name), void *ctx)
+{
+    l->on_new = fn;
+    l->on_new_ctx = ctx;
+}
 
 icon_layout *layout_new(double cell_w, double cell_h)
 {
@@ -206,6 +214,7 @@ static void lay_one(icon_layout *l, size_t i, const char *name)
             spot = (int64_t)l->next_spot++;
             l->spot_taken[spot] = 1;
             if (sv) *sv = spot;
+            if (l->on_new && name) l->on_new(l->on_new_ctx, name);
         }
         ensure_spots(l, (size_t)spot + 1);
         l->spot_item[spot] = i;
