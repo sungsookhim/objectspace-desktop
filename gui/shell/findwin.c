@@ -57,6 +57,7 @@ struct fw {
 
 static ui_app *app;
 static void (*open_folder)(const char *path);
+static void (*drag_paths)(ui_surface *win, uint32_t serial, const char *const *paths, size_t n, ui_kind kind);
 static struct fw *wins, *last;
 static int next_wid = 1;
 
@@ -277,7 +278,23 @@ static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     ui_menu_popup(w->s, items, 2, x, y, serial, menu_chosen, m);
 }
 
-static const ui_container_src res_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, NULL, NULL, NULL, NULL };
+/* Results are the objects themselves: dragged (the selection if the item
+ * is in it, else the item alone) to be moved, copied or shadowed, as from
+ * a folder. */
+static void src_drag(void *ctx, size_t i, uint32_t serial)
+{
+    struct fw *w = ctx;
+    if (!drag_paths || i >= w->nres) return;
+    bool whole = ui_container_is_selected(w->cont, i);
+    const char **p = calloc(w->nres, sizeof *p);
+    size_t n = 0;
+    for (size_t k = whole ? 0 : i; k < (whole ? w->nres : i + 1); k++)
+        if (!whole || ui_container_is_selected(w->cont, k)) p[n++] = w->res[k].path;
+    drag_paths(w->s, serial, p, n, w->res[i].kind);
+    free(p);
+}
+
+static const ui_container_src res_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, src_drag, NULL, NULL, NULL };
 
 /* --------------------------------------------------------------- layout */
 
@@ -605,10 +622,12 @@ static void fw_focus(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 static const ui_surface_ops fw_ops = { .draw = fw_draw, .pointer = fw_pointer, .key = fw_key, .resized = fw_resized,
                                        .close = fw_close, .focus = fw_focus };
 
-void findwin_init(ui_app *a, void (*of)(const char *path))
+void findwin_init(ui_app *a, void (*of)(const char *path),
+                  void (*dr)(ui_surface *win, uint32_t serial, const char *const *paths, size_t n, ui_kind kind))
 {
     app = a;
     open_folder = of;
+    drag_paths = dr;
 }
 
 void findwin_open(const char *folder, const char *name)

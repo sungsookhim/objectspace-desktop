@@ -1618,6 +1618,34 @@ static void drag_end(void *ctx, bool dropped, uint32_t action)
     dragging_free(ctx);
 }
 
+/* Start dragging what d holds (its paths and both formats ready). */
+static void start_dragging(struct dragging *d, ui_surface *win, uint32_t serial, ui_kind kind)
+{
+    if (!d->wps || !d->uris) { dragging_free(d); return; }
+    /* The drag image: the item's icon, and how many go. */
+    int sc = ui_surface_scale(win);
+    cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 48 * sc, 40 * sc);
+    cairo_surface_set_device_scale(img, sc, sc);
+    cairo_t *cr = cairo_create(img);
+    ui_draw_kind_icon(cr, kind, 0, 4, 32);
+    if (d->n > 1) {
+        char cnt[32];
+        snprintf(cnt, sizeof cnt, "%zu", d->n);
+        double w = ui_text_width(UI_FONT_BOLD, cnt) + 8;
+        ui_fill(cr, (ui_rect){ 46 - w, 22, w, 16 }, ui_scheme_now.selection);
+        ui_set_color(cr, ui_scheme_now.selection_text);
+        ui_text_draw(cr, UI_FONT_BOLD, 50 - w, 35, cnt, 0);
+    }
+    cairo_destroy(cr);
+    const char *mimes[] = { MIME_WPS, MIME_URIS };
+    cur_drag = d;
+    if (!ui_drag_start(win, serial, mimes, 2, UI_DND_COPY | UI_DND_MOVE | UI_DND_ASK, img, sc, drag_send, drag_end, d)) {
+        cur_drag = NULL;
+        dragging_free(d);
+    }
+    cairo_surface_destroy(img);
+}
+
 static void src_drag(void *ctx, size_t i, uint32_t serial)
 {
     struct folder *f = ctx;
@@ -1658,31 +1686,34 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
     }
     if (!d->uris) d->uris = strdup("");
     snprintf(d->src_folder, sizeof d->src_folder, "%s", f->path);
-    if (!d->wps || !d->uris) { dragging_free(d); return; }
-    /* The drag image: the item's icon, and how many go. */
-    int sc = ui_surface_scale(f->win);
-    cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 48 * sc, 40 * sc);
-    cairo_surface_set_device_scale(img, sc, sc);
-    cairo_t *cr = cairo_create(img);
     ui_item it = { 0 };
     src_item(f, i, &it);
-    ui_draw_kind_icon(cr, it.loaded ? it.kind : UI_KIND_FILE, 0, 4, 32);
-    if (d->n > 1) {
-        char cnt[32];
-        snprintf(cnt, sizeof cnt, "%zu", d->n);
-        double w = ui_text_width(UI_FONT_BOLD, cnt) + 8;
-        ui_fill(cr, (ui_rect){ 46 - w, 22, w, 16 }, ui_scheme_now.selection);
-        ui_set_color(cr, ui_scheme_now.selection_text);
-        ui_text_draw(cr, UI_FONT_BOLD, 50 - w, 35, cnt, 0);
+    start_dragging(d, f->win, serial, it.loaded ? it.kind : UI_KIND_FILE);
+}
+
+/* Find's results dragged (paths from anywhere): moved, copied or made
+ * shadows of wherever they are dropped, as from a folder. */
+void shell_drag_paths(ui_surface *win, uint32_t serial, const char *const *paths, size_t n, ui_kind kind)
+{
+    if (!n) return;
+    struct dragging *d = calloc(1, sizeof *d);
+    d->paths = calloc(n, sizeof *d->paths);
+    d->tpl = calloc(n, sizeof *d->tpl);
+    d->dx = calloc(n, sizeof *d->dx);
+    d->dy = calloc(n, sizeof *d->dy);
+    size_t wl = 0, wc = 0, ul = 0, uc = 0;
+    for (size_t k = 0; k < n; k++) {
+        d->paths[d->n] = strdup(paths[k]);
+        d->dx[d->n] = d->dy[d->n] = 16.0 * (double)k;   /* a small step each, where they land */
+        d->n++;
+        size_t need = wl + strlen(paths[k]) + 12;
+        if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->wps = realloc(d->wps, wc); }
+        wl += (size_t)sprintf(d->wps + wl, "%s\n", paths[k]);
+        if (strncmp(paths[k], "vobj:", 5)) uri_append(&d->uris, &ul, &uc, paths[k]);
     }
-    cairo_destroy(cr);
-    const char *mimes[] = { MIME_WPS, MIME_URIS };
-    cur_drag = d;
-    if (!ui_drag_start(f->win, serial, mimes, 2, UI_DND_COPY | UI_DND_MOVE | UI_DND_ASK, img, sc, drag_send, drag_end, d)) {
-        cur_drag = NULL;
-        dragging_free(d);
-    }
-    cairo_surface_destroy(img);
+    if (!d->uris) d->uris = strdup("");
+    if (!d->wps) { dragging_free(d); return; }
+    start_dragging(d, win, serial, kind);   /* (no source folder: they come from many) */
 }
 
 /* Where a drop at (x, y) goes: a folder under the pointer, else the
@@ -1710,10 +1741,18 @@ static bool shadow_mods(unsigned mods) { return ui_mouse_drop_how(mods) == 2; }
  * the originals, so a plain drag elsewhere copies, as GNOME's Files does. */
 static bool drag_copies_by_default(const char *dest)
 {
-    if (!cur_drag || !cur_drag->src_folder[0] || !strcmp(cur_drag->src_folder, dest)) return false;
-    bool files = false;
-    for (size_t i = 0; i < cur_drag->n; i++) files |= strncmp(cur_drag->paths[i], "vobj:", 5) != 0;
-    return files && access(cur_drag->src_folder, W_OK) != 0;
+    if (!cur_drag || !strcmp(cur_drag->src_folder, dest)) return false;
+    for (size_t i = 0; i < cur_drag->n; i++) {
+        if (!strncmp(cur_drag->paths[i], "vobj:", 5)) continue;
+        /* each item's own folder (Find's results come from many) */
+        char parent[PATH_MAX];
+        snprintf(parent, sizeof parent, "%s", cur_drag->paths[i]);
+        char *sl = strrchr(parent, '/');
+        if (!sl) continue;
+        if (sl == parent) sl[1] = 0; else *sl = 0;
+        if (strcmp(parent, dest) && access(parent, W_OK) != 0) return true;
+    }
+    return false;
 }
 
 static bool under(const char *path, const char *dir)
@@ -4488,7 +4527,7 @@ int main(int argc, char **argv)
     } else {
         winlist_init(app, -1);
     }
-    findwin_init(app, launchpad_open_folder);
+    findwin_init(app, launchpad_open_folder, shell_drag_paths);
     icons_init(app);
     iconpick_init(app, launchpad_open_folder);
     if (!app) return 1;

@@ -22,7 +22,8 @@
 #include "ui.h"
 
 /* open_folder: the shell opens a folder window for a path. */
-void findwin_init(ui_app *a, void (*open_folder)(const char *path));
+void findwin_init(ui_app *a, void (*open_folder)(const char *path),
+                  void (*drag)(ui_surface *win, uint32_t serial, const char *const *paths, size_t n, ui_kind kind));
 
 /* A new Find window on `folder` (name: what to look for, or NULL). */
 void findwin_open(const char *folder, const char *name);
