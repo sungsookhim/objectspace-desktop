@@ -740,6 +740,7 @@ static void on_cursor_motion(struct wl_listener *l, void *data)
     (void)l;
     struct wlr_pointer_motion_event *e = data;
     n_motions++;
+    idle_activity();
     wlr_cursor_move(server.cursor, &e->pointer->base, e->delta_x, e->delta_y);
     process_motion(e->time_msec);
 }
@@ -749,6 +750,7 @@ static void on_cursor_motion_absolute(struct wl_listener *l, void *data)
     (void)l;
     struct wlr_pointer_motion_absolute_event *e = data;
     n_motions++;
+    idle_activity();
     wlr_cursor_warp_absolute(server.cursor, &e->pointer->base, e->x, e->y);
     process_motion(e->time_msec);
 }
@@ -758,6 +760,11 @@ static void on_cursor_button(struct wl_listener *l, void *data)
     (void)l;
     struct wlr_pointer_button_event *e = data;
     n_buttons++;
+    /* a click that wakes the screens does nothing else (nor its release) */
+    static uint32_t swallowed;
+    bool pressed = e->state == WL_POINTER_BUTTON_STATE_PRESSED;
+    if (idle_activity() && pressed) { swallowed = e->button; return; }
+    if (!pressed && swallowed == e->button) { swallowed = 0; return; }
     process_button(e->time_msec, e->button, e->state == WL_POINTER_BUTTON_STATE_PRESSED);
 }
 
@@ -765,6 +772,7 @@ static void on_cursor_axis(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_axis_event *e = data;
+    if (idle_activity()) return;
     wlr_seat_pointer_notify_axis(server.seat, e->time_msec, e->orientation, e->delta, e->delta_discrete, e->source,
                                  e->relative_direction);
 }
@@ -839,6 +847,8 @@ static void on_key(struct wl_listener *l, void *data)
     int n = xkb_state_key_get_syms(k->wlr_keyboard->xkb_state, keycode, &syms);
     uint32_t mods = wlr_keyboard_get_modifiers(k->wlr_keyboard);
     n_keys++;
+    /* a key that wakes the screens is not typed into anything */
+    if (idle_activity() && e->state == WL_KEYBOARD_KEY_STATE_PRESSED) return;
     if (comp_debug && e->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         char name[64] = "?";
         if (n > 0) xkb_keysym_get_name(syms[0], name, sizeof name);
@@ -1923,6 +1933,7 @@ static void script_step(const char *line)
     if (!strcmp(cmd, "move") || !strcmp(cmd, "click") || !strcmp(cmd, "down") || !strcmp(cmd, "up") || !strcmp(cmd, "dclick")) {
         char extra[16] = "";
         sscanf(arg, "%lf %lf %15s", &x, &y, extra);
+        idle_activity();   /* as input from a hand */
         wlr_cursor_warp_closest(server.cursor, NULL, x, y);
         process_motion(t);
         uint32_t btn = !strcmp(extra, "right") ? 0x111 : 0x110;
@@ -2188,6 +2199,7 @@ int main(int argc, char **argv)
         comp_spawn(argv_sh, NULL, NULL);
     }
     set_cursor("default");   /* a pointer to be seen from the start (nothing sets one before the first motion) */
+    idle_init();
     if (desktop) desktop_start(desktop);
     if (s->session) {
         fprintf(stderr, "wps-compositor: session active: %s\n", s->session->active ? "yes" : "no");
@@ -2215,6 +2227,7 @@ int main(int argc, char **argv)
         wl_list_remove(&s->xwayland_ready.link);
         wlr_xwayland_destroy(s->xwayland);
     }
+    idle_fini();
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
                                  &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection, &s->request_set_primary,

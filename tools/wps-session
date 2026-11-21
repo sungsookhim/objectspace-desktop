@@ -45,6 +45,16 @@ size=$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null)
 [ -n "$theme" ] && export XCURSOR_THEME=$theme
 [ -n "$size" ] && export XCURSOR_SIZE=$size
 
+# Idle: screens off after GNOME's "Blank screen" time (0: never), then the
+# lock screen if "Automatic screen lock" is on, after its delay
+# (Settings > Privacy > Screen lock). Read when the session starts.
+idle=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null | sed 's/^uint32 //')
+lock=$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)
+lockd=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null | sed 's/^uint32 //')
+case $idle in ''|*[!0-9]*) ;; *) export WPS_IDLE_DELAY=$idle ;; esac
+[ "$lock" = false ] && export WPS_LOCK_ENABLED=0
+case $lockd in ''|*[!0-9]*) ;; *) export WPS_LOCK_DELAY=$lockd ;; esac
+
 # The desktop portal: GNOME's GTK backend (its Settings read GNOME's
 # settings), for a desktop named WPS.
 PORTALS=${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal

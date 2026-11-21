@@ -137,6 +137,11 @@ void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);
 
 /* lock.c: the lock screen */
+/* idle.c: screens off and the lock after idle time, idle inhibitors, logind */
+void idle_init(void);
+void idle_fini(void);
+bool idle_activity(void);        /* input came; true if it woke the screens (then not passed on) */
+
 bool lock_screen(void);          /* false: it cannot lock (no PAM) */
 bool lock_active(void);
 void lock_key(uint32_t sym, const char *utf8);
