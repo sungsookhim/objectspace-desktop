@@ -19,6 +19,15 @@
 /* Added by the GUI to the desktop's own menu (G4). */
 #define WPS_MI_WINDOW_LIST    50
 #define WPS_MI_MINIMIZED      51
+/* Added by the GUI to every folder's background menu (the desktop's too). */
+#define WPS_MI_OPEN_PARENT    52
+#define WPS_MI_FIND           53
+#define WPS_MI_SORT           54    /* cascade: arrange the icons in an order */
+#define WPS_MI_SORT_NAME      55
+#define WPS_MI_SORT_TYPE      56
+#define WPS_MI_SORT_SIZE      57
+#define WPS_MI_SORT_DATE      58
+#define WPS_MI_CLOSE          59    /* not the desktop's */
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

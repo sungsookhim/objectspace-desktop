@@ -86,6 +86,7 @@ struct folder {
     icon_layout *lay;        /* icon view: where each icon is */
     bool lay_started;        /* its grid width is set */
     bool arranged_by_name;   /* the first, unstored arrangement was done */
+    int sort_pending;        /* a Sort waiting for every row's details: its key + 1 */
     char error[256];
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
@@ -201,6 +202,8 @@ static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
+static void sort_icons(struct folder *f, int key);
+static void win_close(ui_surface *s);
 
 /* WPS_DEBUG_TIMING: when the desktop's start-up steps happen. */
 static double since_start(void)
@@ -539,6 +542,7 @@ static void got_page(void *arg, const cv *reply)
     if (!details || m->complete != was_complete) layout_follow(f, false);
     if (!m->complete) request_more(f, false);
     if (m->complete != was_complete || !details) damage_status(f);
+    if (f->sort_pending && m->complete) sort_icons(f, f->sort_pending - 1);   /* (again: all in now?) */
 }
 
 /* Names stream in; the folder's size grows as the service reads it. */
@@ -1109,6 +1113,32 @@ static int cmp_index_name(const void *a, const void *b)
     return strcoll(x ? x : "", y ? y : "");
 }
 
+/* Sort: by type (the extension; folders first), size, last write - each
+ * then by name. */
+static int sort_key;
+static struct row *row_at(struct folder *f, size_t i);
+static int cmp_index_key(const void *a, const void *b)
+{
+    size_t i = *(const size_t *)a, j = *(const size_t *)b;
+    struct row *x = row_at(sort_folder, i), *y = row_at(sort_folder, j);
+    const char *nx = model_name(&sort_folder->m, i), *ny = model_name(&sort_folder->m, j);
+    nx = nx ? nx : "";
+    ny = ny ? ny : "";
+    int r = 0;
+    if (x && y) {
+        if (sort_key == 1) {
+            bool fx = x->kind == UI_KIND_FOLDER, fy = y->kind == UI_KIND_FOLDER;
+            if (fx != fy) r = fx ? -1 : 1;
+            else {
+                const char *ex = strrchr(nx, '.'), *ey = strrchr(ny, '.');
+                r = strcasecmp(ex && ex != nx ? ex : "", ey && ey != ny ? ey : "");
+            }
+        } else if (sort_key == 2) r = x->size < y->size ? -1 : x->size > y->size;
+        else if (sort_key == 3) r = x->mtime > y->mtime ? -1 : x->mtime < y->mtime;   /* newest first */
+    }
+    return r ? r : strcoll(nx, ny);
+}
+
 static size_t *name_order(struct folder *f)
 {
     size_t n = f->m.total, *o = malloc((n ? n : 1) * sizeof *o);
@@ -1173,11 +1203,44 @@ static void placed_reply(void *arg, const cv *reply)
 /* Arrange (folder menu): a grid that fits the window, in name order;
  * stored for folders up to 2000 objects (larger ones are arranged for
  * this session). */
-static void arrange(struct folder *f)
+static void arrange_by(struct folder *f, int key);
+static void arrange(struct folder *f) { arrange_by(f, 0); }
+
+/* Sort (icon view, as OS/2): the icons arranged in an order, once. Size
+ * and date need every row's details: they are read first. */
+static void sort_icons(struct folder *f, int key)
+{
+    if (key >= 2) {
+        bool all = true;
+        for (size_t p = 0; p * PAGE < f->m.total; p++) {
+            struct page *pg = page_at(&f->m, p);
+            if (pg->state == P_DETAILED) continue;
+            all = false;
+            if (pg->requested) continue;
+            pg->requested = true;
+            svc_list(f->path, p * PAGE, PAGE, true, got_page, page_arg(f, false));
+        }
+        if (!all || !f->m.complete) {
+            f->sort_pending = key + 1;
+            snprintf(f->error, sizeof f->error, "Sorting...");
+            damage_status(f);
+            return;
+        }
+    }
+    f->sort_pending = 0;
+    arrange_by(f, key);
+}
+
+static void arrange_by(struct folder *f, int key)
 {
     svc_arrange(f->path, placed_reply, as_arg(f));
     layout_reset(f->lay, cols_now(f));
     size_t *o = name_order(f);
+    if (key) {
+        sort_key = key;
+        sort_folder = f;
+        qsort(o, f->m.total, sizeof *o, cmp_index_key);
+    }
     layout_update(f->lay, f->m.total, lay_name, f, true, o);
     free(o);
     f->arranged_by_name = true;
@@ -1205,7 +1268,8 @@ static void arrange(struct folder *f)
         free(y);
     }
     ui_container_layout_changed(f->cont);
-    snprintf(f->error, sizeof f->error, "Arranged");
+    static const char *const by[] = { "Arranged", "Sorted by type", "Sorted by size", "Sorted by last write" };
+    snprintf(f->error, sizeof f->error, "%s", by[key >= 0 && key < 4 ? key : 0]);
     damage_status(f);
 }
 
@@ -1479,6 +1543,20 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
         case WPS_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
         case WPS_MI_ARRANGE: arrange(f); break;
+        case WPS_MI_SORT_NAME: case WPS_MI_SORT_TYPE: case WPS_MI_SORT_SIZE: case WPS_MI_SORT_DATE:
+            sort_icons(f, (int)(id - WPS_MI_SORT_NAME));
+            break;
+        case WPS_MI_FIND: findwin_open(f->path, NULL); break;
+        case WPS_MI_CLOSE: win_close(f->win); break;
+        case WPS_MI_OPEN_PARENT: {
+            char parent[PATH_MAX];
+            snprintf(parent, sizeof parent, "%s", f->path);
+            char *sl = strrchr(parent, '/');
+            if (sl == parent) sl[1] = 0;
+            else if (sl) *sl = 0;
+            if (strcmp(parent, f->path)) open_folder(parent, UI_VIEW_ICON);
+            break;
+        }
         case WPS_MI_DELETE: delete_request(f, m->item, false); break;
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
         case WPS_MI_WINDOW_LIST: winlist_open(false); break;
@@ -1498,6 +1576,27 @@ static void got_menu(void *arg, const cv *reply)
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
+    if (m->item == SIZE_MAX) {
+        /* Every folder's (the desktop's too), as OS/2's: Open parent after
+         * Open, then Find, Sort; Close for a window (the desktop stays). */
+        bool icons = ui_container_view(f->cont) == UI_VIEW_ICON;
+        ui_menu_item *sorts = calloc(4, sizeof *sorts);
+        sorts[0] = (ui_menu_item){ WPS_MI_SORT_NAME, "By name", icons, false, NULL, 0 };
+        sorts[1] = (ui_menu_item){ WPS_MI_SORT_TYPE, "By type", icons, false, NULL, 0 };
+        sorts[2] = (ui_menu_item){ WPS_MI_SORT_SIZE, "By size", icons, false, NULL, 0 };
+        sorts[3] = (ui_menu_item){ WPS_MI_SORT_DATE, "By last write", icons, false, NULL, 0 };
+        items = realloc(items, (n + 6) * sizeof *items);
+        size_t at = n ? 1 : 0;
+        memmove(items + at + 1, items + at, (n - at) * sizeof *items);
+        items[at] = (ui_menu_item){ WPS_MI_OPEN_PARENT, "Open parent", strcmp(f->path, "/") != 0, false, NULL, 0 };
+        n++;
+        items[n++] = (ui_menu_item){ WPS_MI_FIND, "Find...", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_SORT, "Sort", icons, false, sorts, 4 };
+        if (!f->desktop) {
+            items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
+            items[n++] = (ui_menu_item){ WPS_MI_CLOSE, "Close", true, false, NULL, 0 };
+        }
+    }
     if (m->item == SIZE_MAX && f->desktop) {
         /* The desktop's own menu: the window list and the minimized
          * windows (G4), after the folder's items. */
