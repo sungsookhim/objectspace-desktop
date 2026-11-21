@@ -121,7 +121,7 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
 - **Not tried:** fingerprint and smart-card logins through PAM.
 - **Fresh test sessions** create the desktop's shadows in random order, so tests address icons by position with care.
 
-### Packaging and first run (not started)
+### Packaging and first run (not started; the RPM is a 0.2 objective)
 
 - **The session runs from the source checkout:**
   - `tools/install-session.sh` points at it.
@@ -135,30 +135,137 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
   - A short tour or help object; OS/2 had a Tutorial and an Information folder.
 - **Build dependencies** are listed in the README but not checked by the build.
 
-## Proposed order (to discuss)
+## Objectives for 0.2 (the owner's, 2026-11-21)
 
-A first grouping, before the owner's objectives are added:
+Version 0.2 is about the desktop OS/2 users knew - the objects on it from the first start - and being installable. Each objective with what it overlaps in the lists above, how doable it is, and what is still to decide. Sizes are relative: **S** small, **M** medium, **L** large.
 
-1. **0.2 Daily use:**
-   - Details-view sorting and columns.
-   - The folder search field.
-   - Open With.
-   - The Trash object.
+### 1. Trash can (on the desktop by default)
+
+OS/2's Shredder is not carried over; a trash can is.
+
+- **What:** a Trash Can object on the desktop. Opening it shows what is in the trash, with each item's original folder.
+  - Its menu and the folder view's menu have **Empty trash**.
+  - Items in it have **Restore**.
+  - Dropping objects on it trashes them.
+  - Its icon shows empty or full.
+- **Overlaps:** replaces "No WPS Trash object" above.
+- **Doable: yes, M.**
+  - wpsd already moves to and from the freedesktop trash (`service/trash.c`, the same folders GNOME's Trash uses): one Trash Can for both.
+  - Empty is a delete job.
+  - New: the class, its listing (trash/files with info/*.trashinfo), Restore, and the drop target.
+
+### 2. Computer, Drives and disk objects
+
+- **What:**
+  - A **Computer** object (the machine itself).
+  - Opening it shows **Drives**, a folder with one object per volume, as the partitions are: internal, external and removable.
+  - A **/ (root)** object as well.
+  - A drive object opens its file system (mounted on demand), and its menu has Mount, Unmount, Eject and Properties (size, free space, file system, device).
+- **Overlaps:** takes "More OS/2 objects: Drives" from 0.3; Network is left for later (objective 7).
+- **Doable: yes, M–L.**
+  - wpsd already follows mounted volumes by UUID (`service/volumes.c`, from mountinfo).
+  - Volumes not mounted, and mounting without root, go through **udisks2** over D-Bus (what GNOME's Files uses; installed on Fedora): Mount, Unmount, Eject, and change signals for drives plugged in.
+  - Fixed internal partitions may need polkit's administrator password to mount; udisks asks for it.
+- **?** Drives as a live folder of central objects (not stored), or stored objects that remember their place and icon. OS/2 kept them; proposed: central objects, identified by the volume's UUID.
+
+### 3. WarpCenter
+
+A bar along the top or bottom of the screen, as OS/2 Warp 4's WarpCenter.
+
+- **What, from left to right:**
+  - **Start menu:** OS/2's WarpCenter "Desktop" menu, the desktop's objects as cascades (folders open into submenus).
+  - **Tray and system resources** in the middle: other programs' status icons; CPU, memory, disk and network meters.
+  - **Keyboard / input method:** the current source (EN, 한 ...); clicking switches, as Super+Space.
+  - **Messages:** a count; clicking opens the **Messages** object, which lists every message (notifications from programs, WPS's own: "Moved to the trash: 2 objects", errors).
+  - **Clock** at the right end.
+- **Placement:** top or bottom; left or right later.
+- **Overlaps:**
+  - Replaces "the desktop has no status line": WPS's messages go to Messages.
+  - Covers the keyboard indicator the input methods lacked.
+  - Lives beside the LaunchPad (both are OS/2's).
+- **Doable: yes, in parts; L in all.**
+  - **The bar, start menu, clock, meters, keyboard indicator: M.** Our toolkit; the compositor keeps windows clear of it (a work area), as it already places the LaunchPad.
+  - **Messages: M.** The WPS session has no notification service at all today: programs' notifications go nowhere. WPS becomes it (org.freedesktop.Notifications): pop-ups near the WarpCenter, and the Messages object keeps them.
+  - **Tray: M–L.** Programs' status icons are StatusNotifierItem/AppIndicator (D-Bus), with their menus over dbusmenu. Few Fedora programs use it, so it can come last within 0.2, or in 0.3.
+- **Inside GNOME (stage 1):** GNOME has its own top bar, and a program cannot reserve screen space under GNOME. Proposed: the WarpCenter in the WPS session only for 0.2; inside GNOME, GNOME's own bar stands in.
+- **?** Whether the WarpCenter and the LaunchPad both show by default (OS/2 Warp 4 had both, the LaunchPad off at first).
+
+### 4. The System folder (on the desktop by default)
+
+Today's "System Setup" becomes OS/2's System folder.
+
+- **What it holds:**
+  - **Drives** (2).
+  - **Minimized Window Viewer:** an object that opens the minimized windows, today the desktop menu's "Minimized windows".
+  - **LaunchPad** and **WarpCenter** objects: their notebooks (orientation, placement, small icons, float on top, what the WarpCenter shows).
+  - **System Setup** (today's settings objects).
+  - **Startup**, a folder whose objects are opened at login, as OS/2's Startup folder.
+- **Overlaps:**
+  - Takes "the LaunchPad as a settings object" from 0.3.
+  - The Startup folder meets **XDG autostart**, which the WPS session already runs (`~/.config/autostart`).
+- **Doable: yes, M.** The folder and moving objects into it are small; the LaunchPad and WarpCenter notebooks come with 3; the Viewer exists as a menu item.
+- **?** Startup and XDG autostart. Proposed: the Startup folder shows `~/.config/autostart`'s entries as objects. Dropping a program or a script there makes an entry; the login runs them, as now. Objects that are not programs (a folder, a document) are opened by the desktop at login, as OS/2 did. One place for both.
+- **Existing desktops:** a desktop made by 0.1 has a "setup" shadow; the first 0.2 start puts the System folder in its place.
+
+### 5. Programs (on the desktop by default)
+
+- **What:** a **Programs** folder of the installed programs (the desktop entries in `/usr/share/applications`, `~/.local/share/applications`, Flatpak's), grouped into folders by category (Office, Internet, Graphics, ...). Kept up to date as programs are installed and removed.
+- **Overlaps:** the WarpCenter's start menu can show it too.
+- **Doable: yes, M.** A live folder like Drives: wpsd already reads desktop entries (programs, file types). Categories come from their `Categories=`.
+- **?** Whether the user can rearrange it (OS/2's Programs folders were ordinary folders the user owned). Proposed: generated, with user shadows allowed alongside.
+
+### 6. Trash can on the desktop by default
+
+With 1. A desktop made by 0.1 gets it at its first 0.2 start.
+
+### 7. Network object
+
+A to do, after 0.2 (with network file systems below).
+
+### An RPM: installed with `dnf install`
+
+- **What:** an RPM built from the tree. It installs:
+  - the programs into `/usr` (`/usr/bin`, `/usr/libexec/wps`);
+  - the user service; the session on the login screen; the PAM file for the lock screen; the GNOME Shell extension;
+  - the default icons, sounds and schemes.
+- **Overlaps:** "Packaging and first run" above moves from 1.0 into 0.2.
+- **Doable: yes, M.**
+  - Today everything runs from the source checkout: `tools/wps-session`, `wpsd.service` and `install-session.sh` point at `build/`. They move to installed paths, and a `make install` with `DESTDIR`.
+  - A `.spec` with the build dependencies, built with `rpmbuild` (or mock).
+  - **Upgrades:** the object database and attribute formats get a version, and 0.2 reads 0.1's.
+  - **First start:** the default desktop objects (1–6) are made for a new user.
+- **?** Where it is published: a COPR repository (`dnf copr enable ...` then `dnf install wps`) or an RPM file to download.
+
+### Still deferred for 0.2
+
+- **RDP:** after 0.2.
+- **Window borders for programs that draw their own** (GTK 4 / libadwaita): deferred.
+
+## Proposed order
+
+1. **0.2 The OS/2 desktop, installable** (the owner's objectives). Suggested sequence, each step usable on its own:
+   1. **Groundwork:** `make install` and installed paths; versioned database and attributes. This makes every later step installable.
+   2. **The System folder;** the default desktop objects made at the first start, and 0.1's desktops brought along.
+   3. **Trash Can.**
+   4. **Computer and Drives,** with udisks2.
+   5. **Programs.**
+   6. **WarpCenter:**
+      - the bar, start menu, clock and keyboard indicator;
+      - Messages, with WPS as the notification service;
+      - meters;
+      - the tray last (it can move to 0.3).
+   7. **The LaunchPad and WarpCenter notebooks; Startup;** the Minimized Window Viewer.
+   8. **The RPM** (`.spec`, and COPR or a file), tried on a fresh Fedora VM.
+2. **0.3 Daily use and OS/2 fidelity:**
+   - Details-view sorting and columns; the folder search field; Open With.
    - Program settings: type, close on exit, terminal.
-   - The desktop's own menu and status line.
-2. **0.3 OS/2 fidelity:**
+   - The desktop's own menu (Lockup, Shut down, System setup).
    - The icon layout.
-   - The LaunchPad as a settings object, with tooltips.
    - Templates' "New" cascade and moving templates.
-   - The Font Palette; the Sound object's picker.
-   - More OS/2 objects: Drives, the Minimized Window Viewer as a folder.
+   - The Font Palette; the Sound object's picker; the tray if not in 0.2.
 3. **0.4 Look of other programs:** the theming pieces above, and frames for GTK 4 programs.
 4. **0.5 Platform:**
-   - More than one monitor; sharp X11 programs when scaled.
-   - Remote desktop.
-   - Network filesystems.
+   - RDP; more than one monitor; sharp X11 when scaled.
+   - The Network object and network file systems.
    - Undo for jobs.
-5. **1.0 Release:**
-   - Packaging, upgrades, first run.
-   - Accessibility beyond focus.
-   - The deferred tests.
+5. **1.0 Release:** accessibility beyond focus, first-run tour, the deferred tests, publishing beyond Fedora.
