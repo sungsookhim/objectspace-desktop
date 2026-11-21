@@ -33,7 +33,8 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
 - **D** **OS/2's icon layout.** Every title whole, rows as tall as their tallest title, Arrange spacing to suit. The 0.1 step: two lines, the whole title when selected.
 - **A search field in folder windows** that filters the view (today Ctrl+F opens Find on the folder). Needs the folder model to show a subset.
 - **Sort by size:** folders and shadows sort by their own stored size, so they mix with files; folders first would be tidier.
-- **No WPS Trash object** to browse, restore from or empty; no dropping on a trash or shredder icon.
+- **The Trash Can:** done in 0.2 step 3 (browse, restore, empty, drops, shadows trashed and restorable, empty and full icons).
+- **Lock icon positions** (owner's to-do, 2026-11-21): OS/2's "Lock position" on an object's menu (and per folder): a locked icon cannot be dragged to another spot (it can still be dragged onto other objects? **?**). Stored with the icon's position.
 - **Open With** ("comes in G2" in the menu); types with no default application go through `xdg-open`, untracked.
 - **Program settings missing:**
   - Program type: text-mode or not is guessed from the ELF file, and scripts always get a terminal.
@@ -270,7 +271,7 @@ A to do, after 0.2 (with network file systems below).
    - Details-view sorting and columns; the folder search field; Open With.
    - Program settings: type, close on exit, terminal.
    - The desktop's own menu (Lockup, Shut down, System setup).
-   - The icon layout.
+   - The icon layout; locking icon positions.
    - Templates' "New" cascade and moving templates.
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
