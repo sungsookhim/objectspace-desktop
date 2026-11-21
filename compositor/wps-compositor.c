@@ -883,6 +883,7 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
         return true;
     }
     if ((mods & WLR_MODIFIER_LOGO) && (sym == XKB_KEY_l || sym == XKB_KEY_L)) { lock_screen(); return true; }   /* as in GNOME */
+    if ((mods & WLR_MODIFIER_LOGO) && sym == XKB_KEY_space) { keymap_cycle(mods & WLR_MODIFIER_SHIFT ? -1 : 1); return true; }
     /* Ctrl+Alt+F1..F12 (xkb makes them XF86Switch_VT_n): another console */
     if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
         if (server.session) wlr_session_change_vt(server.session, sym - XKB_KEY_XF86Switch_VT_1 + 1);
@@ -969,20 +970,9 @@ static void new_keyboard(struct wlr_input_device *dev)
     struct keyboard *k = calloc(1, sizeof *k);
     k->server = &server;
     k->wlr_keyboard = wk;
-    struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    struct xkb_keymap *km = xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);   /* XKB_DEFAULT_* */
-    if (!km) {
-        /* the session's layout cannot be made (a typo, an unknown variant):
-         * US, rather than a keyboard that types nothing at all */
-        fprintf(stderr, "wps-compositor: keyboard layout %s%s%s cannot be made; US instead\n",
-                getenv("XKB_DEFAULT_LAYOUT") ? getenv("XKB_DEFAULT_LAYOUT") : "(default)",
-                getenv("XKB_DEFAULT_VARIANT") ? " variant " : "", getenv("XKB_DEFAULT_VARIANT") ? getenv("XKB_DEFAULT_VARIANT") : "");
-        struct xkb_rule_names us = { .layout = "us" };
-        km = xkb_keymap_new_from_names(ctx, &us, XKB_KEYMAP_COMPILE_NO_FLAGS);
-    }
+    struct xkb_keymap *km = keymap_new();   /* GNOME's layouts (keymap.c) */
     wlr_keyboard_set_keymap(wk, km);
     xkb_keymap_unref(km);
-    xkb_context_unref(ctx);
     wlr_keyboard_set_repeat_info(wk, 25, 400);
     k->modifiers.notify = on_modifiers;
     wl_signal_add(&wk->events.modifiers, &k->modifiers);
@@ -2225,6 +2215,7 @@ int main(int argc, char **argv)
 
     const char *socket = wl_display_add_socket_auto(s->display);
     if (!socket) { fprintf(stderr, "wps-compositor: no socket\n"); return 1; }
+    keymap_init();   /* before the keyboards come (as the backend starts) */
     if (!wlr_backend_start(s->backend)) { fprintf(stderr, "wps-compositor: the backend did not start\n"); return 1; }
     if (hw > 0) {
         wlr_headless_add_output(s->backend, (unsigned)hw, (unsigned)hh);
@@ -2292,6 +2283,7 @@ int main(int argc, char **argv)
         wlr_xwayland_destroy(s->xwayland);
     }
     idle_fini();
+    keymap_fini();
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
                                  &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection, &s->request_set_primary,

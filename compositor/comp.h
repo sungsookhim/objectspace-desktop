@@ -139,6 +139,12 @@ void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);
 
 /* lock.c: the lock screen */
+/* keymap.c: GNOME's keyboard layouts, followed while the session runs */
+void keymap_init(void);
+void keymap_fini(void);
+struct xkb_keymap *keymap_new(void);
+void keymap_cycle(int dir);      /* Super+Space: the next layout (-1: the previous) */
+
 /* idle.c: screens off and the lock after idle time, idle inhibitors, logind */
 void idle_init(void);
 void idle_fini(void);
