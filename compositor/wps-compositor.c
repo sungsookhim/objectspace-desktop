@@ -327,6 +327,21 @@ static struct wlr_output *output_at_window(struct toplevel *t)
 }
 
 static void set_fullscreen(struct toplevel *t, bool on);
+static struct wlr_box first_output_box(void);
+
+/* The usable screen area: the screen less the WarpCenter (on the first
+ * screen, along its edge) - for maximizing and placing windows. */
+static struct wlr_box usable_box(struct wlr_output *o)
+{
+    struct wlr_box ob;
+    wlr_output_layout_get_box(server.output_layout, o, &ob);
+    struct wlr_box first = first_output_box();
+    if (server.panel_h > 0 && ob.x == first.x && ob.y == first.y && ob.height > server.panel_h) {
+        ob.height -= server.panel_h;
+        if (server.panel_top) ob.y += server.panel_h;
+    }
+    return ob;
+}
 
 static void maximize(struct toplevel *t, bool on)
 {
@@ -334,8 +349,7 @@ static void maximize(struct toplevel *t, bool on)
     if (t->maximized == on || t->kind != KIND_NORMAL) { view_schedule(t); return; }
     struct wlr_output *o = output_at_window(t);
     if (!o) return;
-    struct wlr_box ob;
-    wlr_output_layout_get_box(server.output_layout, o, &ob);
+    struct wlr_box ob = usable_box(o);
     if (on) {
         t->restore = window_box(t);
         t->maximized = true;
@@ -382,9 +396,10 @@ static void set_fullscreen(struct toplevel *t, bool on)
         wlr_scene_node_raise_to_top(&t->tree->node);
         draw_frame(t);
         if (t->maximized) {
-            int ch = ob.height - (t->ssd ? (int)ui_scheme_now.title_h : 0);
-            view_move(t, ob.x, ob.y);
-            view_set_size(t, ob.width, ch);
+            struct wlr_box ub = usable_box(o);
+            int ch = ub.height - (t->ssd ? (int)ui_scheme_now.title_h : 0);
+            view_move(t, ub.x, ub.y);
+            view_set_size(t, ub.width, ch);
         } else {
             int cw = t->fs_restore.width, ch = t->fs_restore.height;
             if (t->ssd) {
@@ -1215,6 +1230,8 @@ static void on_output_destroy(struct wl_listener *l, void *data)
 
 static void place_desktop(struct toplevel *t);
 static struct wlr_box first_output_box(void);
+static void place_panel(struct toplevel *t);
+static void refit_maximized(void);
 
 /* A screen's scale: WPS_SCALE, else GNOME's for it (Settings, Displays:
  * ~/.config/monitors.xml, the logical monitor whose monitor has this
@@ -1384,8 +1401,9 @@ void comp_screens_changed(void)
         else if (t->kind == KIND_PALETTE && t->mapped) {
             struct wlr_box geo = view_geo(t);
             view_move(t, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
-        }
+        } else if (t->kind == KIND_PANEL && t->mapped) place_panel(t);
     }
+    refit_maximized();
     struct wlr_box all;
     wlr_output_layout_get_box(server.output_layout, NULL, &all);
     wlr_scene_node_set_position(&server.background->node, all.x, all.y);
@@ -1403,6 +1421,38 @@ static struct wlr_box first_output_box(void)
         wlr_output_layout_get_box(server.output_layout, o->wlr_output, &b);
     }
     return b;
+}
+
+/* The WarpCenter: the first screen's full width, along its edge. */
+static void place_panel(struct toplevel *t)
+{
+    struct wlr_box b = first_output_box();
+    struct wlr_box geo = view_geo(t);
+    int h = geo.height > 0 ? geo.height : 30;
+    view_set_size(t, b.width, h);
+    view_move(t, b.x, server.panel_top ? b.y : b.y + b.height - h);
+    server.panel_h = t->minimized ? 0 : h;
+}
+
+/* The usable screen area changed: maximized windows fill it again. */
+static void refit_maximized(void)
+{
+    struct toplevel *t;
+    wl_list_for_each(t, &server.toplevels, link) {
+        if (!t->mapped || !t->maximized || t->fullscreen || t->kind != KIND_NORMAL) continue;
+        struct wlr_output *o = output_at_window(t);
+        if (!o) continue;
+        struct wlr_box ub = usable_box(o);
+        view_move(t, ub.x, ub.y);
+        view_set_size(t, ub.width, ub.height - (t->ssd ? (int)ui_scheme_now.title_h : 0));
+    }
+}
+
+void comp_panel_edge(bool top)
+{
+    if (server.panel_top == top) return;
+    server.panel_top = top;
+    comp_screens_changed();
 }
 
 static void place_desktop(struct toplevel *t)
@@ -1428,7 +1478,8 @@ static enum kind kind_of(struct toplevel *t)
 {
     const char *app = view_app(t) ? view_app(t) : "";
     if (!from_desktop(t) && !getenv("WPS_COMP_TRUST_APP_IDS")) return KIND_NORMAL;
-    return !strcmp(app, "org.wps.Desktop") ? KIND_DESKTOP : !strcmp(app, "org.wps.LaunchPad") ? KIND_PALETTE : KIND_NORMAL;
+    return !strcmp(app, "org.wps.Desktop") ? KIND_DESKTOP : !strcmp(app, "org.wps.LaunchPad") ? KIND_PALETTE
+           : !strcmp(app, "org.wps.WarpCenter") ? KIND_PANEL : KIND_NORMAL;
 }
 
 static void on_map(struct wl_listener *l, void *data)
@@ -1440,7 +1491,8 @@ static void on_map(struct wl_listener *l, void *data)
     t->kind = kind_of(t);
     if (t->kind != KIND_NORMAL) t->ssd = false;
     wlr_scene_node_reparent(&t->tree->node, t->kind == KIND_DESKTOP ? server.layer_desktop
-                                           : t->kind == KIND_PALETTE ? server.layer_palette : server.layer_normal);
+                                           : t->kind == KIND_PALETTE || t->kind == KIND_PANEL ? server.layer_palette
+                                           : server.layer_normal);
     draw_frame(t);
     struct wlr_box ob = first_output_box();
     struct wlr_box geo = view_geo(t);
@@ -1448,8 +1500,18 @@ static void on_map(struct wl_listener *l, void *data)
         place_desktop(t);
     } else if (t->kind == KIND_PALETTE) {   /* the LaunchPad: bottom centre */
         view_move(t, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
+    } else if (t->kind == KIND_PANEL) {   /* the WarpCenter: along its edge; windows make room */
+        place_panel(t);
+        refit_maximized();
+        desktop_window(t, "add");
+        keymap_report();
+        return;   /* (it does not take the keyboard) */
     } else {
-        /* a new window: centred, or cascaded from the one in front */
+        /* a new window: centred, or cascaded from the one in front (in the usable area) */
+        if (!wl_list_empty(&server.outputs)) {
+            struct output *fo = wl_container_of(server.outputs.next, fo, link);
+            ob = usable_box(fo->wlr_output);
+        }
         struct wlr_box b = { 0, 0, t->ssd ? t->fw : geo.width, t->ssd ? t->fh : geo.height };
         int x = ob.x + (ob.width - b.width) / 2, y = ob.y + (ob.height - b.height) / 3;
         struct toplevel *o;
@@ -1477,6 +1539,7 @@ static void on_unmap(struct wl_listener *l, void *data)
     if (menu.t == t) menu_close();
     desktop_event(t, "window.close");
     desktop_window(t, "remove");
+    if (t->kind == KIND_PANEL) { server.panel_h = 0; refit_maximized(); }
     bool was_front = t->activated;
     t->activated = false;
     if (was_front) {
@@ -1503,6 +1566,10 @@ static void on_commit(struct wl_listener *l, void *data)
         return;
     }
     struct wlr_box geo = view_geo(t);
+    if (t->kind == KIND_PANEL && t->mapped && !t->minimized && geo.height > 0 && geo.height != server.panel_h) {
+        place_panel(t);   /* its own height changed (a font): windows make room again */
+        refit_maximized();
+    }
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
     if (t->ssd && !t->fullscreen && (w != t->fw || h != t->fh)) draw_frame(t);
@@ -1877,7 +1944,9 @@ static void on_popup_commit(struct wl_listener *l, void *data)
     struct popup *p = wl_container_of(l, p, commit);
     if (!p->xdg->base->initial_commit) return;
     /* the screen, in the parent's surface coordinates */
-    struct wlr_scene_tree *pt = p->xdg->parent ? p->xdg->parent->data : NULL;
+    /* (the parent is a wl_surface: its xdg surface holds the scene tree) */
+    struct wlr_xdg_surface *px = p->xdg->parent ? wlr_xdg_surface_try_from_wlr_surface(p->xdg->parent) : NULL;
+    struct wlr_scene_tree *pt = px ? px->data : NULL;
     int lx = 0, ly = 0;
     if (pt) wlr_scene_node_coords(&pt->node, &lx, &ly);
     struct wlr_box ob = first_output_box();

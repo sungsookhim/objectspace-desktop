@@ -44,7 +44,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const DESKTOP_APP_ID = 'org.wps.Desktop';
 // WPS's window list and Minimized Window Viewer: not listed in themselves.
-const UNLISTED = new Set([DESKTOP_APP_ID, 'org.wps.WindowList', 'org.wps.LaunchPad']);
+const UNLISTED = new Set([DESKTOP_APP_ID, 'org.wps.WindowList', 'org.wps.LaunchPad', 'org.wps.WarpCenter']);
 const LAUNCHPAD_APP_ID = 'org.wps.LaunchPad';
 
 export default class WpsExtension extends Extension {

@@ -22,7 +22,9 @@
 #include "ui.h"
 
 enum mode { MODE_PASS, MODE_MOVE, MODE_RESIZE, MODE_BUTTON };
-enum kind { KIND_NORMAL, KIND_DESKTOP, KIND_PALETTE };   /* palette: the LaunchPad, above */
+/* palette: the LaunchPad, above; panel: the WarpCenter, along an edge,
+ * taken from the usable screen area (v0.2-design 8) */
+enum kind { KIND_NORMAL, KIND_DESKTOP, KIND_PALETTE, KIND_PANEL };
 
 struct server {
     struct wl_display *display;
@@ -73,6 +75,8 @@ struct server {
     struct wl_listener new_xsurface, xwayland_ready;
     struct wl_listener request_activate;
     bool focus_window_list;           /* Ctrl+Esc: the Window List takes the keyboard when it shows */
+    bool panel_top;                   /* the WarpCenter along the top edge (else the bottom) */
+    int panel_h;                      /* its height as placed (0: none shown) */
 };
 
 struct output {
@@ -136,6 +140,7 @@ void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);
 void comp_redraw_frames(void);
 double comp_scale_at(double x, double y);   /* the scale of the screen there */
+void comp_panel_edge(bool top);   /* the desktop says where the WarpCenter goes */
 void comp_screens_changed(void);   /* sizes changed: the desktop, LaunchPad, lock screen fit again */   /* the scheme or font changed */
 void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);
@@ -146,6 +151,8 @@ void keymap_init(void);
 void keymap_fini(void);
 struct xkb_keymap *keymap_new(void);
 void keymap_cycle(int dir);      /* Super+Space: the next layout (-1: the previous) */
+void keymap_select(int i);       /* the desktop's keyboard part: input source i */
+void keymap_report(void);        /* the current source to the desktop (I line) */
 
 /* idle.c: screens off and the lock after idle time, idle inhibitors, logind */
 void idle_init(void);
@@ -172,6 +179,7 @@ bool desktop_is(struct wl_client *c);               /* the desktop process's con
 void desktop_window(struct toplevel *t, const char *change);   /* "add", "change", "remove" */
 void desktop_event(struct toplevel *t, const char *name);     /* window.open, .close, ... */
 bool desktop_key(const char *what);                 /* "window-list" (Ctrl+Esc) */
+void desktop_input_source(int index, int count, bool ibus, const char *name);   /* I line */
 void desktop_stop(void);
 
 #endif

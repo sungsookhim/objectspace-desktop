@@ -28,6 +28,7 @@
 #include "events.h"
 #include "winlist.h"
 #include "appicons.h"
+#include "warpcenter.h"
 #include "findwin.h"
 #include "mime.h"
 #include "icons.h"
@@ -4838,7 +4839,16 @@ static void got_setup(void *arg, const cv *reply)
      * buttons include it). WPS_NO_LAUNCHPAD: none (tests). */
     bool desktop = false;
     for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
-    if (desktop && !getenv("WPS_NO_LAUNCHPAD")) {
+    /* In the WPS session the WarpCenter, and not the LaunchPad (the
+     * owner's decision for 0.2; the LaunchPad stays in System). Inside
+     * GNOME, which has its own bar, the LaunchPad as before. */
+    const char *wcs = getenv("WPS_WARPCENTER");
+    bool wpsession = wcs ? !strcmp(wcs, "1") : getenv("WPS_SESSION") != NULL;
+    if (desktop && wpsession && !warpcenter_is_open()) {
+        for (struct folder *f = folders; f; f = f->next)
+            if (f->desktop && !f->closing) { warpcenter_open(app, f->path, getenv("WPS_WARPCENTER_TOP") != NULL, launchpad_open_folder); break; }
+    }
+    if (desktop && !getenv("WPS_NO_LAUNCHPAD") && (!wpsession || getenv("WPS_LAUNCHPAD"))) {
         char tdir[PATH_MAX];
         const char *t = getenv("WPS_TEMPLATES_DIR");
         if (t && *t) snprintf(tdir, sizeof tdir, "%s", t);
@@ -5033,6 +5043,7 @@ static void on_window_events(void *arg, int fd, short rev)
         for (char *p = line, *t; k < 9 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
+        else if (k >= 5 && !strcmp(f[0], "I")) warpcenter_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };
             events_raise(f[0], f[1], "window", at);

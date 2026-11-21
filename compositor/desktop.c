@@ -10,9 +10,11 @@
  *     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized>
  *         TAB <focused> TAB <icon PNG> TAB <maximized>
  *     K TAB window-list
+ *     I TAB <index> TAB <count> TAB xkb|ibus TAB <name>   the input source now
  * and reads commands from its standard output, one a line:
  *     activate|restore|minimize|maximize|close|terminate TAB <id>
  *     lock   find   shutdown TAB poweroff|reboot|logout
+ *     keyboard TAB next|prev|<index>   panel TAB top|bottom (the WarpCenter's edge)
  * If it ends, it is started again after a delay that grows while it
  * keeps failing (from a second up to half a minute).
  *
@@ -250,7 +252,8 @@ static bool listable(struct toplevel *t)
     if (!t->mapped || !view_app(t)) return t->mapped;
     const char *a = view_app(t);
     bool wps_own = desktop_is(view_client(t));
-    return !(wps_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad")));
+    return !(wps_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad") ||
+                         !strcmp(a, "org.wps.WarpCenter")));
 }
 
 void desktop_window(struct toplevel *t, const char *change)
@@ -298,6 +301,14 @@ bool desktop_key(const char *what)
     return true;
 }
 
+void desktop_input_source(int index, int count, bool ibus, const char *name)
+{
+    if (d.in_fd < 0) return;
+    char line[256];
+    snprintf(line, sizeof line, "I\t%d\t%d\t%s\t%s\n", index, count, ibus ? "ibus" : "xkb", name);
+    send_line(line);
+}
+
 /* ------------------------------------------------------------ commands */
 
 static struct toplevel *by_id(const char *id)
@@ -328,6 +339,14 @@ static void command(char *line)
         return;
     }
     if (!strcmp(line, "lock")) { lock_screen(); return; }
+    if (!strcmp(line, "keyboard")) {
+        if (!strcmp(arg, "next")) keymap_cycle(1);
+        else if (!strcmp(arg, "prev")) keymap_cycle(-1);
+        else if (!strcmp(arg, "report")) keymap_report();
+        else keymap_select(atoi(arg));
+        return;
+    }
+    if (!strcmp(line, "panel")) { comp_panel_edge(!strcmp(arg, "top")); return; }
     if (!strcmp(line, "find")) return;   /* WPS's own Find answers it */
     /* the desktop's scheme, font and frame options: the frames follow */
     if (!strcmp(line, "scheme")) { if (ui_scheme_use(arg)) comp_redraw_frames(); return; }

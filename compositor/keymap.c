@@ -167,6 +167,55 @@ static void ibus_engine(int i)
     comp_spawn(argv, NULL, NULL);
 }
 
+/* The current input source, to the desktop (the WarpCenter's keyboard
+ * part). Without GNOME's sources: the keyboard's xkb group. */
+void keymap_report(void)
+{
+    if (km.nsrc >= 1) {
+        desktop_input_source(km.cur, km.nsrc, km.srcs[km.cur].ibus, km.srcs[km.cur].name);
+        return;
+    }
+    struct keyboard *k;
+    wl_list_for_each(k, &server.keyboards, link) {
+        struct wlr_keyboard *wk = k->wlr_keyboard;
+        if (!wk->keymap) continue;
+        xkb_layout_index_t n = xkb_keymap_num_layouts(wk->keymap), g = wk->modifiers.group;
+        const char *nm = xkb_keymap_layout_get_name(wk->keymap, g < n ? g : 0);
+        /* (a long name, "English (US)": the desktop shortens it) */
+        desktop_input_source((int)g, (int)n, false, getenv("XKB_DEFAULT_LAYOUT") && n == 1 ? getenv("XKB_DEFAULT_LAYOUT") : nm ? nm : "us");
+        return;
+    }
+    desktop_input_source(0, 1, false, "us");
+}
+
+static void use_source(int i)
+{
+    bool any_ibus = false;
+    for (int j = 0; j < km.nsrc; j++) any_ibus |= km.srcs[j].ibus;
+    if (!km.srcs[i].ibus) set_group((xkb_layout_index_t)km.srcs[i].group);
+    if (any_ibus) ibus_engine(i);
+    fprintf(stderr, "wps-compositor: %.1f input source %d of %d: %s%s\n", comp_uptime(), i + 1, km.nsrc,
+            km.srcs[i].ibus ? "IBus " : "", km.srcs[i].name);
+    keymap_report();
+}
+
+void keymap_select(int i)
+{
+    if (km.nsrc < 2) {   /* (XKB_DEFAULT_* groups) */
+        struct keyboard *k;
+        wl_list_for_each(k, &server.keyboards, link) {
+            struct wlr_keyboard *wk = k->wlr_keyboard;
+            if (wk->keymap && i >= 0 && (xkb_layout_index_t)i < xkb_keymap_num_layouts(wk->keymap)) set_group((xkb_layout_index_t)i);
+            break;
+        }
+        keymap_report();
+        return;
+    }
+    if (i < 0 || i >= km.nsrc) return;
+    km.cur = i;
+    use_source(i);
+}
+
 /* The next (or previous) input source, as GNOME's Super+Space. */
 void keymap_cycle(int dir)
 {
@@ -178,16 +227,11 @@ void keymap_cycle(int dir)
             if (n >= 2) set_group((wk->modifiers.group + (dir < 0 ? n - 1 : 1)) % n);
             break;
         }
+        keymap_report();
         return;
     }
     km.cur = (km.cur + km.nsrc + (dir < 0 ? -1 : 1)) % km.nsrc;
-    int i = km.cur;
-    bool any_ibus = false;
-    for (int j = 0; j < km.nsrc; j++) any_ibus |= km.srcs[j].ibus;
-    if (!km.srcs[i].ibus) set_group((xkb_layout_index_t)km.srcs[i].group);
-    if (any_ibus) ibus_engine(i);
-    fprintf(stderr, "wps-compositor: %.1f input source %d of %d: %s%s\n", comp_uptime(), i + 1, km.nsrc,
-            km.srcs[i].ibus ? "IBus " : "", km.srcs[i].name);
+    use_source(km.cur);
 }
 
 static int on_monitor(int fd, uint32_t mask, void *data)
