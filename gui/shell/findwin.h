@@ -30,6 +30,8 @@ void findwin_open(const char *folder, const char *name);
 /* The Find window already open brought forward (restored if minimized);
  * a new one when there is none or `fresh` (Shift on the LaunchPad). */
 void findwin_show(const char *folder, bool fresh);
+/* Where Save results as folder puts its folder (the desktop's). */
+void findwin_set_desktop(const char *dir);
 
 /* A "found" event from wpsd: true if it was a search's. */
 bool findwin_event(const cv *ev);

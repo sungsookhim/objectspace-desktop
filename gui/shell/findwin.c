@@ -251,6 +251,78 @@ static void src_activate(void *ctx, size_t i) { open_result(ctx, i); }
 
 struct menu_ctx { int wid; char path[PATH_MAX]; };
 
+/* Save results as folder (OS/2's Find made a folder of what it found): a
+ * new folder on the desktop, named after the search, with shadows of the
+ * selected results (or all of them), opened once they are in. */
+static char desktop_dir[PATH_MAX];
+void findwin_set_desktop(const char *dir) { snprintf(desktop_dir, sizeof desktop_dir, "%s", dir); }
+
+struct save { int wid; char **paths; size_t n, left; char folder[PATH_MAX]; };
+
+static void save_free(struct save *sv)
+{
+    for (size_t i = 0; i < sv->n; i++) free(sv->paths[i]);
+    free(sv->paths);
+    free(sv);
+}
+
+static void set_error(struct fw *w, const char *msg)
+{
+    snprintf(w->error, sizeof w->error, "%s", msg ? msg : "failed");
+    damage_status(w);
+}
+
+static void shadow_made(void *arg, const cv *reply)
+{
+    struct save *sv = arg;
+    (void)reply;
+    if (--sv->left) return;
+    if (open_folder) open_folder(sv->folder);
+    struct fw *w = by_wid(sv->wid);
+    if (w) {
+        char m[300];
+        snprintf(m, sizeof m, "Saved %zu in a folder on the desktop", sv->n);
+        set_error(w, m);
+    }
+    save_free(sv);
+}
+
+static void folder_made(void *arg, const cv *reply)
+{
+    struct save *sv = arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    const char *p = res ? cv_text(res, "path") : NULL;
+    if (!p) {
+        struct fw *w = by_wid(sv->wid);
+        if (w) set_error(w, reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        save_free(sv);
+        return;
+    }
+    snprintf(sv->folder, sizeof sv->folder, "%s", p);
+    sv->left = sv->n;
+    for (size_t i = 0; i < sv->n; i++) svc_shadow(sv->paths[i], sv->folder, shadow_made, sv);
+}
+
+static void save_results(struct fw *w)
+{
+    if (!w->nres) return;
+    struct save *sv = calloc(1, sizeof *sv);
+    sv->wid = w->wid;
+    sv->paths = calloc(w->nres, sizeof *sv->paths);
+    bool any = false;
+    for (size_t i = 0; i < w->nres; i++) any |= ui_container_is_selected(w->cont, i);
+    for (size_t i = 0; i < w->nres; i++)
+        if (!any || ui_container_is_selected(w->cont, i)) sv->paths[sv->n++] = strdup(w->res[i].path);
+    char title[200];
+    const char *q = ui_entry_text(w->name);
+    snprintf(title, sizeof title, q && *q ? "Found: %s" : "Found objects", q);
+    for (char *c = title; *c; c++) if (*c == '/') *c = '-';
+    const char *home = getenv("HOME");
+    char dir[PATH_MAX];
+    snprintf(dir, sizeof dir, "%s", desktop_dir[0] ? desktop_dir : home ? home : "/");
+    svc_create(dir, "WPFolder", title, folder_made, sv);
+}
+
 static void menu_chosen(void *arg, int64_t item)
 {
     struct menu_ctx *m = arg;
@@ -261,21 +333,25 @@ static void menu_chosen(void *arg, int64_t item)
         else if (item == 2) open_where(w, i);
         break;
     }
+    if (w && item == 3) save_results(w);
     free(m);
 }
 
 static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
 {
     struct fw *w = ctx;
-    if (i >= w->nres) return;
     struct menu_ctx *m = calloc(1, sizeof *m);
     m->wid = w->wid;
-    snprintf(m->path, sizeof m->path, "%s", w->res[i].path);
+    if (i < w->nres) snprintf(m->path, sizeof m->path, "%s", w->res[i].path);
+    bool sel = false;
+    for (size_t k = 0; k < w->nres; k++) sel |= ui_container_is_selected(w->cont, k);
     ui_menu_item items[] = {
-        { 1, "Open", true, false, NULL, 0 },
-        { 2, "Open folder it is in", true, false, NULL, 0 },
+        { 1, "Open", i < w->nres, false, NULL, 0 },
+        { 2, "Open folder it is in", i < w->nres, false, NULL, 0 },
+        { 0, "-", false, false, NULL, 0 },
+        { 3, sel ? "Save selected as folder" : "Save results as folder", w->nres > 0 && !w->searching, false, NULL, 0 },
     };
-    ui_menu_popup(w->s, items, 2, x, y, serial, menu_chosen, m);
+    ui_menu_popup(w->s, items, 4, x, y, serial, menu_chosen, m);
 }
 
 /* Results are the objects themselves: dragged (the selection if the item

@@ -4590,6 +4590,7 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
     const char *sz = getenv("WPS_SHELL_SIZE");
     if (sz) sscanf(sz, "%lfx%lf", &w, &h);
     f->desktop = desktop;
+    if (desktop) findwin_set_desktop(path);   /* Find's saved results go there */
     if (desktop) {
         /* Its app ID tells the GNOME Shell extension which window to make
          * GNOME's desktop (below everything, on every workspace). */
