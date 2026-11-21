@@ -1705,6 +1705,17 @@ static void drop_dest(struct folder *f, double x, double y, char *out, size_t n,
 
 static bool shadow_mods(unsigned mods) { return ui_mouse_drop_how(mods) == 2; }
 
+/* Dragged out of a folder this user cannot change (/usr/share/applications,
+ * another user's): a move there could only copy and then fail to remove
+ * the originals, so a plain drag elsewhere copies, as GNOME's Files does. */
+static bool drag_copies_by_default(const char *dest)
+{
+    if (!cur_drag || !cur_drag->src_folder[0] || !strcmp(cur_drag->src_folder, dest)) return false;
+    bool files = false;
+    for (size_t i = 0; i < cur_drag->n; i++) files |= strncmp(cur_drag->paths[i], "vobj:", 5) != 0;
+    return files && access(cur_drag->src_folder, W_OK) != 0;
+}
+
 static bool under(const char *path, const char *dir)
 {
     size_t l = strlen(dir);
@@ -1728,6 +1739,7 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
      * "ask", and now and then "copy", with no key held. A shadow is
      * answered as a copy (nothing is removed from the source). */
     int how = ui_mouse_drop_how(mods);
+    if (how == 0 && drag_copies_by_default(dest)) how = 1;
     uint32_t act = how < 0 ? UI_DND_ASK : how ? UI_DND_COPY : UI_DND_MOVE;
     if (!(act & src_actions)) act = src_actions & UI_DND_COPY ? UI_DND_COPY : src_actions & UI_DND_MOVE ? UI_DND_MOVE : 0;
     if (cur_drag) {
@@ -1944,6 +1956,7 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     size_t item;
     drop_dest(f, x, y, dest, sizeof dest, &item);
     int w = drop_how(action, start_action, mods);
+    if (w == 0 && drag_copies_by_default(dest)) w = 1;
     struct drop_at at = { item == SIZE_MAX && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON, 0, 0 };
     if (at.place) ui_container_to_list(f->cont, x, y, &at.lx, &at.ly);
     int how = w == 2 ? DROP_SHADOW : w == 1 ? DROP_COPY : DROP_MOVE;
