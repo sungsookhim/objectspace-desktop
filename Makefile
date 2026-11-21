@@ -90,11 +90,11 @@ $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_cbor.c service/cbor.c
 
-SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/find.c service/launch.c service/trash.c service/jobs.c service/plugins.c service/db.c service/env.c service/volumes.c service/cbor.c
+SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/find.c service/launch.c service/trash.c service/jobs.c service/plugins.c service/db.c service/env.c service/volumes.c service/udisks.c service/cbor.c
 
 $(B)/wpsd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ $(SERVICE) $(RUNTIME) $(CLASSES) -lsqlite3 -ldl -lpthread
+	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ $(SERVICE) $(RUNTIME) $(CLASSES) -lsqlite3 -ldl -lpthread -lsystemd
 
 $(B)/wps-plughost: service/plughost.c service/cbor.c $(RUNTIME) $(GEN)/.stamp $(wildcard classes/*.c classes/*.h)
 	@mkdir -p $(B)
@@ -149,6 +149,7 @@ test: all
 	$(TV)/test_cbor
 	$(TV)/test_launch $(TV)/launch-tmp
 	$(TV)/test_ui_damage
+	tests/drives/run.sh
 
 # Everything that must stay true: the unit tests (with ASan/UBSan when
 # installed), the core building as strict C11 with only the C library, and

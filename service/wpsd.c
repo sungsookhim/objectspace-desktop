@@ -5,6 +5,8 @@
  * is a 4-byte big-endian length and a CBOR map. Requests:
  *   {op:"first_start", desktop}         the desktop's first-start steps not done yet (versioned); the
  *                                       version it was at
+ *   {op:"drive", uuid, action, pass}   mount|unmount|eject|poweroff|unlock|lock -> its mount point
+ *   {op:"drives"}                       the volumes udisks2 (or mountinfo) shows -> [{uuid, title, kind, mount, ...}]
  *   {op:"restore", target}              an item in a trash: back where it was; its new path
  *   {op:"empty_trash"}                  the home trash emptied (a delete job); the job's ID
  *   {op:"ping"}                         "pong", with version (WPS_VERSION) and protocol (a number)
@@ -84,6 +86,7 @@
 #include "objects.h"
 #include "jobs.h"
 #include "trash.h"
+#include "udisks.h"
 #include "launch.h"
 #include "listing.h"
 #include "find.h"
@@ -2203,6 +2206,57 @@ static void builtin_templates_work(void *arg)
     wps_loaded_free(&fl);
 }
 
+/* ---- Drives (v0.2-design 5) */
+
+static void put_drive(cbuf *b, const wps_drive_info *d)
+{
+    char title[200];
+    wps_drive_title(d, title, sizeof title);
+    cb_map(b, 13);
+    cb_text(b, "uuid"); cb_text(b, d->uuid);
+    cb_text(b, "title"); cb_text(b, title);
+    cb_text(b, "device"); cb_text(b, d->device);
+    cb_text(b, "label"); cb_text(b, d->label);
+    cb_text(b, "fstype"); cb_text(b, d->fstype);
+    cb_text(b, "size"); cb_uint(b, d->size);
+    cb_text(b, "mount"); cb_text(b, d->mount);
+    cb_text(b, "kind"); cb_text(b, d->kind);
+    cb_text(b, "removable"); cb_bool(b, d->removable);
+    cb_text(b, "ejectable"); cb_bool(b, d->ejectable);
+    cb_text(b, "can_poweroff"); cb_bool(b, d->can_poweroff);
+    cb_text(b, "encrypted"); cb_bool(b, d->encrypted);
+    cb_text(b, "unlocked"); cb_bool(b, d->unlocked);
+}
+
+static void drives_changed(void);
+
+/* A drive's action, answered when udisks2 is done: {mount} or an error
+ * whose code says why ("not authorized", "busy", ...). */
+struct drive_req { struct client *c; int64_t id; };
+
+static void drive_done(void *arg, int err, const char *msg, const char *mount)
+{
+    struct drive_req *q = arg;
+    if (!q->c->dead) {
+        if (err) {
+            const char *code = err == EACCES ? "not authorized" : err == EBUSY ? "busy" : err == ENOTSUP ? "no udisks" :
+                               err == ENODEV ? "not found" : err == EPERM ? "locked" : "failed";
+            reply_error(q->c, q->id, code, msg && *msg ? msg : strerror(err));
+        } else {
+            cbuf b;
+            cb_init(&b);
+            cb_map(&b, 3);
+            cb_text(&b, "id"); cb_int(&b, q->id);
+            cb_text(&b, "ok"); cb_bool(&b, true);
+            cb_text(&b, "result"); cb_text(&b, mount ? mount : "");
+            send_frame(q->c, &b);
+            cb_free(&b);
+        }
+    }
+    client_unref(q->c);
+    free(q);
+}
+
 /* ---- the Trash Can: putting an item back (v0.2-design 4) */
 struct restore_job { struct client *c; int64_t id; char path[PATH_MAX], out[PATH_MAX], from[PATH_MAX]; char new_id[WPS_ID_LEN + 1]; int err; };
 
@@ -2842,6 +2896,27 @@ static void handle(struct client *c, cv *msg)
         struct stats_job *j = calloc(1, sizeof *j);
         j->c = c; j->id = id; c->refs++;
         wpo_defer(loop, "stats", stats_work, stats_done, j);
+    } else if (strcmp(op, "drive") == 0) {
+        const char *uuid = cv_text(msg, "uuid"), *action = cv_text(msg, "action"), *pass = cv_text(msg, "pass");
+        if (!uuid || !action) { reply_error(c, id, "bad request", "drive needs uuid and action"); cv_free(msg); return; }
+        struct drive_req *q = calloc(1, sizeof *q);
+        q->c = c; c->refs++;
+        q->id = id;
+        wps_udisks_call(uuid, action, pass, drive_done, q);
+    } else if (strcmp(op, "drives") == 0) {
+        wps_drive_info *ds = NULL;
+        size_t n = wps_udisks_list(&ds);
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "udisks"); cb_bool(&b, wps_udisks_available());
+        cb_text(&b, "result"); cb_array(&b, n);
+        for (size_t i = 0; i < n; i++) put_drive(&b, &ds[i]);
+        send_frame(c, &b);
+        cb_free(&b);
+        free(ds);
     } else if (strcmp(op, "restore") == 0) {
         const char *t = cv_text(msg, "target");
         struct restore_job *j = calloc(1, sizeof *j);
@@ -3116,6 +3191,7 @@ int main(int argc, char **argv)
     start_volume_job(NULL);
     wps_shadows_init(loop, db);
     system_folder_init();
+    wps_udisks_init(loop, drives_changed);
     wps_listing_init(loop);
     wps_find_init(loop);
     wps_jobs_init(loop, db, env.identity);
@@ -3146,6 +3222,7 @@ int main(int argc, char **argv)
     wps_plugins_shutdown();
     wps_launch_shutdown();
     wps_tracker_shutdown();
+    wps_udisks_shutdown();
     wps_listing_shutdown();
     unlink(sock_path);
     wps_objects_shutdown();
@@ -3155,4 +3232,8 @@ int main(int argc, char **argv)
     wps_plugins_free_defs();
     log_msg("stopped");
     return quitting ? 0 : 1;
+}
+
+static void drives_changed(void)
+{
 }
