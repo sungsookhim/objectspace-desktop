@@ -1,6 +1,6 @@
 # Roadmap
 
-Draft, 2026-11-21. Version 0.1 is the baseline: everything below is what is open, deferred or not yet designed after it. The owner adds objectives to this draft; the next design and implementation plan follows from it.
+Draft, 2026-11-21. Version 0.2 is designed in [v0.2-design.md](v0.2-design.md) and planned in [v0.2-plan.md](v0.2-plan.md). Version 0.1 is the baseline: everything below is what is open, deferred or not yet designed after it. The owner adds objectives to this draft; the next design and implementation plan follows from it.
 
 ## Version 0.1 (the baseline)
 
