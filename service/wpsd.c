@@ -89,6 +89,7 @@
 #include "WPShadow.h"
 #include "WPProgram.h"
 #include "WPFolder.h"
+#include "WPMinWinViewer.h"
 #include "WPDataFile.h"
 #include "wps_state.h"
 #include "tracker.h"
@@ -1278,6 +1279,22 @@ static void list_reply(void *arg, const wps_page *pg)
 
 /* ---- open: start a program (as this user), or open a file */
 
+/* An object the desktop shows itself (a view of its own, e.g. the
+ * Minimized Window Viewer's): {view: name}. */
+static void reply_view(struct req *r, const char *view)
+{
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 3);
+    cb_text(&b, "id"); cb_int(&b, r->id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    cb_map(&b, 1);
+    cb_text(&b, "view"); cb_text(&b, view);
+    send_frame(r->c, &b);
+    cb_free(&b);
+}
+
 static void reply_folder(struct req *r, const char *path)
 {
     cbuf b;
@@ -1394,6 +1411,10 @@ static void do_open(struct req *r, wpo_object *o)
             argv[2] = NULL;
             what = "xdg-open";
         }
+    } else if (wpo_is_a(o, WPMinWinViewerClass)) {
+        reply_view(r, "minimized-windows");
+        wpo_unref(orig);
+        return;
     } else {
         reply_error(r->c, r->id, "bad request", "this kind of object opens in the GUI");
         wpo_unref(orig);
@@ -2146,10 +2167,21 @@ static void builtin_templates_work(void *arg)
  * deleted shadow) is not redone. Steps:
  *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
  *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5). */
-#define FIRST_START_VERSION 2
+#define FIRST_START_VERSION 3
 static void setup_dir(char *out, size_t n);
+static void system_dir(char *out, size_t n);
 
-struct first_start { struct client *c; int64_t id; char desk[PATH_MAX]; int from; };
+struct first_start {
+    struct client *c;
+    int64_t id;
+    char desk[PATH_MAX];
+    int from;
+    char gone[8][WPS_ID_LEN + 1];   /* the desktop's shadows of System Setup, removed */
+    int ngone;
+    char viewer[WPS_ID_LEN + 1];    /* the Minimized Window Viewer, made */
+    char sys[PATH_MAX], autostart[PATH_MAX];
+    wps_loaded asld;                /* the autostart folder (titled Startup) */
+};
 
 static int first_start_done_version(char *marker, size_t n)
 {
@@ -2169,6 +2201,25 @@ static void first_start_shadow_done(void *arg, const char *link, const char *err
     if (!link && error) log_msg("first start: a shadow was not made: %s", error);
 }
 
+/* the desktop's shadows of System Setup (0.1 put one there) */
+static void find_setup_shadow(const char *vol, const char *id, void *user)
+{
+    (void)vol;
+    struct first_start *j = user;
+    char loc[WPS_ID_LEN + 8];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_loaded ld;
+    wps_load(loc, false, &ld);
+    char sd[PATH_MAX];
+    setup_dir(sd, sizeof sd);
+    wps_loaded sl;
+    wps_load(sd, false, &sl);
+    if (!ld.err && !sl.err && sl.id[0] && !strcmp(ld.shadow_of, sl.id) && j->ngone < 8)
+        snprintf(j->gone[j->ngone++], sizeof j->gone[0], "%s", id);
+    wps_loaded_free(&sl);
+    wps_loaded_free(&ld);
+}
+
 static void first_start_work(void *arg)
 {
     struct first_start *j = arg;
@@ -2181,6 +2232,27 @@ static void first_start_work(void *arg)
     wps_mkdirs(sd, 0700);
     const char *td = wps_templates_dir();
     if (td[0]) mkdir(td, 0755);
+    system_dir(j->sys, sizeof j->sys);
+    wps_mkdirs(j->sys, 0700);
+    const char *xc = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xc && *xc) snprintf(j->autostart, sizeof j->autostart, "%s/autostart", xc);
+    else snprintf(j->autostart, sizeof j->autostart, "%s/.config/autostart", home ? home : "");
+    if (j->from < 3) {
+        /* step 3 (0.2): System on the desktop in System Setup's place;
+         * the Minimized Window Viewer and Startup in System */
+        wps_mkdirs(j->autostart, 0755);
+        wps_loaded fl;
+        wps_load(j->desk, true, &fl);
+        if (!fl.err && fl.id[0]) wps_central_in(fl.vol, fl.id, find_setup_shadow, j);
+        wps_loaded_free(&fl);
+        for (int k = 0; k < j->ngone; k++) wps_central_delete(j->gone[k]);
+        wps_loaded sy;
+        wps_load(j->sys, true, &sy);
+        if (!sy.err && sy.id[0] && wps_central_create(sy.vol, sy.id, "WPMinWinViewer", "Minimized Window Viewer", NULL, j->viewer) != 0)
+            j->viewer[0] = 0;
+        wps_loaded_free(&sy);
+        wps_load(j->autostart, true, &j->asld);
+    }
 }
 
 static void first_start_done(void *arg)
@@ -2190,16 +2262,23 @@ static void first_start_done(void *arg)
         char marker[PATH_MAX + 32], legacy[PATH_MAX + 32];
         snprintf(marker, sizeof marker, "%s/desktop-made", env.config_dir);
         snprintf(legacy, sizeof legacy, "%s/desktop-setup-made", env.config_dir);
-        if (j->from < 1) {   /* step 1: a new desktop (0.1's) */
+        if (j->from < 1) {   /* step 1: a new desktop: Templates (System Setup is in System now) */
             const char *td = wps_templates_dir();
             if (td[0]) wps_shadow_create(td, j->desk, first_start_shadow_done, NULL);
         }
-        if (j->from < 1 || access(legacy, F_OK) != 0) {   /* (0.1 made this one later, with its own marker) */
-            char sd[PATH_MAX];
-            setup_dir(sd, sizeof sd);
-            wps_shadow_create(sd, j->desk, first_start_shadow_done, NULL);
+        /* step 2 (0.2's first): nothing */
+        if (j->from < 3) {
+            for (int k = 0; k < j->ngone; k++) {
+                wps_central_forget(j->gone[k]);
+                on_central_change(j->desk, j->gone[k], 'd');
+            }
+            wps_shadow_create(j->sys, j->desk, first_start_shadow_done, NULL);
+            if (j->viewer[0]) on_central_change(j->sys, j->viewer, 'c');
+            /* Startup: the autostart folder, titled so, shown in System */
+            wpo_object *as = j->asld.err ? NULL : wps_object_from_loaded(&j->asld);
+            if (as && wpo_is_a(as, WPObjectClass) && !WPObject_data(as)->title) WPObject_wpSetTitle(as, "Startup");
+            wps_shadow_create(j->autostart, j->sys, first_start_shadow_done, NULL);
         }
-        /* step 2 (0.2's) comes with v0.2 steps 2-5 */
         FILE *f = fopen(marker, "w");
         if (f) {
             fprintf(f, "version %d\n# The desktop's first-start steps done (wpsd); 0.1 wrote no version.\n", FIRST_START_VERSION);
@@ -2208,6 +2287,7 @@ static void first_start_done(void *arg)
         unlink(legacy);
         log_msg("first start: the desktop %s brought from step %d to %d", j->desk, j->from, FIRST_START_VERSION);
     }
+    wps_loaded_free(&j->asld);
     if (!j->c->dead) reply_int(j->c, j->id, j->from);
     client_unref(j->c);
     free(j);
@@ -2223,12 +2303,55 @@ static const char *const setup_classes[][2] = {
 };
 #define NSETUP 4
 
+/* WPS's own folders in the user's data ($XDG_DATA_HOME/wps/<name>). */
+static void data_dir(const char *name, char *out, size_t n)
+{
+    const char *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+    if (dh && *dh) snprintf(out, n, "%s/wps%s%s", dh, name[0] ? "/" : "", name);
+    else snprintf(out, n, "%s/.local/share/wps%s%s", home ? home : "", name[0] ? "/" : "", name);
+}
+
+/* The System folder (OS/2's "OS/2 System", v0.2-design 7). */
+static void system_dir(char *out, size_t n)
+{
+    const char *e = getenv("WPS_SYSTEM_DIR");
+    if (e && *e) snprintf(out, n, "%s", e);
+    else data_dir("System", out, n);
+}
+
+/* System Setup: in the System folder since 0.2 (0.1 had it beside it). */
 static void setup_dir(char *out, size_t n)
 {
-    const char *e = getenv("WPS_SETUP_DIR"), *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-    if (e && *e) snprintf(out, n, "%s", e);
-    else if (dh && *dh) snprintf(out, n, "%s/wps/System Setup", dh);
-    else snprintf(out, n, "%s/.local/share/wps/System Setup", home ? home : "");
+    const char *e = getenv("WPS_SETUP_DIR");
+    if (e && *e) { snprintf(out, n, "%s", e); return; }
+    char sys[PATH_MAX], old[PATH_MAX];
+    system_dir(sys, sizeof sys);
+    snprintf(out, n, "%s/System Setup", sys);
+    /* (if 0.1's could not be moved: it is still where it was) */
+    data_dir("System Setup", old, sizeof old);
+    if (access(out, F_OK) != 0 && access(old, F_OK) == 0) snprintf(out, n, "%s", old);
+}
+
+/* At start, before tracking: the System folder made, and 0.1's System
+ * Setup moved into it (one rename: its ID, settings objects and the
+ * shadows of it go with it). */
+static void system_folder_init(void)
+{
+    char sys[PATH_MAX], old[PATH_MAX], now[PATH_MAX];
+    system_dir(sys, sizeof sys);
+    if (wps_mkdirs(sys, 0700) != 0) { log_msg("cannot make the System folder %s", sys); return; }
+    if (getenv("WPS_SETUP_DIR")) return;
+    data_dir("System Setup", old, sizeof old);
+    snprintf(now, sizeof now, "%s/System Setup", sys);   /* (not setup_dir: it falls back to the old one) */
+    struct stat st;
+    if (stat(old, &st) == 0 && S_ISDIR(st.st_mode) && access(now, F_OK) != 0) {
+        if (rename(old, now) == 0) {
+            wps_shadows_prefix_moved(old, now);
+            log_msg("System Setup moved into the System folder (%s)", now);
+        } else {
+            log_msg("cannot move System Setup into the System folder: %s", strerror(errno));
+        }
+    }
 }
 
 static void setup_objects_work(void *arg)
@@ -2765,6 +2888,7 @@ int main(int argc, char **argv)
     if (wps_volumes_scan(&vs, &env) == 0) wps_volumes_replace(&vs);
     start_volume_job(NULL);
     wps_shadows_init(loop, db);
+    system_folder_init();
     wps_listing_init(loop);
     wps_find_init(loop);
     wps_jobs_init(loop, db, env.identity);

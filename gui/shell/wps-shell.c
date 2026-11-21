@@ -1047,6 +1047,10 @@ static void opened(void *arg, const cv *reply)
         confirm_program(f, res);
         return;
     }
+    if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "minimized-windows")) {
+        winlist_open(true);   /* the Minimized Window Viewer */
+        return;
+    }
     if (res && cv_text(res, "folder")) {   /* a shadow of a folder, or a link to one */
         open_folder(cv_text(res, "folder"), f->pending_view);
         f->error[0] = 0;
