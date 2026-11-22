@@ -559,6 +559,21 @@ void svc_place(const char *folder, const char *const *targets, const int64_t *x,
     send_req(o, id, fn, arg);
 }
 
+void svc_place_lock(const char *folder, const char *target, int64_t x, int64_t y, bool lock, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("place", 2, &id);
+    cb_text(&o->b, "folder"); cb_text(&o->b, folder);
+    cb_text(&o->b, "items");
+    cb_array(&o->b, 1);
+    cb_map(&o->b, 4);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "x"); cb_int(&o->b, x);
+    cb_text(&o->b, "y"); cb_int(&o->b, y);
+    cb_text(&o->b, "lock"); cb_bool(&o->b, lock);
+    send_req(o, id, fn, arg);
+}
+
 /* ---- messages (wpsd keeps them: messages.h) */
 
 void svc_msg_add(const svc_message *m, svc_fn fn, void *arg)

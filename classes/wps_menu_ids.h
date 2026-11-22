@@ -42,6 +42,8 @@
 #define WPS_MI_SYSTEM_SETUP   69    /* opens the System Setup folder */
 #define WPS_MI_LOCKUP         70
 #define WPS_MI_SHUTDOWN       71
+/* Added by the GUI to an icon's menu in icon view (v0.3-design 5). */
+#define WPS_MI_LOCK_POS       72
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

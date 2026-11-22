@@ -31,6 +31,7 @@ struct ui_container {
     ui_layer_draw_fn background; /* a folder window's (scrolls with the items) */
     void *background_ctx;
     bool bg_picture;             /* a picture behind: titles as on the desktop */
+    bool whole_titles;           /* every title whole, cells as tall as they need */
     ui_surface *s;
     const ui_container_src *src;
     void *ctx;
@@ -145,6 +146,13 @@ static double max_scroll(ui_container *c)
     return m > 0 ? floor(m) : 0;
 }
 
+static double cell_h(ui_container *c, size_t i)
+{
+    if (!c->whole_titles || !c->src->item_h) return CELL_H;
+    double h = c->src->item_h(c->ctx, i);
+    return h > CELL_H ? h : CELL_H;
+}
+
 /* Item i's rectangle in content coordinates: x as on the surface, y from
  * the top of the content (independent of scrolling). */
 static ui_rect item_crect(ui_container *c, size_t i)
@@ -154,7 +162,7 @@ static ui_rect item_crect(ui_container *c, size_t i)
     if (free_icons(c)) {
         double x = 0, y = 0;
         c->src->item_pos(c->ctx, i, &x, &y);
-        return (ui_rect){ l.x + 4 + x - c->hscroll, 4 + y, CELL_W, CELL_H };
+        return (ui_rect){ l.x + 4 + x - c->hscroll, 4 + y, CELL_W, cell_h(c, i) };
     }
     size_t k = cols(c), row = i / k, col = i % k;
     return (ui_rect){ l.x + 4 + (double)col * CELL_W, 4 + (double)row * CELL_H, CELL_W, CELL_H };
@@ -220,13 +228,14 @@ static size_t item_at(ui_container *c, double x, double y)
     if (free_icons(c)) {
         /* The topmost (last drawn) item whose icon or label is under the point. */
         double lx = x - l.x - 4 + c->hscroll, ly = cy - 4;
-        size_t found[64], n = c->src->items_in(c->ctx, (ui_rect){ lx - CELL_W, ly - CELL_H, 2 * CELL_W, 2 * CELL_H }, found, 64);
+        double up = c->whole_titles ? LABEL_MAX * LABEL_H : 0;   /* (a cell reaching down from above) */
+        size_t found[64], n = c->src->items_in(c->ctx, (ui_rect){ lx - CELL_W, ly - CELL_H - up, 2 * CELL_W, 2 * CELL_H + up }, found, 64);
         size_t hit = SIZE_MAX;
         for (size_t k = 0; k < n; k++) {
             double ix, iy;
             c->src->item_pos(c->ctx, found[k], &ix, &iy);
             double ox = lx - ix, oy = ly - iy;
-            if (ox >= 8 && ox <= CELL_W - 8 && oy >= 0 && oy <= CELL_H - 8 && (hit == SIZE_MAX || found[k] > hit)) hit = found[k];
+            if (ox >= 8 && ox <= CELL_W - 8 && oy >= 0 && oy <= cell_h(c, found[k]) - 8 && (hit == SIZE_MAX || found[k] > hit)) hit = found[k];
         }
         return hit < c->count ? hit : SIZE_MAX;
     }
@@ -885,6 +894,7 @@ static int wrap_title(const char *t, double maxw, char out[][256], int maxl, boo
 static bool label_expanded(ui_container *c, size_t i, const ui_item *it)
 {
     if (c->view != UI_VIEW_ICON || !it->loaded || !it->title) return false;
+    if (c->whole_titles && free_icons(c)) return false;   /* (all drawn whole) */
     if (!sel_get(c, i)) return false;
     char lines[2][256];
     bool all;
@@ -905,7 +915,7 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
     double bx = r.x + (r.w - tw) / 2 - 2;
     bool sel = sel_get(c, i);
     if (sel) ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->selection);
-    else if (full) {   /* over its neighbours: on a ground of its own */
+    else if (full && !(c->whole_titles && free_icons(c))) {   /* over its neighbours: on a ground of its own */
         if (c->backdrop || c->bg_picture) { cairo_set_source_rgba(cr, 0, 0, 0, 0.55); cairo_rectangle(cr, bx, ty, tw + 4, h); cairo_fill(cr); }
         else ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->client_bg);
     }
@@ -948,7 +958,23 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     item_icon(cr, &it, ix, iy, ICON);
     if (it.shadow) shadow_mark(cr, ix, iy, ICON);
     /* the whole title of a selected one is drawn last, over the others */
-    if (!label_expanded(c, i, &it)) draw_label(c, cr, i, &it, r, false);
+    if (!label_expanded(c, i, &it)) draw_label(c, cr, i, &it, r, c->whole_titles && free_icons(c));
+}
+
+double ui_icon_cell_height(const char *title)
+{
+    char lines[LABEL_MAX][256];
+    bool all;
+    int n = wrap_title(title ? title : "", CELL_W - 8, lines, LABEL_MAX, &all);
+    double h = ICON + 8 + n * LABEL_H + 4 + 4;
+    return h > CELL_H ? h : CELL_H;
+}
+
+void ui_container_set_whole_titles(ui_container *c, bool on)
+{
+    if (c->whole_titles == on) return;
+    c->whole_titles = on;
+    damage_list(c);
 }
 
 /* After the cells: the whole titles of those selected (or the

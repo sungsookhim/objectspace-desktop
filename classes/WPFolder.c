@@ -58,11 +58,15 @@ static bool pos_key(wpo_object *child, char *key, size_t n)
     return true;
 }
 
+static bool pos_locked(const char *v) { size_t n = v ? strlen(v) : 0; return n && v[n - 1] == 'L'; }
+
 bool WPFolder__wpSetIconPos(wpo_object *self, wpo_object *child, int64_t x, int64_t y)
 {
-    char key[64], val[48];
+    char key[64], val[48], *old = NULL;
     if (!pos_key(child, key, sizeof key)) return false;
-    snprintf(val, sizeof val, "%lld,%lld", (long long)x, (long long)y);
+    wps_state_get_str(self, "WPFolder", key, &old);
+    snprintf(val, sizeof val, "%lld,%lld%s", (long long)x, (long long)y, pos_locked(old) ? ",L" : "");   /* (a lock stays) */
+    free(old);
     wps_state_put_str(self, "WPFolder", key, val);
     WPObject_wpSaveDeferred(self);
     WPObject_wpObjectChanged(self);
@@ -74,6 +78,53 @@ char *WPFolder__wpQueryIconPos(wpo_object *self, wpo_object *child)
     char key[64], *v = NULL;
     if (!pos_key(child, key, sizeof key)) return wps_strdup("");
     return wps_state_get_str(self, "WPFolder", key, &v) ? v : wps_strdup("");
+}
+
+bool WPFolder__wpSetIconLock(wpo_object *self, wpo_object *child, bool on)
+{
+    char key[64], *old = NULL, val[48];
+    if (!pos_key(child, key, sizeof key)) return false;
+    wps_state_get_str(self, "WPFolder", key, &old);
+    bool was = pos_locked(old);
+    if (was == on) { free(old); return true; }
+    if (on) snprintf(val, sizeof val, "%s%s", old && *old ? old : "", old && *old ? ",L" : "L");
+    else {
+        size_t n = strlen(old);
+        snprintf(val, sizeof val, "%.*s", (int)(n >= 2 && old[n - 2] == ',' ? n - 2 : n - 1), old);
+    }
+    free(old);
+    if (*val) wps_state_put_str(self, "WPFolder", key, val);
+    else wps_state_remove(self, "WPFolder", key);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+bool WPFolder__wpQueryIconLock(wpo_object *self, wpo_object *child)
+{
+    char key[64], *v = NULL;
+    if (!pos_key(child, key, sizeof key)) return false;
+    wps_state_get_str(self, "WPFolder", key, &v);
+    bool l = pos_locked(v);
+    free(v);
+    return l;
+}
+
+bool WPFolder__wpSetIconTitles(wpo_object *self, int64_t choice)
+{
+    if (choice < 0 || choice > 1) return false;
+    wps_state_put_int(self, "WPFolder", "icon_titles", choice);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+bool WPFolder__wpSetLockAll(wpo_object *self, bool on)
+{
+    wps_state_put_int(self, "WPFolder", "lock_all", on);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
 }
 
 wpo_pending *WPFolder__wpPopulate(wpo_object *self)
@@ -173,22 +224,26 @@ bool WPFolder__wpSetBgGnome(wpo_object *self, bool on)
 char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
-    int64_t key = -1, desc = 0, cols = 15;
+    int64_t key = -1, desc = 0, cols = 15, titles = 0, lock_all = 0;
     char *cw = NULL;
+    wps_state_get_int(self, "WPFolder", "icon_titles", &titles);
+    wps_state_get_int(self, "WPFolder", "lock_all", &lock_all);
     wps_state_get_str(self, "WPFolder", "col_widths", &cw);
     wps_state_get_int(self, "WPFolder", "sort_key", &key);
     wps_state_get_int(self, "WPFolder", "sort_desc", &desc);
     wps_state_get_int(self, "WPFolder", "cols", &cols);
-    char line2[640];
+    char line2[900];
     snprintf(line2, sizeof line2, "page\tView\nfield\tsort_key\tchoice\tSort by\t%lld\twpSetSortKey\tnone,name,type,size,last write\n"
              "field\tsort_desc\tcheckbox\tDescending\t%d\twpSetSortDesc\n"
              "field\tlocal\tcheckbox\tKeep objects as files here\t%d\twpSetLocalObjects\n"
+             "page\tIcon view\nfield\ticon_titles\tchoice\tTitles\t%lld\twpSetIconTitles\twhole,two lines\n"
+             "field\tlock_all\tcheckbox\tLock positions of all icons\t%d\twpSetLockAll\n"
              "page\tDetails view\nfield\tcol_name\tcheckbox\tReal name\t%d\t@col:name\n"
              "field\tcol_type\tcheckbox\tType\t%d\t@col:type\n"
              "field\tcol_size\tcheckbox\tSize\t%d\t@col:size\n"
              "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n"
              "field\tcol_widths\thidden\tWidths\t%s\twpSetColWidths\n",
-             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects,
+             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects, (long long)titles, lock_all != 0,
              (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0, cw ? cw : "");
     free(cw);
     (void)line;

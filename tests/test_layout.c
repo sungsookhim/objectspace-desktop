@@ -82,10 +82,74 @@ TEST(a_million_names)
     free(buf);
 }
 
+static double heights[8];
+static double height_at(void *ctx, size_t i) { (void)ctx; return heights[i]; }
+
+TEST(rows_as_tall_as_their_tallest_title)
+{
+    const char *a[] = { "a", "b", "c", "d", "e", "f" };
+    names = a;
+    double hs[] = { 70, 118, 70, 70, 70, 86 };
+    memcpy(heights, hs, sizeof hs);
+    icon_layout *l = layout_new(100, 70);
+    layout_set_height_fn(l, height_at, NULL);
+    layout_set_cols(l, 3);
+    layout_update(l, 6, name_at, NULL, true, NULL);
+    double x, y, w, h;
+    layout_pos(l, 3, &x, &y);
+    CHECK(x == 0 && y == 118);                   /* row 2 below b's whole title */
+    layout_pos(l, 5, &x, &y);
+    CHECK(x == 200 && y == 118);
+    CHECK(layout_item_h(l, 1) == 118);
+    layout_size(l, &w, &h);
+    CHECK(h == 118 + 86);                        /* the second row as tall as f */
+    CHECK(found(l, 110, 100, 10, 10, 1) && !found(l, 110, 100, 10, 10, 4));   /* b's title, not e */
+    CHECK(found(l, 10, 130, 10, 10, 3));
+    /* streamed: a later item with a long title moves only the rows below it */
+    const char *b[] = { "a", "b", "c", "d", "e", "f", "g" };
+    names = b;
+    heights[6] = 150;
+    layout_update(l, 7, name_at, NULL, false, NULL);
+    layout_pos(l, 6, &x, &y);
+    CHECK(x == 0 && y == 204);
+    layout_size(l, &w, &h);
+    CHECK(h == 204 + 150);
+    layout_free(l);
+}
+
+TEST(locked_icons_stay_when_arranged)
+{
+    const char *a[] = { "a", "b", "c" };
+    names = a;
+    icon_layout *l = layout_new(100, 70);
+    layout_set_cols(l, 3);
+    layout_place(l, "a", 300, 300);
+    layout_place(l, "b", 0, 0);
+    layout_lock(l, "b", true);
+    layout_update(l, 3, name_at, NULL, true, NULL);
+    CHECK(layout_is_locked(l, "b") && !layout_is_locked(l, "a"));
+    layout_reset(l, 3);                          /* Arrange */
+    layout_update(l, 3, name_at, NULL, true, NULL);
+    double x, y;
+    layout_pos(l, 1, &x, &y);
+    CHECK(x == 0 && y == 0);                     /* b stayed */
+    layout_pos(l, 0, &x, &y);
+    CHECK(x == 100 && y == 0);                   /* a flowed around it */
+    layout_pos(l, 2, &x, &y);
+    CHECK(x == 200 && y == 0);
+    layout_lock(l, "b", false);
+    CHECK(!layout_is_locked(l, "b"));
+    layout_lock_all(l, true);
+    CHECK(layout_is_locked(l, "c"));
+    layout_free(l);
+}
+
 int main(void)
 {
     RUN(spots_follow_names_not_indices);
     RUN(placed_icons_keep_their_place_and_block_spots);
     RUN(a_million_names);
+    RUN(rows_as_tall_as_their_tallest_title);
+    RUN(locked_icons_stay_when_arranged);
     return CHECK_SUMMARY();
 }

@@ -96,5 +96,38 @@ os.remove(F + "/aa.txt")
 time.sleep(0.5)
 check("and a removal", "aa.txt" not in names_v("txt"), names_v("txt"))
 check("the plain listing too", "aa.txt" not in names_v() and "more.txt" in names_v(), names_v())
+
+
+# ---- Lock position (0.3 step 6): kept with the position; Arrange keeps it
+def layout():
+    return {it["name"]: it for it in (c.request(op="layout", target=F).get("result") or {}).get("items", [])}
+
+
+def general(target):
+    st = c.request(op="settings", target=target).get("result") or []
+    return {f["key"]: f.get("value") for p in st if p["title"] == "General" for f in p.get("fields", [])}
+
+
+r = c.request(op="place", folder=F, items=[{"target": F + "/b.txt", "x": 40, "y": 50, "lock": True},
+                                            {"target": F + "/more.txt", "x": 300, "y": 10}])
+check("place, one locked", r.get("ok"), r)
+L = layout()
+check("layout: the lock with its position", L.get("b.txt", {}).get("locked") is True and L["b.txt"].get("x") == 40
+      and "locked" not in L.get("more.txt", {}), L)
+check("General page: Lock position on", general(F + "/b.txt").get("lock_pos") is True, general(F + "/b.txt"))
+c.request(op="place", folder=F, items=[{"target": F + "/b.txt", "x": 60, "y": 70}])
+check("placed again: still locked", layout().get("b.txt", {}).get("locked") is True, layout().get("b.txt"))
+c.request(op="arrange", target=F)
+L = layout()
+check("Arrange forgets the others, keeps the locked one", "more.txt" not in L and L.get("b.txt", {}).get("x") == 60, L)
+r = c.request(op="settings_set", target=F + "/b.txt", values={"lock_pos": False})
+check("unlocked on its General page", r.get("ok") and "locked" not in layout().get("b.txt", {}), (r, layout().get("b.txt")))
+r = c.request(op="settings_set", target=F + "/more.txt", values={"lock_pos": True})
+L = layout()
+check("locked with no position yet: locked, no x", r.get("ok") and L.get("more.txt", {}).get("locked") is True
+      and "x" not in L.get("more.txt", {}), (r, L.get("more.txt")))
+pages = [p["title"] for p in c.request(op="settings", target=F).get("result") or []]
+check("a folder's Icon view page", "Icon view" in pages, pages)
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

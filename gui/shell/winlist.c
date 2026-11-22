@@ -236,7 +236,7 @@ static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     ui_menu_popup(l->s, items, sizeof items / sizeof *items, x, y, serial, menu_chosen, m);
 }
 
-static const ui_container_src list_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, NULL, NULL, NULL, NULL };
+static const ui_container_src list_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
 static void lw_layout(struct listwin *l)
 {

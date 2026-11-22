@@ -321,7 +321,7 @@ static void pick(size_t i)
 
 static void s_activate(void *ctx, size_t i) { (void)ctx; pick(i); }
 
-static const ui_container_src pick_src = { s_count, s_item, s_visible, s_activate, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+static const ui_container_src pick_src = { s_count, s_item, s_visible, s_activate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
 /* --------------------------------------------------------------- window */
 

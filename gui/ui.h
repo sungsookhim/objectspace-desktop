@@ -502,6 +502,9 @@ typedef struct {
     void (*item_pos)(void *ctx, size_t i, double *x, double *y);
     size_t (*items_in)(void *ctx, ui_rect r, size_t *out, size_t max);   /* items whose cells meet r */
     void (*content_size)(void *ctx, double *w, double *h);
+    /* Whole titles (ui_container_set_whole_titles): item i's cell height
+     * (ui_icon_cell_height of its title); NULL: a cell's. */
+    double (*item_h)(void *ctx, size_t i);
 } ui_container_src;
 
 #define UI_CELL_W 100            /* an icon's cell in icon view */
@@ -510,6 +513,12 @@ typedef struct {
 typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
 
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view);
+/* Icon view with icons placed anywhere: every title shown whole, under
+ * its icon, in a cell as tall as it needs (OS/2's; v0.3-design 5); off:
+ * two lines, the whole title over the neighbours when selected. */
+void ui_container_set_whole_titles(ui_container *c, bool on);
+/* The height of an icon's cell with its whole title (at least UI_CELL_H). */
+double ui_icon_cell_height(const char *title);
 void ui_container_free(ui_container *c);
 void ui_container_layout(ui_container *c, ui_rect r);
 /* Details view: the title of the second column ("Name"), e.g. "Folder"; a

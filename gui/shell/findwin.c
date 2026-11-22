@@ -371,7 +371,7 @@ static void src_drag(void *ctx, size_t i, uint32_t serial)
     free(p);
 }
 
-static const ui_container_src res_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, src_drag, NULL, NULL, NULL };
+static const ui_container_src res_src = { src_count, src_item, NULL, src_activate, src_menu, NULL, NULL, src_drag, NULL, NULL, NULL, NULL };
 
 /* --------------------------------------------------------------- layout */
 

@@ -18,6 +18,15 @@ method wpSetLocalObjects(bool on) -> bool
 # Persistence; per user in folders the user does not own).
 method wpSetIconPos(object child, int x, int y) -> bool
 method wpQueryIconPos(object child) -> string
+# Lock position (v0.3-design 5): kept with the position, "x,y,L" ("L"
+# alone: locked, no position stored yet). A locked icon stays where it is
+# in its folder (it can still go to other folders) and Arrange leaves it.
+method wpSetIconLock(object child, bool on) -> bool
+method wpQueryIconLock(object child) -> bool
+# The Icon view page: titles (0 whole, as OS/2's; 1 two lines), and Lock
+# positions of all icons.
+method wpSetIconTitles(int choice) -> bool
+method wpSetLockAll(bool on) -> bool
 # Lists the folder's contents; streaming and paging arrive in M4.
 method wpPopulate() -> pending async
 # The Background page (v0.3-design 3): a picture (a path), how it is shown

@@ -52,7 +52,8 @@ static double status_h(void) { double h = ceil(ui_scheme_now.font_px + 9); retur
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon; };
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon;
+             float cellh;   /* its icon's cell with the whole title (0: not measured yet) */ };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -64,6 +65,7 @@ struct model {
     size_t npages, total;
     uint64_t version;        /* the service's listing version these rows match (0: unknown) */
     bool complete, growing;
+    bool heights_dirty;      /* a title changed: whole-title rows may be taller or shorter */
     int pending;             /* detail pages still awaited before a swap */
 };
 
@@ -105,6 +107,8 @@ struct folder {
     char bg_image[PATH_MAX], bg_color[16], bg_img_path[PATH_MAX];
     int bg_mode;
     bool bg_gnome;
+    bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
+    bool lock_all;           /* ... Lock positions of all icons */
     cairo_surface_t *bg_img;     /* the picture, decoded */
     /* its details view (v0.3-design 4): the sort (choice 0 none, 1 name,
      * 2 type, 3 size, 4 last write; -1 not read yet) and columns */
@@ -229,6 +233,7 @@ static void bg_apply(struct folder *f)
 
 static void reload(struct folder *f);
 static void ignore_reply(void *arg, const cv *reply);
+static const char *lay_name(void *ctx, size_t i);
 
 /* A heading clicked: sorted by it (again: the other way), for the folder. */
 static void head_clicked(void *ctx, int col)
@@ -265,6 +270,7 @@ static void got_bg(void *arg, const cv *reply)
     bool was_desc = f->sort_desc;
     unsigned cols = 0;
     double w[6] = { 0 };
+    bool whole = true, lock_all = false;
     for (size_t i = 0; i < res->n; i++) {
         const cv *fs = cv_get(&res->items[i], "fields");
         for (size_t k = 0; fs && fs->k == CV_ARRAY && k < fs->n; k++) {
@@ -277,6 +283,8 @@ static void got_bg(void *arg, const cv *reply)
             else if (!strcmp(key, "bg_gnome") && v->k == CV_BOOL) f->bg_gnome = v->b;
             else if (!strcmp(key, "sort_key") && v->k == CV_INT) f->sort_choice = (int)v->i;
             else if (!strcmp(key, "sort_desc") && v->k == CV_BOOL) f->sort_desc = v->b;
+            else if (!strcmp(key, "icon_titles") && v->k == CV_INT) whole = v->i == 0;
+            else if (!strcmp(key, "lock_all") && v->k == CV_BOOL) lock_all = v->b;
             else if (!strncmp(key, "col_", 4) && v->k == CV_BOOL && v->b) {
                 cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
                       : !strcmp(key, "col_date") ? 8u : 0u;
@@ -286,6 +294,14 @@ static void got_bg(void *arg, const cv *reply)
         }
     }
     bg_apply(f);
+    layout_lock_all(f->lay, lock_all);
+    f->lock_all = lock_all;
+    if (whole != f->whole_titles) {   /* the Icon view page's Titles */
+        f->whole_titles = whole;
+        ui_container_set_whole_titles(f->cont, whole);
+        layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+        if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+    }
     f->cols = cols;
     memcpy(f->col_w, w, sizeof w);
     ui_container_set_columns(f->cont, cols, w);
@@ -408,6 +424,7 @@ static void rename_new_now(struct folder *f);
 static bool is_tree(struct folder *f);
 static void fetch_visible(struct folder *f, size_t first, size_t last);
 static struct row *row_at(struct folder *f, size_t i);
+static void lock_items(struct folder *f, size_t i);
 static void reload(struct folder *f);
 static void got_page(void *arg, const cv *reply);
 static void placed_reply(void *arg, const cv *reply);
@@ -458,6 +475,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
         size_t r = (size_t)off + i;
         struct row *dst = &page_at(m, r / PAGE)->rows[r % PAGE];
         const char *nm = cv_text(it, "name"), *ti = cv_text(it, "title"), *ty = cv_text(it, "type");
+        if (dst->name && (dst->title ? !ti || strcmp(dst->title, ti) : ti && *ti)) m->heights_dirty = true;
+        dst->cellh = 0;
         free(dst->name);
         free(dst->title);
         free(dst->target);
@@ -768,6 +787,13 @@ static void got_page(void *arg, const cv *reply)
     ui_container_count_changed(f->cont);
     if (n) ui_container_changed(f->cont, off, off + n - 1);
     if (!details || m->complete != was_complete) layout_follow(f, false);
+    if (m->heights_dirty) {   /* (central objects' titles come with their details) */
+        m->heights_dirty = false;
+        if (f->whole_titles && !is_tree(f)) {
+            layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+            if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+        }
+    }
     if (!m->complete) request_more(f, false);
     if (m->complete != was_complete || !details) damage_status(f);
     if (f->sort_pending && m->complete) sort_icons(f, f->sort_pending - 1);   /* (again: all in now?) */
@@ -1377,6 +1403,18 @@ static void src_activate(void *ctx, size_t i) { open_item(ctx, i, UI_VIEW_ICON);
 
 static const char *lay_name(void *ctx, size_t i) { return model_name(&((struct folder *)ctx)->m, i); }
 
+/* Item i's cell height: with its whole title (OS/2's layout), measured
+ * once per title. */
+static double lay_h(void *ctx, size_t i)
+{
+    struct folder *f = ctx;
+    if (!f->whole_titles) return UI_CELL_H;
+    struct row *r = row_at(f, i);
+    if (!r || !r->name) return UI_CELL_H;
+    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height(r->title ? r->title : r->name[0] == '\x01' ? "" : r->name);
+    return r->cellh;
+}
+
 static int cols_now(struct folder *f)
 {
     int k = (int)(ui_container_list_width(f->cont) / UI_CELL_W);
@@ -1523,14 +1561,44 @@ static void got_layout(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
     if (!f || !items || items->k != CV_ARRAY) return;
     if (f->filter[0]) return;   /* filtered: the matches flow, stored positions unused */
+    /* where the unplaced locked ones are now (locked in the notebook) */
+    size_t nl = 0;
+    char **lname = NULL;
+    for (size_t i = 0; i < items->n; i++) {
+        const cv *lk = cv_get(&items->items[i], "locked");
+        const char *nm = cv_text(&items->items[i], "name");
+        if (nm && lk && lk->k == CV_BOOL && lk->b && !cv_get(&items->items[i], "x")) {
+            lname = realloc(lname, (nl + 1) * sizeof *lname);
+            lname[nl++] = strdup(nm);
+        }
+    }
+    double *lx = calloc(nl ? nl : 1, sizeof *lx), *ly = calloc(nl ? nl : 1, sizeof *ly);
+    for (size_t k = 0; k < nl; k++)
+        for (size_t i = 0; i < f->m.total; i++) {
+            const char *nm = model_name(&f->m, i);
+            if (nm && !strcmp(nm, lname[k])) { layout_pos(f->lay, i, &lx[k], &ly[k]); break; }
+        }
     layout_clear_placed(f->lay);
     for (size_t i = 0; i < items->n; i++) {
         const char *nm = cv_text(&items->items[i], "name");
+        const cv *lk = cv_get(&items->items[i], "locked");
         int64_t x = 0, y = 0;
-        cv_int(&items->items[i], "x", &x);
+        bool has = cv_int(&items->items[i], "x", &x);
         cv_int(&items->items[i], "y", &y);
-        if (nm) layout_place(f->lay, nm, (int)x, (int)y);
+        if (nm && has) layout_place(f->lay, nm, (int)x, (int)y);
+        if (nm && lk && lk->k == CV_BOOL && lk->b) layout_lock(f->lay, nm, true);
     }
+    for (size_t k = 0; k < nl; k++) {   /* their places now, stored (still locked) */
+        char addr[PATH_MAX];
+        if (lname[k][0] == '\x01') snprintf(addr, sizeof addr, "%s", lname[k] + 1);
+        else snprintf(addr, sizeof addr, "%s/%s", strcmp(f->path, "/") ? f->path : "", lname[k]);
+        layout_place(f->lay, lname[k], (int)lx[k], (int)ly[k]);
+        svc_place_lock(f->path, addr, (int64_t)lx[k], (int64_t)ly[k], true, ignore_reply, NULL);
+        free(lname[k]);
+    }
+    free(lname);
+    free(lx);
+    free(ly);
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
     if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
 }
@@ -1584,6 +1652,11 @@ static void sort_icons(struct folder *f, int key)
 
 static void arrange_by(struct folder *f, int key)
 {
+    if (f->lock_all) {   /* (nothing would move) */
+        snprintf(f->error, sizeof f->error, "Positions are locked (the folder's Icon view page)");
+        damage_status(f);
+        return;
+    }
     svc_arrange(f->path, placed_reply, as_arg(f));
     layout_reset(f->lay, cols_now(f));
     size_t *o = name_order(f);
@@ -1945,6 +2018,7 @@ static void menu_chosen(void *arg, int64_t id)
             break;
         }
         case WPS_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
+        case WPS_MI_LOCK_POS: if (m->item != SIZE_MAX) lock_items(f, m->item); break;
         case WPS_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
         case WPS_MI_WINDOW_LIST: winlist_open(false); break;
@@ -2166,6 +2240,29 @@ static void restore_items(struct folder *f, size_t i)
     }
 }
 
+/* Lock position: the item (and the others selected with it) locked where
+ * it is, or unlocked. */
+static void lock_items(struct folder *f, size_t i)
+{
+    const char *n0 = model_name(&f->m, i);
+    if (!n0 || is_tree(f)) return;
+    bool on = !layout_is_locked(f->lay, n0);
+    bool whole = ui_container_is_selected(f->cont, i);
+    for (size_t k = whole ? 0 : i; whole ? k < f->m.total : k == i; k++) {
+        if (whole && !ui_container_is_selected(f->cont, k)) continue;
+        const char *nm = model_name(&f->m, k);
+        if (!nm) continue;
+        char t[PATH_MAX];
+        target_of(f, k, t, sizeof t);
+        double x, y;
+        layout_pos(f->lay, k, &x, &y);
+        layout_place(f->lay, nm, (int)x, (int)y);
+        layout_lock(f->lay, nm, on);
+        svc_place_lock(f->path, t, (int64_t)x, (int64_t)y, on, placed_reply, as_arg(f));
+    }
+    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+}
+
 static void got_menu(void *arg, const cv *reply)
 {
     struct menu_ctx *m = arg;
@@ -2196,6 +2293,13 @@ static void got_menu(void *arg, const cv *reply)
             items = realloc(items, (n + 1) * sizeof *items);
             items[n++] = (ui_menu_item){ WPS_MI_EMPTY_TRASH, "Empty trash", true, false, NULL, 0 };
         }
+    }
+    if (m->item != SIZE_MAX && !is_tree(f) && ui_container_view(f->cont) == UI_VIEW_ICON && !f->filter[0]) {
+        /* Lock position (v0.3-design 5): its spot in this folder */
+        const char *nm = model_name(&f->m, m->item);
+        items = realloc(items, (n + 2) * sizeof *items);
+        items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_LOCK_POS, "Lock position", nm && !f->lock_all, layout_is_locked(f->lay, nm), NULL, 0 };
     }
     if (m->item == SIZE_MAX) {
         /* Every folder's (the desktop's too), as OS/2's: Open parent after
@@ -2746,16 +2850,26 @@ static bool reposition(struct folder *f, double x, double y)
     double lx, ly;
     ui_container_to_list(f->cont, x, y, &lx, &ly);
     int64_t *px = calloc(d->n, sizeof *px), *py = calloc(d->n, sizeof *py);
+    const char **moved = calloc(d->n ? d->n : 1, sizeof *moved);
+    size_t k = 0;
     for (size_t i = 0; i < d->n; i++) {
-        double nx = lx + d->dx[i], ny = ly + d->dy[i];
-        px[i] = nx < 0 ? 0 : (int64_t)nx;
-        py[i] = ny < 0 ? 0 : (int64_t)ny;
         char nm[NAME_MAX + 8];
         if (!strncmp(d->paths[i], "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", d->paths[i]);
         else snprintf(nm, sizeof nm, "%s", strrchr(d->paths[i], '/') + 1);
-        layout_place(f->lay, nm, (int)px[i], (int)py[i]);
+        if (layout_is_locked(f->lay, nm)) continue;   /* locked: stays (it can still go to other folders) */
+        double nx = lx + d->dx[i], ny = ly + d->dy[i];
+        px[k] = nx < 0 ? 0 : (int64_t)nx;
+        py[k] = ny < 0 ? 0 : (int64_t)ny;
+        moved[k] = d->paths[i];
+        layout_place(f->lay, nm, (int)px[k], (int)py[k]);
+        k++;
     }
-    svc_place(f->path, (const char *const *)d->paths, px, py, d->n, placed_reply, as_arg(f));
+    if (k < d->n) {
+        snprintf(f->error, sizeof f->error, "%s", k ? "Locked icons stay where they are" : "The position is locked");
+        damage_status(f);
+    }
+    if (k) svc_place(f->path, moved, px, py, k, placed_reply, as_arg(f));
+    free(moved);
     free(px);
     free(py);
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
@@ -3496,9 +3610,10 @@ static size_t src_items_in(void *ctx, ui_rect r, size_t *out, size_t max)
 }
 
 static void src_content_size(void *ctx, double *w, double *h) { layout_size(((struct folder *)ctx)->lay, w, h); }
+static double src_item_h(void *ctx, size_t i) { return layout_item_h(((struct folder *)ctx)->lay, i); }
 
 static const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu, src_rename, src_expand,
-                                             src_drag, src_item_pos, src_items_in, src_content_size };
+                                             src_drag, src_item_pos, src_items_in, src_content_size, src_item_h };
 
 /* ------------------------------------------------------------------ window */
 
@@ -3909,10 +4024,128 @@ static void selftest_field_set(void *ctx, const char *key, ui_field_kind kind, c
     fprintf(stderr, "selftest: fields: set %s = %s\n", key, base ? base + 1 : v->text ? v->text : "");
 }
 
+/* WPS_SHELL_SELFTEST=layout: the icons' cells, checked. */
+static size_t selftest_index(struct folder *f, const char *name)
+{
+    for (size_t i = 0; i < f->m.total; i++)
+        if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), name)) return i;
+    return SIZE_MAX;
+}
+
+static void selftest_cells(struct folder *f, const char *when)
+{
+    size_t n = f->m.total, over = 0;
+    for (size_t i = 0; i < n; i++)
+        for (size_t j = i + 1; j < n; j++) {
+            double xi, yi, xj, yj, hi = layout_item_h(f->lay, i), hj = layout_item_h(f->lay, j);
+            layout_pos(f->lay, i, &xi, &yi);
+            layout_pos(f->lay, j, &xj, &yj);
+            if (xi < xj + UI_CELL_W && xj < xi + UI_CELL_W && yi < yj + hj && yj < yi + hi) over++;
+        }
+    /* the second row: below the first row's tallest title */
+    double top1 = 1e9, tall = 0, row2 = 1e9;
+    for (size_t i = 0; i < n; i++) { double x, y; layout_pos(f->lay, i, &x, &y); if (y < top1) top1 = y; }
+    for (size_t i = 0; i < n; i++) {
+        double x, y;
+        layout_pos(f->lay, i, &x, &y);
+        if (y == top1 && layout_item_h(f->lay, i) > tall) tall = layout_item_h(f->lay, i);
+        if (y > top1 && y < row2) row2 = y;
+    }
+    fprintf(stderr, "selftest: layout: %s: %zu overlaps; tallest of row 1 %.0f, row 2 at %.0f\n", when, over, tall, row2 - top1);
+}
+
+static void selftest_lock_page(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    const char *v = "missing";
+    for (size_t i = 0; res && res->k == CV_ARRAY && i < res->n; i++) {
+        const cv *fs = cv_get(&res->items[i], "fields");
+        for (size_t k = 0; fs && fs->k == CV_ARRAY && k < fs->n; k++) {
+            const char *key = cv_text(&fs->items[k], "key");
+            const cv *val = cv_get(&fs->items[k], "value");
+            if (key && !strcmp(key, "lock_pos") && val && val->k == CV_BOOL)
+                v = !strcmp(cv_text(&res->items[i], "title") ? cv_text(&res->items[i], "title") : "", "General") ? (val->b ? "on" : "off") : "elsewhere";
+        }
+    }
+    fprintf(stderr, "selftest: layout: b.txt's General page: Lock position %s\n", v);
+}
+
 static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "layout")) {
+        /* OS/2's layout and Lock position (0.3 step 6). <D> has a.txt
+         * (a long title), b.txt .. h.txt. */
+        static double t0, bx, by;
+        static int step;
+        if (!t0) { if (!f->m.complete || !f->arranged_by_name) return; t0 = now; }
+        double t = now - t0;
+        size_t b = selftest_index(f, "b.txt"), c = selftest_index(f, "c.txt");
+        if (step == 0 && t > 1000) {
+            size_t a = selftest_index(f, "a-rather-long-title-for-a-file-that-takes-four-lines.txt");
+            fprintf(stderr, "selftest: layout: the long title's cell %.0f (a cell %d)\n", layout_item_h(f->lay, a), UI_CELL_H);
+            selftest_cells(f, "arranged");
+            layout_pos(f->lay, b, &bx, &by);
+            lock_items(f, b);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            char bp[PATH_MAX];
+            snprintf(bp, sizeof bp, "%s/b.txt", f->path);
+            svc_settings(bp, selftest_lock_page, NULL);
+            /* b and c dragged within the folder */
+            struct dragging d = { 0 };
+            char p0[PATH_MAX], p1[PATH_MAX], *ps[2] = { p0, p1 };
+            snprintf(p0, sizeof p0, "%s/b.txt", f->path);
+            snprintf(p1, sizeof p1, "%s/c.txt", f->path);
+            double lx, ly, dx[2], dy[2];
+            ui_container_to_list(f->cont, 300, 300, &lx, &ly);
+            dx[0] = 400 - lx; dy[0] = 300 - ly;
+            dx[1] = 500 - lx; dy[1] = 300 - ly;
+            d.paths = ps; d.n = 2; d.dx = dx; d.dy = dy;
+            snprintf(d.src_folder, sizeof d.src_folder, "%s", f->path);
+            struct dragging *was = cur_drag;
+            cur_drag = &d;
+            reposition(f, 300, 300);
+            cur_drag = was;
+            double x, y, cx, cy;
+            layout_pos(f->lay, b, &x, &y);
+            layout_pos(f->lay, c, &cx, &cy);
+            fprintf(stderr, "selftest: layout: dragged: the locked one stayed %d, the other moved %d (%s)\n",
+                    x == bx && y == by, cx == 500 && cy == 300, f->error);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            arrange(f);
+            double x, y;
+            layout_pos(f->lay, b, &x, &y);
+            fprintf(stderr, "selftest: layout: Arrange: the locked one stayed %d\n", x == bx && y == by);
+            selftest_cells(f, "arranged around it");
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 2000) {
+            double x, y;
+            layout_pos(f->lay, b, &x, &y);
+            fprintf(stderr, "selftest: layout: read back: locked %d, in place %d\n", layout_is_locked(f->lay, "b.txt"), x == bx && y == by);
+            lock_items(f, b);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 1500) {
+            fprintf(stderr, "selftest: layout: unlocked: %d\n", !layout_is_locked(f->lay, "b.txt"));
+            cv v = { .k = CV_INT, .i = 1 };
+            svc_settings_set(f->path, "icon_titles", &v, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 5 && t > 2000) {
+            size_t a = selftest_index(f, "a-rather-long-title-for-a-file-that-takes-four-lines.txt");
+            fprintf(stderr, "selftest: layout: two lines: whole %d, the long title's cell %.0f\n", f->whole_titles, layout_item_h(f->lay, a));
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "search")) {
         /* The search field (0.3 step 5): Ctrl+F, "rep" typed, Escape; then
          * Show hidden files off and on. <D> has report-2025.ods,
@@ -6131,7 +6364,10 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
         f->win = ui_window_new(app, &win_ops, f, "org.wps.shell", w, h);
     }
     f->lay = layout_new(UI_CELL_W, UI_CELL_H);
+    f->whole_titles = true;   /* (until its Icon view page says otherwise) */
+    layout_set_height_fn(f->lay, lay_h, f);
     f->cont = ui_container_new(f->win, &folder_src, f, view);
+    ui_container_set_whole_titles(f->cont, true);
     f->sort_choice = -1;
     ui_container_set_head_fns(f->cont, head_clicked, cols_resized, as_arg(f));
     if (desktop) {

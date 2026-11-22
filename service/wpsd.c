@@ -47,7 +47,7 @@
  *                      a program owned by another user (not root) needs confirm
  *   {op:"from_template", target, folder, title}
  *   {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}, items:[{name,id,x,y}]}
- *   {op:"place", folder, items:[{target, x, y}]} -> [ID...]  set positions
+ *   {op:"place", folder, items:[{target, x, y, lock?}]} -> [ID...]  set positions (and locks)
  *   {op:"arrange", target:FOLDER}   forget the folder's positions
  *   {op:"rename", target, name}   rename a file or folder in its folder (never
  *                      replacing); its title then follows the name. Without
@@ -174,6 +174,7 @@ static void subs_drop_client(struct client *c);
 static void on_volumes_changed(const char *report);
 static char *call_text(wpo_object *o, const char *method, const char *arg);
 static const char *apply_settings(wpo_object *o, const cv *values);
+static char *settings_text(wpo_object *o);
 static void put_menu(cbuf *b, const char *text, const char *parent);
 static void put_settings(cbuf *b, const char *text, const char *icon_shown);
 struct req;
@@ -522,7 +523,7 @@ static void do_menus(struct req *r, wpo_object *o)
         put_menu(&b, t, "");
         free(t);
     } else {
-        char *t = call_text(o, "wpAddSettingsPages", "");
+        char *t = settings_text(o);
         char shown[PATH_MAX];   /* what its Icon page shows without its own */
         const char *p = wpo_is_a(o, WPFileSystemClass) ? WPFileSystem_data(o)->path : NULL;
         wps_listing_shown_icon(p, wpo_is_a(o, WPFolderClass), wpo_is_a(o, WPProgramClass), shown, sizeof shown);
@@ -1237,10 +1238,53 @@ static char *call_text(wpo_object *o, const char *method, const char *arg)
     return out ? out : strdup("");
 }
 
+/* The folder an object's icon sits in (loaded: a window lists it), and
+ * its path; NULL if not known. */
+static wpo_object *home_folder_of(wpo_object *o, char *fpath, size_t n)
+{
+    sobj *s = wps_sobj_of(o), *fs = NULL;
+    if (!s) return NULL;
+    if (s->central) fs = s->folder_id[0] ? wps_sobj_by_id(s->folder_id) : NULL;
+    else {
+        char p[PATH_MAX];
+        snprintf(p, sizeof p, "%s", s->path);
+        char *sl = strrchr(p, '/');
+        if (!sl || !sl[1]) return NULL;
+        if (sl == p) sl[1] = 0;
+        else *sl = 0;
+        fs = wps_sobj_by_path(p);
+    }
+    if (!fs || !fs->o || !wpo_is_a(fs->o, WPFolderClass)) return NULL;
+    snprintf(fpath, n, "%s", fs->path);
+    return fs->o;
+}
+
+/* Its pages, and on the General page Lock position (v0.3-design 5: kept
+ * by the folder it sits in, with its position). */
+static char *settings_text(wpo_object *o)
+{
+    char *t = call_text(o, "wpAddSettingsPages", ""), fpath[PATH_MAX];
+    wpo_object *f = home_folder_of(o, fpath, sizeof fpath);
+    char *g = strstr(t, "page\tGeneral\n");
+    if (!f || !g || (g != t && g[-1] != '\n')) return t;
+    char *next = strstr(g + 1, "\npage\t");
+    size_t at = next ? (size_t)(next - t) + 1 : strlen(t);
+    if (!next && at && t[at - 1] != '\n') return t;
+    char line[160];
+    snprintf(line, sizeof line, "field\tlock_pos\tcheckbox\tLock position\t%d\t@lock\n", WPFolder_wpQueryIconLock(f, o) ? 1 : 0);
+    size_t tl = strlen(t), ll = strlen(line);
+    char *r = malloc(tl + ll + 1);
+    memcpy(r, t, at);
+    memcpy(r + at, line, ll);
+    memcpy(r + at + ll, t + at, tl - at + 1);
+    free(t);
+    return r;
+}
+
 /* settings_set: apply {key: value} through each field's setter. */
 static const char *apply_settings(wpo_object *o, const cv *values)
 {
-    char *text = call_text(o, "wpAddSettingsPages", "");
+    char *text = settings_text(o);
     char pages[16][64];
     int page_of[64];
     struct field fields[64];
@@ -1253,6 +1297,15 @@ static const char *apply_settings(wpo_object *o, const cv *values)
         for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
         if (!f) { err = "no such setting"; break; }
         wpo_value a, r;
+        if (!strcmp(f->setter, "@lock")) {
+            char fpath[PATH_MAX];
+            wpo_object *fo = home_folder_of(o, fpath, sizeof fpath);
+            bool on = val->k == CV_BOOL ? val->b : val->k == CV_INT ? val->i != 0 : false;
+            if (!fo || !WPFolder_wpSetIconLock(fo, o, on)) { err = "the setter refused the value"; break; }
+            on_layout_changed(fpath);   /* its windows read the positions again */
+            WPObject_wpObjectChanged(o);  /* (its notebook shows it) */
+            continue;
+        }
         if (!strncmp(f->setter, "@col:", 5)) {
             /* a details view's column on or off: wpSetColumn("name=1") */
             char arg[64];
@@ -1905,12 +1958,14 @@ static void layout_done(void *arg)
         for (size_t i = 0; i < j->n; i++) {
             if (!j->names[i]) continue;
             long long x = 0, y = 0;
-            sscanf(j->vals[i], "%lld,%lld", &x, &y);
-            cb_map(&b, 4);
+            bool has = sscanf(j->vals[i], "%lld,%lld", &x, &y) == 2;
+            size_t vl = strlen(j->vals[i]);
+            bool locked = vl && j->vals[i][vl - 1] == 'L';   /* "x,y,L"; "L": locked, no position yet */
+            cb_map(&b, 2 + (has ? 2 : 0) + (locked ? 1 : 0));
             cb_text(&b, "name"); cb_text(&b, j->names[i]);
             cb_text(&b, "id"); cb_text(&b, j->ids[i]);
-            cb_text(&b, "x"); cb_int(&b, x);
-            cb_text(&b, "y"); cb_int(&b, y);
+            if (has) { cb_text(&b, "x"); cb_int(&b, x); cb_text(&b, "y"); cb_int(&b, y); }
+            if (locked) { cb_text(&b, "locked"); cb_bool(&b, true); }
         }
         send_frame(j->c, &b);
         cb_free(&b);
@@ -1957,7 +2012,8 @@ static void do_arrange(struct req *r, wpo_object *o)
     char **keys = NULL;
     size_t n = 0;
     for (size_t i = 0; cs && i < cs->props.n; i++)
-        if (!strncmp(cs->props.p[i].key, "pos:", 4)) {
+        if (!strncmp(cs->props.p[i].key, "pos:", 4)
+            && !(cs->props.p[i].len && ((const char *)cs->props.p[i].val)[cs->props.p[i].len - 1] == 'L')) {   /* (locked: kept) */
             keys = realloc(keys, (n + 1) * sizeof *keys);
             keys[n++] = strdup(cs->props.p[i].key);
         }
@@ -1978,6 +2034,7 @@ struct place_job {
     size_t n;
     char **targets;
     int64_t *x, *y;
+    int8_t *lock;        /* per item: -1 as it was, 0 unlock, 1 lock */
     wps_loaded fld, *items;
 };
 
@@ -2011,6 +2068,7 @@ static void place_done(void *arg)
             for (size_t i = 0; i < j->n; i++) {
                 wpo_object *o = j->items[i].err ? NULL : wps_object_from_loaded(&j->items[i]);
                 bool ok = o && WPFolder_wpSetIconPos(f, o, j->x[i], j->y[i]);
+                if (ok && j->lock && j->lock[i] >= 0) ok = WPFolder_wpSetIconLock(f, o, j->lock[i] == 1);
                 if (ok) cb_text(&b, WPObject_data(o)->id);
                 else cb_null(&b);
             }
@@ -2024,6 +2082,7 @@ static void place_done(void *arg)
     free(j->targets);
     free(j->x);
     free(j->y);
+    free(j->lock);
     if (j->c) client_unref(j->c);
     free(j);
 }
@@ -2062,12 +2121,15 @@ static void start_place(struct client *c, int64_t id, const cv *msg)
     j->x = calloc(items->n ? items->n : 1, sizeof *j->x);
     j->y = calloc(items->n ? items->n : 1, sizeof *j->y);
     j->items = calloc(items->n ? items->n : 1, sizeof *j->items);
+    j->lock = malloc(items->n ? items->n : 1);
     for (size_t i = 0; i < items->n; i++) {
         const char *t = cv_text(&items->items[i], "target");
         if (!t) continue;
         j->targets[j->n] = strdup(t);
         cv_int(&items->items[i], "x", &j->x[j->n]);
         cv_int(&items->items[i], "y", &j->y[j->n]);
+        const cv *lk = cv_get(&items->items[i], "lock");
+        j->lock[j->n] = lk && lk->k == CV_BOOL ? lk->b : -1;
         j->n++;
     }
     wpo_defer(loop, "place icons", place_work, place_done, j);
