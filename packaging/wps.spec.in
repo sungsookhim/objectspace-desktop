@@ -39,6 +39,9 @@ BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(xcb)
 BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  pkgconfig(sndfile)
+# the icon themes (make icons: tools/icons, and wpsctl icon pack)
+BuildRequires:  python3-pillow
+BuildRequires:  pkgconfig(zlib)
 
 # The session: X11 programs, drives, settings shared with GNOME, icons
 # made from SVGs, file types and the icon theme; input methods when installed.

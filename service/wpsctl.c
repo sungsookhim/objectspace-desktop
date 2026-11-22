@@ -18,6 +18,11 @@
  *   wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME
  *   wpsctl restore-defaults [DESKTOP]   the default objects back in place (the desktop
  *                                       last opened, if not named)
+ *   wpsctl icon pack INPUT... OUT.wpsicon   an icon package (roadmap 0.4): PNGs and an
+ *                                       SVG, or folders of them; the standard sizes added
+ *   wpsctl icon list PACKAGE            its sizes
+ *   wpsctl icon render PACKAGE SIZE OUT.png   the icon at a size, by the size rules
+ *   (the icon commands work on files: no wpsd)
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -36,6 +41,7 @@
 #include <unistd.h>
 
 #include "cbor.h"
+#include "wpsicon.h"
 
 static int usage(void)
 {
@@ -58,7 +64,8 @@ static int usage(void)
             "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n"
             "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n"
             "       wpsctl vmove vobj:ID FOLDER [copy]\n"
-            "       wpsctl restore-defaults [DESKTOP]\n");
+            "       wpsctl restore-defaults [DESKTOP]\n"
+            "       wpsctl icon pack INPUT... OUT.wpsicon | icon list PACKAGE | icon render PACKAGE SIZE OUT.png\n");
     return 2;
 }
 
@@ -113,8 +120,61 @@ static void put_arg(cbuf *b, const char *a)
     cb_text(b, a);
 }
 
+/* wpsctl icon ...: icon packages, on files (wpsicon.h) */
+static int icon_cmd(int argc, char **argv)
+{
+    if (argc >= 5 && !strcmp(argv[2], "pack")) {
+        char err[512];
+        if (wpsicon_pack((const char *const *)argv + 3, (size_t)(argc - 4), argv[argc - 1], err, sizeof err)) {
+            fprintf(stderr, "wpsctl: icon pack: %s\n", err);
+            return 1;
+        }
+        wpsicon *w = wpsicon_open(argv[argc - 1]);
+        int sz[32];
+        size_t n = w ? wpsicon_sizes(w, sz, 32) : 0;
+        printf("%s:", argv[argc - 1]);
+        for (size_t i = 0; i < n; i++) printf(" %d", sz[i]);
+        printf("%s\n", w && wpsicon_has_svg(w) ? " svg" : "");
+        wpsicon_free(w);
+        return 0;
+    }
+    if (argc == 4 && !strcmp(argv[2], "list")) {
+        wpsicon *w = wpsicon_open(argv[3]);
+        if (!w) { fprintf(stderr, "wpsctl: %s: not an icon package or PNG\n", argv[3]); return 1; }
+        int sz[32];
+        size_t n = wpsicon_sizes(w, sz, 32);
+        for (size_t i = 0; i < n; i++) printf("%s%d", i ? " " : "", sz[i]);
+        printf("%s\n", wpsicon_has_svg(w) ? (n ? " svg" : "svg") : "");
+        wpsicon_free(w);
+        return 0;
+    }
+    if (argc == 6 && !strcmp(argv[2], "render")) {
+        wpsicon *w = wpsicon_open(argv[3]);
+        int px = atoi(argv[4]), how = 0;
+        if (!w || px < 1 || px > 1024) {
+            fprintf(stderr, "wpsctl: icon render: a package and a size (1..1024)\n");
+            wpsicon_free(w);
+            return 1;
+        }
+        cairo_surface_t *s = wpsicon_render(w, px, &how);
+        wpsicon_free(w);
+        if (!s || cairo_surface_write_to_png(s, argv[5]) != CAIRO_STATUS_SUCCESS) {
+            fprintf(stderr, "wpsctl: icon render: cannot make %s\n", argv[5]);
+            if (s) cairo_surface_destroy(s);
+            return 1;
+        }
+        cairo_surface_destroy(s);
+        static const char *const rule[] = { "", "exact", "svg", "a whole multiple, averaged down", "the nearest larger, scaled down",
+                                            "the nearest smaller, scaled up" };
+        printf("%s (%s)\n", argv[5], how >= 1 && how <= 5 ? rule[how] : "?");
+        return 0;
+    }
+    return usage();
+}
+
 int main(int argc, char **argv)
 {
+    if (argc >= 2 && !strcmp(argv[1], "icon")) return icon_cmd(argc, argv);
     if (argc == 2 && !strcmp(argv[1], "--version")) { printf("wpsctl %s\n", WPS_VERSION); return 0; }
     if (argc < 2) return usage();
     const char *op = argv[1];

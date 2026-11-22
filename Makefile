@@ -106,9 +106,10 @@ $(B)/wps-watchd: service/watchd.c service/cbor.c service/cbor.h
 	@mkdir -p $(B)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/watchd.c service/cbor.c $(LDFLAGS)
 
-$(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h
+# (with the icon packages' code: `wpsctl icon` works on files, roadmap 0.4)
+$(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h gui/shell/wpsicon.c gui/shell/wpsicon.h
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/wpsctl.c service/cbor.c $(LDFLAGS)
+	$(CC) $(CFLAGS) $(SAN) -Iservice -Igui/shell $$(pkg-config --cflags cairo zlib) -o $@ service/wpsctl.c service/cbor.c gui/shell/wpsicon.c $(LDFLAGS) $$(pkg-config --libs cairo zlib)
 
 # M5: a plug-in for wps-plughost, and one built against a newer WPFolder
 # (1.1) than the one installed, which must be refused.
@@ -312,7 +313,25 @@ $(TV)/test_layout: tests/test_layout.c gui/shell/layout.c gui/shell/layout.h
 	@mkdir -p $(TV)
 	$(CC) $(G0FLAGS) $(SAN) -Igui/shell -Itests -o $@ tests/test_layout.c gui/shell/layout.c -lm
 
-gui: $(B)/wps-shell $(B)/wps-shell-asan $(TV)/test_ui_entry $(TV)/test_ui_mouse $(TV)/test_layout
+$(TV)/test_wpsicon: tests/test_wpsicon.c gui/shell/wpsicon.c gui/shell/wpsicon.h
+	@mkdir -p $(TV)
+	$(CC) $(G0FLAGS) $(SAN) -Igui/shell -Itests $$(pkg-config --cflags cairo zlib) -o $@ tests/test_wpsicon.c gui/shell/wpsicon.c $$(pkg-config --libs cairo zlib)
+
+# Icon themes (roadmap 0.4): WPS's isometric set as packages, a theme per
+# variant (tools/icons/make_theme.py, with Pillow: wps-flat, the default,
+# and wps-outline), and 0.2's pictures as the classic theme (packed by
+# wpsctl icon pack, which adds the standard sizes).
+ICONTHEMES := $(B)/icon-themes
+icons: $(ICONTHEMES)/.stamp
+$(ICONTHEMES)/.stamp: tools/icons/make_iso.py tools/icons/make_theme.py $(wildcard data/icons/*.png) $(B)/wpsctl
+	$(PYTHON) tools/icons/make_theme.py $(ICONTHEMES)
+	@mkdir -p $(ICONTHEMES)/classic
+	for f in data/icons/*.png; do $(B)/wpsctl icon pack "$$f" "$(ICONTHEMES)/classic/$$(basename "$$f" .png).wpsicon" > /dev/null || exit 1; done
+	printf '[Icon Theme]\nName=Classic\nComment=WPS 0.2 pictures\nVariant=classic\n' > $(ICONTHEMES)/classic/theme.ini
+	@touch $@
+.PHONY: icons
+
+gui: $(B)/wps-shell $(B)/wps-shell-asan $(TV)/test_ui_entry $(TV)/test_ui_mouse $(TV)/test_layout $(TV)/test_wpsicon
 
 # GUI unit tests (need the GUI's -devel packages, unlike make test)
 gui-test: gui
@@ -320,6 +339,7 @@ gui-test: gui
 	$(TV)/test_ui_entry
 	$(TV)/test_ui_mouse
 	$(TV)/test_layout
+	$(TV)/test_wpsicon
 
 # make install DESTDIR=... PREFIX=/usr: the programs, the user service,
 # the session on the login screen, the lock screen's PAM file and the
@@ -328,7 +348,7 @@ INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-sh
 EXT := gnome-extension/wps@wps-linux
 EXTDIR = $(DATADIR)/gnome-shell/extensions/wps@wps-linux
 subst = sed -e 's|@BINDIR@|$(BINDIR)|g' -e 's|@LIBEXECDIR@|$(LIBEXECDIR)|g'
-install: $(INSTALLED)
+install: $(INSTALLED) icons
 	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins
 	install -m 755 $(B)/wpsctl $(B)/wps-shell $(DESTDIR)$(BINDIR)/
 	install -m 755 $(B)/wpsd $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-compositor $(DESTDIR)$(LIBEXECDIR)/
@@ -340,6 +360,8 @@ install: $(INSTALLED)
 	install -m 644 data/wps-lock.pam $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
 	install -d $(DESTDIR)$(DATADIR)/wps/icons
 	install -m 644 data/icons/*.png $(DESTDIR)$(DATADIR)/wps/icons/
+	for t in $(ICONTHEMES)/*/; do d=$(DESTDIR)$(DATADIR)/wps/icon-themes/$$(basename "$$t"); \
+	    install -d "$$d" && install -m 644 "$$t"theme.ini "$$t"*.wpsicon "$$d"/ || exit 1; done
 	install -d $(DESTDIR)$(EXTDIR)/schemas
 	install -m 644 $(EXT)/metadata.json $(EXT)/extension.js $(DESTDIR)$(EXTDIR)/
 	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/
@@ -358,7 +380,7 @@ uninstall:
 	rm -f $(addprefix $(DESTDIR)$(LIBEXECDIR)/,wpsd wps-watchd wps-plughost wps-compositor)
 	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
-	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons
+	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons $(DESTDIR)$(DATADIR)/wps/icon-themes
 	rm -f $(addprefix $(DESTDIR)$(MANDIR)/man1/,wpsctl.1 wps-shell.1 wps-session.1)
 	-rmdir $(DESTDIR)$(DATADIR)/wps 2>/dev/null
 	-rmdir $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins $(DESTDIR)$(LIBDIR)/wps 2>/dev/null

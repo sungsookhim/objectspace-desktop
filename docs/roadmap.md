@@ -58,7 +58,7 @@ Everything still open after 0.3, by area; the version each goes into is in **Pro
 
 - **Prevent delete** on an object's General page (OS/2's no-delete style); WPS's own objects could start with it on (the owner's to-do).
 - **Confirm an extension change on rename** (when extensions are shown; the owner's to-do).
-- **File types from metadata, as OS/2's .TYPE EA:** **?** WPS honours `user.mime_type` when a file has one; a data file's **Type page** sets it (the owner's question).
+- **File types from metadata, as OS/2's .TYPE EA:** WPS honours `user.mime_type` when a file has one; a data file's **Type page** sets it. **After 0.4** (the owner's, 2026-11-22).
 - **A Program page for executable files** (today they keep the guess: text mode or not from the ELF file; scripts always get a terminal; programs that load their window library at run time get a terminal they do not need) (found in 0.3 step 7).
 - **A shadow's menu** is the shadow's own (Open, Properties): OS/2 showed its original's (Open With on a shadow of a file, for one) (found in 0.3 step 10).
 - **Programs that hand the file to a running instance** (most GNOME apps, Firefox) show it in use only for a moment.
@@ -264,7 +264,10 @@ A to do, after 0.2 (with network file systems below).
         5. the nearest smaller, scaled up: by a whole factor with nearest-neighbour (pixel art stays sharp: 64 from 32), else smoothly.
         Never a fractional nearest-neighbour scale (uneven pixels).
       - **SVG drawn by librsvg** in the process, sharp at any size.
-      - **WPS's own icons become packages of the isometric set** drawn by `tools/icons/make_iso.py` (2026-11-22: BeOS / Warp 4 style; sets A System Setup objects, B special folders (closed and open), C data files, D the basic kinds, E WPS's own icons redrawn; outline and flat variants). Every size is drawn on its own from the same shapes, not scaled from the master: the five standard sizes by default (`--sizes` adds others); sizes 48 and under get the small design (a bigger identifying feature, fewer details). The generator writes `.wpsicon` packages (its per-size PNGs; no SVG needed) into `data/icons`, and the RPM installs them; **?** which variant is the default (or a System choice).
+      - **The tool chain (done 2026-11-22):** `gui/shell/wpsicon.c` reads and writes packages and picks a size by the rules above (the SVG waits for librsvg); `wpsctl icon pack INPUT... OUT.wpsicon` (PNGs, an SVG or folders of them; the standard sizes added), `wpsctl icon list PACKAGE`, `wpsctl icon render PACKAGE SIZE OUT.png`; `tools/icons/make_theme.py` packs the isometric set into a theme per variant; `make icons` builds the themes into `build/icon-themes` (`wps-flat`, `wps-outline`, and `classic` from 0.2's pictures by `wpsctl icon pack`), `make install` and the RPM put them in `/usr/share/wps/icon-themes/THEME/` (`theme.ini` and `NAME.wpsicon`); `tests/test_wpsicon.c`.
+      - **Icon themes, a System choice** (the owner's, 2026-11-22): **Icon theme** on the System object: WPS (flat) - the default -, WPS (outline), Classic, and themes added to `~/.local/share/wps/icon-themes`. Applying one changes every object kind's and WPS's own icons at once; an object's own icon (its Icon page) stays.
+      - **Sizes are a starting point** (the owner's): the default icon size will be adjusted later; the themes hold 256, 128, 96, 64, 48, 40, 32 and 16, each drawn on its own.
+      - **WPS's own icons become packages of the isometric set** drawn by `tools/icons/make_iso.py` (2026-11-22: BeOS / Warp 4 style; sets A System Setup objects, B special folders (closed and open), C data files, D the basic kinds, E WPS's own icons redrawn; outline and flat variants). Every size is drawn on its own from the same shapes, not scaled from the master: the five standard sizes by default (`--sizes` adds others); sizes 48 and under get the small design (a bigger identifying feature, fewer details). The generator writes `.wpsicon` packages (its per-size PNGs; no SVG needed) into `data/icons`, and the RPM installs them; the flat variant is the default, the outline one a choice (the owner's).
       - **The open icon** (OS/2's animation icon): a second icon, shown while the object is open; the Icon page's second field, "Open".
       - **Icon size** for icon views and the desktop (System: 32, 40, 48, 64): 32 and 64 are standard sizes, so exact; 48 comes from 96 (2x, rule 3), 40 from 64 (rule 4) unless a package holds its own.
    2. **Folder layout and windows** (M; `layout.c`, the container, the folder's settings):
@@ -276,7 +279,7 @@ A to do, after 0.2 (with network file systems below).
    3. **Objects: safety and types** (M; wpsd's delete and rename, WPDataFile, WPProgram):
       - **Prevent delete** (General page; WPS's own objects on);
       - **confirm an extension change on rename;**
-      - **the Type page** of data files, and `user.mime_type` honoured (**?** the owner's choice: in 0.4, or later);
+      - (`user.mime_type` and the Type page: after 0.4, the owner's);
       - **a Program page for executable files** (type, close on exit, working directory, as for programs);
       - **a shadow's menu is its original's** (Open With on a shadow of a file);
       - programs started by wpsd get an **activation token** (they come to the front).
@@ -298,5 +301,6 @@ A to do, after 0.2 (with network file systems below).
    - **Undo for jobs;** disk full and quota errors.
    - **Central objects:** deduplication, cleanup, becoming `.wpobj` files.
    - **Find** in titles, classes and settings; an index.
+   - **File types from `user.mime_type`** and the Type page (after 0.4, the owner's).
    - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).
 6. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
