@@ -18,6 +18,8 @@ On Fedora 45, download the two RPMs from the [latest release](https://github.com
 | [docs/v0.2-design.md](docs/v0.2-design.md) | Version 0.2's design: the default desktop, live folders, Trash Can, Computer and Drives, Programs, the System folder and Startup, WarpCenter, Messages, settings objects, installation and versions |
 | [docs/v0.2-plan.md](docs/v0.2-plan.md) | Version 0.2's implementation plan: nine steps, their checks, order and risks |
 | [docs/release-notes-0.2.md](docs/release-notes-0.2.md) | Version 0.2's release notes: installing, what is new, known issues |
+| [docs/v0.3-design.md](docs/v0.3-design.md) | Version 0.3's design: the desktop's menu, backgrounds, sorting and columns, search, icon layout and locks, Open With, program settings, templates, fonts and sounds, the LaunchPad, Work Area folders |
+| [docs/v0.3-plan.md](docs/v0.3-plan.md) | Version 0.3's implementation plan: twelve steps, their checks, order and risks |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
@@ -34,7 +36,7 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
 7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `wps-compositor` and the WPS session. Done: version 0.1.
 8. Version 0.2 ([design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md), [release notes](docs/release-notes-0.2.md)): the OS/2 desktop, installable. Done.
-9. Next: 0.3, daily use and OS/2 fidelity ([roadmap](docs/roadmap.md)).
+9. Next: 0.3, daily use and OS/2 fidelity ([design](docs/v0.3-design.md), [plan](docs/v0.3-plan.md)). In progress.
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 

@@ -268,7 +268,7 @@ A to do, after 0.2 (with network file systems below).
       - the tray last (it can move to 0.3).
    7. **The LaunchPad and WarpCenter notebooks; Startup;** the Minimized Window Viewer.
    8. **The RPM** (`.spec`, RPM files on the release), tried on a fresh Fedora VM.
-2. **0.3 Daily use and OS/2 fidelity:**
+2. **0.3 Daily use and OS/2 fidelity** (designed in [v0.3-design.md](v0.3-design.md), planned in [v0.3-plan.md](v0.3-plan.md)):
    - Details-view sorting and columns; the folder search field; Open With.
    - Program settings: type, close on exit, terminal.
    - The desktop's own menu (Lockup, Shut down, System Setup with the settings objects); a Background page for the desktop's image (both the owner's).
