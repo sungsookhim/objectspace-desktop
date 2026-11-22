@@ -783,7 +783,11 @@ static void volume_done(void *arg)
 {
     struct vol_job *j = arg;
     wps_volumes_replace(&j->vs);
-    log_msg("volumes: %s", j->report);
+    static char last[sizeof j->report];   /* (logged when it changes: mounts rescan often) */
+    if (strcmp(last, j->report) != 0) {
+        log_msg("volumes: %s", j->report);
+        snprintf(last, sizeof last, "%s", j->report);
+    }
     if (strcmp(j->report, "no portable volumes") != 0) on_volumes_changed(j->report);
     if (j->reply) reply_simple_ok(j->reply, j->report);
     free(j);
