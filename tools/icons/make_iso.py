@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WPS's isometric icon set (draft, set A: System Setup objects).
+"""WPS's isometric icon set (set A: System Setup objects; set B: special folders).
 
 Style: isometric pixel art after BeOS / OS/2 Warp 4, 2:1 lines (2 across
 for 1 down; verticals straight), light from the upper left (top lightest,
@@ -13,8 +13,8 @@ Two variants:
   flat      - no outline: faces told apart by their shades alone
 
 Run from the tree's top:
-  python3 tools/icons/make_iso.py OUTDIR [--sizes 256,64,48,40,32]
-Writes OUTDIR/VARIANT/NAME-SIZE.png and contact sheets (needs Pillow)."""
+  python3 tools/icons/make_iso.py OUTDIR [--set A|B] [--sizes 256,64,48,40,32]
+Writes OUTDIR/set-X/VARIANT/NAME-SIZE.png and contact sheets (needs Pillow)."""
 import argparse
 import math
 import os
@@ -130,7 +130,14 @@ class Canvas:
         self.outline = max(1, round(n / 85))                        # 256: 3, 64 and down: 1
         self.inner = round(n / 128) if variant == "outline" else 0  # 256: 2, 128: 1, 64 and down: none
 
+    tx = ty = tz = 0
+
+    def at(self, dx, dy, dz=0):
+        """Shift what follows (call again with 0, 0 to stop)."""
+        self.tx, self.ty, self.tz = dx, dy, dz
+
     def P(self, x, y, z):
+        x, y, z = x + self.tx, y + self.ty, z + self.tz
         u, v = x - y, (x + y) / 2 - z
         if self.rec:
             b = self.bbox
@@ -176,6 +183,30 @@ class Canvas:
             t = i / layers
             d = inset * (1 - math.sqrt(1 - t * t))
             self.prism(fp_at(d), z0 + h * t, h / layers + 0.01, base, lift=min(0.9, t ** 1.4), edges=False)
+
+    def plate(self, pts2, O, U, W, N, t, base, edges=True, skip_end=None):
+        """A flat polygon (u, v) on the plane O + u U + v W, t thick along N;
+        faces shaded by their normals (any angle)."""
+        def pt(u, v, w):
+            return tuple(O[i] + u * U[i] + v * W[i] + w * N[i] for i in range(3))
+        def f_of(n):
+            l = math.sqrt(sum(a * a for a in n)) or 1
+            n = [a / l for a in n]
+            return 0.6 + 0.06 * n[0] + 0.26 * n[1] + 0.4 * n[2], sum(n)
+        pts2 = pts2 if area(pts2) > 0 else pts2[::-1]
+        for i in range(len(pts2)):
+            (au, av), (bu, bv) = pts2[i], pts2[(i + 1) % len(pts2)]
+            out2 = (bv - av, -(bu - au))                                    # outward in (u, v)
+            n = tuple(out2[0] * U[k] + out2[1] * W[k] for k in range(3))
+            f, vis = f_of(n)
+            if vis <= 1e-9 or (skip_end and skip_end(au, av, bu, bv)):
+                continue
+            self.face([pt(au, av, 0), pt(bu, bv, 0), pt(bu, bv, t), pt(au, av, t)], shade(base, f), edges)
+        for w, sgn in ((0, -1), (t, 1)):
+            n = tuple(sgn * a for a in N)
+            f, vis = f_of(n)
+            if vis > 1e-9:
+                self.face([pt(u, v, w) for u, v in pts2], shade(base, f), edges)
 
     def box(self, x0, x1, y0, y1, z0, z1, base, top=None):
         self.prism(rect(x0, x1, y0, y1), z0, z1 - z0, base, top)
@@ -492,10 +523,93 @@ def drive_missing(c):
         c.box(x, x + 10, -5, 5, z, z + 10, BLUE)
 
 
-ICONS = [("mouse", "Mouse", mouse), ("sound", "Sound", sound), ("scheme-palette", "Scheme Palette", scheme_palette),
+SET_A = [("mouse", "Mouse", mouse), ("sound", "Sound", sound), ("scheme-palette", "Scheme Palette", scheme_palette),
          ("system", "System", system), ("launchpad", "LaunchPad", launchpad), ("warpcenter", "WarpCenter", warpcenter),
          ("messages", "Messages", messages), ("restore-desktop", "Restore Desktop", restore_desktop),
          ("minwin-viewer", "Minimized Window Viewer", minwin_viewer), ("drive-missing", "Drive (not present)", drive_missing)]
+
+
+# ------------------------------------------------------------- set B: folders
+
+FOLD = YELLOW
+FX0, FX1 = -76, 32           # the folder spans x; its emblem stands to the right of FX1
+YB, YF, TH = -10, -2, 2      # back's y, front's y, the sheet's thickness
+
+
+def folder(c, opened=False, emblem=None):
+    """A folder: one sheet folded at the bottom - the back with its tab, the
+    front joined to it by the fold - papers between. Opened, the front
+    swings down toward the viewer (OS/2: the folder's window is open).
+    An emblem (a special folder's) stands at the lower right."""
+    HB, HF, TAB = 80, 66, 9
+    x0, x1 = FX0, FX1
+    back = [(x0, 0), (x1, 0), (x1, HB), (x0 + 44, HB), (x0 + 40, HB + TAB), (x0, HB + TAB)]
+    c.plate(back, (0, YB, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0), TH, FOLD)
+    c.plate(rect(x0, x1, YB, YF + TH), (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), TH, FOLD)   # the fold
+    for k, (dx0, dx1, h, col) in enumerate(((6, -10, HB - 6, WHITE), (12, -4, HB - 12, PAPER))):
+        c.plate(rect(x0 + dx0, x1 + dx1, 0, h), (0, YB + TH + 1.5 + k * 2, TH), (1, 0, 0), (0, 0, 1), (0, 1, 0), 1, col)
+    a = math.radians(62 if opened else 0)
+    W, N = (0, math.sin(a), math.cos(a)), (0, math.cos(a), -math.sin(a))
+    c.plate(rect(x0, x1, 0, HF), (0, YF, 0), (1, 0, 0), W, N, TH, FOLD)
+    if emblem:
+        c.at(FX1 - 4, 4)
+        emblem(c)
+        c.at(0, 0)
+
+
+def slab_y(c, y, depth, pts, col):
+    """A flat shape with some thickness, standing on the face y."""
+    for k in range(int(depth)):
+        c.on_y(y - depth + k, pts, shade(col, 0.55), edge=False)
+    c.on_y(y, pts, col)
+
+
+# emblems: drawn about x 0..62, y 0..42, standing on the floor
+
+def e_templates(c):
+    """OS/2's template pad: sheets, the top one lined, a red binding."""
+    for k in range(4):
+        c.box(4 - k * 2, 52 - k * 2, 10 + k * 3, 12 + k * 3, 0, 52 - k, WHITE if k % 2 else PAPER)
+    for z in (38, 28, 18):
+        c.on_y(21.1, sq(4, 36, z, z + 3), PLASTIC_D, edge=False)
+    c.box(-4, 50, 8, 22, 52, 60, RED)
+
+
+def e_startup(c):
+    slab_y(c, 24, 7, circ(28, 30, 28, 32), GREEN)
+    c.on_y(24.2, [(17, 14), (17, 46), (45, 30)], WHITE)
+
+
+def e_home(c):
+    x0, x1, y0, y1, h = 4, 58, 2, 40, 32
+    c.box(x0, x1, y0, y1, 0, h, PAPER)
+    yr, zr = (y0 + y1) / 2, h + 24
+    c.face([(x1, y0, h), (x1, y1, h), (x1, yr, zr)], shade(PAPER, RIGHT))
+    c.face([(x0 - 4, y1 + 5, h - 4), (x1 + 4, y1 + 5, h - 4), (x1 + 4, yr, zr + 1), (x0 - 4, yr, zr + 1)], shade(RED, 0.95))
+    c.face([(x1 + 4, y1 + 5, h - 4), (x1 + 4, yr, zr + 1), (x1 + 4, yr, zr - 4), (x1 + 4, y1 + 5, h - 9)], shade(RED, 0.5))
+    c.on_y(y1 + 0.1, sq(14, 26, 0, 20), (130, 84, 48))
+    c.on_y(y1 + 0.1, sq(36, 50, 12, 24), SCREEN_L)
+
+
+def e_drives(c):
+    for z in (0, 20):
+        c.box(-2, 62, 8, 42, z, z + 18, (186, 188, 194))
+        for x in range(4, 30, 7):
+            c.on_y(42.1, sq(x, x + 3, z + 5, z + 13), PLASTIC_D, edge=False)
+        c.on_y(42.1, circ(52, z + 9, 3.5, 10), LCD_ON, edge=False)
+
+
+def e_programs(c):
+    for (x, y, z), col in (((26, 4, 0), BLUE), ((26, 4, 22), RED), ((0, 26, 0), GREEN), ((34, 30, 0), PURPLE)):
+        c.box(x, x + 22, y, y + 22, z, z + 22, col)
+        c.on_y(y + 22.2, sq(x + 4, x + 18, z + 14, z + 18), WHITE, edge=False)
+
+
+FOLDERS = [("folder", "Folder", None), ("templates", "Templates", e_templates), ("startup", "Startup", e_startup),
+           ("home", "Home", e_home), ("drives", "Drives", e_drives), ("programs", "Programs", e_programs)]
+SET_B = [entry for name, title, e in FOLDERS
+         for entry in ((name, title, lambda c, e=e: folder(c, False, e)),
+                       (name + "-open", title + " (open)", lambda c, e=e: folder(c, True, e)))]
 
 
 def render(fn, n, variant):
@@ -517,15 +631,15 @@ def font(sz):
         return ImageFont.load_default(sz)
 
 
-def sheets(out, imgs, sizes):
+def sheets(out, imgs, sizes, ICONS, tag):
     f, fb = font(14), font(18)
     big = [s for s in sizes if s >= 128]
     for variant in ("outline", "flat"):
         for s in big:   # the masters, 5 to a row
-            cols, cell = 5, s + 24
-            sh = Image.new("RGBA", (cols * cell, 40 + 2 * (cell + 24)), (196, 198, 202, 255))
+            cols, cell = (4 if tag == "B" else 5), s + 24
+            sh = Image.new("RGBA", (cols * cell, 40 + -(-len(ICONS) // cols) * (cell + 24)), (196, 198, 202, 255))
             d = ImageDraw.Draw(sh)
-            d.text((12, 10), f"WPS icons, set A - {variant}, {s} px", fill=(20, 20, 20), font=fb)
+            d.text((12, 10), f"WPS icons, set {tag} - {variant}, {s} px", fill=(20, 20, 20), font=fb)
             for i, (name, title, _) in enumerate(ICONS):
                 x, y = (i % cols) * cell + 12, 40 + (i // cols) * (cell + 24)
                 sh.alpha_composite(imgs[variant, name, s], (x, y))
@@ -557,21 +671,26 @@ def sheets(out, imgs, sizes):
     sh.save(f"{out}/sheet-small.png")
 
 
+SETS = {"A": SET_A, "B": SET_B}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
+    ap.add_argument("--set", default="A", choices=sorted(SETS))
     ap.add_argument("--sizes", default="256,64,48,40,32")
     a = ap.parse_args()
     sizes = [int(s) for s in a.sizes.split(",")]
+    icons, out = SETS[a.set], f"{a.out}/set-{a.set}"
     imgs = {}
     for variant in ("outline", "flat"):
-        os.makedirs(f"{a.out}/{variant}", exist_ok=True)
-        for name, _, fn in ICONS:
+        os.makedirs(f"{out}/{variant}", exist_ok=True)
+        for name, _, fn in icons:
             for s in sizes:
                 im = render(fn, s, variant)
-                im.save(f"{a.out}/{variant}/{name}-{s}.png")
+                im.save(f"{out}/{variant}/{name}-{s}.png")
                 imgs[variant, name, s] = im
-    sheets(a.out, imgs, sizes)
+    sheets(out, imgs, sizes, icons, a.set)
 
 
 if __name__ == "__main__":

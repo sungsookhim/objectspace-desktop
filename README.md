@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: **version 0.2** (2026-11-21): the OS/2 desktop, installable. A new user gets System, Programs and the Trash Can on the desktop; Computer and Drives; the WarpCenter with Messages and a tray; Startup; open windows restored at login; an RPM for Fedora 45. Built on 0.1's object core (M0–M5) and GUI (G0–G5): folder windows, settings objects, the LaunchPad, Find, drag and drop, input methods and accessibility, inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). See the [release notes](docs/release-notes-0.2.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
+Status: **version 0.3** (2026-11-22): daily use and OS/2 fidelity. Folders sort by heading, filter as you type (Ctrl+F) and show every title whole, with icons that can be locked in place; Open With and program settings; New and Create another from templates; OS/2's Font Palette; the desktop's own background; a LaunchPad that matches the WarpCenter, with tooltips. Built on 0.2 (the OS/2 desktop, installable as an RPM for Fedora 45) and 0.1's object core and GUI, inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). See the [release notes](docs/release-notes-0.3.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
 
 ## Installing
 
@@ -20,6 +20,7 @@ On Fedora 45, download the two RPMs from the [latest release](https://github.com
 | [docs/release-notes-0.2.md](docs/release-notes-0.2.md) | Version 0.2's release notes: installing, what is new, known issues |
 | [docs/v0.3-design.md](docs/v0.3-design.md) | Version 0.3's design: the desktop's menu, backgrounds, sorting and columns, search, icon layout and locks, Open With, program settings, templates, fonts and sounds, the LaunchPad (Work Area folders designed for 0.4) |
 | [docs/v0.3-plan.md](docs/v0.3-plan.md) | Version 0.3's implementation plan: eleven steps, their checks, order and risks |
+| [docs/release-notes-0.3.md](docs/release-notes-0.3.md) | Version 0.3's release notes: installing and upgrading, what is new, known issues |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
@@ -36,7 +37,8 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
 7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `wps-compositor` and the WPS session. Done: version 0.1.
 8. Version 0.2 ([design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md), [release notes](docs/release-notes-0.2.md)): the OS/2 desktop, installable. Done.
-9. Next: 0.3, daily use and OS/2 fidelity ([design](docs/v0.3-design.md), [plan](docs/v0.3-plan.md)). In progress.
+9. Version 0.3 ([design](docs/v0.3-design.md), [plan](docs/v0.3-plan.md), [release notes](docs/release-notes-0.3.md)): daily use and OS/2 fidelity. Done.
+10. Next: 0.4 (Work Area folders, icon packages, OS/2's free icon layout and the owner's to-dos in [docs/roadmap.md](docs/roadmap.md)).
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 

@@ -27,6 +27,10 @@ Tagged `v0.1`. What it holds:
 
 Tagged `v0.2`; the RPMs are attached to its GitHub release. The objectives below (1–6, the RPM, open windows restored at login) are done, and the tray too; COPR was left out (the owner's choice). What it holds is in the [release notes](release-notes-0.2.md).
 
+## Version 0.3 (released 2026-11-22)
+
+Tagged `v0.3`; the RPMs are attached to its GitHub release. All eleven steps of [v0.3-plan.md](v0.3-plan.md) are done, with the owner's changes along the way; Work Area folders and icon packages moved to 0.4. What it holds is in the [release notes](release-notes-0.3.md).
+
 ## Open and deferred work
 
 Each item says where it stands. **D** marks something the owner deferred; **?** a choice still to make.
