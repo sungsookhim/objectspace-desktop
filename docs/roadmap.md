@@ -77,7 +77,7 @@ Everything still open after 0.3, by area; the version each goes into is in **Pro
 
 - **Work Area folders** (OS/2's; designed in [v0.3-design.md](v0.3-design.md) section 12; moved to 0.4 by the owner).
 - **D** **More than one monitor:** the desktop covers the first screen only, in both modes.
-- **WPS's frame around GTK 4 / libadwaita programs:** a per-application setting to hide their title bar and frame them.
+- **GTK 4 / libadwaita programs keep their own title bars** (decided with the above: their header bars hold their buttons and menus).
 - **D** **Sharp X11 programs on scaled screens** (the compositor's own scaling of X11 windows).
 - **D** **WPS over RDP:** Mutter's RemoteDesktop and ScreenCast interfaces, or a headless compositor served by wayvnc.
 - **Suspend after idle** (GNOME's power settings) is not followed.
@@ -85,7 +85,8 @@ Everything still open after 0.3, by area; the version each goes into is in **Pro
 
 ### Look of other programs (not designed)
 
-- **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours: a GTK 3 theme, a GTK 4 / libadwaita stylesheet (limited by design), a Qt style, a WPS icon and cursor theme, all driven by the scheme objects. **?** How far to go with libadwaita.
+- **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours: a GTK 3 theme, a Qt style, a WPS icon and cursor theme, all driven by the scheme objects.
+- **libadwaita (GTK 4) programs keep their own look** (decided, the owner's, 2026-11-22): no stylesheet over them; their skin is honoured. **An option:** the scheme's colours (accent, light or dark) through libadwaita's supported settings, a Scheme Palette choice, off by default.
 
 ### Object core (deferred in its design)
 
@@ -291,8 +292,8 @@ A to do, after 0.2 (with network file systems below).
    5. **Work Area folders** (M–L; the compositor, wpsd's tracking, the session): a folder set as a work area groups the programs opened from it; opening, minimizing and closing the folder do the same to their windows; restored at login. Builds on the in-use tracking, the compositor's per-program window control and the restored windows of 0.2; inside GNOME through the extension.
    6. **Fixes and tests carried** (S): the flaky and unrerun tests above; Open With's list read off wpsd's loop; the LaunchPad drawer cascade opening outward on the left; the release (RPMs, notes, tag).
 4. **0.5 The look of other programs and more screens** (the compositor and themes):
-   - **Themes driven by the scheme objects:** a GTK 3 theme, a WPS icon theme (from 0.4's packages) and cursor theme; a GTK 4 / libadwaita stylesheet as far as it goes (**?** how far); a Qt style.
-   - **WPS's frame around GTK 4 / libadwaita programs** (a per-application setting).
+   - **Themes driven by the scheme objects:** a GTK 3 theme, a WPS icon theme (from 0.4's packages) and cursor theme, a Qt style.
+   - **libadwaita programs keep their own look and title bars** (the owner's); the scheme's colours offered to them as an option (Scheme Palette, off by default).
    - **More than one monitor** (the desktop on each; the WarpCenter on one) (**D** until then).
    - **Sharp X11 programs on scaled screens.**
    - **Suspend after idle.**
