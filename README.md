@@ -18,8 +18,8 @@ On Fedora 45, download the two RPMs from the [latest release](https://github.com
 | [docs/v0.2-design.md](docs/v0.2-design.md) | Version 0.2's design: the default desktop, live folders, Trash Can, Computer and Drives, Programs, the System folder and Startup, WarpCenter, Messages, settings objects, installation and versions |
 | [docs/v0.2-plan.md](docs/v0.2-plan.md) | Version 0.2's implementation plan: nine steps, their checks, order and risks |
 | [docs/release-notes-0.2.md](docs/release-notes-0.2.md) | Version 0.2's release notes: installing, what is new, known issues |
-| [docs/v0.3-design.md](docs/v0.3-design.md) | Version 0.3's design: the desktop's menu, backgrounds, sorting and columns, search, icon layout and locks, Open With, program settings, templates, fonts and sounds, the LaunchPad, Work Area folders |
-| [docs/v0.3-plan.md](docs/v0.3-plan.md) | Version 0.3's implementation plan: twelve steps, their checks, order and risks |
+| [docs/v0.3-design.md](docs/v0.3-design.md) | Version 0.3's design: the desktop's menu, backgrounds, sorting and columns, search, icon layout and locks, Open With, program settings, templates, fonts and sounds, the LaunchPad (Work Area folders designed for 0.4) |
+| [docs/v0.3-plan.md](docs/v0.3-plan.md) | Version 0.3's implementation plan: eleven steps, their checks, order and risks |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |

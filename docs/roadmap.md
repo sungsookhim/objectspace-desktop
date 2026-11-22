@@ -44,7 +44,7 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
   - Program type: text-mode or not is guessed from the ELF file, and scripts always get a terminal.
   - "Close window on exit".
   - The terminal to use: `WPS_TERMINAL` today.
-- **Hidden and lock files** (`.~lock.*#`, `.*.swp`) are listed; **?** a "show hidden files" setting.
+- **Hidden and lock files** (`.~lock.*#`, `.*.swp`) are listed. **Decided** (0.3): lock files never listed; Show hidden files is one system choice in the System object.
 - **Templates:**
   - Moving a template by dragging (every drag makes a new object).
   - A "New" cascade listing the templates.
@@ -276,12 +276,13 @@ A to do, after 0.2 (with network file systems below).
    - Templates' "New" cascade and moving templates.
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
-   - **Work Area folders** (OS/2's; added 2026-11-21). A folder set as a work area treats the programs opened from it as one group, and also restores them at login (programs restarted in their folder). Opening, minimizing and closing the folder do the same to the group's windows.
+3. **0.4 Look of other programs and Work Areas:** the theming pieces above, and frames for GTK 4 programs.
+   - **Work Area folders** (OS/2's; added 2026-11-21; moved from 0.3 by the owner; designed in [v0.3-design.md](v0.3-design.md) section 12). A folder set as a work area treats the programs opened from it as one group, and also restores them at login (programs restarted in their folder). Opening, minimizing and closing the folder do the same to the group's windows.
      - **Builds on:** wpsd's tracking of which programs were started from which object (the in-use emphasis), the compositor's per-program window control (step 6), and open windows restored at login (0.2).
      - **New:** linking a program's process to its windows (the compositor), the folder's setting in its notebook, and the group's state kept at logout.
      - **Inside GNOME:** through the extension.
      - **Size: M–L.**
-3. **0.4 Look of other programs:** the theming pieces above, and frames for GTK 4 programs.
+
 4. **0.5 Platform:**
    - RDP; more than one monitor; sharp X11 when scaled.
    - The Network object and network file systems.
