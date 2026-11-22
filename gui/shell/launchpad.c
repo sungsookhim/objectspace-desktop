@@ -20,14 +20,15 @@
 #include "findwin.h"
 #include "mime.h"
 #include "icons.h"
+#include "objmenu.h"
+#include "tooltip.h"
+#include "wps_menu_ids.h"
 
 #define GRIP_W 12.0
-#define SYS_W 40.0           /* OS/2's own buttons */
 #define SEP_W 8.0
-#define BTN_W 56.0           /* an object's button */
-#define ARROW_H 12.0         /* the drawer arrow above each object button */
-#define BTN_H 56.0
+#define ARROW_H 12.0         /* the drawer arrow above each object button (beside it, vertical) */
 #define PAD 3.0
+/* (sizes from its settings: SYS_W, BTN_W, BTN_H below) */
 #define NSYS 4
 #define MAX_ITEMS 64
 #define DRAWER_ROW 30.0
@@ -57,6 +58,8 @@ struct drawer {
     ssize_t hot;
     ssize_t down;              /* the row pressed in it (the release of the
                                   click that opened it is not a choice) */
+    int64_t sub;               /* its folder followed while it is open */
+    objmenu *cascade;          /* a folder's cascade from it (objmenu.h) */
 };
 
 static struct {
@@ -78,21 +81,43 @@ static struct {
     uint32_t r_serial;
     ssize_t dragging;          /* the object button being dragged (from this bar), -1 none */
     char drag_wps[PATH_MAX + 64], drag_uri[3 * PATH_MAX + 64];
-} lp = { .pressed = -1, .drop_at = -1, .r_press = -1, .dragging = -1 };
+    /* the LaunchPad object's settings (OS/2's, v0.3-design 11) */
+    bool vertical, small, text, float_top, close_drawer;
+    void (*open_props)(const char *addr);
+    objmenu *obj_menu_m;       /* (unused: object menus come from wpsd) */
+} lp = { .pressed = -1, .drop_at = -1, .r_press = -1, .dragging = -1, .text = true, .float_top = true, .close_drawer = true };
 
 static void reload(void);
 static void start_drag(ui_surface *s, size_t i, uint32_t serial);
 static void drawer_close(void);
+static void cascade_open(size_t row);
+static void drawer_sub(void *arg, const cv *reply);
+static void drawer_got(void *arg, const cv *reply);
+static void opened(void *arg, const cv *reply);
 
 /* -------------------------------------------------------------- geometry */
 
-static double obj_x(size_t i) { return GRIP_W + NSYS * SYS_W + SEP_W + (double)i * BTN_W; }
-static double bar_w(void) { return obj_x(lp.n ? lp.n : 1) + PAD; }
-static double bar_h(void) { return ARROW_H + BTN_H + 2 * PAD; }
+/* Along the bar (x; y when vertical) and across it. Buttons: SYS_W and
+ * BTN_W along, BTN_H across (vertical with text: wide enough for it). */
+#define SYS_W (lp.small ? 28.0 : 40.0)
+#define BTN_W (lp.small ? (lp.text && !lp.vertical ? 48.0 : 30.0) : (lp.text && !lp.vertical ? 56.0 : 42.0))
+#define BTN_H (lp.vertical && lp.text ? (lp.small ? 130.0 : 150.0) : lp.small ? (lp.text ? 40.0 : 28.0) : (lp.text ? 56.0 : 42.0))
+#define ICON_PX (lp.small ? 16.0 : 32.0)
 
-static ui_rect sys_rect(size_t i) { return (ui_rect){ GRIP_W + (double)i * SYS_W, ARROW_H + PAD, SYS_W - 2, BTN_H }; }
-static ui_rect obj_rect(size_t i) { return (ui_rect){ obj_x(i), ARROW_H + PAD, BTN_W - 2, BTN_H }; }
-static ui_rect arrow_rect(size_t i) { return (ui_rect){ obj_x(i), PAD, BTN_W - 2, ARROW_H - 1 }; }
+static ui_rect at(double a, double c, double la, double lc)
+{
+    return lp.vertical ? (ui_rect){ c, a, lc, la } : (ui_rect){ a, c, la, lc };
+}
+
+static double obj_x(size_t i) { return GRIP_W + NSYS * SYS_W + SEP_W + (double)i * BTN_W; }
+static double bar_len(void) { return obj_x(lp.n ? lp.n : 1) + PAD; }
+static double bar_cross(void) { return ARROW_H + BTN_H + 2 * PAD; }
+static double bar_w(void) { return lp.vertical ? bar_cross() : bar_len(); }
+static double bar_h(void) { return lp.vertical ? bar_len() : bar_cross(); }
+
+static ui_rect sys_rect(size_t i) { return at(GRIP_W + (double)i * SYS_W, ARROW_H + PAD, SYS_W - 2, BTN_H); }
+static ui_rect obj_rect(size_t i) { return at(obj_x(i), ARROW_H + PAD, BTN_W - 2, BTN_H); }
+static ui_rect arrow_rect(size_t i) { return at(obj_x(i), PAD, BTN_W - 2, ARROW_H - 1); }
 
 static bool in(ui_rect r, double x, double y) { return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h; }
 
@@ -101,7 +126,7 @@ static bool in(ui_rect r, double x, double y) { return x >= r.x && y >= r.y && x
 static ssize_t hit(double x, double y, bool *arrow)
 {
     *arrow = false;
-    if (x < GRIP_W) return -2;
+    if ((lp.vertical ? y : x) < GRIP_W) return -2;
     for (size_t i = 0; i < NSYS; i++) if (in(sys_rect(i), x, y)) return (ssize_t)i;
     for (size_t i = 0; i < lp.n; i++) {
         if (in(obj_rect(i), x, y)) return (ssize_t)(NSYS + i);
@@ -258,8 +283,22 @@ static void got_sub(void *arg, const cv *reply)
     if (r && r->k == CV_INT) lp.sub = r->i;
 }
 
+static void drawer_sub(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *r = reply ? cv_get(reply, "result") : NULL;
+    if (!r || r->k != CV_INT) return;
+    if (!lp.drawer.s) { svc_unsubscribe(r->i); return; }   /* (closed meanwhile) */
+    if (lp.drawer.sub) svc_unsubscribe(lp.drawer.sub);
+    lp.drawer.sub = r->i;
+}
+
 bool launchpad_event(const char *name, int64_t sub)
 {
+    if (lp.drawer.s && lp.drawer.sub && sub == lp.drawer.sub) {   /* its drawer's folder changed */
+        svc_list(lp.drawer.dir, 0, MAX_ITEMS, true, drawer_got, NULL);
+        return true;
+    }
     if (!lp.s || !lp.sub || sub != lp.sub) return false;
     if (strcmp(name, "folder_moved")) reload();
     return true;
@@ -384,6 +423,7 @@ static void drawer_got(void *arg, const cv *reply)
     (void)arg;
     struct drawer *d = &lp.drawer;
     if (!d->s) return;
+    if (d->hot >= 0) tooltip_hide();
     d->n = parse(reply, d->items, MAX_ITEMS);
     d->loaded = true;
     drawer_layout();
@@ -407,6 +447,16 @@ static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     for (size_t i = 0; i < d->n; i++) {
         ui_rect r = { PAD, PAD + (double)i * DRAWER_ROW, DRAWER_W - 2 * PAD, DRAWER_ROW };
         if ((ssize_t)i == d->hot) ui_fill(cr, r, k->menu_hilite);
+        if (d->items[i].kind == UI_KIND_FOLDER) {   /* its cascade (the WarpCenter's menus) */
+            ui_set_color(cr, (ssize_t)i == d->hot ? k->menu_hilite_text : k->text);
+            double ax = r.x + r.w - 10, ay = r.y + r.h / 2;
+            cairo_move_to(cr, ax - 3, ay - 5);
+            cairo_line_to(cr, ax + 2, ay);
+            cairo_line_to(cr, ax - 3, ay + 5);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+            r.w -= 16;
+        }
         ui_item it = { .loaded = true, .detailed = true, .kind = d->items[i].kind, .shadow = d->items[i].shadow,
                        .link = d->items[i].link };
         it.image = icons_get(d->items[i].icon);
@@ -430,13 +480,61 @@ static void drawer_pointer(ui_surface *s, const ui_pointer_event *e)
         ui_surface_damage_all(s);
     } else if (e->kind == UI_PRESS && e->button == UI_BTN1) {
         d->down = row;
+        /* a folder's arrow: its cascade, as the WarpCenter's menus */
+        if (row >= 0 && d->items[row].kind == UI_KIND_FOLDER && e->x >= DRAWER_W - 2 * PAD - 18) {
+            d->down = -1;
+            cascade_open((size_t)row);
+        }
     } else if (e->kind == UI_RELEASE && e->button == UI_BTN1 && row >= 0 && row == d->down) {
         struct entry it = d->items[row];
         char dir[PATH_MAX];
         snprintf(dir, sizeof dir, "%s", d->dir);
-        drawer_close();
+        if (lp.close_drawer) drawer_close();   /* (the setting off: it stays open) */
         open_entry(dir, &it);
     }
+}
+
+/* A folder in a drawer: its objects as a cascade with icons (objmenu.h). */
+static size_t cascade_row;
+
+static void cascade_chosen(void *arg, int64_t id)
+{
+    objmenu *m = arg;
+    struct drawer *d = &lp.drawer;
+    char addr[PATH_MAX], title[256];
+    bool folder;
+    if (m && objmenu_choice(m, id, addr, sizeof addr, &folder, title, sizeof title)) {
+        events_raise("object.open", title, "launchpad", (ui_rect){ 0, 0, 0, 0 });
+        if (folder) lp.open_folder(addr);
+        else svc_open(addr, false, opened, NULL);
+        if (lp.close_drawer) drawer_close();
+    }
+    if (d->cascade == m) d->cascade = NULL;
+    objmenu_free(m);
+}
+
+static void cascade_read(objmenu *m, void *ctx)
+{
+    (void)ctx;
+    struct drawer *d = &lp.drawer;
+    if (!d->s || d->cascade != m) { if (d->cascade != m) objmenu_free(m); return; }
+    size_t n = 0;
+    ui_menu_item *it = objmenu_items(m, &n, true, 0);
+    ui_menu_popup_icons(d->s, it, n, DRAWER_W - PAD, PAD + (double)cascade_row * DRAWER_ROW, ui_app_input_serial(lp.app),
+                        cascade_chosen, m, objmenu_icon);
+    ui_menu_items_free(it, n);
+}
+
+static void cascade_open(size_t row)
+{
+    struct drawer *d = &lp.drawer;
+    if (row >= d->n) return;
+    char a[PATH_MAX + 32];
+    address(d->dir, &d->items[row], a, sizeof a);
+    const char *folder = (d->items[row].shadow || d->items[row].link) && d->items[row].target[0] == '/' ? d->items[row].target : a;
+    if (d->cascade) objmenu_free(d->cascade);
+    cascade_row = row;
+    d->cascade = objmenu_read(folder, 3, cascade_read, NULL);
 }
 
 /* A closed drawer's popup, until it is destroyed: not inside its own
@@ -456,6 +554,9 @@ static void drawer_close(void)
 {
     struct drawer *d = &lp.drawer;
     if (!d->s) return;
+    if (d->sub) svc_unsubscribe(d->sub);   /* (no longer followed) */
+    d->sub = 0;
+    if (d->cascade) { objmenu_free(d->cascade); d->cascade = NULL; }
     drawer_free(NULL);   /* an older one first */
     dying = d->s;
     d->s = NULL;
@@ -479,9 +580,12 @@ static void drawer_open(size_t i, uint32_t serial)
     d->hot = d->down = -1;
     drawer_dir(i, d->dir, sizeof d->dir);
     mkdirs(d->dir);
-    /* above its button, as OS/2's drawers opened (below if there is no room) */
-    d->s = ui_popup_new_above(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial);
+    /* above its button, as OS/2's drawers opened (below if there is no
+     * room); beside it on a vertical LaunchPad */
+    d->s = lp.vertical ? ui_popup_new(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial)
+                       : ui_popup_new_above(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial);
     svc_list(d->dir, 0, MAX_ITEMS, true, drawer_got, NULL);
+    svc_subscribe_folder(d->dir, drawer_sub, NULL);   /* followed while open */
     events_raise("menu.open", lp.items[i].title, "launchpad", (ui_rect){ 0, 0, 0, 0 });
     ui_surface_damage_all(lp.s);
 }
@@ -570,9 +674,9 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, all, k->face);
     ui_bevel(cr, all, true);
     /* the grip: it moves the LaunchPad */
-    for (double y = 6; y < all.h - 6; y += 4) {
-        ui_fill(cr, (ui_rect){ 4, y, 2, 2 }, k->light);
-        ui_fill(cr, (ui_rect){ 5, y + 1, 2, 2 }, k->shadow);
+    for (double c = 6; c < bar_cross() - 6; c += 4) {
+        ui_fill(cr, at(4, c, 2, 2), k->light);
+        ui_fill(cr, at(5, c + 1, 2, 2), k->shadow);
     }
     for (size_t i = 0; i < NSYS; i++) {
         ui_rect r = sys_rect(i);
@@ -584,8 +688,8 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         if (lp.focused && lp.kfocus == i) focus_ring(cr, (ui_rect){ r.x + 3, r.y + 3, r.w - 6, r.h - 6 });
     }
     double sx = GRIP_W + NSYS * SYS_W + SEP_W / 2 - 1;
-    ui_fill(cr, (ui_rect){ sx, ARROW_H + PAD + 2, 1, BTN_H - 4 }, k->shadow);
-    ui_fill(cr, (ui_rect){ sx + 1, ARROW_H + PAD + 2, 1, BTN_H - 4 }, k->light);
+    ui_fill(cr, at(sx, ARROW_H + PAD + 2, 1, BTN_H - 4), k->shadow);
+    ui_fill(cr, at(sx + 1, ARROW_H + PAD + 2, 1, BTN_H - 4), k->light);
     if (!lp.n) {
         ui_rect r = obj_rect(0);
         ui_set_color(cr, k->disabled_text);
@@ -599,40 +703,44 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         if ((target && lp.drop_arrow) || open) ui_fill(cr, a, k->selection);
         ui_set_color(cr, (target && lp.drop_arrow) || open ? k->selection_text : k->text);
         double ax = a.x + a.w / 2, ay = a.y + a.h / 2;
-        cairo_move_to(cr, ax - 5, ay + 2);
-        cairo_line_to(cr, ax + 5, ay + 2);
-        cairo_line_to(cr, ax, ay - 3);
+        if (lp.vertical) {   /* pointing out to the side, where the drawer opens */
+            cairo_move_to(cr, ax + 2, ay - 5);
+            cairo_line_to(cr, ax + 2, ay + 5);
+            cairo_line_to(cr, ax - 3, ay);
+        } else {
+            cairo_move_to(cr, ax - 5, ay + 2);
+            cairo_line_to(cr, ax + 5, ay + 2);
+            cairo_line_to(cr, ax, ay - 3);
+        }
         cairo_close_path(cr);
         cairo_fill(cr);
         if (target && !lp.drop_arrow) ui_fill(cr, r, k->selection);
         ui_bevel(cr, r, !down);
         ui_item it = { .loaded = true, .detailed = true, .kind = lp.items[i].kind, .shadow = lp.items[i].shadow,
                        .link = lp.items[i].link };
-        double d = down ? 1 : 0;
+        double d = down ? 1 : 0, ip = ICON_PX;
         it.image = icons_get(lp.items[i].icon);
-        ui_draw_item_icon(cr, &it, r.x + (r.w - 32) / 2 + d, r.y + 4 + d, 32);
+        /* the icon: centred, above the title (horizontal), or left of it (vertical) */
+        double ix = lp.vertical && lp.text ? r.x + 5 : r.x + (r.w - ip) / 2;
+        double iy = lp.text && !lp.vertical ? r.y + 4 : r.y + (r.h - ip) / 2;
+        ui_draw_item_icon(cr, &it, ix + d, iy + d, ip);
         if (lp.focused && lp.kfocus == NSYS + i) focus_ring(cr, (ui_rect){ r.x + 3, r.y + 3, r.w - 6, r.h - 6 });
-        ui_set_color(cr, k->text);
-        double tw = ui_text_width(UI_FONT_REGULAR, lp.items[i].title);
-        double tx = tw < r.w - 4 ? r.x + (r.w - tw) / 2 : r.x + 2;
-        cairo_save(cr);
-        cairo_rectangle(cr, r.x + 1, r.y, r.w - 2, r.h);
-        cairo_clip(cr);
-        ui_text_draw(cr, UI_FONT_REGULAR, tx + d, r.y + r.h - 6 + d, lp.items[i].title, r.w - 4);
-        cairo_restore(cr);
+        if (lp.text) {
+            ui_set_color(cr, k->text);
+            cairo_save(cr);
+            cairo_rectangle(cr, r.x + 1, r.y, r.w - 2, r.h);
+            cairo_clip(cr);
+            if (lp.vertical) {
+                ui_text_draw(cr, UI_FONT_REGULAR, ix + ip + 6 + d, r.y + (r.h + ui_text_ascent()) / 2 - 1 + d, lp.items[i].title,
+                             r.x + r.w - (ix + ip + 6) - 4);
+            } else {
+                double tw = ui_text_width(UI_FONT_REGULAR, lp.items[i].title);
+                double tx = tw < r.w - 4 ? r.x + (r.w - tw) / 2 : r.x + 2;
+                ui_text_draw(cr, UI_FONT_REGULAR, tx + d, r.y + r.h - 6 + d, lp.items[i].title, r.w - 4);
+            }
+            cairo_restore(cr);
+        }
     }
-}
-
-struct menu_ctx { size_t i; };
-
-static void menu_chosen(void *arg, int64_t id)
-{
-    size_t i = (size_t)(intptr_t)arg;
-    if (id < 0 || i >= lp.n) return;
-    struct entry e = lp.items[i];
-    if (id == 1) open_entry(lp.dir, &e);
-    else if (id == 2) remove_entry(lp.dir, &e);
-    else if (id == 3) lp.open_folder(lp.dir);
 }
 
 static void bar_menu_chosen(void *arg, int64_t id)
@@ -648,6 +756,19 @@ static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     bool arrow;
     ssize_t h = hit(e->x, e->y, &arrow);
+    /* tooltips: the object's title (or the button's name) after a moment */
+    if (e->kind == UI_MOTION || e->kind == UI_ENTER) {
+        if (h >= 0 && !arrow) {
+            ui_rect r = h < NSYS ? sys_rect((size_t)h) : obj_rect((size_t)h - NSYS);
+            tooltip_hover(s, r, h < NSYS ? sys_names[h] : lp.items[h - NSYS].title, !lp.vertical);
+        } else if (h >= NSYS && arrow) {
+            tooltip_hover(s, arrow_rect((size_t)h - NSYS), "Drawer", !lp.vertical);
+        } else {
+            tooltip_hide();
+        }
+    } else if (e->kind == UI_PRESS || e->kind == UI_LEAVE) {
+        tooltip_hide();
+    }
     if (e->kind == UI_PRESS && e->button == UI_BTN1) {
         if (h == -2) { ui_window_move(s, e->serial); return; }
         if (h >= NSYS && arrow) { drawer_open((size_t)h - NSYS, e->serial); return; }
@@ -678,17 +799,77 @@ static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
     }
 }
 
+/* An object button's menu: the object's own (as a folder's icon has it:
+ * wpsd's), then the LaunchPad's items. */
+enum { LP_REMOVE = 9001, LP_FOLDER = 9002 };
+struct obj_menu { size_t i; double x, y; char addr[PATH_MAX + 32]; };
+
+static void convert_items(const cv *arr, ui_menu_item **out, size_t *n, size_t extra)
+{
+    size_t m = arr && arr->k == CV_ARRAY ? arr->n : 0;
+    *out = calloc(m + extra + 1, sizeof **out);
+    *n = 0;
+    for (size_t i = 0; i < m; i++) {
+        const cv *it = &arr->items[i];
+        int64_t id = 0;
+        cv_int(it, "id", &id);
+        /* the GUI's own actions on a folder window's icons stay there */
+        if (id == WPS_MI_DELETE || id == WPS_MI_CREATE_ANOTHER || id == WPS_MI_ARRANGE || id == WPS_MI_LOCK_POS) continue;
+        const cv *en = cv_get(it, "enabled"), *ck = cv_get(it, "checked");
+        ui_menu_item *o = &(*out)[(*n)++];
+        o->id = id;
+        o->label = strdup(cv_text(it, "label") ? cv_text(it, "label") : "");
+        o->enabled = !en || (en->k == CV_BOOL && en->b);
+        o->checked = ck && ck->k == CV_BOOL && ck->b;
+        convert_items(cv_get(it, "items"), &o->items, &o->nitems, 0);
+    }
+}
+
+static void obj_menu_chosen(void *arg, int64_t id)
+{
+    struct obj_menu *m = arg;
+    size_t i = m->i;
+    if (id >= 0 && i < lp.n) {
+        struct entry e = lp.items[i];
+        if (id == WPS_MI_OPEN || id == WPS_MI_OPEN_ICON) open_entry(lp.dir, &e);
+        else if (id == LP_REMOVE) remove_entry(lp.dir, &e);
+        else if (id == LP_FOLDER) lp.open_folder(lp.dir);
+        else if (id == WPS_MI_PROPERTIES) { if (lp.open_props) lp.open_props(e.target[0] == '/' && e.shadow ? e.target : m->addr); }
+        else if ((id == WPS_MI_OPEN_TREE || id == WPS_MI_OPEN_DETAILS) && e.kind == UI_KIND_FOLDER) open_entry(lp.dir, &e);
+        else if (id >= WPS_MI_OPEN_APP && id < WPS_MI_OPEN_APP + WPS_MI_OPEN_APPS) svc_open_with(m->addr, NULL, (int)(id - WPS_MI_OPEN_APP), false, opened, NULL);
+        else if (id >= WPS_MI_FIRST_CLASS) svc_menu_select(m->addr, id, opened, NULL);
+    }
+    free(m);
+}
+
+static void got_obj_menu(void *arg, const cv *reply)
+{
+    struct obj_menu *m = arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!lp.s || m->i >= lp.n) { free(m); return; }
+    ui_menu_item *items;
+    size_t n;
+    convert_items(res, &items, &n, 3);
+    items[n++] = (ui_menu_item){ -1, strdup("-"), false, false, NULL, 0 };
+    items[n++] = (ui_menu_item){ LP_REMOVE, strdup("Remove from LaunchPad"), true, false, NULL, 0 };
+    items[n++] = (ui_menu_item){ LP_FOLDER, strdup("Open LaunchPad folder"), true, false, NULL, 0 };
+    /* (no grab: the button is up by now) */
+    ui_menu_popup(lp.s, items, n, m->x, m->y, 0, obj_menu_chosen, m);
+    ui_menu_items_free(items, n);
+}
+
 /* An object button's menu (h: 4..), or the bar's (anything else). */
 static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t serial)
 {
     if (h >= NSYS && h < NSYS + lp.n) {
-        ui_menu_item items[] = {
-            { 1, "Open", true, false, NULL, 0 },
-            { 2, "Remove from LaunchPad", true, false, NULL, 0 },
-            { 0, "-", false, false, NULL, 0 },
-            { 3, "Open LaunchPad folder", true, false, NULL, 0 },
-        };
-        ui_menu_popup(s, items, 4, x, y, serial, menu_chosen, (void *)(intptr_t)(h - NSYS));
+        struct obj_menu *m = calloc(1, sizeof *m);
+        m->i = h - NSYS;
+        m->x = x;
+        m->y = y;
+        address(lp.dir, &lp.items[m->i], m->addr, sizeof m->addr);
+        tooltip_hide();
+        svc_menu(m->addr, got_obj_menu, m);
+        (void)serial;
     } else {
         ui_menu_item items[] = {
             { 3, "Open LaunchPad folder", true, false, NULL, 0 },
@@ -751,11 +932,11 @@ static void start_drag(ui_surface *s, size_t i, uint32_t serial)
 
 /* The place (0..n) a drop at x goes to: before the button whose middle
  * it is left of. */
-static size_t slot_at(double x)
+static size_t slot_at(double x, double y)
 {
     for (size_t i = 0; i < lp.n; i++) {
         ui_rect r = obj_rect(i);
-        if (x < r.x + r.w / 2) return i;
+        if (lp.vertical ? y < r.y + r.h / 2 : x < r.x + r.w / 2) return i;
     }
     return lp.n;
 }
@@ -831,7 +1012,7 @@ static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, con
     lp.drop_at = -1;
     ui_surface_damage_all(s);
     if (lp.dragging >= 0 && !(h >= NSYS && arrow)) {   /* one of its own buttons: to this place */
-        reorder((size_t)lp.dragging, slot_at(x));
+        reorder((size_t)lp.dragging, slot_at(x, y));
         return UI_DND_COPY;   /* (nothing to remove: it stays, elsewhere in the row) */
     }
     if (h >= NSYS && !arrow && lp.items[h - NSYS].kind == UI_KIND_PROGRAM && !lp.items[h - NSYS].folder_target) {
@@ -958,7 +1139,9 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
         if (templates && *templates) svc_shadow(templates, lp.dir, removed, NULL);
         if (setup && *setup) svc_shadow(setup, lp.dir, removed, NULL);
     }
-    lp.s = ui_window_new(a, &lp_ops, NULL, "org.wps.LaunchPad", bar_w(), bar_h());
+    /* floating on top: the compositor keeps org.wps.LaunchPad above the
+     * windows (the WPS session); else an ordinary window's place */
+    lp.s = ui_window_new(a, &lp_ops, NULL, lp.float_top ? "org.wps.LaunchPad" : "org.wps.LaunchPadWindow", bar_w(), bar_h());
     ui_a11y_window(lp.s, UI_ROLE_TOOL_BAR, "OS/2's buttons, then objects");
     ui_window_set_title(lp.s, "LaunchPad");
     ui_window_set_frameless(lp.s, true);
@@ -1000,6 +1183,45 @@ bool launchpad_drawer(size_t i, const char *path)
 bool launchpad_snapshot(const char *png) { return lp.s && ui_surface_snapshot(lp.s, png); }
 
 bool launchpad_is_open(void) { return lp.s != NULL; }
+
+void launchpad_set_props(void (*fn)(const char *addr)) { lp.open_props = fn; }
+
+void launchpad_setting(const char *key, const char *val)
+{
+    bool on = !strcmp(val, "1");
+    bool was_float = lp.float_top;
+    if (!strcmp(key, "orientation")) lp.vertical = !strcmp(val, "vertical");
+    else if (!strcmp(key, "small_icons")) lp.small = on;
+    else if (!strcmp(key, "text")) lp.text = on;
+    else if (!strcmp(key, "float_top")) lp.float_top = on;
+    else if (!strcmp(key, "close_drawer")) lp.close_drawer = on;
+    else return;
+    if (!lp.s) return;
+    drawer_close();
+    tooltip_hide();
+    if (was_float != lp.float_top) {   /* another kind of window: made again */
+        ui_surface_destroy(lp.s);
+        lp.s = ui_window_new(lp.app, &lp_ops, NULL, lp.float_top ? "org.wps.LaunchPad" : "org.wps.LaunchPadWindow", bar_w(), bar_h());
+        ui_a11y_window(lp.s, UI_ROLE_TOOL_BAR, "OS/2's buttons, then objects");
+        ui_window_set_title(lp.s, "LaunchPad");
+        ui_window_set_frameless(lp.s, true);
+    }
+    layout();
+}
+
+bool launchpad_vertical(void) { return lp.vertical; }
+double launchpad_width(void) { return bar_w(); }
+double launchpad_height(void) { return bar_h(); }
+bool launchpad_hover(size_t button)
+{
+    if (!lp.s || button >= NSYS + lp.n) return false;
+    ui_rect r = button < NSYS ? sys_rect(button) : obj_rect(button - NSYS);
+    ui_pointer_event e = { .kind = UI_MOTION, .x = r.x + r.w / 2, .y = r.y + r.h / 2 };
+    lp_pointer(lp.s, &e);
+    return true;
+}
+bool launchpad_drawer_open(size_t i) { if (!lp.s || i >= lp.n) return false; drawer_open(i, 0); return true; }
+size_t launchpad_drawer_count(void) { return lp.drawer.s ? lp.drawer.n : 0; }
 
 void launchpad_raise(void)
 {

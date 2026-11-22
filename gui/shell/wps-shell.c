@@ -38,6 +38,7 @@
 #include "filepick.h"
 #include "apppick.h"
 #include "fontpal.h"
+#include "tooltip.h"
 #include "session.h"
 #include "iconpick.h"
 #include "launchpad.h"
@@ -5970,6 +5971,43 @@ static void win_frame(ui_surface *s, double now)
         fprintf(stderr, "selftest: first drawer filled\n");
         return;
     }
+    if (st && !strcmp(st, "launchpad2")) {
+        /* The LaunchPad in 0.3 (step 10): vertical, small icons, no text;
+         * a drawer open follows its folder. <D> has notes.txt. */
+        static double t0;
+        static int step;
+        static size_t before;
+        if (!f->desktop) return;
+        if (!t0) { if (launchpad_count() < 3) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0) step = 1;
+        if (step == 1 && t > 500) {
+            /* (its tooltip: tests/comp/launchpad.sh, where the pointer is the test's) */
+            double w0 = launchpad_width(), h0 = launchpad_height();
+            launchpad_setting("orientation", "vertical");
+            double w1 = launchpad_width(), h1 = launchpad_height();
+            launchpad_setting("text", "0");
+            launchpad_setting("small_icons", "1");
+            double w2 = launchpad_width(), h2 = launchpad_height();
+            fprintf(stderr, "selftest: launchpad2: horizontal %.0fx%.0f, vertical %.0fx%.0f (taller %d), small without text %.0fx%.0f (smaller %d)\n",
+                    w0, h0, w1, h1, h1 > w1 && w0 > h0, w2, h2, w2 < w1 && h2 < h1);
+            launchpad_drawer_open(0);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            before = launchpad_drawer_count();
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/notes.txt", f->path);
+            launchpad_drawer(0, p);   /* (as a drop on its arrow: a shadow in its folder) */
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 2000) {
+            fprintf(stderr, "selftest: launchpad2: drawer open: %zu, then %zu (followed)\n", before, launchpad_drawer_count());
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "launchpad")) {
         /* The LaunchPad on the desktop: its first buttons, a button
          * pressed (a folder opens), a drop on it and on a drawer arrow. */
@@ -6406,6 +6444,8 @@ static void apply_scheme(void);
 static void got_setup(void *arg, const cv *reply);
 static void user_dir(const char *key, const char *fallback, char *out, size_t n);
 static void launchpad_open_folder(const char *path);
+static void lp_props(const char *addr) { open_properties(addr); }   /* (the LaunchPad's Properties) */
+
 /* A settings object's address, by class ("" if not known yet). */
 static const char *setup_addr(const char *cls)
 {
@@ -6458,6 +6498,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
         }
         else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
         else if (!strcmp(cls, "WPLaunchPad") && !strcmp(key, "show_at_start")) snprintf(lp_show, sizeof lp_show, "%s", val);
+        else if (!strcmp(cls, "WPLaunchPad")) launchpad_setting(key, val);
         else if (!strcmp(cls, "WPWarpCenter")) {
             if (!strcmp(key, "show_at_start")) snprintf(wc_show, sizeof wc_show, "%s", val);
             else warpcenter_setting(key, val);
@@ -7069,6 +7110,9 @@ static void on_window_events(void *arg, int fd, short rev)
         for (char *p = line, *t; k < 13 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
+        else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "wps-menu")) {   /* Super alone (WPS session) */
+            if (warpcenter_is_open()) warpcenter_press("desktop");
+        }
         else if (k >= 5 && !strcmp(f[0], "I")) warpcenter_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };
@@ -7126,6 +7170,8 @@ int main(int argc, char **argv)
     filepick_init(app);
     apppick_init(app);
     fontpal_init(app, font_apply);
+    tooltip_init(app);
+    launchpad_set_props(lp_props);
     warpcenter_on_font(font_dropped_wc);
     if (!app) return 1;
     char err[512];

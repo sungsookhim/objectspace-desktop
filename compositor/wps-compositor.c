@@ -760,8 +760,11 @@ static void frame_button(struct toplevel *t, ui_hit part)
 
 static bool menu_release_ignored;   /* the release of the click that opened it */
 
+static bool super_alone;   /* Super is down, nothing else since (the WPS menu) */
+
 static void process_button(uint32_t time, uint32_t button, bool pressed)
 {
+    super_alone = false;   /* (Super+click: not the menu) */
     struct server *s = &server;
     if (lock_active()) return;
     if (s->seat->drag) {   /* the release drops it */
@@ -977,6 +980,12 @@ static void on_key(struct wl_listener *l, void *data)
             }
         return;
     }
+    /* Super pressed and released alone: the WPS menu (the WarpCenter's,
+     * v0.3-design 11), as GNOME opens its overview; with another key or a
+     * click in between, nothing (Super+L and the others are shortcuts) */
+    bool super = n > 0 && (syms[0] == XKB_KEY_Super_L || syms[0] == XKB_KEY_Super_R);
+    if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED) super_alone = super;
+    else if (super && super_alone) { super_alone = false; desktop_key("wps-menu"); }
     bool handled = false;
     if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED)
         for (int i = 0; i < n; i++) handled |= shortcut(mods, syms[i]);

@@ -22,6 +22,8 @@
 #include "launchpad.h"
 #include "session.h"
 #include "winlist.h"
+#include "objmenu.h"
+#include "tooltip.h"
 
 #define PAD 3
 #define BTN_W 34
@@ -33,16 +35,6 @@
 /* (P_LOCK..P_SHUTDOWN: OS/2's buttons after the window list, the owner's) */
 enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, P_TRAY,
             P_LOCK, P_FIND, P_LOGOFF, P_SHUTDOWN, NPARTS };
-
-/* the Desktop menu, read ahead (the menu widget takes whole trees) */
-struct mnode {
-    char title[256], addr[PATH_MAX];
-    bool folder, shadow, link;
-    int kind;                  /* a ui_kind, for its icon */
-    char icon[PATH_MAX];       /* its own icon (a PNG), or "" */
-    struct mnode *kids;
-    size_t nkids;
-};
 
 /* Its font (the Font Palette's; the interface font unless set). */
 static ui_font wc_font = UI_FONT_REGULAR, wc_bold = UI_FONT_BOLD;
@@ -74,12 +66,9 @@ static struct {
     double disk_peak, net_peak, disk_rate, net_rate, mem_used, mem_total;
     int ticks;
     /* the menu */
-    struct mnode root, *ready;     /* ready: the last tree read whole */
-    int pending;
+    objmenu *reading, *ready;      /* ready: the last tree read whole (objmenu.h) */
     bool want_menu;
     uint32_t menu_serial;
-    struct mnode **flat;           /* by menu ID - 1000 */
-    size_t nflat;
     /* the calendar or the meters' pop-up */
     ui_surface *pop;
     int pop_kind;                  /* P_CLOCK or P_METERS */
@@ -597,179 +586,26 @@ static void open_pop(int kind, uint32_t serial)
 
 /* ---------------------------------------------------- the Desktop menu */
 
-#define MAX_NODES 800
-#define MAX_DEPTH 3
-
-static void free_tree(struct mnode *n)
-{
-    for (size_t i = 0; i < n->nkids; i++) free_tree(&n->kids[i]);
-    free(n->kids);
-    n->kids = NULL;
-    n->nkids = 0;
-}
-
-static size_t count_nodes(const struct mnode *n)
-{
-    size_t c = 1;
-    for (size_t i = 0; i < n->nkids; i++) c += count_nodes(&n->kids[i]);
-    return c;
-}
-
-struct fetch { struct mnode *node; int depth; char folder[PATH_MAX]; };
-
-static void read_folder(struct mnode *node, const char *folder, int depth);
-static ui_kind kind_for(const char *type, const char *name);
-
-static int by_title(const void *a, const void *b)
-{
-    const struct mnode *x = a, *y = b;
-    if (x->folder != y->folder) return x->folder ? -1 : 1;   /* folders first, as OS/2's menus */
-    return strcasecmp(x->title, y->title);
-}
-
-static void build_done(void);
-
-static void got_folder(void *arg, const cv *reply)
-{
-    struct fetch *f = arg;
-    const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
-    struct mnode *node = f->node;
-    size_t total = count_nodes(&wc.root);
-    for (size_t i = 0; items && items->k == CV_ARRAY && i < items->n && total < MAX_NODES; i++, total++) {
-        const cv *it = &items->items[i];
-        const char *nm = cv_text(it, "name"), *ti = cv_text(it, "title"), *ty = cv_text(it, "type");
-        const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
-        if (!nm || nm[0] == '.') continue;
-        const cv *sh = cv_get(it, "shadow");
-        bool shadow = sh && sh->k == CV_BOOL && sh->b, link = ty && !strcmp(ty, "link");
-        node->kids = realloc(node->kids, (node->nkids + 1) * sizeof *node->kids);
-        struct mnode *k = &node->kids[node->nkids++];
-        memset(k, 0, sizeof *k);
-        if (nm[0] == '\x01') snprintf(k->addr, sizeof k->addr, "%s", nm + 1);   /* a central object */
-        else snprintf(k->addr, sizeof k->addr, "%s/%s", strcmp(f->folder, "/") ? f->folder : "", nm);
-        k->folder = ty && !strcmp(ty, "folder");
-        k->shadow = shadow;
-        k->link = link;
-        k->kind = kind_for(ty, nm);
-        const char *mk = cv_text(it, "makes"), *ic = cv_text(it, "icon");
-        if (mk) k->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
-        if (ic) snprintf(k->icon, sizeof k->icon, "%s", ic);
-        if (shadow || link) k->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_for("file", tp && *tp ? tp : nm);
-        if ((shadow || link) && tt && !strcmp(tt, "folder") && tp && *tp) {   /* opens as the folder it shows */
-            k->folder = true;
-            snprintf(k->addr, sizeof k->addr, "%s", tp);
-        }
-        const char *t = ti && *ti ? ti : nm[0] == '\x01' ? "" : nm;
-        if (!*t && tp) t = strrchr(tp, '/') ? strrchr(tp, '/') + 1 : tp;
-        snprintf(k->title, sizeof k->title, "%s", *t ? t : "?");
-    }
-    if (node->nkids) qsort(node->kids, node->nkids, sizeof *node->kids, by_title);
-    /* (kids are final now: their addresses stay put) */
-    for (size_t i = 0; i < node->nkids && f->depth + 1 < MAX_DEPTH; i++)
-        if (node->kids[i].folder) read_folder(&node->kids[i], node->kids[i].addr, f->depth + 1);
-    free(f);
-    if (--wc.pending == 0) build_done();
-}
-
-static ui_kind kind_for(const char *type, const char *name)
-{
-    if (type && !strcmp(type, "folder")) return UI_KIND_FOLDER;
-    const char *dot = name ? strrchr(name, '.') : NULL;
-    if (type && !strcmp(type, "program")) return UI_KIND_PROGRAM;
-    if (dot && (!strcmp(dot, ".desktop") || !strcmp(dot, ".sh"))) return UI_KIND_PROGRAM;
-    return UI_KIND_FILE;
-}
-
-static void read_folder(struct mnode *node, const char *folder, int depth)
-{
-    struct fetch *f = calloc(1, sizeof *f);
-    f->node = node;
-    f->depth = depth;
-    snprintf(f->folder, sizeof f->folder, "%s", folder);
-    wc.pending++;
-    svc_list(folder, 0, 300, true, got_folder, f);
-}
-
-static struct mnode *tree_copy;
-
-static void build_start(void)
-{
-    if (wc.pending) return;   /* being read */
-    free_tree(&wc.root);
-    memset(&wc.root, 0, sizeof wc.root);
-    snprintf(wc.root.addr, sizeof wc.root.addr, "%s", wc.desktop);
-    wc.root.folder = true;
-    read_folder(&wc.root, wc.desktop, 0);
-}
-
 static void show_menu(void);
 
-static void build_done(void)
+static void menu_read(objmenu *m, void *ctx)
 {
+    (void)ctx;
     /* the tree read now replaces the shown one */
-    if (tree_copy) { free_tree(tree_copy); free(tree_copy); }
-    tree_copy = malloc(sizeof *tree_copy);
-    *tree_copy = wc.root;   /* (takes the kids) */
-    memset(&wc.root, 0, sizeof wc.root);
-    wc.ready = tree_copy;
+    if (wc.ready) objmenu_free(wc.ready);
+    wc.ready = m;
+    wc.reading = NULL;
     if (wc.want_menu && !ui_menu_is_open()) show_menu();
     wc.want_menu = wc.want_menu && ui_menu_is_open();
 }
 
-enum { M_WINLIST = 1, M_LOCK, M_SHUTDOWN, M_OPEN_DESKTOP, M_LOGOFF, M_FIRST = 1000 };
-
-/* Every object's item has an id (a cascade's too, for its icon): wc.flat
- * holds its node. */
-static ui_menu_item node_item(struct mnode *c, const char *label)
+static void build_start(void)
 {
-    wc.flat = realloc(wc.flat, (wc.nflat + 1) * sizeof *wc.flat);
-    wc.flat[wc.nflat] = c;
-    return (ui_menu_item){ .id = M_FIRST + (int64_t)wc.nflat++, .label = strdup(label), .enabled = true };
+    if (wc.reading) return;   /* being read */
+    wc.reading = objmenu_read(wc.desktop, 3, menu_read, NULL);
 }
 
-static bool node_icon(void *arg, int64_t id, void *item)
-{
-    (void)arg;
-    if (id < M_FIRST || (size_t)(id - M_FIRST) >= wc.nflat) return false;
-    const struct mnode *c = wc.flat[id - M_FIRST];
-    ui_item *it = item;
-    it->kind = c->folder ? UI_KIND_FOLDER : (ui_kind)c->kind;
-    it->shadow = c->shadow;
-    it->link = c->link;
-    it->image = c->icon[0] ? icons_get(c->icon) : NULL;
-    return true;
-}
-
-static ui_menu_item *to_items(struct mnode *n, size_t *count, bool top)
-{
-    size_t cap = n->nkids + 8, k = 0;
-    ui_menu_item *it = calloc(cap, sizeof *it);
-    if (!top) {   /* a folder's cascade: the folder itself first */
-        it[k++] = node_item(n, "Open");
-        if (n->nkids) it[k++] = (ui_menu_item){ -1, strdup("-"), false, false, NULL, 0 };
-    }
-    for (size_t i = 0; i < n->nkids; i++) {
-        struct mnode *c = &n->kids[i];
-        if (c->folder && c->nkids) {
-            size_t sub = 0;
-            ui_menu_item *si = to_items(c, &sub, false);
-            it[k] = node_item(c, c->title);
-            it[k].items = si;
-            it[k++].nitems = sub;
-        } else {
-            it[k++] = node_item(c, c->title);
-        }
-    }
-    if (top) {
-        if (k) it[k++] = (ui_menu_item){ -1, strdup("-"), false, false, NULL, 0 };
-        it[k++] = (ui_menu_item){ M_WINLIST, strdup("Window list"), true, false, NULL, 0 };
-        it[k++] = (ui_menu_item){ M_LOCK, strdup("Lockup now"), true, false, NULL, 0 };
-        it[k++] = (ui_menu_item){ M_LOGOFF, strdup("Log off..."), true, false, NULL, 0 };
-        it[k++] = (ui_menu_item){ M_SHUTDOWN, strdup("Shut down..."), true, false, NULL, 0 };
-    }
-    *count = k;
-    return it;
-}
+enum { M_WINLIST = 1, M_LOCK, M_SHUTDOWN, M_OPEN_DESKTOP, M_LOGOFF };
 
 static void opened(void *arg, const cv *reply)
 {
@@ -785,29 +621,32 @@ static void menu_chosen(void *arg, int64_t id)
     (void)arg;
     wc.want_menu = false;
     damage();
+    char addr[PATH_MAX], title[256];
+    bool folder;
     if (id == M_WINLIST) winlist_open(false);
     else if (id == M_LOCK) session_lock("warpcenter");
     else if (id == M_LOGOFF) session_ask_logoff(wc.app, "warpcenter");
     else if (id == M_SHUTDOWN) session_ask_end(wc.app, "warpcenter");
-    else if (id >= M_FIRST && (size_t)(id - M_FIRST) < wc.nflat) {
-        struct mnode *n = wc.flat[id - M_FIRST];
-        events_raise("object.open", n->title, "warpcenter", (ui_rect){ 0, 0, 0, 0 });
-        if (n->folder && n->addr[0] == '/') wc.open_folder(n->addr);
-        else svc_open(n->addr, false, opened, NULL);
+    else if (objmenu_choice(wc.ready, id, addr, sizeof addr, &folder, title, sizeof title)) {
+        events_raise("object.open", title, "warpcenter", (ui_rect){ 0, 0, 0, 0 });
+        if (folder) wc.open_folder(addr);
+        else svc_open(addr, false, opened, NULL);
     }
 }
 
 static void show_menu(void)
 {
     if (!wc.ready) return;
-    free(wc.flat);
-    wc.flat = NULL;
-    wc.nflat = 0;
-    size_t n = 0;
-    ui_menu_item *items = to_items(wc.ready, &n, true);
+    size_t k = 0;
+    ui_menu_item *it = objmenu_items(wc.ready, &k, false, 6);
+    if (k) it[k++] = (ui_menu_item){ -1, strdup("-"), false, false, NULL, 0 };
+    it[k++] = (ui_menu_item){ M_WINLIST, strdup("Window list"), true, false, NULL, 0 };
+    it[k++] = (ui_menu_item){ M_LOCK, strdup("Lockup now"), true, false, NULL, 0 };
+    it[k++] = (ui_menu_item){ M_LOGOFF, strdup("Log off..."), true, false, NULL, 0 };
+    it[k++] = (ui_menu_item){ M_SHUTDOWN, strdup("Shut down..."), true, false, NULL, 0 };
     ui_rect r = part_rect(P_DESKTOP);
-    ui_menu_popup_icons(wc.s, items, n, r.x, wc.top ? r.y + r.h : r.y, wc.menu_serial, menu_chosen, NULL, node_icon);
-    ui_menu_items_free(items, n);
+    ui_menu_popup_icons(wc.s, it, k, r.x, wc.top ? r.y + r.h : r.y, wc.menu_serial, menu_chosen, wc.ready, objmenu_icon);
+    ui_menu_items_free(it, k);
     damage();
 }
 
@@ -846,9 +685,58 @@ static void any_press(ui_surface *s)
     if (wc.pop && s != wc.pop && s != wc.s) ui_app_post(wc.app, (void (*)(void *))pop_free, NULL);
 }
 
+/* A part's tooltip (v0.3-design 11): what it is, or its value now. */
+static void part_tip(int p, double x, char *out, size_t n)
+{
+    out[0] = 0;
+    switch (p) {
+    case P_DESKTOP: snprintf(out, n, "The desktop's objects; Lockup, Log off, Shut down"); break;
+    case P_WINDOWS: snprintf(out, n, "Window list"); break;
+    case P_METERS:
+        snprintf(out, n, "Processor %.0f%%, memory %.0f%%, disk %.0f%%, network %.0f%%", wc.meter[0] * 100, wc.meter[1] * 100,
+                 wc.meter[2] * 100, wc.meter[3] * 100);
+        break;
+    case P_MESSAGES: snprintf(out, n, wc.unread ? "Messages: %zu unread" : "Messages", wc.unread); break;
+    case P_KEYBOARD: snprintf(out, n, "Input source: %s (click: the next)", wc.key_label); break;
+    case P_CLOCK: {
+        time_t t = time(NULL);
+        struct tm tm;
+        localtime_r(&t, &tm);
+        strftime(out, n, "%A, %e %B %Y", &tm);
+        break;
+    }
+    case P_TRAY: {
+        ui_rect r = part_rect(P_TRAY);
+        size_t i = (size_t)fmax(0, (x - r.x - 2) / tray_cell());
+        const char *t = tray_title(i);
+        snprintf(out, n, "%s", t ? t : "");
+        break;
+    }
+    case P_LOCK: snprintf(out, n, "Lockup now"); break;
+    case P_FIND: snprintf(out, n, "Find"); break;
+    case P_LOGOFF: snprintf(out, n, "Log off"); break;
+    case P_SHUTDOWN: snprintf(out, n, "Shut down"); break;
+    default: break;
+    }
+}
+
 static void wc_pointer(ui_surface *s, const ui_pointer_event *e)
 {
-    (void)s;
+    if (e->kind == UI_MOTION || e->kind == UI_ENTER) {
+        int p = part_at(e->x, e->y);
+        char tip[256];
+        part_tip(p, e->x, tip, sizeof tip);
+        ui_rect r = part_rect(p);
+        if (p == P_TRAY) {   /* each tray icon its own */
+            double c = tray_cell();
+            r.x += 2 + floor((e->x - r.x - 2) / c) * c;
+            r.w = c;
+        }
+        if (p == P_NONE || wc.pop) tooltip_hide();
+        else tooltip_hover(s, r, tip, !wc.top);
+    } else if (e->kind == UI_LEAVE || e->kind == UI_PRESS) {
+        tooltip_hide();
+    }
     if (e->kind == UI_PRESS) {
         int p = part_at(e->x, e->y);
         if (wc.pop && p != wc.pop_kind) pop_free();   /* another part, or the bar: it closes */
@@ -957,15 +845,7 @@ bool warpcenter_press(const char *part)
     return false;
 }
 
-size_t warpcenter_menu_labels(char *out, size_t n)
-{
-    size_t o = 0, c = 0;
-    out[0] = 0;
-    for (size_t i = 0; wc.ready && i < wc.ready->nkids; i++, c++)
-        o += (size_t)snprintf(out + o, o < n ? n - o : 0, "%s%s%s", i ? ", " : "", wc.ready->kids[i].title,
-                              wc.ready->kids[i].folder && wc.ready->kids[i].nkids ? " >" : "");
-    return c;
-}
+size_t warpcenter_menu_labels(char *out, size_t n) { return objmenu_labels(wc.ready, out, n); }
 
 /* ----------------------------------------------- the WarpCenter object */
 

@@ -44,4 +44,19 @@ const char *launchpad_dir(void);
 /* The system buttons' pictures (0 Lockup, 1 Find, 2 Shut down, 3 Window list). */
 void launchpad_glyph(cairo_t *cr, int i, ui_rect r);
 
+/* The LaunchPad object's settings (OS/2's, v0.3-design 11): orientation
+ * (horizontal, vertical), small_icons, text (titles on the buttons),
+ * float_top, close_drawer (after an object in it is opened). */
+void launchpad_setting(const char *key, const char *val);
+/* Properties on an object button's menu: the shell opens its notebook. */
+void launchpad_set_props(void (*fn)(const char *addr));
+
+/* Self-tests. */
+bool launchpad_vertical(void);
+double launchpad_width(void);
+double launchpad_height(void);
+bool launchpad_hover(size_t button);          /* the pointer rests on it */
+bool launchpad_drawer_open(size_t i);
+size_t launchpad_drawer_count(void);
+
 #endif
