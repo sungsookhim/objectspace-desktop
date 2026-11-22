@@ -32,6 +32,8 @@ struct field {
     ui_entry *entry;         /* text and number */
     cairo_surface_t *img;    /* icon: its picture, read from img_path */
     char *img_path;
+    cairo_surface_t *shown;  /* icon: the one shown without its own (choices[0], a PNG) */
+    bool shown_read;
     bool spin_down;          /* an arrow held (number) */
 };
 
@@ -92,6 +94,7 @@ static void free_pages(struct page *p, size_t n)
             free(f->choices);
             ui_entry_free(f->entry);
             if (f->img) cairo_surface_destroy(f->img);
+            if (f->shown) cairo_surface_destroy(f->shown);
             free(f->img_path);
         }
         free(p[i].f);
@@ -282,16 +285,29 @@ static void draw_icon_field(ui_notebook *nb, struct field *f, cairo_t *cr, ui_re
     ui_rect b = icon_box(r);
     ui_fill(cr, b, nb->drop_on == f ? k->selection : k->client_bg);
     ui_bevel(cr, b, false);
-    if (f->img) {
-        double iw = cairo_image_surface_get_width(f->img), ih = cairo_image_surface_get_height(f->img);
+    /* without its own: the icon it shows (a special folder's, its kind's) */
+    const char *hint = f->nchoices ? f->choices[0] : "";
+    if (!f->img && hint[0] == '/' && !f->shown_read) {
+        f->shown_read = true;
+        f->shown = cairo_image_surface_create_from_png(hint);
+        if (cairo_surface_status(f->shown) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(f->shown); f->shown = NULL; }
+    }
+    cairo_surface_t *pic = f->img ? f->img : f->shown;
+    if (pic) {
+        double iw = cairo_image_surface_get_width(pic), ih = cairo_image_surface_get_height(pic);
         double sz = ICON_BOX - 12, sc = sz / (iw > ih ? iw : ih);
         cairo_save(cr);
         cairo_translate(cr, b.x + (ICON_BOX - iw * sc) / 2, b.y + (ICON_BOX - ih * sc) / 2);
         cairo_scale(cr, sc, sc);
-        cairo_set_source_surface(cr, f->img, 0, 0);
+        cairo_set_source_surface(cr, pic, 0, 0);
         cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
         cairo_paint(cr);
         cairo_restore(cr);
+    } else if (!strncmp(hint, "kind:", 5)) {
+        ui_item it = { .loaded = true, .title = "", .name = "" };
+        it.kind = !strcmp(hint + 5, "folder") ? UI_KIND_FOLDER : !strcmp(hint + 5, "program") ? UI_KIND_PROGRAM : UI_KIND_FILE;
+        double sz = ICON_BOX - 20;
+        ui_draw_item_icon(cr, &it, b.x + (ICON_BOX - sz) / 2, b.y + (ICON_BOX - sz) / 2, sz);
     } else {
         ui_set_color(cr, k->disabled_text);
         const char *t = "(its kind's)";

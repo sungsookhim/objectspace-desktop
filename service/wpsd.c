@@ -175,7 +175,7 @@ static void on_volumes_changed(const char *report);
 static char *call_text(wpo_object *o, const char *method, const char *arg);
 static const char *apply_settings(wpo_object *o, const cv *values);
 static void put_menu(cbuf *b, const char *text, const char *parent);
-static void put_settings(cbuf *b, const char *text);
+static void put_settings(cbuf *b, const char *text, const char *icon_shown);
 struct req;
 static void do_open(struct req *r, wpo_object *o);
 struct drive_req { struct client *c; int64_t id; bool open; char uuid[80], action[16], *pass; };
@@ -523,7 +523,10 @@ static void do_menus(struct req *r, wpo_object *o)
         free(t);
     } else {
         char *t = call_text(o, "wpAddSettingsPages", "");
-        put_settings(&b, t);
+        char shown[PATH_MAX];   /* what its Icon page shows without its own */
+        const char *p = wpo_is_a(o, WPFileSystemClass) ? WPFileSystem_data(o)->path : NULL;
+        wps_listing_shown_icon(p, wpo_is_a(o, WPFolderClass), wpo_is_a(o, WPProgramClass), shown, sizeof shown);
+        put_settings(&b, t, shown);
         free(t);
     }
     cb_text(&b, "object"); put_object(&b, o);
@@ -910,6 +913,15 @@ static void messages_broadcast(int64_t added)
     }
 }
 
+struct shadow_ids { char ids[32][WPS_ID_LEN + 1]; int n; };
+
+static void collect_shadow(const char *vol, const char *id, void *user)
+{
+    (void)vol;
+    struct shadow_ids *sh = user;
+    if (sh->n < 32) snprintf(sh->ids[sh->n++], sizeof sh->ids[0], "%s", id);
+}
+
 static void on_object_changed(wpo_object *o)
 {
     if (wpo_is_a(o, WPTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
@@ -934,6 +946,29 @@ static void on_object_changed(wpo_object *o)
         cb_text(&b, "object"); put_object(&b, o);
         send_frame(x->c, &b);
         cb_free(&b);
+    }
+    /* its shadows show its title and icon: the folders listing them read
+     * their rows again (System's own icon, chosen in its notebook, did
+     * not reach the desktop's shadow of it) */
+    if (!id[0]) return;
+    struct shadow_ids sh = { 0 };
+    wps_db_vobjs_shadowing(db, id, collect_shadow, &sh);
+    for (int k = 0; k < sh.n; k++) {
+        char nm[WPS_ID_LEN + 16], addr[WPS_ID_LEN + 8];
+        snprintf(nm, sizeof nm, "\x01vobj:%s", sh.ids[k]);
+        snprintf(addr, sizeof addr, "vobj:%s", sh.ids[k]);
+        for (struct sub *x = subs; x; x = x->next) {
+            bool hit = false;
+            for (size_t i = 0; i < x->nfolders && !hit; i++) hit = wps_listing_has(x->folders[i], nm);
+            if (!hit || x->c->dead) continue;
+            cbuf b;
+            event_head(&b, "object_changed", x->id, 1);
+            cb_text(&b, "object");
+            cb_map(&b, 1);
+            cb_text(&b, "address"); cb_text(&b, addr);
+            send_frame(x->c, &b);
+            cb_free(&b);
+        }
     }
 }
 
@@ -1139,7 +1174,7 @@ static size_t parse_settings(const char *text, char pages[][64], int *page_of, s
     return nf;
 }
 
-static void put_settings(cbuf *b, const char *text)
+static void put_settings(cbuf *b, const char *text, const char *icon_shown)
 {
     char pages[16][64];
     int page_of[64];
@@ -1156,6 +1191,8 @@ static void put_settings(cbuf *b, const char *text)
         for (size_t i = 0; i < nf; i++) {
             if (page_of[i] != (int)p) continue;
             struct field *x = &fields[i];
+            if (!strcmp(x->type, "icon") && !x->choices[0] && icon_shown && *icon_shown)   /* (no commas in it: one choice) */
+                snprintf(x->choices, sizeof x->choices, "%s", icon_shown);
             cb_map(b, x->choices[0] ? 5 : 4);
             cb_text(b, "key"); cb_text(b, x->key);
             cb_text(b, "type"); cb_text(b, x->type);

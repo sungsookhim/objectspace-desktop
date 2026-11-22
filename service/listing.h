@@ -92,5 +92,9 @@ void wps_trash_icon(const char *files, char *out, size_t n);
 void wps_default_icon(const char *name, char *out, size_t n);
 /* A special folder's icon (NAME as above), shown for it and its shadows. */
 void wps_listing_folder_icon(const char *path, const char *png);
+/* The icon an object without its own shows (for its Icon page): a PNG's
+ * path (the Trash Can's, a special folder's), else "kind:folder",
+ * "kind:program" or "kind:file" (drawn by the GUI). */
+void wps_listing_shown_icon(const char *path, bool dir, bool program, char *out, size_t n);
 
 #endif

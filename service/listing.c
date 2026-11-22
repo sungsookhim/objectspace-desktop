@@ -148,6 +148,8 @@ static void central_details(wps_entry *e)
             /* the Trash Can's shadow: empty or full, unless it has its own */
             char own[sizeof e->icon] = "";
             if (op) { t = NULL; if (wps_props_str(op, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
+            /* (or its original's own: chosen in the original's notebook) */
+            if (!own[0] && tp) { t = NULL; if (wps_props_str(tp, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
             if (!own[0] && S_ISDIR(tg.st.st_mode) && wps_is_trash_files_dir(tg.path)) wps_trash_icon(tg.path, e->icon, sizeof e->icon);
             else if (!own[0] && S_ISDIR(tg.st.st_mode) && special_icon(tg.path, e->icon, sizeof e->icon)) {}
             else if (!own[0] && !strcmp(tg.obj_class, "WPDrive")) drive_icon(&tg, e->icon, sizeof e->icon);
@@ -246,6 +248,13 @@ static bool special_icon(const char *path, char *out, size_t n)
     pthread_mutex_unlock(&special_mu);
     if (png[0]) wps_default_icon(png, out, n);
     return png[0] != 0;
+}
+
+void wps_listing_shown_icon(const char *path, bool dir, bool program, char *out, size_t n)
+{
+    if (dir && path && *path && wps_is_trash_files_dir(path)) { wps_trash_icon(path, out, n); return; }
+    if (dir && path && *path && special_icon(path, out, n)) return;
+    snprintf(out, n, "%s", dir ? "kind:folder" : program ? "kind:program" : "kind:file");
 }
 
 static void detail_work(void *arg)
