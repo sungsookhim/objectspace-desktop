@@ -252,7 +252,28 @@ void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+static void open_req(const char *target, bool confirm, const char *const *files, size_t nfiles, const char *app, int app_index,
+                     bool always, svc_fn fn, void *arg);
+
 void svc_open_files(const char *target, bool confirm, const char *const *files, size_t nfiles, svc_fn fn, void *arg)
+{
+    open_req(target, confirm, files, nfiles, NULL, -1, false, fn, arg);
+}
+
+void svc_open_with(const char *target, const char *app, int app_index, bool always, svc_fn fn, void *arg)
+{
+    open_req(target, false, NULL, 0, app, app_index, always, fn, arg);
+}
+
+void svc_apps(svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("apps", 0, &id);
+    send_req(o, id, fn, arg);
+}
+
+static void open_req(const char *target, bool confirm, const char *const *files, size_t nfiles, const char *app, int app_index,
+                     bool always, svc_fn fn, void *arg)
 {
     int64_t id;
     /* What opens appears on this GUI's display (wpsd may have been
@@ -272,7 +293,8 @@ void svc_open_files(const char *target, bool confirm, const char *const *files, 
         const char *v = getenv(keys[i]);
         if (v && *v) snprintf(envs[ne++], sizeof envs[0], "%s=%s", keys[i], v);
     }
-    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0) + (nfiles ? 1 : 0), &id);
+    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0) + (nfiles ? 1 : 0) + (app ? 1 : 0)
+                                      + (app_index >= 0 ? 1 : 0) + (always ? 1 : 0), &id);
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
     if (disp[0]) { cb_text(&o->b, "display"); cb_text(&o->b, disp); }
@@ -287,6 +309,9 @@ void svc_open_files(const char *target, bool confirm, const char *const *files, 
         cb_array(&o->b, nfiles);
         for (size_t i = 0; i < nfiles; i++) cb_text(&o->b, files[i]);
     }
+    if (app) { cb_text(&o->b, "app"); cb_text(&o->b, app); }   /* Open With */
+    if (app_index >= 0) { cb_text(&o->b, "app_index"); cb_int(&o->b, app_index); }
+    if (always) { cb_text(&o->b, "always"); cb_bool(&o->b, true); }
     send_req(o, id, fn, arg);
 }
 

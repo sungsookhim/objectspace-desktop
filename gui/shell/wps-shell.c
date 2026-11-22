@@ -36,6 +36,7 @@
 #include "mime.h"
 #include "icons.h"
 #include "filepick.h"
+#include "apppick.h"
 #include "session.h"
 #include "iconpick.h"
 #include "launchpad.h"
@@ -1212,6 +1213,7 @@ static size_t src_count(void *ctx)
 static void appicons_ready(void)
 {
     warpcenter_damage();   /* (the tray's icons) */
+    apppick_icons_changed();
     for (struct folder *f = folders; f; f = f->next)
         if (!f->closing && f->cont) ui_container_changed(f->cont, 0, SIZE_MAX);
 }
@@ -1963,6 +1965,13 @@ static void free_converted(ui_menu_item *m, size_t n)
 }
 
 static void selected_done(void *arg, const cv *reply) { opened(arg, reply); }
+
+/* Other program... chose one (the window may have closed meanwhile). */
+static void open_with_chosen(long owner, const char *target, const char *app_id, bool always)
+{
+    struct folder *f = folder_by_id(owner);
+    svc_open_with(target, app_id, -1, always, opened, f ? as_arg(f) : NULL);
+}
 static void delete_request(struct folder *f, size_t i, bool permanent);
 static void create_another(struct folder *f, size_t i);
 
@@ -1984,10 +1993,11 @@ static void menu_chosen(void *arg, int64_t id)
             open_properties(t);   /* (or the open one to the front) */
             break;
         }
-        case WPS_MI_OPEN_WITH:
-            snprintf(f->error, sizeof f->error, "Open With comes in G2");
-            damage_status(f);
+        case WPS_MI_OPEN_OTHER: {   /* Open > Other program... */
+            struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
+            apppick_open(rw ? (rw->title ? rw->title : rw->name) : t, t, open_with_chosen, f->id);
             break;
+        }
         case WPS_MI_VIEW_ICON: set_view(f, UI_VIEW_ICON); break;
         case WPS_MI_VIEW_DETAILS: set_view(f, UI_VIEW_DETAILS); break;
         case WPS_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
@@ -2027,6 +2037,10 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_SHUTDOWN: session_ask_end(app, "desktop"); break;
         case WPS_MI_MINIMIZED: winlist_open(true); break;
         default:
+            if (id >= WPS_MI_OPEN_APP && id < WPS_MI_OPEN_APP + WPS_MI_OPEN_APPS) {   /* Open > one of its type's programs */
+                svc_open_with(t, NULL, (int)(id - WPS_MI_OPEN_APP), false, opened, as_arg(f));
+                break;
+            }
             svc_menu_select(t, id, selected_done, as_arg(f));
             break;
         }
@@ -4084,10 +4098,67 @@ static void selftest_lock_page(void *arg, const cv *reply)
     fprintf(stderr, "selftest: layout: b.txt's General page: Lock position %s\n", v);
 }
 
+/* WPS_SHELL_SELFTEST=openwith: a data file's Open cascade, printed. */
+static void selftest_cascade(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    char out[1024] = "";
+    for (size_t i = 0; res && res->k == CV_ARRAY && i < res->n; i++) {
+        int64_t id = 0;
+        cv_int(&res->items[i], "id", &id);
+        const cv *sub = cv_get(&res->items[i], "items");
+        if (id != WPS_MI_OPEN) continue;
+        for (size_t k = 0; sub && sub->k == CV_ARRAY && k < sub->n; k++) {
+            const cv *ck = cv_get(&sub->items[k], "checked");
+            snprintf(out + strlen(out), sizeof out - strlen(out), "%s%s%s", k ? ", " : "", cv_text(&sub->items[k], "label"),
+                     ck && ck->k == CV_BOOL && ck->b ? " (default)" : "");
+        }
+    }
+    fprintf(stderr, "selftest: openwith: Open: %s\n", out);
+}
+
 static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "openwith")) {
+        /* Open With (0.3 step 7): <D> has a.txt; text/plain's default is
+         * the Hold program (selftest.sh), which keeps it open 2 s. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char p[PATH_MAX];
+        snprintf(p, sizeof p, "%s/a.txt", f->path);
+        if (step == 0) {
+            svc_menu(p, selftest_cascade, NULL);
+            apppick_open("a.txt", p, open_with_chosen, f->id);
+            step++;
+            t0 = now;
+        } else if (step == 1 && apppick_is_open()) {
+            size_t hold = SIZE_MAX;
+            for (size_t i = 0; i < apppick_count(); i++) if (!strcmp(apppick_name(i), "Hold")) hold = i;
+            fprintf(stderr, "selftest: openwith: Other program: %zu programs, Hold among them %d\n", apppick_count(), hold != SIZE_MAX);
+            const char *shot = getenv("WPS_SHELL_SHOT");
+            if (shot) apppick_snapshot(shot);
+            apppick_choose(hold, false);
+            fprintf(stderr, "selftest: openwith: chosen: picker open %d\n", apppick_is_open());
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1000) {
+            size_t a = SIZE_MAX;
+            for (size_t i = 0; i < f->m.total; i++) if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), "a.txt")) a = i;
+            struct row *rw = row_at(f, a);
+            fprintf(stderr, "selftest: openwith: a.txt in use (opened with Hold, tracked) %d\n", rw && rw->in_use);
+            ui_app_quit(app);
+            step++;
+        } else if (step == 1 && t > 5000) {
+            fprintf(stderr, "selftest: openwith: the picker never filled\n");
+            ui_app_quit(app);
+        }
+        return;
+    }
     if (st && !strcmp(st, "layout")) {
         /* OS/2's layout and Lock position (0.3 step 6). <D> has a.txt
          * (a long title), b.txt .. h.txt. */
@@ -6489,6 +6560,7 @@ int main(int argc, char **argv)
     appicons_init(appicons_ready);
     iconpick_init(app, launchpad_open_folder);
     filepick_init(app);
+    apppick_init(app);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

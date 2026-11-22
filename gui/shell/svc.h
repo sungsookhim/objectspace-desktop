@@ -30,6 +30,12 @@ void svc_menu(const char *target, svc_fn fn, void *arg);
 void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg);
 void svc_open(const char *target, bool confirm, svc_fn fn, void *arg);
 /* A program opened with objects dropped on it (paths). */
+/* Open With: with the program `app` ("x.desktop"), or the one at
+ * `app_index` in its Open cascade (-1: none); `always`: the type's
+ * default from now on. */
+void svc_open_with(const char *target, const char *app, int app_index, bool always, svc_fn fn, void *arg);
+/* Every installed application: [{id, name, icon}], by name. */
+void svc_apps(svc_fn fn, void *arg);
 void svc_open_files(const char *target, bool confirm, const char *const *files, size_t nfiles, svc_fn fn, void *arg);
 void svc_rename(const char *target, const char *name, svc_fn fn, void *arg);
 void svc_settings(const char *target, svc_fn fn, void *arg);

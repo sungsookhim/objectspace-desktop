@@ -109,7 +109,7 @@ def ss1():
     me.stop()
     fl = [i["label"] for i in folder]
     dl = [i["label"] for i in data]
-    ok = fl == ["Open", "Properties", "Create another", "Delete...", "Arrange"] and dl == ["Open", "Properties", "Create another", "Delete...", "Open With"] and sel.get("ok")
+    ok = fl == ["Open", "Properties", "Create another", "Delete...", "Arrange"] and dl == ["Open", "Properties", "Create another", "Delete..."] and sel.get("ok")
     return ok, [f"folder menu: {fl}", f"data file menu: {dl}", f"selecting Properties: ok={sel.get('ok')}"]
 
 

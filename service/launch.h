@@ -59,6 +59,18 @@ int wps_split_exec_files(const char *exec, const char *const *files, size_t nfil
  * xdg-open. A terminal application comes wrapped in a terminal window. */
 int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max);
 
+/* Open With (v0.3-design 7): the programs that open `file`'s type, the
+ * default first (is_default), then the added and declared ones, then
+ * those of its parent types; the type in mime_out. */
+typedef struct { char id[256]; char path[4096]; char name[128]; char icon[256]; bool is_default, hidden; } wps_app;
+int wps_apps_for_file(const char *file, char *mime_out, size_t mn, wps_app *out, int max);
+/* Every installed application to offer (Other program...), by name. */
+int wps_apps_all(wps_app *out, int max);
+/* Arguments that open `file` with the application `id` ("x.desktop"). */
+int wps_app_argv(const char *id, const char *file, char *buf, size_t n, char **argv, int max);
+/* Always use `id` for `file`'s type: the user's mimeapps.list (GNOME's too). */
+bool wps_app_set_default(const char *file, const char *id);
+
 /* Run argv[0..argc) in a terminal window: $WPS_TERMINAL (words the
  * command is appended to), else xdg-terminal-exec, else the first
  * installed common terminal, each asked for a window of its own. Shifts

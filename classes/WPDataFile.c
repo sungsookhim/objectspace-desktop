@@ -9,15 +9,13 @@
 
 char *WPDataFile__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
-    char *base = WPDataFile_parent_wpModifyPopupMenu(self, menu);
-    char *r = wps_concat(base, "10\tOpen With\n");
-    free(base);
-    return r;
+    /* (Open With: wpsd makes Open a cascade of the type's programs) */
+    return WPDataFile_parent_wpModifyPopupMenu(self, menu);
 }
 
 /* The type from the file name, through shared-mime-info's glob table
  * (loaded once, by wps_mime_init, before the loop starts). */
-static struct { char *glob; char *type; int weight; } *globs;
+static struct { char *glob; char *type; int weight; bool cs; } *globs;
 static size_t nglobs;
 
 void wps_mime_init(const char *globs2)
@@ -27,11 +25,12 @@ void wps_mime_init(const char *globs2)
     while (f && fgets(line, sizeof line, f)) {
         if (line[0] == '#') continue;
         line[strcspn(line, "\r\n")] = 0;
-        char *w = strtok(line, ":"), *type = strtok(NULL, ":"), *glob = strtok(NULL, ":");
+        char *w = strtok(line, ":"), *type = strtok(NULL, ":"), *glob = strtok(NULL, ":"), *flags = strtok(NULL, ":");
         if (!w || !type || !glob || strncmp(glob, "*.", 2) != 0 || strpbrk(glob + 2, "*?[")) continue;
         globs = realloc(globs, (nglobs + 1) * sizeof *globs);
         globs[nglobs].glob = strdup(glob + 1);   /* ".png" */
         globs[nglobs].type = strdup(type);
+        globs[nglobs].cs = flags && strstr(flags, "cs");   /* "*.C" is C++, "*.c" C */
         globs[nglobs++].weight = atoi(w);
     }
     if (f) fclose(f);
@@ -39,21 +38,28 @@ void wps_mime_init(const char *globs2)
 
 const char *wps_mime_for_name(const char *name)
 {
-    const char *best = NULL;
-    size_t bestlen = 0;
-    int bestw = -1;
+    /* As the spec says: a match of the name's own case first (".c" is C,
+     * ".C" C++), then one in any case; the longest suffix wins (".tar.gz"
+     * over ".gz"), then weight. */
     size_t ln = strlen(name);
-    for (size_t i = 0; i < nglobs; i++) {
-        size_t lg = strlen(globs[i].glob);
-        if (lg > ln || strcasecmp(name + ln - lg, globs[i].glob) != 0) continue;
-        /* The longest matching suffix wins (".tar.gz" over ".gz"), then weight. */
-        if (lg > bestlen || (lg == bestlen && globs[i].weight > bestw)) {
-            best = globs[i].type;
-            bestlen = lg;
-            bestw = globs[i].weight;
+    for (int pass = 0; pass < 2; pass++) {
+        const char *best = NULL;
+        size_t bestlen = 0;
+        int bestw = -1;
+        for (size_t i = 0; i < nglobs; i++) {
+            size_t lg = strlen(globs[i].glob);
+            if (lg > ln) continue;
+            if (pass == 0 ? strcmp(name + ln - lg, globs[i].glob) != 0
+                          : globs[i].cs || strcasecmp(name + ln - lg, globs[i].glob) != 0) continue;
+            if (lg > bestlen || (lg == bestlen && globs[i].weight > bestw)) {
+                best = globs[i].type;
+                bestlen = lg;
+                bestw = globs[i].weight;
+            }
         }
+        if (best) return best;
     }
-    return best;
+    return NULL;
 }
 
 char *WPDataFile__wpQueryMimeType(wpo_object *self)

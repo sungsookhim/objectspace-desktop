@@ -128,7 +128,7 @@ TEST(parent_calls)
     wpo_unref(d);
     wpo_object *f = wpo_new(WPDataFileClass);
     m = WPObject_wpModifyPopupMenu(f, "");
-    CHECK_STR(m, "1\tOpen\n2\tProperties\n41\tCreate another\n40\tDelete...\n10\tOpen With\n");
+    CHECK_STR(m, "1\tOpen\n2\tProperties\n41\tCreate another\n40\tDelete...\n");   /* (Open With: wpsd adds the cascade) */
     free(m);
     wpo_unref(f);
 }

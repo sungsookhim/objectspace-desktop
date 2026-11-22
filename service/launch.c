@@ -417,14 +417,32 @@ static bool find_desktop(const char *id, char *out, size_t n)
     return false;
 }
 
-/* The first installed application among a semicolon-separated list. */
+/* The first installed application among a semicolon-separated list (and
+ * its ID, if asked). */
+static char *first_id;
+static size_t first_idn;
 static bool first_installed(const char *list, char *out, size_t n)
 {
     char copy[4096];
     snprintf(copy, sizeof copy, "%s", list);
     for (char *s = copy, *t; (t = strsep(&s, ";"));)
-        if (*t && find_desktop(t, out, n)) return true;
+        if (*t && find_desktop(t, out, n)) {
+            if (first_id) snprintf(first_id, first_idn, "%s", t);
+            return true;
+        }
     return false;
+}
+
+static bool default_app(const char *mime, char *desktop, size_t n);
+
+/* (on the loop thread only, as all of these) */
+static bool default_app_id(const char *mime, char *desktop, size_t n, char *id, size_t idn)
+{
+    first_id = id;
+    first_idn = idn;
+    bool ok = default_app(mime, desktop, n);
+    first_id = NULL;
+    return ok;
 }
 
 static bool default_app(const char *mime, char *desktop, size_t n)
@@ -542,6 +560,239 @@ int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max
     int argc = wps_split_exec(exec, file, buf, n, argv, max);
     if (argc > 0 && wps_desktop_wants_terminal(desktop)) argc = wps_terminal_wrap(argv, argc, max);
     return argc;
+}
+
+/* ------------------------------------------------------------ Open With */
+
+/* An entry's value in the user's language (Name[ko_KR], Name[ko], Name). */
+static bool ini_get_local(const char *file, const char *key, char *out, size_t n)
+{
+    const char *l = getenv("LC_ALL");
+    if (!l || !*l) l = getenv("LC_MESSAGES");
+    if (!l || !*l) l = getenv("LANG");
+    char lang[64] = "";
+    snprintf(lang, sizeof lang, "%s", l ? l : "");
+    lang[strcspn(lang, ".@")] = 0;
+    char k[128];
+    if (lang[0] && strcmp(lang, "C") && strcmp(lang, "POSIX")) {
+        snprintf(k, sizeof k, "%s[%s]", key, lang);
+        if (ini_get(file, "[Desktop Entry]", k, out, n)) return true;
+        char *u = strchr(lang, '_');
+        if (u) {
+            *u = 0;
+            snprintf(k, sizeof k, "%s[%s]", key, lang);
+            if (ini_get(file, "[Desktop Entry]", k, out, n)) return true;
+        }
+    }
+    return ini_get(file, "[Desktop Entry]", key, out, n);
+}
+
+/* An application's entry read into `a` (id given); false if it is not
+ * one to offer (hidden, no command, not an application). */
+static bool app_read(const char *id, const char *path, wps_app *a, bool listed_only)
+{
+    char v[4096];
+    if (ini_get(path, "[Desktop Entry]", "Hidden", v, sizeof v) && !strcmp(v, "true")) return false;
+    if (ini_get(path, "[Desktop Entry]", "Type", v, sizeof v) && strcmp(v, "Application")) return false;
+    if (!ini_get(path, "[Desktop Entry]", "Exec", v, sizeof v) || !*v) return false;
+    if (listed_only && ini_get(path, "[Desktop Entry]", "NoDisplay", v, sizeof v) && !strcmp(v, "true")) return false;
+    if (ini_get(path, "[Desktop Entry]", "TryExec", v, sizeof v) && *v && !on_path(v)) return false;
+    memset(a, 0, sizeof *a);
+    snprintf(a->id, sizeof a->id, "%s", id);
+    snprintf(a->path, sizeof a->path, "%s", path);
+    if (!ini_get_local(path, "Name", a->name, sizeof a->name)) snprintf(a->name, sizeof a->name, "%s", id);
+    ini_get(path, "[Desktop Entry]", "Icon", a->icon, sizeof a->icon);
+    return true;
+}
+
+static bool app_listed(const wps_app *out, int n, const char *id)
+{
+    for (int i = 0; i < n; i++) if (!strcmp(out[i].id, id)) return true;
+    return false;
+}
+
+/* Add the installed applications of a semicolon-separated list. */
+static int add_apps(const char *list, wps_app *out, int n, int max)
+{
+    char copy[4096], path[PATH_MAX];
+    snprintf(copy, sizeof copy, "%s", list);
+    for (char *s = copy, *t; n < max && (t = strsep(&s, ";"));)
+        if (*t && !app_listed(out, n, t) && find_desktop(t, path, sizeof path) && app_read(t, path, &out[n], false)) n++;
+    return n;
+}
+
+/* shared-mime-info's subclasses ("text/x-csrc text/plain"): a type's
+ * programs include its parents' (a text editor for C files). */
+static bool mime_parent(const char *mime, char *out, size_t n)
+{
+    char dirs[32][PATH_MAX];
+    int nd = xdg_dirs(false, dirs, 32);
+    for (int i = nd - 1; i >= 0; i--) {   /* (system first: the user's rarely has one) */
+        char f[PATH_MAX + 32], line[512];
+        snprintf(f, sizeof f, "%s/mime/subclasses", dirs[i]);
+        FILE *fp = fopen(f, "re");
+        if (!fp) continue;
+        size_t ml = strlen(mime);
+        bool found = false;
+        while (!found && fgets(line, sizeof line, fp)) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (!strncmp(line, mime, ml) && line[ml] == ' ') { snprintf(out, n, "%s", line + ml + 1); found = true; }
+        }
+        fclose(fp);
+        if (found) return true;
+    }
+    return false;
+}
+
+static const char *file_mime(const char *file)
+{
+    const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
+    const char *mime = wps_mime_for_name(base);
+    if (!mime && looks_like_text(file)) mime = "text/plain";
+    return mime;
+}
+
+int wps_apps_for_file(const char *file, char *mime_out, size_t mn, wps_app *out, int max)
+{
+    const char *m0 = file_mime(file);
+    if (mime_out) snprintf(mime_out, mn, "%s", m0 ? m0 : "");
+    if (!m0) return 0;
+    int n = 0;
+    char desktop[PATH_MAX], id[256];
+    if (default_app_id(m0, desktop, sizeof desktop, id, sizeof id) && app_read(id, desktop, &out[0], false)) {
+        out[0].is_default = true;
+        n = 1;
+    }
+    char cfg[32][PATH_MAX], data[32][PATH_MAX], val[4096];
+    int nc = xdg_dirs(true, cfg, 32), nd = xdg_dirs(false, data, 32);
+    char mime[256];
+    snprintf(mime, sizeof mime, "%s", m0);
+    for (int depth = 0; depth < 4 && n < max; depth++) {
+        /* added associations (mimeapps.list), then the declared ones */
+        for (int pass = 0; pass < 2; pass++)
+            for (int i = 0; i < (pass ? nd : nc) && n < max; i++) {
+                char f[PATH_MAX + 64];
+                snprintf(f, sizeof f, "%s%s/mimeapps.list", pass ? data[i] : cfg[i], pass ? "/applications" : "");
+                if (ini_get(f, "[Added Associations]", mime, val, sizeof val)) n = add_apps(val, out, n, max);
+            }
+        for (int i = 0; i < nd && n < max; i++) {
+            char f[PATH_MAX + 64];
+            snprintf(f, sizeof f, "%s/applications/mimeinfo.cache", data[i]);
+            if (ini_get(f, "[MIME Cache]", mime, val, sizeof val)) n = add_apps(val, out, n, max);
+        }
+        char parent[256];
+        if (!mime_parent(mime, parent, sizeof parent)) break;
+        snprintf(mime, sizeof mime, "%s", parent);
+    }
+    return n;
+}
+
+static int app_cmp(const void *a, const void *b) { return strcoll(((const wps_app *)a)->name, ((const wps_app *)b)->name); }
+
+int wps_apps_all(wps_app *out, int max)
+{
+    char dirs[32][PATH_MAX];
+    int nd = xdg_dirs(false, dirs, 32), n = 0;
+    for (int i = 0; i < nd && n < max; i++) {
+        char d[PATH_MAX + 16];
+        snprintf(d, sizeof d, "%s/applications", dirs[i]);
+        DIR *dir = opendir(d);
+        struct dirent *de;
+        while (dir && n < max && (de = readdir(dir))) {
+            size_t l = strlen(de->d_name);
+            if (l < 9 || strcmp(de->d_name + l - 8, ".desktop") || app_listed(out, n, de->d_name)) continue;
+            char p[PATH_MAX + NAME_MAX + 32];
+            snprintf(p, sizeof p, "%s/%s", d, de->d_name);
+            if (strlen(p) >= PATH_MAX) continue;
+            /* (one the user's folder hides stays hidden: listed first, then skipped) */
+            wps_app a;
+            if (app_read(de->d_name, p, &a, true)) out[n++] = a;
+            else {
+                memset(&out[n], 0, sizeof out[n]);
+                snprintf(out[n].id, sizeof out[n].id, "%s", de->d_name);
+                out[n].hidden = true;
+                n++;
+            }
+        }
+        if (dir) closedir(dir);
+    }
+    int w = 0;
+    for (int i = 0; i < n; i++) if (!out[i].hidden) out[w++] = out[i];
+    qsort(out, (size_t)w, sizeof *out, app_cmp);
+    return w;
+}
+
+int wps_app_argv(const char *id, const char *file, char *buf, size_t n, char **argv, int max)
+{
+    char path[PATH_MAX], exec[4096];
+    if (strchr(id, '/') || !find_desktop(id, path, sizeof path)) return 0;
+    if (!ini_get(path, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
+    int argc = wps_split_exec(exec, file, buf, n, argv, max);
+    if (argc > 0 && wps_desktop_wants_terminal(path)) argc = wps_terminal_wrap(argv, argc, max);
+    return argc;
+}
+
+/* Rewrite one key of one section of an ini file (made if need be). */
+static bool ini_set(const char *file, const char *section, const char *key, const char *value)
+{
+    FILE *in = fopen(file, "re");
+    size_t cap = 4096, len = 0;
+    char *outb = malloc(cap), line[4096];
+    bool in_sec = false, done = false, seen_sec = false;
+    #define PUT(str) do { size_t sl_ = strlen(str); while (len + sl_ + 1 > cap) { cap *= 2; outb = realloc(outb, cap); } memcpy(outb + len, str, sl_); len += sl_; } while (0)
+    size_t kl = strlen(key);
+    while (in && fgets(line, sizeof line, in)) {
+        char t[4096];
+        snprintf(t, sizeof t, "%s", line);
+        t[strcspn(t, "\r\n")] = 0;
+        if (t[0] == '[') {
+            if (in_sec && !done) { PUT(key); PUT("="); PUT(value); PUT("\n"); done = true; }
+            in_sec = !strcmp(t, section);
+            seen_sec |= in_sec;
+        } else if (in_sec && !strncmp(t, key, kl) && (t[kl] == '=' || t[kl] == ' ')) {
+            if (!done) { PUT(key); PUT("="); PUT(value); PUT("\n"); done = true; }
+            continue;
+        }
+        PUT(line);
+        if (len && outb[len - 1] != '\n') PUT("\n");
+    }
+    if (in) fclose(in);
+    if (!done) {
+        if (!seen_sec) { if (len) PUT("\n"); PUT(section); PUT("\n"); }
+        PUT(key); PUT("="); PUT(value); PUT("\n");
+    }
+    #undef PUT
+    char tmp[PATH_MAX + 16];
+    snprintf(tmp, sizeof tmp, "%s.wps-new", file);
+    FILE *o = fopen(tmp, "we");
+    bool ok = o && fwrite(outb, 1, len, o) == len;
+    if (o && fclose(o) != 0) ok = false;
+    free(outb);
+    if (ok && rename(tmp, file) != 0) ok = false;
+    if (!ok) unlink(tmp);
+    return ok;
+}
+
+bool wps_app_set_default(const char *file, const char *id)
+{
+    const char *mime = file_mime(file);
+    char path[PATH_MAX];
+    if (!mime || strchr(id, '/') || strchr(id, ';') || !find_desktop(id, path, sizeof path)) return false;
+    char cfg[1][PATH_MAX];
+    if (xdg_dirs(true, cfg, 1) < 1) return false;
+    mkdir(cfg[0], 0700);
+    char f[PATH_MAX + 32], val[4096], added[4200];
+    snprintf(f, sizeof f, "%s/mimeapps.list", cfg[0]);
+    /* the default (shared with GNOME), and first among the added ones */
+    if (!ini_set(f, "[Default Applications]", mime, id)) return false;
+    snprintf(added, sizeof added, "%s;", id);
+    if (ini_get(f, "[Added Associations]", mime, val, sizeof val)) {
+        char copy[4096];
+        snprintf(copy, sizeof copy, "%s", val);
+        for (char *s = copy, *t; (t = strsep(&s, ";"));)
+            if (*t && strcmp(t, id) && strlen(added) + strlen(t) + 2 < sizeof added) { strcat(added, t); strcat(added, ";"); }
+    }
+    return ini_set(f, "[Added Associations]", mime, added);
 }
 
 bool wps_is_program_file(const char *path)

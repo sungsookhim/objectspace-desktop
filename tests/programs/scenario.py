@@ -74,9 +74,9 @@ def wait_tree(cond, secs=6):
 
 
 c.request(op="first_start", desktop=T + "/desk")
-tr = wait_tree(lambda tr: "Development" in tr and len(tr) >= 5)
 want = {"Accessories": ["calc.desktop"], "Development": ["editor.desktop"], "Games": ["chess.desktop"],
         "Multimedia": ["player.desktop"], "Other": ["plain.desktop"]}
+tr = wait_tree(lambda tr: tr == want)   # (the folders come before their shadows)
 check("made by category; hidden, other desktops', missing TryExec and links left out", tr == want, tr)
 r = c.request(op="resolve", target=PROGS)["result"]
 check("Programs is a WPProgramsFolder", r.get("class") == "WPProgramsFolder", r.get("class"))

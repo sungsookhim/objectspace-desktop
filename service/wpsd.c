@@ -100,6 +100,7 @@
 #include "udisks.h"
 #include "programs.h"
 #include "launch.h"
+#include "wps_menu_ids.h"
 #include "listing.h"
 #include "find.h"
 #include "plugins.h"
@@ -494,6 +495,30 @@ static void local_call_reply(struct req *r, wpo_object *o)
     wpo_value_clear(&ret);
 }
 
+/* Open With (v0.3-design 7): a data file's Open is a cascade of the
+ * programs for its type, the default checked, then Other program...;
+ * the GUI opens item WPS_MI_OPEN_APP + k with "app_index" k. */
+static char *open_with_items(wpo_object *o, char *menu)
+{
+    const char *p = wpo_is_a(o, WPDataFileClass) ? WPFileSystem_data(o)->path : NULL;
+    struct stat st;
+    if (!p || stat(p, &st) != 0 || !S_ISREG(st.st_mode) || wps_is_program_file(p)) return menu;
+    wps_app *a = malloc(WPS_MI_OPEN_APPS * sizeof *a);
+    int n = a ? wps_apps_for_file(p, NULL, 0, a, WPS_MI_OPEN_APPS) : 0;
+    size_t len = strlen(menu), cap = len + (size_t)n * 200 + 64;
+    char *r = realloc(menu, cap);
+    if (!r) { free(a); return menu; }
+    for (int i = 0; i < n; i++) {
+        char name[128];
+        snprintf(name, sizeof name, "%s", a[i].name);
+        for (char *q = name; *q; q++) if (*q == '\t' || *q == '\n') *q = ' ';
+        len += (size_t)snprintf(r + len, cap - len, "%d\t%s\t1\t%s\n", WPS_MI_OPEN_APP + i, name, a[i].is_default ? "checked" : "");
+    }
+    snprintf(r + len, cap - len, "%d\tOther program...\t1\n", WPS_MI_OPEN_OTHER);
+    free(a);
+    return r;
+}
+
 static void do_menus(struct req *r, wpo_object *o)
 {
     const char *err = NULL;
@@ -520,6 +545,7 @@ static void do_menus(struct req *r, wpo_object *o)
     cb_text(&b, "result");
     if (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select")) {
         char *t = r->remote_text ? strdup(r->remote_text) : call_text(o, "wpModifyPopupMenu", "");
+        if (!r->remote_text) t = open_with_items(o, t);
         put_menu(&b, t, "");
         free(t);
     } else {
@@ -1644,6 +1670,33 @@ static void do_open(struct req *r, wpo_object *o)
             snprintf(cwd, sizeof cwd, "%s", path);
             *strrchr(cwd, '/') = 0;
             if (!cwd[0]) strcpy(cwd, "/");
+        } else if (cv_text(&r->msg, "app") || cv_get(&r->msg, "app_index")) {
+            /* Open With: the program chosen (by its ID, or its place in the
+             * Open cascade), made the type's default if asked */
+            const char *app = cv_text(&r->msg, "app");
+            int64_t k = -1;
+            wps_app *a = NULL;
+            if (!app && cv_int(&r->msg, "app_index", &k) && k >= 0 && k < WPS_MI_OPEN_APPS) {
+                a = malloc(WPS_MI_OPEN_APPS * sizeof *a);
+                int n = a ? wps_apps_for_file(path, NULL, 0, a, WPS_MI_OPEN_APPS) : 0;
+                if (k < n) app = a[k].id;
+            }
+            const cv *al = cv_get(&r->msg, "always");
+            bool ok = app != NULL;
+            if (ok && al && al->k == CV_BOOL && al->b && !wps_app_set_default(path, app)) {
+                reply_error(r->c, r->id, "failed", "the default program for the type could not be stored (mimeapps.list)");
+                free(a);
+                wpo_unref(orig);
+                return;
+            }
+            if (!ok || wps_app_argv(app, path, buf, sizeof buf, argv, 64) <= 0) {
+                reply_error(r->c, r->id, "failed", "that program cannot be started (not installed, or it runs in a terminal and there is none)");
+                free(a);
+                wpo_unref(orig);
+                return;
+            }
+            free(a);
+            what = argv[0];
         } else if (wps_handler_argv(path, buf, sizeof buf, argv, 64) > 0) {
             /* Its type's default application, started directly so that its
              * process stands for the open file (xdg-open hands over and exits). */
@@ -3788,6 +3841,26 @@ static void handle(struct client *c, cv *msg)
         cb_free(&b);
     } else if (strcmp(op, "describe") == 0) {
         do_describe(c, id, cv_text(msg, "class"));
+    } else if (strcmp(op, "apps") == 0) {
+        /* Other program... (Open With): every installed application */
+        wps_app *a = malloc(1024 * sizeof *a);
+        int n = a ? wps_apps_all(a, 1024) : 0;
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result");
+        cb_array(&b, (size_t)n);
+        for (int i = 0; i < n; i++) {
+            cb_map(&b, 3);
+            cb_text(&b, "id"); cb_text(&b, a[i].id);
+            cb_text(&b, "name"); cb_text(&b, a[i].name);
+            cb_text(&b, "icon"); cb_text(&b, a[i].icon);
+        }
+        send_frame(c, &b);
+        cb_free(&b);
+        free(a);
     } else if (strcmp(op, "flush") == 0 || strcmp(op, "shutdown") == 0 || strcmp(op, "sync") == 0) {
         struct simple *s = calloc(1, sizeof *s);
         s->c = c; s->id = id; c->refs++;
