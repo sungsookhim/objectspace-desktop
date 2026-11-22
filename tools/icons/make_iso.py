@@ -123,7 +123,8 @@ class Canvas:
         self.n, self.variant = n, variant
         # drawn for a desktop size: icons draw their small design (a bigger
         # identifying feature, fewer details) - not the master shrunk
-        self.small = (size or n) <= 48
+        self.size = size or n                 # the size drawn for
+        self.small = self.size <= 48
         self.rec = fit is None
         self.bbox = [1e9, 1e9, -1e9, -1e9]
         if not self.rec:
@@ -516,13 +517,19 @@ def dashed_rect(c, z, x0, x1, y0, y1, col, dash=7, w=2.5):
 def restore_desktop(c):
     """Restore Desktop: the desktop with its default objects, and the
     arrow turning back round it (back to how it was)."""
-    if c.small:                                                               # the arrow alone, bold
+    if c.small and c.size < 48:                                               # the arrow alone, bold
         ring = ring_arrow(0, 55, 48, 70, 80, 380, 40)
         c.on_y(-6, ring, shade(GREEN, 0.5), edge=False)
         c.on_y(0, ring, GREEN)
         return
     c.box(-56, 56, -8, 0, 10, 100, PLASTIC)                                   # the desktop, standing
     c.on_y(0.1, sq(-50, 50, 16, 94), TEAL)
+    if c.small:                                                               # 48: one big folder, a bolder arrow
+        g_folder(c, 0.2, 0, 55, 26)
+        ring = ring_arrow(0, 55, 58, 74, 80, 380, 40)
+        c.on_y(12, ring, shade(GREEN, 0.5), edge=False)
+        c.on_y(16, ring, GREEN)
+        return
     g_folder(c, 0.2, -30, 74, 11)                                             # its default objects
     c.on_y(0.3, sq(-38, -22, 36, 54), (176, 180, 188))                        # Trash Can
     c.on_y(0.4, sq(-36, -24, 52, 56), PLASTIC_D, edge=False)
