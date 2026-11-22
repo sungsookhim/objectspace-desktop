@@ -2863,9 +2863,9 @@ static void decided(void *arg, int choice)
 
 /* ---------------------------------------------------------------- delete */
 
-/* Confirmations, as on OS/2's System object (Confirmations page); read
- * from <config>/system.conf until that object exists. Deleting for good
- * always asks. */
+/* Confirmations, as on OS/2's System object (its Confirmations page, read
+ * with the other settings objects); <config>/system.conf, read first, is
+ * 0.1's older place for them. Deleting for good always asks. */
 static bool confirm_delete = true, confirm_folder_delete = true;
 
 static void load_system_conf(void)
@@ -2897,15 +2897,37 @@ struct del {
     size_t n;
     char **vobjs;            /* central objects ("vobj:ID"): deleted outright */
     size_t nv;
+    struct del *next;        /* the same request's files in another folder (a tree's selection) */
 };
 
 static void del_free(struct del *d)
 {
-    for (size_t i = 0; i < d->n; i++) free(d->names[i]);
-    for (size_t i = 0; i < d->nv; i++) free(d->vobjs[i]);
-    free(d->names);
-    free(d->vobjs);
-    free(d);
+    while (d) {
+        struct del *nx = d->next;
+        for (size_t i = 0; i < d->n; i++) free(d->names[i]);
+        for (size_t i = 0; i < d->nv; i++) free(d->vobjs[i]);
+        free(d->names);
+        free(d->vobjs);
+        free(d);
+        d = nx;
+    }
+}
+
+/* The request's part for files in `parent` (one job per folder). */
+static struct del *del_for(struct del *d, const char *parent)
+{
+    for (struct del *e = d;; e = e->next) {
+        if (!e->n || !strcmp(e->parent, parent)) {
+            if (!e->n) snprintf(e->parent, sizeof e->parent, "%s", parent);
+            return e;
+        }
+        if (!e->next) {
+            struct del *nd = calloc(1, sizeof *nd);
+            nd->folder = d->folder;
+            nd->permanent = d->permanent;
+            e->next = nd;
+        }
+    }
 }
 
 static void push(char ***v, size_t *n, const char *s)
@@ -2926,19 +2948,21 @@ static void vdeleted(void *arg, const cv *reply)
 
 static void start_deletion(struct del *d)
 {
-    /* central objects (shadows ...): into the Trash Can, or for good */
-    for (size_t i = 0; i < d->nv; i++)
-        (d->permanent ? svc_vdelete : svc_vtrash)(d->vobjs[i], vdeleted, (void *)(intptr_t)d->folder);
-    if (d->n) {
-        struct xfer *x = calloc(1, sizeof *x);
-        x->folder = d->folder;
-        snprintf(x->kind, sizeof x->kind, "%s", d->permanent ? "delete" : "trash");
-        snprintf(x->from, sizeof x->from, "%s", d->parent);
-        x->names = d->names;
-        x->n = d->n;
-        d->names = NULL;
-        d->n = 0;
-        svc_select(x->from, (const char *const *)x->names, x->n, got_sel, x);
+    for (struct del *e = d; e; e = e->next) {
+        /* central objects (shadows ...): into the Trash Can, or for good */
+        for (size_t i = 0; i < e->nv; i++)
+            (e->permanent ? svc_vdelete : svc_vtrash)(e->vobjs[i], vdeleted, (void *)(intptr_t)e->folder);
+        if (e->n) {
+            struct xfer *x = calloc(1, sizeof *x);
+            x->folder = e->folder;
+            snprintf(x->kind, sizeof x->kind, "%s", e->permanent ? "delete" : "trash");
+            snprintf(x->from, sizeof x->from, "%s", e->parent);
+            x->names = e->names;
+            x->n = e->n;
+            e->names = NULL;
+            e->n = 0;
+            svc_select(x->from, (const char *const *)x->names, x->n, got_sel, x);
+        }
     }
     del_free(d);
 }
@@ -2961,11 +2985,28 @@ static void delete_request(struct folder *f, size_t i, bool permanent)
     bool any_folder = false;
     char first[PATH_MAX] = "";
     size_t total = is_tree(f) ? f->ntvis : f->m.total;
-    bool whole = i != SIZE_MAX && !is_tree(f) && ui_container_is_selected(f->cont, i);
+    bool whole = i != SIZE_MAX && ui_container_is_selected(f->cont, i);
+    /* a tree's selection: folders in other folders; an item whose folder is
+     * selected too goes with it */
+    char **sel = NULL;
+    size_t nsel = 0;
+    if (whole && is_tree(f))
+        for (size_t k = 0; k < total; k++)
+            if (ui_container_is_selected(f->cont, k)) {
+                char t[PATH_MAX];
+                target_of(f, k, t, sizeof t);
+                push(&sel, &nsel, t);
+            }
     for (size_t k = whole ? 0 : i; whole ? k < total : k == i; k++) {
         if (whole && !ui_container_is_selected(f->cont, k)) continue;
         char t[PATH_MAX];
         target_of(f, k, t, sizeof t);
+        bool inside = false;
+        for (size_t q = 0; q < nsel && !inside; q++) {
+            size_t l = strlen(sel[q]);
+            inside = l > 1 && !strncmp(t, sel[q], l) && t[l] == '/';
+        }
+        if (inside) continue;
         struct row *rw = row_at(f, k);
         const char *title = rw && rw->title ? rw->title : NULL;
         char p[PATH_MAX];   /* outlives the branches: title may point into it */
@@ -2977,15 +3018,20 @@ static void delete_request(struct folder *f, size_t i, bool permanent)
             else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", rw->name);
             char *sl = strrchr(p, '/');
             if (!sl || !sl[1] || !strcmp(p, "/")) continue;
-            snprintf(d->parent, sizeof d->parent, "%.*s", sl == p ? 1 : (int)(sl - p), p);
-            push(&d->names, &d->n, sl + 1);
+            char par[PATH_MAX];
+            snprintf(par, sizeof par, "%.*s", sl == p ? 1 : (int)(sl - p), p);
+            struct del *e = del_for(d, par);
+            push(&e->names, &e->n, sl + 1);
             if (!title) title = sl + 1;
             any_folder |= k == SIZE_MAX || is_tree(f) || (rw && rw->kind == UI_KIND_FOLDER && !rw->shadow && !rw->link);
         }
         if (!first[0]) snprintf(first, sizeof first, "%s", title ? title : t);
         if (k == SIZE_MAX) break;
     }
-    size_t n = d->n + d->nv;
+    for (size_t q = 0; q < nsel; q++) free(sel[q]);
+    free(sel);
+    size_t n = 0;
+    for (struct del *e = d; e; e = e->next) n += e->n + e->nv;
     if (!n) { del_free(d); return; }
     if (!permanent && !(any_folder ? confirm_folder_delete : confirm_delete)) { start_deletion(d); return; }
     char msg[700], what[400];
@@ -3606,6 +3652,34 @@ static void win_frame(ui_surface *s, double now)
             size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;   /* a change still being drawn: next frame */
             fprintf(stderr, "selftest: tree pixels against a fresh redraw: %zu differ\n", d);
+            for (size_t i = 0; i < f->ntvis; i++)
+                if (!strcmp(f->tvis[i]->name, "a")) ui_container_set_cursor(f->cont, i);
+            win_key(s, &right);    /* expand a again */
+            step++;
+        } else if (step == 6 && t > 4000) {
+            /* Delete with a selection in two folders: a/a1 and a/a2 in a, b
+             * in the folder itself */
+            ui_container_select_none(f->cont);
+            size_t at = SIZE_MAX;
+            for (size_t i = 0; i < f->ntvis; i++) {
+                const char *nm = f->tvis[i]->name;
+                if (!strcmp(nm, "a1") || !strcmp(nm, "b") || !strcmp(nm, "a2")) { ui_container_select(f->cont, i); at = i; }
+            }
+            last_dialog = NULL;
+            if (at != SIZE_MAX) delete_request(f, at, false);
+            fprintf(stderr, "selftest: tree Delete asked: %s\n", last_dialog ? "yes" : "no");
+            ui_key_event ret = { .sym = XKB_KEY_Return };
+            if (last_dialog) ui_surface_send_key(ui_dialog_surface(last_dialog), &ret);
+            last_dialog = NULL;
+            step++;
+        } else if (step == 7 && t > 6000) {
+            char p1[PATH_MAX + 8], p2[PATH_MAX + 8], p3[PATH_MAX + 8], p4[PATH_MAX + 8];
+            snprintf(p1, sizeof p1, "%s/a/a1", f->path);
+            snprintf(p2, sizeof p2, "%s/b", f->path);
+            snprintf(p3, sizeof p3, "%s/a/a2", f->path);
+            snprintf(p4, sizeof p4, "%s/a", f->path);
+            fprintf(stderr, "selftest: after the tree's Delete: a/a1 %s, b %s, a/a2 %s, a %s\n", access(p1, F_OK) ? "gone" : "there",
+                    access(p2, F_OK) ? "gone" : "there", access(p3, F_OK) ? "gone" : "there", access(p4, F_OK) ? "gone" : "there");
             ui_app_quit(app);
             step++;
         }
