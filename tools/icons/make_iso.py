@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WPS's isometric icon set (set A: System Setup objects; set B: special folders).
+"""WPS's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files).
 
 Style: isometric pixel art after BeOS / OS/2 Warp 4, 2:1 lines (2 across
 for 1 down; verticals straight), light from the upper left (top lightest,
@@ -662,6 +662,196 @@ SET_B = [entry for name, title, e in FOLDERS
                        (name + "-open", title + " (open)", lambda c, e=e: folder(c, True, e)))]
 
 
+# ---------------------------------------------------------- set C: data files
+
+PX0, PX1, PH, EAR = -60, 24, 112, 20     # the page: x span, height, turned corner
+PY = 0                                   # its face is at y = PY + 2
+
+
+def page(c, emblem=None, content=None, paper=WHITE):
+    """A data file: a page standing, facing lower left, its top right
+    corner turned down; what it holds drawn on it, or an emblem (its
+    kind's) standing at the lower right, as the folders' do."""
+    pts = [(PX0, 0), (PX1, 0), (PX1, PH - EAR), (PX1 - EAR, PH), (PX0, PH)]
+    c.plate(pts, (0, PY, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0), 2, paper)
+    c.on_y(PY + 2.1, [(PX1 - EAR, PH), (PX1 - EAR, PH - EAR), (PX1, PH - EAR)], shade(paper, 0.72))
+    if content:
+        content(c, PY + 2.2)
+    if emblem:
+        if c.small:
+            c.at(PX1 - 30, 8, 0, 1.5)
+        else:
+            c.at(PX1 - 6, 6)
+        emblem(c)
+        c.at(0, 0)
+
+
+def bar(c, y, x0, x1, z, w, col):
+    c.on_y(y, sq(x0, x1, z - w / 2, z + w / 2), col, edge=False)
+
+
+def lines(c, y, z0, z1, step, w, col, widths=(1, .9, .96, .7, 1, .85, .6), x0=PX0 + 9, x1=PX1 - 9):
+    z, i = z1, 0
+    while z >= z0:
+        bar(c, y, x0, x0 + (x1 - x0) * widths[i % len(widths)], z, w, col)
+        z -= step
+        i += 1
+
+
+GREYTEXT = (96, 96, 108)
+
+
+def c_data(c, y):
+    for r, z in enumerate((84, 66, 48, 30)):                                  # bits
+        for k in range(5):
+            if (r * 3 + k) % 4 != 1:
+                bar(c, y, PX0 + 10 + k * 13, PX0 + 19 + k * 13, z, 8 if c.small else 5, PLASTIC_D)
+
+
+def c_text(c, y):
+    if c.small:
+        lines(c, y, 14, 92, 15, 7, GREYTEXT)
+    else:
+        lines(c, y, 12, 96, 9, 3.5, GREYTEXT, x1=PX1 - 9 if True else 0)
+
+
+def c_document(c, y):
+    bar(c, y, PX0 + 9, PX0 + 54, 94, 8, BLUE)                                 # heading
+    c.on_y(y, sq(PX0 + 9, PX0 + 38, 46, 80), SCREEN_L)                       # a picture
+    c.on_y(y + 0.1, [(PX0 + 9, 46), (PX0 + 38, 46), (PX0 + 38, 56), (PX0 + 26, 66), (PX0 + 9, 52)], GREEN, edge=False)
+    if c.small:
+        lines(c, y, 16, 34, 16, 7, GREYTEXT)
+    else:
+        lines(c, y, 50, 78, 9, 3.5, GREYTEXT, x0=PX0 + 44)
+        lines(c, y, 12, 38, 9, 3.5, GREYTEXT)
+
+
+def c_spreadsheet(c, y):
+    x0, x1, z0, z1 = PX0 + 8, PX1 - 8, 12, 96
+    rows, cols = (5, 3) if c.small else (8, 4)
+    rh, cw = (z1 - z0) / rows, (x1 - x0) / cols
+    c.on_y(y, sq(x0, x1, z1 - rh, z1), GREEN)                                 # header row
+    c.on_y(y, sq(x0, x0 + cw, z0, z1 - rh), (200, 236, 200))                  # first column
+    w = 3 if c.small else 1.6
+    for r in range(rows + 1):
+        bar(c, y + 0.1, x0, x1, z0 + r * rh, w, (90, 130, 90))
+    for k in range(cols + 1):
+        c.on_y(y + 0.1, sq(x0 + k * cw - w / 2, x0 + k * cw + w / 2, z0, z1), (90, 130, 90), edge=False)
+
+
+def c_presentation(c, y):
+    c.on_y(y, sq(PX0 + 8, PX1 - 8, 82, 98), (232, 120, 40))                   # title
+    base = 20
+    for k, (h, col) in enumerate(((26, BLUE), (44, RED), (34, GREEN))):
+        x = PX0 + 12 + k * 20
+        c.on_y(y, sq(x, x + 14, base, base + h), col)
+    bar(c, y + 0.1, PX0 + 8, PX1 - 8, base - 1, 3, DARK)
+
+
+def c_image(c, y):
+    x0, x1, z0, z1 = PX0 + 7, PX1 - 7, 14, 96
+    c.on_y(y, sq(x0, x1, z0, z1), (120, 180, 240))                            # sky
+    c.on_y(y + 0.1, circ(x1 - 20, z1 - 20, 9 if not c.small else 12, 16), YELLOW, edge=False)
+    c.on_y(y + 0.1, [(x0, z0 + 28), (x0 + 26, z0 + 60), (x0 + 48, z0 + 30), (x0 + 48, z0), (x0, z0)], (130, 130, 150), edge=False)
+    c.on_y(y + 0.2, [(x0, z0 + 22), (x0 + 30, z0 + 34), (x1, z0 + 20), (x1, z0), (x0, z0)], GREEN, edge=False)
+
+
+def c_code(c, y):
+    cols = (PURPLE, BLUE, GREEN, (232, 120, 40), BLUE, PURPLE)
+    if c.small:
+        spec = [(0, .7), (1, .8), (1, .6), (0, .3)]
+        step, w, z = 20, 8, 90
+    else:
+        spec = [(0, .6), (1, .7), (2, .55), (2, .45), (1, .3), (1, .65), (2, .5), (0, .25)]
+        step, w, z = 10, 4, 94
+    for i, (ind, l) in enumerate(spec):
+        x0 = PX0 + 9 + ind * 10
+        bar(c, y, x0, x0 + (PX1 - PX0 - 18) * l, z - i * step, w, cols[i % len(cols)])
+
+
+def c_font(c, y):
+    """"Aa": a capital and a small a."""
+    w = 11 if c.small else 8
+    c.line([(PX0 + 8, y, 16), (PX0 + 27, y, 96), (PX0 + 46, y, 16)], DARK, w)          # A
+    c.line([(PX0 + 16, y, 44), (PX0 + 38, y, 44)], DARK, w * 0.8)
+    def arc(cx, cz, rx, rz, a0, a1):
+        return [(cx + rx * math.cos(math.radians(a)), y, cz + rz * math.sin(math.radians(a))) for a in range(a0, a1 + 1, 15)]
+    sx = PX0 + 72                                                                        # a: stem, hook, bowl
+    c.line([(sx, y, 16), (sx, y, 48)] + arc(sx - 11, 48, 11, 10, 0, 160), DARK, w * 0.85)
+    c.line(arc(sx - 11, 28, 11, 11, 0, 360), DARK, w * 0.85)
+
+
+def c_archive(c, y):
+    cx = (PX0 + PX1) / 2                                                       # a zipper down the page
+    c.on_y(y, sq(cx - 7, cx + 7, 0, PH - 2), PLASTIC_D)
+    step = 14 if c.small else 8
+    for k, z in enumerate(range(4, PH - 6, step)):
+        dx = -1 if k % 2 else 1
+        c.on_y(y + 0.1, sq(cx - 6 + dx * 2, cx + 6 + dx * 2, z, z + step / 2), (120, 120, 130), edge=False)
+    c.on_y(y + 0.2, sq(cx - 9, cx + 9, 26, 48), (190, 160, 60))               # the pull
+    c.on_y(y + 0.3, sq(cx - 4, cx + 4, 30, 40), DARK, edge=False)
+
+
+def e_audio(c):
+    c.at(c.tx + 8, c.ty + 18, 0, c.sc * 1.2)
+    note(c, 0, 0, 6, True, BLUE)
+
+
+def e_video(c):
+    """A clapperboard."""
+    c.box(0, 60, 14, 22, 0, 40, DARK)
+    c.on_y(22.1, sq(6, 54, 6, 30), (70, 70, 80))
+    for k in range(4):
+        x = 4 + k * 15
+        c.on_y(22.2, [(x, 41), (x + 8, 41), (x + 14, 50), (x + 6, 50)], WHITE, edge=False)
+    c.box(0, 60, 14, 22, 41, 50, DARK)
+    for k in range(4):
+        x = 2 + k * 15
+        c.on_y(22.1, [(x, 41), (x + 7, 41), (x + 12, 50), (x + 5, 50)], WHITE, edge=False)
+
+
+def e_package(c):
+    """A cardboard box, taped."""
+    BOX = (196, 150, 96)
+    c.box(0, 56, 4, 44, 0, 40, BOX)
+    c.on_z(40.1, rect(22, 34, 4, 44), (230, 200, 150), edge=False)            # tape
+    c.on_y(44.1, sq(22, 34, 26, 40), (230, 200, 150), edge=False)
+    c.on_y(44.1, sq(6, 18, 8, 18), WHITE)                                    # its label
+
+
+def e_script(c):
+    c.box(0, 58, 10, 16, 0, 44, (70, 70, 80))
+    g_terminal(c, 16, 29, 22, 22)
+
+
+def e_disc(c):
+    slab_y(c, 30, 3, circ(30, 32, 32, 36), (200, 204, 214))
+    c.line([(30 + 24 * math.cos(math.radians(a)), 30.1, 32 + 24 * math.sin(math.radians(a))) for a in range(200, 291, 10)], (150, 170, 230), 6)
+    c.line([(30 + 24 * math.cos(math.radians(a)), 30.1, 32 + 24 * math.sin(math.radians(a))) for a in range(20, 111, 10)], (230, 170, 210), 6)
+    c.on_y(30.2, circ(30, 32, 10, 16), PLASTIC_D)
+    c.on_y(30.3, circ(30, 32, 4, 10), (40, 40, 48), edge=False)
+
+
+def e_lines(c, y):
+    lines(c, y, 30, 96, 12, 3.5, (190, 190, 198))
+
+
+SET_C = [("file-data", "Data file", lambda c: page(c, content=c_data)),
+         ("file-text", "Text", lambda c: page(c, content=c_text)),
+         ("file-document", "Document", lambda c: page(c, content=c_document)),
+         ("file-spreadsheet", "Spreadsheet", lambda c: page(c, content=c_spreadsheet)),
+         ("file-presentation", "Presentation", lambda c: page(c, content=c_presentation)),
+         ("file-image", "Image", lambda c: page(c, content=c_image)),
+         ("file-code", "Source code", lambda c: page(c, content=c_code)),
+         ("file-font", "Font", lambda c: page(c, content=c_font)),
+         ("file-archive", "Archive", lambda c: page(c, content=c_archive)),
+         ("file-audio", "Audio", lambda c: page(c, e_audio, e_lines)),
+         ("file-video", "Video", lambda c: page(c, e_video, e_lines)),
+         ("file-package", "Package", lambda c: page(c, e_package, e_lines)),
+         ("file-script", "Script", lambda c: page(c, e_script, e_lines)),
+         ("file-disc-image", "Disc image", lambda c: page(c, e_disc, e_lines))]
+
+
 def render(fn, n, variant):
     rec = Canvas(256, variant, size=n)
     fn(rec)
@@ -721,7 +911,7 @@ def sheets(out, imgs, sizes, ICONS, tag):
     sh.save(f"{out}/sheet-small.png")
 
 
-SETS = {"A": SET_A, "B": SET_B}
+SETS = {"A": SET_A, "B": SET_B, "C": SET_C}
 
 
 def main():
