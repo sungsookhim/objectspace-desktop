@@ -2709,6 +2709,19 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
                 ui_container_view(f->cont) != UI_VIEW_ICON)
                 act = 0;   /* already there (in icon view: moving the icon) */
         }
+        /* only locked icons, over their own folder: they would not move
+         * (the no-drop pointer says so); onto other objects they go */
+        bool all_locked = act == UI_DND_MOVE && !shadow_mods(mods) && !is_tree(f) && cur_drag->n &&
+                          ui_container_view(f->cont) == UI_VIEW_ICON && !strcmp(cur_drag->src_folder, f->path) &&
+                          !strcmp(dest, f->path);
+        for (size_t i = 0; all_locked && i < cur_drag->n; i++) {
+            char nm[NAME_MAX + 8];
+            const char *p = cur_drag->paths[i];
+            if (!strncmp(p, "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", p);
+            else snprintf(nm, sizeof nm, "%s", strrchr(p, '/') ? strrchr(p, '/') + 1 : p);
+            all_locked = layout_is_locked(f->lay, nm);
+        }
+        if (all_locked) act = 0;
     }
     ui_container_set_drop_target(f->cont, act ? item : SIZE_MAX);
     return act;
@@ -4108,6 +4121,13 @@ static void win_frame(ui_surface *s, double now)
             snprintf(d.src_folder, sizeof d.src_folder, "%s", f->path);
             struct dragging *was = cur_drag;
             cur_drag = &d;
+            const char *mimes[1] = { MIME_WPS }, *mime;
+            d.n = 1;   /* the locked one alone over its folder: refused (the no-drop pointer) */
+            uint32_t a1 = win_drag_motion(s, 600, 420, mimes, 1, UI_DND_COPY | UI_DND_MOVE, 0, &mime);
+            d.n = 2;
+            uint32_t a2 = win_drag_motion(s, 600, 420, mimes, 1, UI_DND_COPY | UI_DND_MOVE, 0, &mime);
+            win_drag_leave(s);
+            fprintf(stderr, "selftest: layout: drag motion: locked alone refused %d, with another moves %d\n", a1 == 0, a2 == UI_DND_MOVE);
             reposition(f, 300, 300);
             cur_drag = was;
             double x, y, cx, cy;

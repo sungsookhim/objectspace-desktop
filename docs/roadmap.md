@@ -34,17 +34,19 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
 ### Folders and objects (daily use)
 
 - **D** **Details view sorting and columns.** Click a heading to sort (again: reversed); choose the columns globally (System Setup) and per folder. Sorting belongs in wpsd (rows are paged and shared). **?** Kept per folder (OS/2's "Always maintain sort order", also used by Arrange) or per window; OS/2's column set or today's plus Type.
-- **D** **OS/2's icon layout.** Every title whole, rows as tall as their tallest title, Arrange spacing to suit. The 0.1 step: two lines, the whole title when selected.
+- **D** **OS/2's icon layout.** Every title whole, rows as tall as their tallest title: done in 0.3 step 6 (the free layout with variable widths: the owner's to-do below).
 - **A search field in folder windows** that filters the view (today Ctrl+F opens Find on the folder). Needs the folder model to show a subset.
 - **Sort by size:** folders and shadows sort by their own stored size, so they mix with files; folders first would be tidier.
 - **The owner's to-do (2026-11-22):**
   - **Icon size** for icon views and the desktop, a System choice: 32, 40 or 64 pixels (today 32).
   - **Prevent delete** on an object's General page (OS/2's no-delete style): Delete and drops on the Trash Can refuse it, by accident or not, until it is unchecked. The Trash Can and My System are the examples; WPS's own objects could start with it on.
-  - **Lock position:** in 0.3 step 6 (also asked for here).
+  - **Lock position:** done in 0.3 step 6 (also asked for here); dragging only locked icons within their folder shows the no-drop pointer.
+- **The owner's to-do (2026-11-22, after 0.3 step 6):**
+  - **OS/2's free (non-grid) icon layout:** cells as wide as their titles too (variable horizontal spacing, as OS/2's), so very wide titles get room instead of wrapping in a 100-pixel cell. Today's icon view stays as the grid layout; the folder's Icon view page chooses **grid** or **free**. Effort: M, about one plan step: per-item widths in `layout.c` (rows packed left to right, wrapping at the window's width), the container's hit tests and title wrapping at each item's width, Arrange and Lock position the same, tests.
   - **UI:** the resize pointer over a details view's column edges; the Background page's polish (open-issues).
   - **Where the search field sits** (Ctrl+F): a setting - top (today), bottom, floating.
 - **The Trash Can:** done in 0.2 step 3 (browse, restore, empty, drops, shadows trashed and restorable, empty and full icons).
-- **Lock icon positions** (owner's to-do, 2026-11-21): OS/2's "Lock position" on an object's menu (and per folder): a locked icon cannot be dragged to another spot (it can still be dragged onto other objects? **?**). Stored with the icon's position.
+- **Lock icon positions:** done in 0.3 step 6.
 - **Open With** ("comes in G2" in the menu); types with no default application go through `xdg-open`, untracked.
 - **Program settings missing:**
   - Program type: text-mode or not is guessed from the ELF file, and scripts always get a terminal.
