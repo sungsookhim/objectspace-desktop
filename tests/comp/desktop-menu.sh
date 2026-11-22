@@ -33,12 +33,21 @@ env -u WPS_SESSION DESKENV="$ENV" SECS=10 tests/comp/run.sh "$S/one" true > "$S/
 T1=$(sed -n 's/^T=//p' "$S/one.txt")
 env -u WPS_SESSION DESKENV="$ENV" SECS=10 tests/comp/run.sh "$S/two" true > "$S/two.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/two.txt")
+# A window open beside the click (the test client at 436,146): the menu
+# is above it, not below (the desktop's menus were under every window).
+cat > "$S/three" <<EOS
+3 click 380 200 right
+4 shot $S/over.png
+4.5 quit
+EOS
+env -u WPS_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/three" "'$PWD/build/tests/ssd-client' Framed 3060a0" > "$S/three.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # a dialog's title bar (the active window's colour) at the screen's middle
 titlebar() { python3 -c "from PIL import Image; r,g,b = Image.open('$1').convert('RGB').getpixel((500, 225)); exit(0 if b > 100 and r < 60 else 1)"; }
 # the cascade's highlighted parent (System setup) at the menu
 highlighted() { python3 -c "from PIL import Image; r,g,b = Image.open('$1').convert('RGB').getpixel((640, 499)); exit(0 if b > 100 and r < 60 else 1)"; }
+check "the menu is above other windows" "python3 -c \"from PIL import Image; r,g,b = Image.open('$S/over.png').convert('RGB').getpixel((500, 300)); exit(0 if abs(r - g) < 8 and abs(g - b) < 8 and r > 150 else 1)\""
 check "System setup opens its cascade" "highlighted '$S/cascade.png'"
 check "a System setup object opens (object.open System)" "grep -q 'object.open.*System' '$T1/shell.log'"
 check "its notebook is a window" "grep -q \"window 'System\" '$T1/comp.log'"

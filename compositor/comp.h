@@ -56,6 +56,7 @@ struct server {
     struct wl_listener new_input, request_cursor, request_set_selection, request_set_primary;
     struct wl_listener request_start_drag, start_drag, drag_destroy;
     struct wlr_scene_tree *layer_drag;   /* a dragged object's icon, above all windows */
+    struct wlr_scene_tree *layer_popup;  /* windows' menus, above every window (the desktop's too) */
     struct wlr_scene_tree *drag_icon;
     struct wl_list keyboards;
 

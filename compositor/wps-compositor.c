@@ -2024,12 +2024,27 @@ static void on_xwayland_ready(struct wl_listener *l, void *data)
 }
 
 /* Popups (menus): in their parent's tree, kept on the screen. */
-struct popup { struct wlr_xdg_popup *xdg; struct wl_listener commit, destroy; };
+/* A window's menu: in the popup layer, above every window, at its window's
+ * place (anchor); a cascade inside its parent menu (anchor NULL). */
+struct popup {
+    struct wlr_xdg_popup *xdg;
+    struct wlr_scene_tree *anchor, *parent_tree;
+    struct wl_listener commit, destroy;
+};
+
+static void popup_follow(struct popup *p)
+{
+    if (!p->anchor) return;
+    int x = 0, y = 0;
+    wlr_scene_node_coords(&p->parent_tree->node, &x, &y);
+    wlr_scene_node_set_position(&p->anchor->node, x, y);
+}
 
 static void on_popup_commit(struct wl_listener *l, void *data)
 {
     (void)data;
     struct popup *p = wl_container_of(l, p, commit);
+    popup_follow(p);   /* (its window may have moved) */
     if (!p->xdg->base->initial_commit) return;
     /* the screen, in the root window's surface coordinates (wlroots wants
      * those: a cascade's parent is itself a popup) */
@@ -2052,6 +2067,7 @@ static void on_popup_destroy(struct wl_listener *l, void *data)
     struct popup *p = wl_container_of(l, p, destroy);
     wl_list_remove(&p->commit.link);
     wl_list_remove(&p->destroy.link);
+    if (p->anchor) wlr_scene_node_destroy(&p->anchor->node);
     free(p);
 }
 
@@ -2062,9 +2078,15 @@ static void on_new_popup(struct wl_listener *l, void *data)
     struct wlr_xdg_surface *parent = xp->parent ? wlr_xdg_surface_try_from_wlr_surface(xp->parent) : NULL;
     if (!parent || !parent->data) return;
     struct wlr_scene_tree *pt = parent->data;
-    xp->base->data = wlr_scene_xdg_surface_create(pt, xp->base);
     struct popup *p = calloc(1, sizeof *p);
     p->xdg = xp;
+    if (parent->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {   /* a window's menu: above every window */
+        p->parent_tree = pt;
+        p->anchor = wlr_scene_tree_create(server.layer_popup);
+        popup_follow(p);
+        pt = p->anchor;
+    }
+    xp->base->data = wlr_scene_xdg_surface_create(pt, xp->base);
     p->commit.notify = on_popup_commit;
     wl_signal_add(&xp->base->surface->events.commit, &p->commit);
     p->destroy.notify = on_popup_destroy;
@@ -2518,6 +2540,7 @@ int main(int argc, char **argv)
     s->layer_normal = wlr_scene_tree_create(&s->scene->tree);
     s->layer_palette = wlr_scene_tree_create(&s->scene->tree);
     s->layer_fullscreen = wlr_scene_tree_create(&s->scene->tree);
+    s->layer_popup = wlr_scene_tree_create(&s->scene->tree);
     s->layer_drag = wlr_scene_tree_create(&s->scene->tree);
     menu.buf = wlr_scene_buffer_create(&s->scene->tree, NULL);   /* above everything */
     wlr_scene_node_set_enabled(&menu.buf->node, false);
