@@ -1001,8 +1001,18 @@ static void on_central_change(const char *folder, const char *id, char kind)
     on_fs_event(kind, "", p);
 }
 
+static bool wps_folder(const char *path);
+
 static void on_fs_event(char kind, const char *from, const char *path)
 {
+    /* One of WPS's own folders renamed or moved outside WPS (a shell, a
+     * file manager): put back, as wpsd finds them by their paths (else the
+     * desktop's shadows would follow the folder and wpsd would make a new,
+     * empty one). The move back comes as its own event. */
+    if (kind == 'm' && from[0] && path[0] && wps_folder(from) && access(from, F_OK) != 0) {
+        if (rename(path, from) == 0) { log_msg("%s is WPS's own folder: moved back from %s", from, path); return; }
+        log_msg("%s is WPS's own folder, moved to %s: cannot move it back (%s)", from, path, strerror(errno));
+    }
     if (kind == 'm') wps_launch_moved(from, path);
     trash_check(path);
     if (kind == 'm') trash_check(from);
@@ -2188,11 +2198,21 @@ static char known_desktop[PATH_MAX];   /* the desktop's folder (its first_start 
 /* WPS's own folders: System, My Storages, Drives, Programs, System Setup,
  * the Trash Can, Startup; and the desktop and Templates (XDG user folders:
  * renamed, user-dirs.dirs would not follow). */
+static bool wps_folder(const char *path);
+
 static bool own_folder(const char *path)
 {
     if (!path || !*path) return false;
     if (known_desktop[0] && !strcmp(path, known_desktop)) return true;
     if (wps_templates_dir()[0] && !strcmp(path, wps_templates_dir())) return true;
+    return wps_folder(path);
+}
+
+/* The folders wpsd finds by their paths (the desktop and Templates are
+ * the user's: user-dirs.dirs says where they are). */
+static bool wps_folder(const char *path)
+{
+    if (!path || !*path) return false;
     char d[7][PATH_MAX + 8];
     system_dir(d[0], sizeof d[0]);
     computer_dirs(d[1], sizeof d[1], d[2], sizeof d[2]);
@@ -2882,6 +2902,20 @@ static void first_start_work(void *arg)
 
 static void defaults_start(struct client *c, int64_t id, const char *desk, bool restore);
 
+/* My System - <host name> and My Storages, unless they have titles (the
+ * user's, or these): at step 10, and again for folders made anew (gone
+ * from outside, put back by Restore Desktop or wpsd's start). */
+static void default_titles(wps_loaded *sysld, wps_loaded *compld)
+{
+    char host[256] = "", t[300];
+    if (gethostname(host, sizeof host - 1) != 0 || !host[0]) snprintf(host, sizeof host, "this computer");
+    snprintf(t, sizeof t, "My System - %s", host);
+    wpo_object *so = sysld->err ? NULL : wps_object_from_loaded(sysld);
+    if (so && wpo_is_a(so, WPObjectClass) && !WPObject_data(so)->title) WPObject_wpSetTitle(so, t);
+    wpo_object *co = compld->err ? NULL : wps_object_from_loaded(compld);
+    if (co && wpo_is_a(co, WPObjectClass) && !WPObject_data(co)->title) WPObject_wpSetTitle(co, "My Storages");
+}
+
 static void first_start_done(void *arg)
 {
     struct first_start *j = arg;
@@ -2938,15 +2972,7 @@ static void first_start_done(void *arg)
             if (!j->tpl_in_system && !j->ntpl && td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
-        if (j->from < 10) {   /* step 10: titles, unless the user gave them some */
-            char host[256] = "", t[300];
-            if (gethostname(host, sizeof host - 1) != 0 || !host[0]) snprintf(host, sizeof host, "this computer");
-            snprintf(t, sizeof t, "My System - %s", host);
-            wpo_object *so = j->sysld.err ? NULL : wps_object_from_loaded(&j->sysld);
-            if (so && wpo_is_a(so, WPObjectClass) && !WPObject_data(so)->title) WPObject_wpSetTitle(so, t);
-            wpo_object *co = j->compld.err ? NULL : wps_object_from_loaded(&j->compld);
-            if (co && wpo_is_a(co, WPObjectClass) && !WPObject_data(co)->title) WPObject_wpSetTitle(co, "My Storages");
-        }
+        if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
         const char *home = getenv("HOME");
         if (j->from < 9 && home && *home) {   /* step 9: the home folder in Computer */
             char comp[PATH_MAX], drv[PATH_MAX + 8];
@@ -3113,6 +3139,7 @@ struct defaults_job {
     struct client *c;
     int64_t id;
     bool restore;
+    wps_loaded sysld, compld;   /* their titles, if made anew */
     char desk[PATH_MAX];
     struct { char folder[PATH_MAX], id[WPS_ID_LEN + 1], old_folder[PATH_MAX], old_id[WPS_ID_LEN + 1]; } ev[24];
     int nev;
@@ -3263,6 +3290,12 @@ static void defaults_work(void *arg)
         if (def_made_dir(drv)) { j->made_computer = true; j->put_back[j->nput++] = "My Storages"; }
         wps_set_folder_class(comp, "WPComputer");
         wps_set_folder_class(drv, "WPDrives");
+    }
+    {   /* (titled in defaults_done, if made anew) */
+        char comp[PATH_MAX], drv[PATH_MAX + 8];
+        computer_dirs(comp, sizeof comp, drv, sizeof drv);
+        wps_load(sys, true, &j->sysld);
+        wps_load(comp, true, &j->compld);
     }
     wps_loaded sy;
     wps_load(sys, true, &sy);
@@ -3421,6 +3454,9 @@ static void defaults_done(void *arg)
             cb_free(&val);
         }
     }
+    default_titles(&j->sysld, &j->compld);
+    wps_loaded_free(&j->sysld);
+    wps_loaded_free(&j->compld);
     if (j->c) client_unref(j->c);
     free(j);
 }

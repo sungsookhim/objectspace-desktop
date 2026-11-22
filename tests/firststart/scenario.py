@@ -129,6 +129,14 @@ if PART == "restore":
     check("the LaunchPad object: back in System", len(titled(SYS, "LaunchPad")) == 1 and not titled(DESK, "LaunchPad"))
     r = c.request(op="restore_defaults", desktop=DESK)
     check("again: nothing to do", r.get("ok") and (r.get("result") or {}).get("restored") == [], r)
+    # renamed outside WPS (a shell), wpsd running: moved back at once
+    for own in (SYS, SYS + "/Storages", PROG):
+        os.rename(own, own + "-renamed")
+        check("%s renamed outside: moved back" % os.path.basename(own),
+              wait(lambda: os.path.isdir(own) and not os.path.exists(own + "-renamed")), os.listdir(os.path.dirname(own)))
+    check("the desktop's System still is System", wait(lambda: len(shadows_of(DESK, SYS)) == 1), items(DESK))
+    r = c.request(op="restore_defaults", desktop=DESK)
+    check("after them: nothing to restore", r.get("ok") and (r.get("result") or {}).get("restored") == [], r)
     print("%d failed" % fails)
     sys.exit(1 if fails else 0)
 
