@@ -214,6 +214,19 @@ void svc_list(const char *folder, size_t offset, size_t count, bool details, svc
     send_req(o, id, fn, arg);
 }
 
+void svc_list_v(const char *folder, const char *filter, bool hidden, size_t offset, size_t count, bool details, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("list", 6, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, folder);
+    cb_text(&o->b, "offset"); cb_uint(&o->b, offset);
+    cb_text(&o->b, "count"); cb_uint(&o->b, count);
+    cb_text(&o->b, "details"); cb_bool(&o->b, details);
+    cb_text(&o->b, "filter"); cb_text(&o->b, filter ? filter : "");
+    cb_text(&o->b, "hidden"); cb_bool(&o->b, hidden);
+    send_req(o, id, fn, arg);
+}
+
 void svc_resolve(const char *target, svc_fn fn, void *arg)
 {
     int64_t id;

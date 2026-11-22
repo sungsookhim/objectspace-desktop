@@ -31,6 +31,7 @@ static const struct setting system_settings[] = {
     { "Confirmations", "confirm_delete", "checkbox", "Confirm on delete", "1", NULL },
     { "Confirmations", "confirm_folder_delete", "checkbox", "Confirm on folder delete", "1", NULL },
     { "Login", "restore_windows", "checkbox", "Restore open windows at login", "1", NULL },
+    { "Folders", "show_hidden", "checkbox", "Show hidden files (names starting with a dot)", "1", NULL },
     { NULL, NULL, NULL, NULL, NULL, NULL },
 };
 

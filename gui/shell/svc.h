@@ -22,6 +22,9 @@ bool svc_start(ui_app *app, char *err, size_t errlen);
 void svc_stop(void);
 
 void svc_list(const char *folder, size_t offset, size_t count, bool details, svc_fn fn, void *arg);
+/* A window's own listing (v0.3-design 6): names containing `filter` ("" all),
+ * hidden (dot) names only if `hidden`. */
+void svc_list_v(const char *folder, const char *filter, bool hidden, size_t offset, size_t count, bool details, svc_fn fn, void *arg);
 void svc_resolve(const char *target, svc_fn fn, void *arg);
 void svc_menu(const char *target, svc_fn fn, void *arg);
 void svc_menu_select(const char *target, int64_t item, svc_fn fn, void *arg);

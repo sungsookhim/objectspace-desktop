@@ -42,6 +42,7 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
   - **Prevent delete** on an object's General page (OS/2's no-delete style): Delete and drops on the Trash Can refuse it, by accident or not, until it is unchecked. The Trash Can and My System are the examples; WPS's own objects could start with it on.
   - **Lock position:** in 0.3 step 6 (also asked for here).
   - **UI:** the resize pointer over a details view's column edges; the Background page's polish (open-issues).
+  - **Where the search field sits** (Ctrl+F): a setting - top (today), bottom, floating.
 - **The Trash Can:** done in 0.2 step 3 (browse, restore, empty, drops, shadows trashed and restorable, empty and full icons).
 - **Lock icon positions** (owner's to-do, 2026-11-21): OS/2's "Lock position" on an object's menu (and per folder): a locked icon cannot be dragged to another spot (it can still be dragged onto other objects? **?**). Stored with the icon's position.
 - **Open With** ("comes in G2" in the menu); types with no default application go through `xdg-open`, untracked.

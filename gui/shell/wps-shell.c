@@ -112,6 +112,12 @@ struct folder {
     bool sort_desc;
     unsigned cols;
     double col_w[6];
+    /* its search field (v0.3-design 6): shown with Ctrl+F, filters its own
+     * listing as typed */
+    bool find_on, find_focus;
+    ui_entry *find_entry;
+    char filter[128];
+    bool find_x_down;
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
     unsigned bench_seed;
@@ -133,6 +139,7 @@ static struct folder *folder_by_id(long id)
 }
 
 static void *as_arg(struct folder *f) { return (void *)(intptr_t)f->id; }
+static bool show_hidden = true;   /* the System object's Show hidden files (v0.3-design 6) */
 static struct folder *from_arg(void *arg) { return folder_by_id((long)(intptr_t)arg); }
 
 /* ---- backgrounds (v0.3-design 3): the desktop's (its own, or GNOME's
@@ -520,8 +527,12 @@ static void keep_put(struct folder *f, struct keep *kp)
     size_t ren_new = SIZE_MAX;
     ui_container_select_none(f->cont);
     ui_container_reset(f->cont);
-    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);   /* spots stay with names */
-    svc_layout(f->path, got_layout, as_arg(f));                     /* positions may have changed too */
+    if (!f->arranged_by_name && f->m.complete) {
+        layout_follow(f, true);   /* arranged by name, then stored places (a filter set or cleared) */
+    } else {
+        layout_update(f->lay, f->m.total, lay_name, f, true, NULL);   /* spots stay with names */
+        svc_layout(f->path, got_layout, as_arg(f));                     /* positions may have changed too */
+    }
     if (kp->k || kp->cur || kp->ren)
         for (size_t i = 0; i < f->m.total; i++) {
             const char *n = model_name(&f->m, i);
@@ -748,7 +759,7 @@ static void got_page(void *arg, const cv *reply)
         for (size_t p = p0; p <= p1 && p * PAGE < m->total; p++) {
             m->pending++;
             page_at(m, p)->requested = true;
-            svc_list(f->path, p * PAGE, PAGE, true, got_page, page_arg(f, true));
+            svc_list_v(f->path, f->filter, show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, true));
         }
         if (!m->pending) swap(f);
         return;
@@ -768,7 +779,7 @@ static void request_more(struct folder *f, bool shadow)
     struct model *m = shadow ? f->sh : &f->m;
     if (!m || m->growing || m->complete) return;
     m->growing = true;
-    svc_list(f->path, m->total, m->total ? 4096 : 128, false, got_page, page_arg(f, shadow));
+    svc_list_v(f->path, f->filter, show_hidden, m->total, m->total ? 4096 : 128, false, got_page, page_arg(f, shadow));
 }
 
 /* Details (size, date, title) for the pages on screen. */
@@ -781,7 +792,7 @@ static void fetch_visible(struct folder *f, size_t first, size_t last)
         struct page *pg = page_at(&f->m, p);
         if (pg->state == P_DETAILED || pg->requested) continue;
         pg->requested = true;
-        svc_list(f->path, p * PAGE, PAGE, true, got_page, page_arg(f, false));
+        svc_list_v(f->path, f->filter, show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, false));
     }
 }
 
@@ -1076,7 +1087,7 @@ static void tree_load(struct folder *f, struct tnode *n, size_t offset)
     t->n = n;
     t->offset = offset;
     n->loading = true;
-    svc_list(n->path, offset, 4096, false, got_kids, t);
+    svc_list_v(n->path, "", show_hidden, offset, 4096, false, got_kids, t);
 }
 
 struct tsub { long folder; unsigned tgen; struct tnode *n; };
@@ -1489,6 +1500,7 @@ static void new_spot(void *ctx, const char *name)
 {
     struct folder *f = ctx;
     if (!f->arranged_by_name || f->nspot_new >= 64) return;
+    if (f->filter[0]) return;   /* (flowed while filtered: not spots to keep) */
     f->spot_new = realloc(f->spot_new, (f->nspot_new + 1) * sizeof *f->spot_new);
     f->spot_new[f->nspot_new++] = strdup(name);
     spots_later();
@@ -1510,6 +1522,7 @@ static void got_layout(void *arg, const cv *reply)
     struct folder *f = from_arg(arg);
     const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
     if (!f || !items || items->k != CV_ARRAY) return;
+    if (f->filter[0]) return;   /* filtered: the matches flow, stored positions unused */
     layout_clear_placed(f->lay);
     for (size_t i = 0; i < items->n; i++) {
         const char *nm = cv_text(&items->items[i], "name");
@@ -1556,7 +1569,7 @@ static void sort_icons(struct folder *f, int key)
             all = false;
             if (pg->requested) continue;
             pg->requested = true;
-            svc_list(f->path, p * PAGE, PAGE, true, got_page, page_arg(f, false));
+            svc_list_v(f->path, f->filter, show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, false));
         }
         if (!all || !f->m.complete) {
             f->sort_pending = key + 1;
@@ -3489,6 +3502,139 @@ static const ui_container_src folder_src = { src_count, src_item, src_visible, s
 
 /* ------------------------------------------------------------------ window */
 
+/* ---- the search field (v0.3-design 6): a row under the title bar, shown
+ * with Ctrl+F; what is typed filters the window's own listing (wpsd's:
+ * names containing it, any case); Esc or x: all again, the row gone. */
+
+#define FIND_H 30
+
+static void layout(struct folder *f);
+
+static ui_rect find_row(struct folder *f)
+{
+    ui_rect c = ui_frame_client(f->win);
+    return (ui_rect){ c.x, c.y, c.w, FIND_H };
+}
+static ui_rect find_entry_rect(struct folder *f) { ui_rect r = find_row(f); return (ui_rect){ r.x + 68, r.y + 4, r.w - 68 - 44, FIND_H - 9 }; }
+static ui_rect find_x_rect(struct folder *f) { ui_rect r = find_row(f); return (ui_rect){ r.x + r.w - 36, r.y + 4, 28, FIND_H - 9 }; }
+
+static void find_draw(struct folder *f, cairo_t *cr)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_rect r = find_row(f);
+    ui_fill(cr, r, k->face);
+    ui_fill(cr, (ui_rect){ r.x, r.y + r.h - 1, r.w, 1 }, k->shadow);
+    /* a magnifier, and "Find:" */
+    ui_set_color(cr, k->text);
+    cairo_set_line_width(cr, 2);
+    cairo_arc(cr, r.x + 14, r.y + 13, 5, 0, 2 * M_PI);
+    cairo_stroke(cr);
+    cairo_set_line_width(cr, 3);
+    cairo_move_to(cr, r.x + 18, r.y + 17); cairo_line_to(cr, r.x + 23, r.y + 22);
+    cairo_stroke(cr);
+    ui_text_draw(cr, UI_FONT_REGULAR, r.x + 28, r.y + (FIND_H + ui_text_ascent()) / 2 - 1, "Find:", 40);
+    ui_rect er = find_entry_rect(f);
+    ui_entry_draw(f->find_entry, cr, er, f->find_focus);
+    if (!*ui_entry_text(f->find_entry)) {
+        ui_set_color(cr, k->disabled_text);
+        ui_text_draw(cr, UI_FONT_REGULAR, er.x + 5, er.y + (er.h + ui_text_ascent()) / 2 - 1,
+                     "Type to show only the objects whose names contain it", er.w - 10);
+    }
+    ui_rect x = find_x_rect(f);
+    ui_fill(cr, x, k->face);
+    ui_bevel(cr, x, !f->find_x_down);
+    ui_set_color(cr, k->text);
+    cairo_set_line_width(cr, 2);
+    double cx = x.x + x.w / 2 + f->find_x_down, cy = x.y + x.h / 2 + f->find_x_down;
+    cairo_move_to(cr, cx - 4, cy - 4); cairo_line_to(cr, cx + 4, cy + 4);
+    cairo_move_to(cr, cx + 4, cy - 4); cairo_line_to(cr, cx - 4, cy + 4);
+    cairo_stroke(cr);
+}
+
+static void find_focus(struct folder *f, bool on)
+{
+    f->find_focus = on;
+    ui_container_set_focused(f->cont, !on);
+    ui_text_input_focus(f->win, on ? f->find_entry : NULL, find_entry_rect(f));
+    ui_surface_damage(f->win, find_row(f));
+}
+
+/* The filter as typed: the window's own listing, read again. */
+static void find_apply(struct folder *f)
+{
+    const char *t = ui_entry_text(f->find_entry);
+    if (!strcmp(t, f->filter)) return;
+    snprintf(f->filter, sizeof f->filter, "%s", t);
+    /* icons: the matches flow from the top left; all again, their places */
+    layout_reset(f->lay, cols_now(f));
+    f->arranged_by_name = false;   /* (arranged by name again once read; then stored places, if not filtered) */
+    reload(f);
+    damage_status(f);
+}
+
+static void find_show(struct folder *f)
+{
+    if (!f->find_entry) f->find_entry = ui_entry_new("");
+    if (!f->find_on) {
+        f->find_on = true;
+        layout(f);
+        ui_surface_damage_all(f->win);
+    }
+    ui_entry_select_all(f->find_entry);
+    find_focus(f, true);
+}
+
+static void find_hide(struct folder *f)
+{
+    if (!f->find_on) return;
+    f->find_on = false;
+    ui_entry_set_text(f->find_entry, "");
+    find_focus(f, false);
+    find_apply(f);
+    layout(f);
+    ui_surface_damage_all(f->win);
+}
+
+static bool find_key(struct folder *f, const ui_key_event *e)
+{
+    if (e->sym == XKB_KEY_Escape) { find_hide(f); return true; }
+    if (e->sym == XKB_KEY_Return || e->sym == XKB_KEY_KP_Enter || e->sym == XKB_KEY_Down || e->sym == XKB_KEY_Tab) {
+        find_focus(f, false);   /* to the objects (the filter stays) */
+        return true;
+    }
+    ui_entry_result r = ui_entry_key(f->find_entry, e);
+    if (r == UI_ENTRY_CHANGED) find_apply(f);   /* as typed */
+    if (r != UI_ENTRY_NONE) ui_surface_damage(f->win, find_row(f));
+    return true;
+}
+
+/* A press in the row: the entry (focused), x (all again); elsewhere the
+ * entry lets go of the keyboard. */
+static bool find_pointer(struct folder *f, const ui_pointer_event *e)
+{
+    ui_rect er = find_entry_rect(f), x = find_x_rect(f), row = find_row(f);
+    if (e->kind == UI_RELEASE && f->find_x_down) {
+        f->find_x_down = false;
+        ui_surface_damage(f->win, row);
+        if (ui_rect_has(x, e->x, e->y)) find_hide(f);
+        return true;
+    }
+    if (f->find_focus && (e->kind == UI_MOTION || e->kind == UI_RELEASE)) {
+        if (ui_entry_pointer(f->find_entry, e, er) != UI_ENTRY_NONE) ui_surface_damage(f->win, row);
+    }
+    if (e->kind != UI_PRESS) return false;
+    if (ui_rect_has(x, e->x, e->y)) { f->find_x_down = true; ui_surface_damage(f->win, row); return true; }
+    if (ui_rect_has(er, e->x, e->y)) {
+        if (!f->find_focus) find_focus(f, true);
+        ui_entry_pointer(f->find_entry, e, er);
+        ui_surface_damage(f->win, row);
+        return true;
+    }
+    if (ui_rect_has(row, e->x, e->y)) return true;
+    if (f->find_focus) find_focus(f, false);
+    return false;
+}
+
 static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     struct folder *f = ui_surface_data(s);
@@ -3503,6 +3649,7 @@ static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
     if (f->desktop) return;   /* no status line */
+    if (f->find_on) find_draw(f, cr);
     ui_rect c = ui_frame_client(s);
     ui_rect st = { c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
     if (!ui_rect_meets(clip, st)) return;
@@ -3512,6 +3659,8 @@ static void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     size_t nsel = ui_container_selected_count(f->cont);
     if (f->error[0]) snprintf(msg, sizeof msg, "%s", f->error);
     else if (is_tree(f)) snprintf(msg, sizeof msg, "%zu folders shown", f->ntvis);
+    else if (f->filter[0]) snprintf(msg, sizeof msg, "%zu objects match \"%s\"%s   (Esc: all again)", f->m.total, f->filter,
+                                    f->m.complete ? "" : " (reading...)");
     else if (nsel) snprintf(msg, sizeof msg, "%zu objects, %zu selected%s", f->m.total, nsel, f->m.complete ? "" : " (reading...)");
     else snprintf(msg, sizeof msg, "%zu objects%s", f->m.total, f->m.complete ? "" : " (reading...)");
     ui_set_color(cr, k->text);
@@ -3526,6 +3675,7 @@ static void layout(struct folder *f)
 {
     ui_rect c = ui_frame_client(f->win);
     if (!f->desktop) c.h -= STATUS_H;
+    if (f->find_on) { c.y += FIND_H; c.h -= FIND_H; }
     ui_container_layout(f->cont, c);
 }
 
@@ -3547,6 +3697,7 @@ static void win_pointer(ui_surface *s, const ui_pointer_event *e)
     ui_hit h = ui_frame_hit(s, e->x, e->y);
     bool used = false;
     if (e->kind != UI_PRESS || h != UI_HIT_CLIENT) used = ui_frame_pointer(s, e);
+    if (!used && f->find_on && find_pointer(f, e)) return;
     if (!used || e->kind == UI_RELEASE || e->kind == UI_MOTION) ui_container_pointer(f->cont, e);
     if (ui_container_selected_count(f->cont) != before) damage_status(f);
 }
@@ -3567,8 +3718,14 @@ static void win_key(ui_surface *s, const ui_key_event *e)
     struct folder *f = ui_surface_data(s);
     size_t before = ui_container_selected_count(f->cont);
     if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_w || e->sym == XKB_KEY_W)) { win_close(s); return; }
-    /* Find in this folder and its subfolders (G4) */
-    if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_f || e->sym == XKB_KEY_F)) { findwin_open(f->path, NULL); return; }
+    /* Find in this folder and its subfolders (G4): Ctrl+Shift+F; Ctrl+F:
+     * the search field, this folder only (v0.3-design 6) */
+    if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_f || e->sym == XKB_KEY_F)) {
+        if ((e->mods & UI_MOD_SHIFT) || f->desktop || is_tree(f)) findwin_open(f->path, NULL);
+        else find_show(f);
+        return;
+    }
+    if (f->find_on && f->find_focus && find_key(f, e)) return;
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_1) { set_view(f, UI_VIEW_ICON); return; }
     /* In the order the View menu lists them (OS/2's): icon, tree, details. */
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
@@ -3599,6 +3756,7 @@ static void free_folder(struct folder *f)
     if (f->sub) svc_unsubscribe(f->sub);
     if (f->bg_sub) svc_unsubscribe(f->bg_sub);
     if (f->bg_img) cairo_surface_destroy(f->bg_img);
+    if (f->find_entry) ui_entry_free(f->find_entry);
     changes_clear(f);
     free(f->changes);
     tree_free(f);
@@ -3751,6 +3909,54 @@ static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "search")) {
+        /* The search field (0.3 step 5): Ctrl+F, "rep" typed, Escape; then
+         * Show hidden files off and on. <D> has report-2025.ods,
+         * report-2026.ods, reports/, notes.txt, .hidden. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char names[300] = "";
+        for (size_t i = 0; i < f->m.total && strlen(names) < 250; i++)
+            snprintf(names + strlen(names), sizeof names - strlen(names), "%s%s", i ? " " : "", model_name(&f->m, i) ? model_name(&f->m, i) : "?");
+        if (step == 0) {
+            fprintf(stderr, "selftest: search: at first %zu: %s\n", f->m.total, names);
+            ui_key_event k = { .sym = XKB_KEY_f, .mods = UI_MOD_CTRL };
+            win_key(s, &k);
+            fprintf(stderr, "selftest: search: Ctrl+F: field shown %d, focused %d\n", f->find_on, f->find_focus);
+            const char *typed = "rep";
+            for (const char *c = typed; *c; c++) {   /* as typed (the input method's commit path) */
+                ui_key_event kc = { .sym = (uint32_t)*c, .utf8 = { *c, 0 } };
+                win_key(s, &kc);
+            }
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500 && f->m.complete) {
+            fprintf(stderr, "selftest: search: \"%s\": %zu: %s\n", f->filter, f->m.total, names);
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            win_key(s, &esc);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500 && f->m.complete) {
+            fprintf(stderr, "selftest: search: Escape: field shown %d, %zu objects\n", f->find_on, f->m.total);
+            show_hidden = false;
+            reload(f);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1500 && f->m.complete) {
+            fprintf(stderr, "selftest: search: hidden files off: %zu: %s\n", f->m.total, names);
+            show_hidden = true;
+            reload(f);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 1500 && f->m.complete) {
+            fprintf(stderr, "selftest: search: hidden files on: %zu\n", f->m.total);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "trashlive") && getenv("WPS_SELFTEST_TRASH")) {
         /* The Trash Can's window follows deletes and restores of several
          * objects at once (a.txt b.txt c.txt in <D>) */
@@ -5395,6 +5601,11 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
+            else if (!strcmp(key, "show_hidden") && show_hidden != !strcmp(val, "1")) {
+                show_hidden = !strcmp(val, "1");   /* every window lists again */
+                for (struct folder *x = folders; x; x = x->next)
+                    if (!x->closing) { if (is_tree(x)) tree_start(x); else reload(x); }
+            }
         }
     }
 }
