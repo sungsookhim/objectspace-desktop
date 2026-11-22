@@ -106,6 +106,12 @@ struct folder {
     int bg_mode;
     bool bg_gnome;
     cairo_surface_t *bg_img;     /* the picture, decoded */
+    /* its details view (v0.3-design 4): the sort (choice 0 none, 1 name,
+     * 2 type, 3 size, 4 last write; -1 not read yet) and columns */
+    int sort_choice;
+    bool sort_desc;
+    unsigned cols;
+    double col_w[6];
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
     unsigned bench_seed;
@@ -214,6 +220,32 @@ static void bg_apply(struct folder *f)
     bg_show(f);
 }
 
+static void reload(struct folder *f);
+static void ignore_reply(void *arg, const cv *reply);
+
+/* A heading clicked: sorted by it (again: the other way), for the folder. */
+static void head_clicked(void *ctx, int col)
+{
+    struct folder *f = from_arg(ctx);
+    if (!f) return;
+    int choice = col <= 2 ? 1 : col == 3 ? 2 : col == 4 ? 3 : 4;   /* (title and real name: by name) */
+    bool desc = choice == f->sort_choice ? !f->sort_desc : false;
+    cv k = { .k = CV_INT, .i = choice }, d = { .k = CV_BOOL, .b = desc };
+    svc_settings_set(f->path, "sort_key", &k, -1, ignore_reply, NULL);
+    svc_settings_set(f->path, "sort_desc", &d, -1, ignore_reply, NULL);
+}
+
+/* An edge dragged: the folder keeps its columns' widths. */
+static void cols_resized(void *ctx, const double *w)
+{
+    struct folder *f = from_arg(ctx);
+    if (!f) return;
+    char t[128];
+    snprintf(t, sizeof t, "%.0f,%.0f,%.0f,%.0f,%.0f", w[1], w[2], w[3], w[4], w[5]);
+    cv v = { .k = CV_TEXT, .s = t, .len = strlen(t) };
+    svc_settings_set(f->path, "col_widths", &v, -1, ignore_reply, NULL);
+}
+
 static void got_bg(void *arg, const cv *reply)
 {
     struct folder *f = from_arg(arg);
@@ -222,6 +254,10 @@ static void got_bg(void *arg, const cv *reply)
     f->bg_image[0] = f->bg_color[0] = 0;
     f->bg_mode = 2;
     f->bg_gnome = true;
+    int was_choice = f->sort_choice;
+    bool was_desc = f->sort_desc;
+    unsigned cols = 0;
+    double w[6] = { 0 };
     for (size_t i = 0; i < res->n; i++) {
         const cv *fs = cv_get(&res->items[i], "fields");
         for (size_t k = 0; fs && fs->k == CV_ARRAY && k < fs->n; k++) {
@@ -232,9 +268,25 @@ static void got_bg(void *arg, const cv *reply)
             else if (!strcmp(key, "bg_color") && v->k == CV_TEXT) snprintf(f->bg_color, sizeof f->bg_color, "%s", v->s);
             else if (!strcmp(key, "bg_mode") && v->k == CV_INT) f->bg_mode = (int)v->i;
             else if (!strcmp(key, "bg_gnome") && v->k == CV_BOOL) f->bg_gnome = v->b;
+            else if (!strcmp(key, "sort_key") && v->k == CV_INT) f->sort_choice = (int)v->i;
+            else if (!strcmp(key, "sort_desc") && v->k == CV_BOOL) f->sort_desc = v->b;
+            else if (!strncmp(key, "col_", 4) && v->k == CV_BOOL && v->b) {
+                cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
+                      : !strcmp(key, "col_date") ? 8u : 0u;
+            } else if (!strcmp(key, "col_widths") && v->k == CV_TEXT) {
+                sscanf(v->s, "%lf,%lf,%lf,%lf,%lf", &w[1], &w[2], &w[3], &w[4], &w[5]);
+            }
         }
     }
     bg_apply(f);
+    f->cols = cols;
+    memcpy(f->col_w, w, sizeof w);
+    ui_container_set_columns(f->cont, cols, w);
+    static const int col_of[5] = { -1, 1, 3, 4, 5 };   /* (by name: the Title column) */
+    ui_container_set_sort_mark(f->cont, f->sort_choice >= 0 && f->sort_choice <= 4 ? col_of[f->sort_choice] : -1, f->sort_desc);
+    /* the sort changed (here, or in another window or the notebook): the
+     * service lists it in the new order */
+    if (was_choice >= 0 && (was_choice != f->sort_choice || was_desc != f->sort_desc)) reload(f);
 }
 
 static void bg_read(struct folder *f) { svc_settings(f->path, got_bg, as_arg(f)); }
@@ -1594,10 +1646,12 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
         pages[i].title = cv_text(pg, "title");
         size_t nf = fs && fs->k == CV_ARRAY ? fs->n : 0;
         ui_field_desc *fields = calloc(nf ? nf : 1, sizeof *fields);
+        size_t kept = 0;
         for (size_t k = 0; k < nf; k++) {
             const cv *fd = &fs->items[k], *v = cv_get(fd, "value"), *ch = cv_get(fd, "choices");
             const char *type = cv_text(fd, "type");
-            ui_field_desc *d = &fields[k];
+            if (type && !strcmp(type, "hidden")) continue;   /* (kept by the GUI itself: column widths) */
+            ui_field_desc *d = &fields[kept++];
             d->key = cv_text(fd, "key");
             d->label = cv_text(fd, "label");
             d->kind = !type || !strcmp(type, "text") ? UI_FIELD_TEXT : !strcmp(type, "checkbox") ? UI_FIELD_CHECKBOX
@@ -1615,7 +1669,7 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
             }
         }
         pages[i].fields = fields;
-        pages[i].nfields = nf;
+        pages[i].nfields = kept;
     }
     return pages;
 }
@@ -5853,6 +5907,8 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
     }
     f->lay = layout_new(UI_CELL_W, UI_CELL_H);
     f->cont = ui_container_new(f->win, &folder_src, f, view);
+    f->sort_choice = -1;
+    ui_container_set_head_fns(f->cont, head_clicked, cols_resized, as_arg(f));
     if (desktop) {
         ui_container_set_backdrop(f->cont, desk_backdrop, f);
         wallpaper_start(app, desk_wallpaper_changed, as_arg(f));

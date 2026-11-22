@@ -542,6 +542,15 @@ void ui_container_set_backdrop(ui_container *c, ui_layer_draw_fn fn, void *ctx);
 void ui_container_set_background(ui_container *c, ui_layer_draw_fn fn, void *ctx, bool picture);
 /* The list's area: where the items are seen (window coordinates). */
 ui_rect ui_container_list_rect(ui_container *c);
+/* Details view (v0.3-design 4): columns 1 Title, 2 Real name, 3 Type,
+ * 4 Size, 5 Last write. `shown`: bits 1 real name, 2 type, 4 size, 8 last
+ * write (the title always); widths[0..5] dragged ones (0, or NULL: as
+ * they fit). The sort's column shows an arrow. A heading clicked: clicked
+ * (col); an edge dragged: resized(widths). */
+void ui_container_set_columns(ui_container *c, unsigned shown, const double *widths);
+void ui_container_set_sort_mark(ui_container *c, int col, bool desc);
+void ui_container_set_head_fns(ui_container *c, void (*clicked)(void *ctx, int col), void (*resized)(void *ctx, const double *widths),
+                               void *ctx);
 /* (Drawing then goes straight to the window, with no scroll layer: a
  * layer covering a whole surface stops its frame callbacks in Mutter.) */
 void ui_container_select(ui_container *c, size_t i);

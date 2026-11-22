@@ -63,6 +63,17 @@ struct ui_container {
     double drag_x, drag_y;
     uint32_t drag_serial;
     size_t drop_i;            /* target emphasis, as in OS/2 */
+    /* details view (v0.3-design 4): columns 1 title .. 5 last write */
+    unsigned col_shown;       /* bits 1 real name, 2 type, 4 size, 8 last write */
+    double col_w[6];          /* dragged widths (0: as it fits) */
+    int sort_col;             /* the column shown sorted (-1 none) */
+    bool sort_desc;
+    void (*head_clicked)(void *ctx, int col);
+    void (*cols_resized)(void *ctx, const double *widths);
+    void *head_ctx;
+    int head_down;            /* a heading pressed (-1 none) */
+    int col_drag;             /* a column's right edge dragged (-1 none) */
+    double col_drag_x0, col_drag_w0;
 };
 
 /* -------------------------------------------------------------- geometry */
@@ -172,7 +183,7 @@ static ui_rect rename_crect(ui_container *c, size_t i)
 {
     ui_rect r = item_crect(c, i);
     if (c->view == UI_VIEW_DETAILS) {
-        double x[6];
+        double x[7];
         columns(c, x);
         return (ui_rect){ x[1] - 3, r.y, x[2] - x[1] - 3, ROW_H };
     }
@@ -547,19 +558,34 @@ static ui_rect rename_rect(ui_container *c)
 
 /* ---------------------------------------------------------------- drawing */
 
-static const char *heads[] = { "", "Title", "Name", "Size", "Last write" };
+static const char *heads[] = { "", "Title", "Real name", "Type", "Size", "Last write" };
 
 void ui_container_set_name_head(ui_container *c, const char *title) { c->name_head = title; }
 
+/* The details view's column edges: x[0] the icon, x[i] where column i
+ * starts (1 title, 2 real name, 3 type, 4 size, 5 last write), x[6] the
+ * end; a column not shown has no width. Title and real name share what
+ * the others leave (55/45), unless dragged. */
 static void columns(ui_container *c, double *x)
 {
     ui_rect l = list_rect(c);
+    static const double def[6] = { 0, 0, 0, 80, 90, 130 };
+    double w[6] = { 0 };
+    bool shown[6] = { true, true, (c->col_shown & 1) != 0, (c->col_shown & 2) != 0, (c->col_shown & 4) != 0, (c->col_shown & 8) != 0 };
+    double fixed = 0;
+    for (int i = 3; i <= 5; i++) if (shown[i]) { w[i] = c->col_w[i] > 0 ? c->col_w[i] : def[i]; fixed += w[i]; }
+    double left = fmax(120, l.w - 26 - fixed);
+    if (shown[2]) {
+        bool tw = c->col_w[1] > 0, nw = c->col_w[2] > 0;
+        w[1] = tw ? c->col_w[1] : nw ? fmax(60, left - c->col_w[2]) : left * 0.55;
+        w[2] = nw ? c->col_w[2] : fmax(60, left - w[1]);
+    } else {
+        w[1] = c->col_w[1] > 0 ? c->col_w[1] : left;
+    }
     x[0] = l.x + 4;
     x[1] = l.x + 26;
-    x[4] = l.x + l.w - 130;
-    x[3] = x[4] - 90;
-    x[2] = x[1] + (x[3] - x[1]) * 0.55;
-    x[5] = l.x + l.w;
+    for (int i = 1; i <= 5; i++) x[i + 1] = x[i] + (shown[i] ? w[i] : 0);
+    if (!c->col_w[5] && shown[5]) x[6] = fmax(x[6], l.x + l.w);   /* (the last one to the edge) */
 }
 
 
@@ -653,7 +679,20 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
         for (char *q = one; *q; q++) if (*q == '\n') *q = ' ';
         ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, one, x[2] - x[1] - 6);
         ui_set_color(cr, sel ? k->selection_text : k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, x[2], base, it.name ? it.name : "", x[3] - x[2] - 6);
+        const char *nm = it.name ? it.name : "";
+        if (x[3] - x[2] > 4 && nm[0] != '\x01') ui_text_draw(cr, UI_FONT_REGULAR, x[2], base, nm, x[3] - x[2] - 6);
+        if (x[4] - x[3] > 4) {   /* its type: Folder, Program, or its file's extension */
+            char ty[40];
+            const char *dot = strrchr(nm, '.');
+            if (it.kind == UI_KIND_FOLDER) snprintf(ty, sizeof ty, "Folder");
+            else if (it.kind == UI_KIND_PROGRAM) snprintf(ty, sizeof ty, "Program");
+            else if (nm[0] == '\x01') snprintf(ty, sizeof ty, "Object");
+            else if (dot && dot != nm && dot[1]) {
+                snprintf(ty, sizeof ty, "%s", dot + 1);
+                for (char *q = ty; *q; q++) if (*q >= 'a' && *q <= 'z') *q = (char)(*q - 32);
+            } else snprintf(ty, sizeof ty, "File");
+            ui_text_draw(cr, UI_FONT_REGULAR, x[3], base, ty, x[4] - x[3] - 6);
+        }
         if (it.detailed) {
             char sz[32], dt[32];
             if (it.kind == UI_KIND_FOLDER) sz[0] = 0;
@@ -663,11 +702,11 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
             localtime_r(&t, &tm);
             strftime(dt, sizeof dt, "%Y-%m-%d %H:%M", &tm);
             double w = ui_text_width(UI_FONT_REGULAR, sz);
-            ui_text_draw(cr, UI_FONT_REGULAR, x[4] - 10 - w, base, sz, 0);   /* sizes align right */
-            ui_text_draw(cr, UI_FONT_REGULAR, x[4], base, dt, x[5] - x[4] - 4);
+            if (x[5] - x[4] > 4) ui_text_draw(cr, UI_FONT_REGULAR, x[5] - 10 - w, base, sz, 0);   /* sizes align right */
+            if (x[6] - x[5] > 4) ui_text_draw(cr, UI_FONT_REGULAR, x[5], base, dt, x[6] - x[5] - 4);
         } else {
-            ui_fill(cr, (ui_rect){ x[4] - 60, r.y + 6, 50, 8 }, k->placeholder);
-            ui_fill(cr, (ui_rect){ x[4], r.y + 6, 100, 8 }, k->placeholder);
+            if (x[5] - x[4] > 4) ui_fill(cr, (ui_rect){ x[5] - 60, r.y + 6, 50, 8 }, k->placeholder);
+            if (x[6] - x[5] > 4) ui_fill(cr, (ui_rect){ x[5], r.y + 6, 100, 8 }, k->placeholder);
         }
     }
     if (c->focused && c->has_cursor && c->cursor == i) {
@@ -957,7 +996,7 @@ static void draw_scrollbar(ui_container *c, cairo_t *cr)
 static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
 {
     const ui_scheme *k = &ui_scheme_now;
-    double x[6];
+    double x[7];
     columns(c, x);
     if (c->backdrop) c->backdrop(c->backdrop_ctx, cr, clip);
     else if (c->background) c->background(c->background_ctx, cr, clip);
@@ -1028,16 +1067,26 @@ static void layer_draw(void *ctx, cairo_t *cr, ui_rect clip) { draw_content(ctx,
 void ui_container_draw(ui_container *c, cairo_t *cr, ui_rect clip)
 {
     const ui_scheme *k = &ui_scheme_now;
-    double x[6];
+    double x[7];
     columns(c, x);
     ui_rect h = head_rect(c);
     if (h.h && ui_rect_meets(clip, h)) {
         ui_fill(cr, h, k->face);
-        for (int i = 1; i < 5; i++) {
+        for (int i = 1; i <= 5; i++) {
+            if (x[i + 1] - x[i] <= 4) continue;   /* not shown */
             ui_rect cell = { x[i] - 4, h.y, x[i + 1] - x[i], h.h };
-            ui_bevel(cr, cell, true);
+            bool down = c->head_down == i;
+            ui_bevel(cr, cell, !down);
             ui_set_color(cr, k->text);
-            ui_text_draw(cr, UI_FONT_REGULAR, x[i], h.y + (h.h + ui_text_ascent()) / 2 - 1, i == 2 && c->name_head ? c->name_head : heads[i], cell.w - 8);
+            ui_text_draw(cr, c->sort_col == i ? UI_FONT_BOLD : UI_FONT_REGULAR, x[i] + down, h.y + (h.h + ui_text_ascent()) / 2 - 1 + down,
+                         i == 2 && c->name_head ? c->name_head : heads[i], cell.w - 22);
+            if (c->sort_col == i) {   /* the sort: an arrow, up ascending, down descending */
+                double ax = cell.x + cell.w - 12, ay = h.y + h.h / 2;
+                if (c->sort_desc) { cairo_move_to(cr, ax - 4, ay - 2); cairo_line_to(cr, ax + 4, ay - 2); cairo_line_to(cr, ax, ay + 3); }
+                else { cairo_move_to(cr, ax - 4, ay + 2); cairo_line_to(cr, ax + 4, ay + 2); cairo_line_to(cr, ax, ay - 3); }
+                cairo_close_path(cr);
+                cairo_fill(cr);
+            }
         }
     }
     ui_rect l = list_rect(c);
@@ -1144,6 +1193,44 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         } else if (e->kind == UI_PRESS) {
             end_rename(c, true);   /* a click elsewhere applies it, as in OS/2 */
         }
+    }
+    /* the details view's headings: a click sorts, an edge dragged sizes */
+    if (c->view == UI_VIEW_DETAILS && (c->col_drag >= 0 || c->head_down >= 0 || ui_rect_has(head_rect(c), e->x, e->y))) {
+        double x[7];
+        columns(c, x);
+        ui_rect h = head_rect(c);
+        if (e->kind == UI_MOTION && c->col_drag >= 0) {
+            c->col_w[c->col_drag] = fmax(30, c->col_drag_w0 + e->x - c->col_drag_x0);
+            ui_container_layout_changed(c);
+            return true;
+        }
+        if (e->kind == UI_RELEASE && c->col_drag >= 0) {
+            c->col_drag = -1;
+            if (c->cols_resized) c->cols_resized(c->head_ctx, c->col_w);
+            return true;
+        }
+        if (e->kind == UI_PRESS && e->button == ui_mouse_button(UI_ACT_SELECT)) {
+            for (int i = 1; i <= 5; i++) {
+                if (x[i + 1] - x[i] <= 4) continue;
+                if (fabs(e->x - (x[i + 1] - 4)) <= 4 && i < 5) {   /* its right edge */
+                    c->col_drag = i;
+                    c->col_drag_x0 = e->x;
+                    c->col_drag_w0 = x[i + 1] - x[i];
+                    for (int k2 = 1; k2 <= 5; k2++) if (!c->col_w[k2] && x[k2 + 1] - x[k2] > 4 && k2 < 5) c->col_w[k2] = x[k2 + 1] - x[k2];
+                    return true;
+                }
+                if (e->x >= x[i] - 4 && e->x < x[i + 1] - 4) { c->head_down = i; ui_surface_damage(c->s, h); return true; }
+            }
+            return true;
+        }
+        if (e->kind == UI_RELEASE && c->head_down >= 0) {
+            int i = c->head_down;
+            c->head_down = -1;
+            ui_surface_damage(c->s, h);
+            if (ui_rect_has(h, e->x, e->y) && e->x >= x[i] - 4 && e->x < x[i + 1] - 4 && c->head_clicked) c->head_clicked(c->head_ctx, i);
+            return true;
+        }
+        if (e->kind != UI_WHEEL) return true;
     }
     if (e->kind == UI_WHEEL) {
         if ((e->mods & UI_MOD_SHIFT) && has_hsb(c)) hscroll_to(c, c->hscroll + e->wheel);
@@ -1524,6 +1611,8 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
     c->focused = true;
     c->vis_first = c->vis_last = SIZE_MAX;
     c->drag_i = c->drop_i = SIZE_MAX;
+    c->col_shown = 15;
+    c->sort_col = c->head_down = c->col_drag = -1;
     if (!getenv("WPS_UI_NO_LAYER")) c->layer = ui_layer_new(s, layer_draw, c);
     return c;
 }
@@ -1565,6 +1654,29 @@ void ui_container_set_background(ui_container *c, ui_layer_draw_fn fn, void *ctx
 }
 
 ui_rect ui_container_list_rect(ui_container *c) { return list_rect(c); }
+
+void ui_container_set_columns(ui_container *c, unsigned shown, const double *widths)
+{
+    c->col_shown = shown;
+    for (int i = 0; i < 6; i++) c->col_w[i] = widths ? widths[i] : 0;
+    ui_container_layout_changed(c);
+    ui_surface_damage(c->s, head_rect(c));
+}
+
+void ui_container_set_sort_mark(ui_container *c, int col, bool desc)
+{
+    c->sort_col = col;
+    c->sort_desc = desc;
+    ui_surface_damage(c->s, head_rect(c));
+}
+
+void ui_container_set_head_fns(ui_container *c, void (*clicked)(void *ctx, int col), void (*resized)(void *ctx, const double *widths),
+                               void *ctx)
+{
+    c->head_clicked = clicked;
+    c->cols_resized = resized;
+    c->head_ctx = ctx;
+}
 
 void ui_container_select(ui_container *c, size_t i)
 {

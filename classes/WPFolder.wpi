@@ -30,6 +30,8 @@ method wpPopulate() -> pending async
 method wpSetSortKey(int choice) -> bool
 method wpSetSortDesc(bool on) -> bool
 method wpSetColumn(string which_on) -> bool
+# its columns' widths as dragged: "w1,w2,..." (title .. last write; 0 as it fits)
+method wpSetColWidths(string widths) -> bool
 method wpSetBgImage(string path) -> bool
 method wpSetBgMode(int mode) -> bool
 method wpSetBgColor(string color) -> bool

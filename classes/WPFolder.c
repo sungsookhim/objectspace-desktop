@@ -122,6 +122,15 @@ bool WPFolder__wpSetColumn(wpo_object *self, const char *which_on)
     return true;
 }
 
+bool WPFolder__wpSetColWidths(wpo_object *self, const char *widths)
+{
+    if (!widths || strlen(widths) > 120 || strspn(widths, "0123456789.,") != strlen(widths)) return false;
+    wps_state_put_str(self, "WPFolder", "col_widths", widths);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
 /* ---- the Background page */
 
 static bool set_bg_str(wpo_object *self, const char *key, const char *v)
@@ -165,6 +174,8 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
     int64_t key = -1, desc = 0, cols = 15;
+    char *cw = NULL;
+    wps_state_get_str(self, "WPFolder", "col_widths", &cw);
     wps_state_get_int(self, "WPFolder", "sort_key", &key);
     wps_state_get_int(self, "WPFolder", "sort_desc", &desc);
     wps_state_get_int(self, "WPFolder", "cols", &cols);
@@ -175,9 +186,11 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
              "page\tDetails view\nfield\tcol_name\tcheckbox\tReal name\t%d\t@col:name\n"
              "field\tcol_type\tcheckbox\tType\t%d\t@col:type\n"
              "field\tcol_size\tcheckbox\tSize\t%d\t@col:size\n"
-             "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n",
+             "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n"
+             "field\tcol_widths\thidden\tWidths\t%s\twpSetColWidths\n",
              (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects,
-             (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0);
+             (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0, cw ? cw : "");
+    free(cw);
     (void)line;
     char *r = wps_concat(base, line2);
     free(base);
