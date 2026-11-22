@@ -19,6 +19,8 @@ BuildRequires:  python3
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  glib2
 BuildRequires:  pam-devel
+# (the unit tests read the MIME database)
+BuildRequires:  shared-mime-info
 BuildRequires:  pkgconfig(sqlite3)
 BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  pkgconfig(cairo)
@@ -39,12 +41,14 @@ BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  pkgconfig(sndfile)
 
 # The session: X11 programs, drives, settings shared with GNOME, icons
-# made from SVGs; input methods when installed.
+# made from SVGs, file types and the icon theme; input methods when installed.
 Requires:       xorg-x11-server-Xwayland
 Requires:       udisks2
 Requires:       gsettings-desktop-schemas
 Requires:       glycin-thumbnailer
 Requires:       dbus
+Requires:       shared-mime-info
+Requires:       adwaita-icon-theme
 Recommends:     ibus
 Recommends:     %{name}-gnome-shell-extension = %{version}-%{release}
 %{?systemd_requires}
