@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WPS's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files).
+"""WPS's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files; set D: the basic kinds).
 
 Style: isometric pixel art after BeOS / OS/2 Warp 4, 2:1 lines (2 across
 for 1 down; verticals straight), light from the upper left (top lightest,
@@ -852,6 +852,63 @@ SET_C = [("file-data", "Data file", lambda c: page(c, content=c_data)),
          ("file-disc-image", "Disc image", lambda c: page(c, e_disc, e_lines))]
 
 
+# --------------------------------------------------- set D: the basic kinds
+
+def program(c):
+    """A program (one with no icon of its own): its window - title bar,
+    menu bar, a toolbar, its work."""
+    x0, x1, z0, z1, y = -66, 56, 0, 104, 0
+    c.box(x0, x1, y - 6, y, z0, z1, PLASTIC_L)
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z1 - 16, z1 - 4), (30, 40, 140))           # title bar
+    for k in range(3):
+        bx = x1 - 16 - k * 13
+        c.on_y(y + 0.2, sq(bx, bx + 10, z1 - 13, z1 - 7), PLASTIC_L, edge=False)
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z0 + 4, z1 - 18), WHITE)                   # its work
+    if c.small:
+        for k, col in enumerate((RED, YELLOW, GREEN)):
+            c.on_y(y + 0.2, sq(x0 + 12 + k * 26, x0 + 32 + k * 26, z1 - 44, z1 - 26), col)
+        bar(c, y + 0.2, x0 + 12, x1 - 20, 38, 8, PLASTIC_D)
+        return
+    for k in range(4):                                                             # menu bar
+        bar(c, y + 0.2, x0 + 10 + k * 22, x0 + 26 + k * 22, z1 - 23, 3.5, GREYTEXT)
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z1 - 42, z1 - 28), PLASTIC)                # toolbar
+    for k, col in enumerate((RED, YELLOW, GREEN, BLUE)):
+        c.on_y(y + 0.2, sq(x0 + 9 + k * 14, x0 + 19 + k * 14, z1 - 40, z1 - 30), col)
+    lines(c, y + 0.2, 14, 54, 10, 3.5, (170, 170, 180), x0=x0 + 10, x1=x1 - 10)
+
+
+def program_text(c):
+    """A text-mode program: a terminal window, its prompt."""
+    x0, x1, z0, z1, y = -66, 56, 0, 104, 0
+    c.box(x0, x1, y - 6, y, z0, z1, PLASTIC_L)
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z1 - 16, z1 - 4), (30, 40, 140))
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z0 + 4, z1 - 18), (24, 26, 32))
+    w = 9 if c.small else 5
+    c.line([(x0 + 14, y + 0.2, 78), (x0 + 30, y + 0.2, 66), (x0 + 14, y + 0.2, 54)], LCD_ON, w)
+    c.on_y(y + 0.2, sq(x0 + 38, x0 + 62, 52, 52 + w), LCD_ON, edge=False)
+    if not c.small:
+        for z, l in ((34, 60), (22, 40)):
+            bar(c, y + 0.2, x0 + 14, x0 + 14 + l, z, 3.5, (60, 150, 80))
+
+
+def abstract_object(c):
+    """An object of no kind WPS draws: a cube, its faces lettered by light."""
+    c.box(-40, 40, -40, 40, 0, 80, (120, 150, 210))
+    c.on_z(80.1, rect(-26, 26, -26, 26), shade((120, 150, 210), 1.1), edge=False)
+
+
+def link_mark(c):
+    """The mark a link (or a shadow, if wanted) wears at its lower left:
+    a white tile, a curved arrow out of it."""
+    c.box(-40, 40, -4, 4, 0, 80, WHITE)
+    arrow = ring_arrow(2, 14, 20, 40 if c.small else 34, 182, 98, 20)            # up and over, to the right
+    c.on_y(4.1, arrow, BLUE)
+
+
+SET_D = [("program", "Program", program), ("program-text", "Text-mode program", program_text),
+         ("object", "Object", abstract_object), ("link-mark", "Link mark", link_mark)]
+
+
 def render(fn, n, variant):
     rec = Canvas(256, variant, size=n)
     fn(rec)
@@ -911,7 +968,7 @@ def sheets(out, imgs, sizes, ICONS, tag):
     sh.save(f"{out}/sheet-small.png")
 
 
-SETS = {"A": SET_A, "B": SET_B, "C": SET_C}
+SETS = {"A": SET_A, "B": SET_B, "C": SET_C, "D": SET_D}
 
 
 def main():
