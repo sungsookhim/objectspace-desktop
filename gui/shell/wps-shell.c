@@ -7111,7 +7111,8 @@ static void on_window_events(void *arg, int fd, short rev)
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "wps-menu")) {   /* Super alone (WPS session) */
-            if (warpcenter_is_open()) warpcenter_press("desktop");
+            if (ui_menu_is_open()) ui_menu_close_all();   /* pressed again: closed (as on Windows) */
+            else if (warpcenter_is_open()) warpcenter_press("desktop");
         }
         else if (k >= 5 && !strcmp(f[0], "I")) warpcenter_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {

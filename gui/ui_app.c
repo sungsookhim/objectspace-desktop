@@ -443,7 +443,12 @@ static struct xdg_positioner *positioner(ui_surface *s, double w, double h)
     xdg_positioner_set_size(pos, (int32_t)w, (int32_t)h);
     xdg_positioner_set_anchor_rect(pos, (int32_t)anchor.x, (int32_t)anchor.y, anchor.w < 1 ? 1 : (int32_t)anchor.w,
                                    anchor.h < 1 ? 1 : (int32_t)anchor.h);
-    if (s->pop_above) {
+    if (s->pop_side) {
+        /* beside the anchor, out to that side, its top edges lined up (a
+         * vertical LaunchPad's drawers) */
+        xdg_positioner_set_anchor(pos, s->pop_side < 0 ? XDG_POSITIONER_ANCHOR_TOP_LEFT : XDG_POSITIONER_ANCHOR_TOP_RIGHT);
+        xdg_positioner_set_gravity(pos, s->pop_side < 0 ? XDG_POSITIONER_GRAVITY_BOTTOM_LEFT : XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+    } else if (s->pop_above) {
         /* above the anchor, its left edges lined up */
         xdg_positioner_set_anchor(pos, XDG_POSITIONER_ANCHOR_TOP_LEFT);
         xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_TOP_RIGHT);
@@ -460,6 +465,7 @@ static struct xdg_positioner *positioner(ui_surface *s, double w, double h)
 
 static ui_surface *popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
                              double w, double h, uint32_t serial, bool above);
+static int side_next;   /* (ui_popup_new_beside's side, for popup_new) */
 
 ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
                          double w, double h, uint32_t serial)
@@ -471,6 +477,15 @@ ui_surface *ui_popup_new_above(ui_app *a, ui_surface *parent, const ui_surface_o
                                double w, double h, uint32_t serial)
 {
     return popup_new(a, parent, ops, data, anchor, w, h, serial, true);
+}
+
+ui_surface *ui_popup_new_beside(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data, ui_rect anchor,
+                                double w, double h, uint32_t serial, bool left)
+{
+    side_next = left ? -1 : 1;
+    ui_surface *s = popup_new(a, parent, ops, data, anchor, w, h, serial, false);
+    side_next = 0;
+    return s;
 }
 
 void ui_popup_set_size(ui_surface *s, double w, double h)
@@ -495,6 +510,7 @@ static ui_surface *popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops
     s->scale = parent->scale;
     s->pop_anchor = anchor;
     s->pop_above = above;
+    s->pop_side = side_next;
     struct xdg_positioner *pos = positioner(s, w, h);
     s->popup = xdg_surface_get_popup(s->xs, parent->xs, pos);
     xdg_positioner_destroy(pos);

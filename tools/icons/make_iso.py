@@ -238,16 +238,34 @@ def cone(c, y, cx, cz, r, depth, steps=6):
         c.on_y(y - depth + 2 * k, circ(cx, cz, r * 0.32 * (1 - 0.18 * k)), shade((150, 148, 162), 0.7 + 0.12 * k), edge=False)
 
 
+def note_shapes(x, z, beamed):
+    """A note (or two joined by a beam) on a face: (x, z) polygons."""
+    def head(hx, hz):
+        a = math.radians(25)
+        return [(hx + 9 * math.cos(t) * math.cos(a) - 6 * math.sin(t) * math.sin(a),
+                 hz + 9 * math.cos(t) * math.sin(a) + 6 * math.sin(t) * math.cos(a))
+                for t in [2 * math.pi * i / 16 for i in range(16)]]
+    if not beamed:
+        return [head(x, z), sq(x + 5.5, x + 9, z, z + 38),
+                [(x + 9, z + 38), (x + 9, z + 28), (x + 20, z + 18), (x + 19, z + 26)]]
+    x2, z2 = x + 26, z + 8
+    return [head(x, z), head(x2, z2), sq(x + 5.5, x + 9, z, z + 38), sq(x2 + 5.5, x2 + 9, z2, z2 + 38),
+            [(x + 5.5, z + 32), (x2 + 9, z2 + 32), (x2 + 9, z2 + 39), (x + 5.5, z + 39)]]
+
+
+def note(c, y, x, z, beamed, col=DARK):
+    for dy, cc in ((-3, shade(col, 0.5)), (0, col)):
+        for shp in note_shapes(x, z, beamed):
+            c.on_y(y + dy, shp, cc, edge=False)
+
+
 def sound(c):
     c.box(0, 60, -52, -8, 0, 112, CABINET)
     c.box(2, 58, -8, -3, 2, 110, (100, 96, 110))                              # front baffle
     cone(c, -3, 30, 40, 19, 10)
     cone(c, -3, 30, 89, 9, 5, 4)
-    for i, (d, r) in enumerate(((12, 30), (28, 42), (44, 54))):              # sound going out
-        arc = [(30 + r * math.cos(math.radians(a)), 40 + r * math.sin(math.radians(a))) for a in range(118, 243, 6)]
-        col = shade(BLUE, 0.95 - 0.1 * i)[:3]
-        c.line([(x, -3 + d - 3, z) for x, z in arc], shade(col, 0.5)[:3], 6)
-        c.line([(x, -3 + d, z) for x, z in arc], col, 6)
+    note(c, 26, -14, 86, True, BLUE)                                          # music, in front
+    note(c, 46, -30, 40, False, RED)
 
 
 def scheme_palette(c):
@@ -263,15 +281,39 @@ def scheme_palette(c):
     c.on_x(-36 - 0.1, sq(19, 25, 8, 13), BLUE)
 
 
+def win(c, x0, x1, y, z0, z1, d=4, body=WHITE):
+    """A window standing on the face y: frame, title bar with its buttons."""
+    c.box(x0, x1, y - d, y, z0, z1, PLASTIC_L)
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z0 + 4, z1 - 16), body)
+    c.on_y(y + 0.1, sq(x0 + 4, x1 - 4, z1 - 14, z1 - 4), (30, 40, 140))
+    for k in range(3):
+        bx = x1 - 14 - k * 11
+        c.on_y(y + 0.2, sq(bx, bx + 8, z1 - 12, z1 - 6), PLASTIC_L, edge=False)
+
+
 def system(c):
-    c.box(-30, 30, -26, 10, 0, 6, PLASTIC_D)                                  # base
-    c.box(-36, 36, -44, -8, 52, 108, PLASTIC_D)                               # back
-    c.box(-8, 8, -16, 0, 6, 46, PLASTIC_D)                                    # neck
-    c.box(-54, 54, -8, 4, 40, 122, PLASTIC)                                   # bezel
-    c.on_y(4.1, sq(-46, 46, 48, 114), SCREEN)
-    c.on_y(4.2, [(-40, 108), (-22, 108), (-40, 78)], SCREEN_L, edge=False)
-    c.prism(gear(44, 50, 32, 24, 10), 0, 12, METAL)
-    c.on_z(12.1, ellipse(44, 50, 9, 9, 16), shade(METAL, 0.4), edge=False)
+    """System: the computer as a whole - the case, its monitor showing the
+    desktop, and the keyboard."""
+    c.box(-58, 28, -26, -8, 0, 6, PLASTIC_D)                                  # monitor: base, neck
+    c.box(-22, -8, -22, -12, 6, 30, PLASTIC_D)
+    c.box(-46, 16, -40, -16, 42, 92, PLASTIC_D)                               # back
+    c.box(-62, 32, -16, -4, 30, 104, PLASTIC)                                 # bezel
+    c.on_y(-3.9, sq(-55, 25, 37, 97), TEAL)
+    for z in (80, 62):
+        c.on_y(-3.8, sq(-49, -39, z, z + 9), YELLOW, edge=False)
+    c.on_y(-3.8, sq(-49, 25, 37, 43), PLASTIC_L, edge=False)                  # the bar along the screen's foot
+    c.box(42, 82, -62, 6, 0, 112, PLASTIC)                                    # the case, facing as the monitor
+    for z in (94, 80):                                                        # drive bays
+        c.on_y(6.1, sq(48, 76, z, z + 10), PLASTIC_D)
+        c.on_y(6.2, sq(52, 72, z + 4, z + 6), DARK, edge=False)
+    c.on_y(6.1, circ(62, 26, 5, 12), PLASTIC_L)                               # power, lamp
+    c.on_y(6.2, sq(53, 58, 12, 15), LCD_ON, edge=False)
+    c.box(-62, 30, 12, 40, 0, 7, PLASTIC_L)                                   # keyboard
+    for r in range(3):
+        for k in range(10):
+            x = -57 + k * 8.6
+            y = 15 + r * 8
+            c.on_z(7.1, rect(x, x + 6.5, y, y + 6), PLASTIC_D, edge=False)
 
 
 # glyphs on a face y = const, (x, z) centred on cx, cz, half-size h
@@ -390,13 +432,40 @@ def messages(c):
     c.on_y(3.3, circ(mx, mz, 9, 16), RED)
 
 
+def folder3d(c, x, y, z, w=34, h=26, d=6):
+    """A folder standing up, facing lower left."""
+    c.box(x, x + w * 0.45, y, y + d, z + h, z + h + 5, (214, 160, 40))       # tab
+    c.box(x, x + w, y, y + d, z, z + h, YELLOW)
+
+
+def dashed_rect(c, z, x0, x1, y0, y1, col, dash=7, w=2.5):
+    for x in range(int(x0), int(x1), dash * 2):
+        for yy in (y0, y1 - w):
+            c.on_z(z, rect(x, min(x + dash, x1), yy, yy + w), col, edge=False)
+    for y in range(int(y0), int(y1), dash * 2):
+        for xx in (x0, x1 - w):
+            c.on_z(z, rect(xx, xx + w, y, min(y + dash, y1)), col, edge=False)
+
+
 def restore_desktop(c):
-    c.box(-76, 76, -58, 58, 0, 10, TEAL)
-    for y, col in ((-44, YELLOW), (-18, WHITE), (8, YELLOW)):
-        c.box(-62, -48, y, y + 14, 10, 20, col)
-    arrow = ring_arrow(26, 10, 24, 40, 330, 50)
-    c.on_z(10.1, arrow, shade(TEAL, 0.5), edge=False)                         # its shadow
-    c.prism(arrow, 30, 12, GREEN)
+    """Restore Desktop: default objects put back where they belong - the
+    Trash Can in its place, a folder coming down into its marked place."""
+    c.box(-64, 64, -54, 54, 0, 8, TEAL)
+    c.prism(ellipse(-42, 22, 17, 17, 24), 8, 42, (176, 180, 188))           # the Trash Can, in place
+    c.on_z(50.1, ellipse(-42, 22, 12, 12, 20), shade((176, 180, 188), 0.45), edge=False)
+    x0, x1, y0, y1 = -4, 44, 14, 30                                          # the folder's place
+    c.on_z(8.1, rect(x0 + 3, x1 - 3, y0 + 3, y1 - 3), shade(TEAL, 0.55), edge=False)
+    dashed_rect(c, 8.2, x0 - 4, x1 + 4, y0 - 4, y1 + 4, WHITE)
+    lift = 34
+    for x in (x0, x1):                                                       # dropping straight down
+        for z in range(14, lift, 8):
+            c.line([(x, y1, z), (x, y1, z + 4)], WHITE, 2)
+    c.box(x0, x0 + 20, y0, y1, lift + 36, lift + 42, (214, 160, 40))         # the folder: tab, body
+    c.box(x0, x1, y0, y1, lift, lift + 36, YELLOW)
+    ax = (x0 + x1) / 2                                                       # the arrow, pointing down
+    shape = [(ax - 7, 140), (ax + 7, 140), (ax + 7, 112), (ax + 17, 112), (ax, 92), (ax - 17, 112), (ax - 7, 112)]
+    c.on_y(y1 - 4, shape, shade(GREEN, 0.5), edge=False)
+    c.on_y(y1, shape, GREEN)
 
 
 def minwin_viewer(c):

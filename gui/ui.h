@@ -233,6 +233,10 @@ ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *op
 /* The same, opening above the anchor (a LaunchPad drawer). */
 ui_surface *ui_popup_new_above(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
                                ui_rect anchor, double w, double h, uint32_t serial);
+/* The same, beside the anchor, out to the left or the right (a vertical
+ * LaunchPad's drawers). */
+ui_surface *ui_popup_new_beside(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
+                                ui_rect anchor, double w, double h, uint32_t serial, bool left);
 /* A popup's new size, placed again by the compositor. */
 void ui_popup_set_size(ui_surface *s, double w, double h);
 
@@ -335,6 +339,7 @@ void ui_menu_items_free(ui_menu_item *items, size_t n);
 void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                          ui_menu_fn fn, void *arg, bool (*icon_fn)(void *arg, int64_t id, void *item));
 bool ui_menu_is_open(void);
+void ui_menu_close_all(void);   /* the open menus, unchosen */
 /* Called with the surface of every button press in this program, first
  * (a pop-up of its own closes when another of its windows is clicked:
  * the compositor closes it only for other programs' windows). */

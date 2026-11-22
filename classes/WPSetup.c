@@ -97,6 +97,7 @@ static const struct setting scheme_settings[] = {
 static const struct setting launchpad_settings[] = {
     { "LaunchPad", "show_at_start", "choice", "Show at start", "automatic", "automatic,yes,no" },
     { "LaunchPad", "orientation", "choice", "Orientation", "horizontal", "horizontal,vertical" },
+    { "LaunchPad", "drawer_side", "choice", "Drawers (vertical)", "right", "right,left" },
     { "LaunchPad", "small_icons", "checkbox", "Small icons", "0", NULL },
     { "LaunchPad", "text", "checkbox", "Text on buttons", "1", NULL },
     { "LaunchPad", "float_top", "checkbox", "Float on top", "1", NULL },

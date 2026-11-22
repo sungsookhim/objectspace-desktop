@@ -1596,8 +1596,12 @@ static void on_map(struct wl_listener *l, void *data)
     struct wlr_box geo = view_geo(t);
     if (t->kind == KIND_DESKTOP) {
         place_desktop(t);
-    } else if (t->kind == KIND_PALETTE) {   /* the LaunchPad: bottom centre */
-        view_move(t, ob.x + (ob.width - geo.width) / 2, ob.y + ob.height - geo.height - 8);
+    } else if (t->kind == KIND_PALETTE) {   /* the LaunchPad: bottom centre, above the WarpCenter */
+        struct wlr_output *o = wlr_output_layout_output_at(server.output_layout, ob.x + 1, ob.y + 1);
+        struct wlr_box ub = o ? usable_box(o) : ob;
+        view_move(t, ub.x + (ub.width - geo.width) / 2, ub.y + ub.height - geo.height - 8);
+        t->pal_w = geo.width;
+        t->pal_h = geo.height;
     } else if (t->kind == KIND_PANEL) {   /* the WarpCenter: along its edge; windows make room */
         place_panel(t);
         refit_maximized();
@@ -1685,6 +1689,20 @@ static void on_commit(struct wl_listener *l, void *data)
         wl_list_for_each(n, &server.toplevels, link) if (n->kind == KIND_NOTICE && n->mapped) place_notice(n);
     }
     if (t->kind == KIND_NOTICE && t->mapped) place_notice(t);   /* (its size follows what it shows) */
+    if (t->kind == KIND_PALETTE && t->mapped && geo.width > 0 && (geo.width != t->pal_w || geo.height != t->pal_h)) {
+        /* the LaunchPad's size changed (vertical, small icons): still on
+         * the screen, clear of the WarpCenter */
+        t->pal_w = geo.width;
+        t->pal_h = geo.height;
+        struct wlr_output *o = wlr_output_layout_output_at(server.output_layout, t->tree->node.x + 1, t->tree->node.y + 1);
+        struct wlr_box ub = o ? usable_box(o) : first_output_box();
+        int x = t->tree->node.x, y = t->tree->node.y;
+        if (x + geo.width > ub.x + ub.width) x = ub.x + ub.width - geo.width;
+        if (y + geo.height > ub.y + ub.height) y = ub.y + ub.height - geo.height;
+        if (x < ub.x) x = ub.x;
+        if (y < ub.y) y = ub.y;
+        view_move(t, x, y);
+    }
     int w, h;
     frame_size(t, geo.width, geo.height, &w, &h);
     if (t->ssd && !t->fullscreen && (w != t->fw || h != t->fh)) draw_frame(t);

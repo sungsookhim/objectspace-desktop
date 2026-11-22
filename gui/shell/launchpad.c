@@ -83,6 +83,7 @@ static struct {
     char drag_wps[PATH_MAX + 64], drag_uri[3 * PATH_MAX + 64];
     /* the LaunchPad object's settings (OS/2's, v0.3-design 11) */
     bool vertical, small, text, float_top, close_drawer;
+    bool drawers_left;         /* vertical: the drawer arrows (and drawers) on the left */
     void (*open_props)(const char *addr);
     objmenu *obj_menu_m;       /* (unused: object menus come from wpsd) */
 } lp = { .pressed = -1, .drop_at = -1, .r_press = -1, .dragging = -1, .text = true, .float_top = true, .close_drawer = true };
@@ -115,9 +116,13 @@ static double bar_cross(void) { return ARROW_H + BTN_H + 2 * PAD; }
 static double bar_w(void) { return lp.vertical ? bar_cross() : bar_len(); }
 static double bar_h(void) { return lp.vertical ? bar_len() : bar_cross(); }
 
-static ui_rect sys_rect(size_t i) { return at(GRIP_W + (double)i * SYS_W, ARROW_H + PAD, SYS_W - 2, BTN_H); }
-static ui_rect obj_rect(size_t i) { return at(obj_x(i), ARROW_H + PAD, BTN_W - 2, BTN_H); }
-static ui_rect arrow_rect(size_t i) { return at(obj_x(i), PAD, BTN_W - 2, ARROW_H - 1); }
+/* (the arrows across the bar from the buttons: above them; on a vertical
+ * one, on the side the drawers open to) */
+static bool arrows_after(void) { return lp.vertical && !lp.drawers_left; }
+static double btn_c(void) { return arrows_after() ? PAD : ARROW_H + PAD; }
+static ui_rect sys_rect(size_t i) { return at(GRIP_W + (double)i * SYS_W, btn_c(), SYS_W - 2, BTN_H); }
+static ui_rect obj_rect(size_t i) { return at(obj_x(i), btn_c(), BTN_W - 2, BTN_H); }
+static ui_rect arrow_rect(size_t i) { return at(obj_x(i), arrows_after() ? PAD + BTN_H + 1 : PAD, BTN_W - 2, ARROW_H - 1); }
 
 static bool in(ui_rect r, double x, double y) { return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h; }
 
@@ -582,7 +587,8 @@ static void drawer_open(size_t i, uint32_t serial)
     mkdirs(d->dir);
     /* above its button, as OS/2's drawers opened (below if there is no
      * room); beside it on a vertical LaunchPad */
-    d->s = lp.vertical ? ui_popup_new(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial)
+    d->s = lp.vertical ? ui_popup_new_beside(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial,
+                                             lp.drawers_left)
                        : ui_popup_new_above(lp.app, lp.s, &drawer_ops, d, arrow_rect(i), DRAWER_W, DRAWER_ROW + 2 * PAD, serial);
     svc_list(d->dir, 0, MAX_ITEMS, true, drawer_got, NULL);
     svc_subscribe_folder(d->dir, drawer_sub, NULL);   /* followed while open */
@@ -688,8 +694,8 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         if (lp.focused && lp.kfocus == i) focus_ring(cr, (ui_rect){ r.x + 3, r.y + 3, r.w - 6, r.h - 6 });
     }
     double sx = GRIP_W + NSYS * SYS_W + SEP_W / 2 - 1;
-    ui_fill(cr, at(sx, ARROW_H + PAD + 2, 1, BTN_H - 4), k->shadow);
-    ui_fill(cr, at(sx + 1, ARROW_H + PAD + 2, 1, BTN_H - 4), k->light);
+    ui_fill(cr, at(sx, btn_c() + 2, 1, BTN_H - 4), k->shadow);
+    ui_fill(cr, at(sx + 1, btn_c() + 2, 1, BTN_H - 4), k->light);
     if (!lp.n) {
         ui_rect r = obj_rect(0);
         ui_set_color(cr, k->disabled_text);
@@ -704,9 +710,10 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_set_color(cr, (target && lp.drop_arrow) || open ? k->selection_text : k->text);
         double ax = a.x + a.w / 2, ay = a.y + a.h / 2;
         if (lp.vertical) {   /* pointing out to the side, where the drawer opens */
-            cairo_move_to(cr, ax + 2, ay - 5);
-            cairo_line_to(cr, ax + 2, ay + 5);
-            cairo_line_to(cr, ax - 3, ay);
+            double dir = lp.drawers_left ? -1 : 1;
+            cairo_move_to(cr, ax - 2 * dir, ay - 5);
+            cairo_line_to(cr, ax - 2 * dir, ay + 5);
+            cairo_line_to(cr, ax + 3 * dir, ay);
         } else {
             cairo_move_to(cr, ax - 5, ay + 2);
             cairo_line_to(cr, ax + 5, ay + 2);
@@ -1195,6 +1202,7 @@ void launchpad_setting(const char *key, const char *val)
     else if (!strcmp(key, "text")) lp.text = on;
     else if (!strcmp(key, "float_top")) lp.float_top = on;
     else if (!strcmp(key, "close_drawer")) lp.close_drawer = on;
+    else if (!strcmp(key, "drawer_side")) lp.drawers_left = !strcmp(val, "left");
     else return;
     if (!lp.s) return;
     drawer_close();

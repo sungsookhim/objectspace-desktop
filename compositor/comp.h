@@ -110,6 +110,7 @@ struct toplevel {
     bool listed;                      /* in the desktop's Window List */
     ui_hit hover, pressed;
     int fw, fh;                       /* the frame drawn, its size */
+    int pal_w, pal_h;                 /* a palette's size last placed (the LaunchPad) */
     struct wl_listener map, unmap, commit, destroy, request_move, request_resize, request_maximize,
         request_minimize, request_fullscreen, set_title, set_app_id;
     struct wl_listener deco_request_mode, deco_destroy;
