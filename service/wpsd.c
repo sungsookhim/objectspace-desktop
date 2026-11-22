@@ -457,7 +457,7 @@ static void local_call_reply(struct req *r, wpo_object *o)
         cb_free(&b);
         return;
     }
-    wpo_value av[MAX_ARGS];
+    wpo_value av[MAX_ARGS] = { 0 };
     size_t na = 0;
     int oi = 0;
     for (size_t i = 0; args && args->k == CV_ARRAY && i < args->n && na < MAX_ARGS; i++) {

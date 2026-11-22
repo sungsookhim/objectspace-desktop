@@ -177,9 +177,9 @@ bool findwin_event(const cv *ev)
         r->base = sl ? sl + 1 : r->path;
         size_t dl = sl ? (size_t)(sl - r->path) : 0;
         if (home && hl > 1 && dl >= hl && !strncmp(r->path, home, hl) && (dl == hl || r->path[hl] == '/'))
-            (void)asprintf(&r->dir, "~%.*s", (int)(dl - hl), r->path + hl);
-        else
-            (void)asprintf(&r->dir, "%.*s", (int)(dl ? dl : 1), dl ? r->path : "/");
+            { if (asprintf(&r->dir, "~%.*s", (int)(dl - hl), r->path + hl) < 0) r->dir = strdup(""); }
+        else if (asprintf(&r->dir, "%.*s", (int)(dl ? dl : 1), dl ? r->path : "/") < 0)
+            r->dir = strdup("");
         size_t bl = strlen(r->base);
         r->kind = !strcmp(t, "folder") ? UI_KIND_FOLDER : !strcmp(t, "link") ? UI_KIND_LINK :
                   w->kind == 3 || (bl > 8 && !strcmp(r->base + bl - 8, ".desktop")) ? UI_KIND_PROGRAM : UI_KIND_FILE;
