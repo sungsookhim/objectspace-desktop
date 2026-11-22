@@ -13,6 +13,7 @@ for part in new old; do
     mkdir -p "$T/desk" "$T/config" "$T/templates" "$T/home"
     export HOME="$T/home"   # (step 9 shadows the home folder: never the real one)
     [ $part = old ] && printf 'version 6\n' > "$T/config/desktop-made"
+    [ $part = old ] && mkdir -p "$T/xdg/data/wps/System/Computer/Drives" && echo x > "$T/xdg/data/wps/System/Computer/kept.txt"
     export T WPS_CONFIG_DIR="$T/config" WPS_STATE_DIR="$T/state" WPS_RUNTIME_DIR="$RT" WPS_SAVE_DELAY_MS=100
     export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" WPS_TEMPLATES_DIR="$T/templates"
     export WPS_UDISKS_BUS="unix:path=$RT/none"

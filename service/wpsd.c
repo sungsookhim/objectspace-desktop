@@ -2183,11 +2183,16 @@ static void setup_dir(char *out, size_t n);
 static void data_dir(const char *name, char *out, size_t n);
 static void autostart_dir(char *out, size_t n);
 
-/* WPS's own folders: System, My Storages (Computer), Drives, Programs,
- * System Setup, the Trash Can, Startup. */
+static char known_desktop[PATH_MAX];   /* the desktop's folder (its first_start says) */
+
+/* WPS's own folders: System, My Storages, Drives, Programs, System Setup,
+ * the Trash Can, Startup; and the desktop and Templates (XDG user folders:
+ * renamed, user-dirs.dirs would not follow). */
 static bool own_folder(const char *path)
 {
     if (!path || !*path) return false;
+    if (known_desktop[0] && !strcmp(path, known_desktop)) return true;
+    if (wps_templates_dir()[0] && !strcmp(path, wps_templates_dir())) return true;
     char d[7][PATH_MAX + 8];
     system_dir(d[0], sizeof d[0]);
     computer_dirs(d[1], sizeof d[1], d[2], sizeof d[2]);
@@ -3017,6 +3022,19 @@ static void system_folder_init(void)
     char sys[PATH_MAX], old[PATH_MAX], now[PATH_MAX];
     system_dir(sys, sizeof sys);
     if (wps_mkdirs(sys, 0700) != 0) { log_msg("cannot make the System folder %s", sys); return; }
+    /* 0.3: My Storages' folder is Storages (0.2's Computer), the owner's */
+    char was[PATH_MAX + 16], comp[PATH_MAX], drv[PATH_MAX + 8];
+    snprintf(was, sizeof was, "%s/Computer", sys);
+    computer_dirs(comp, sizeof comp, drv, sizeof drv);
+    struct stat cs;
+    if (stat(was, &cs) == 0 && S_ISDIR(cs.st_mode) && access(comp, F_OK) != 0) {
+        if (rename(was, comp) == 0) {
+            wps_shadows_prefix_moved(was, comp);
+            log_msg("My Storages: its folder is %s now (was Computer)", comp);
+        } else {
+            log_msg("cannot rename Computer to Storages: %s", strerror(errno));
+        }
+    }
     if (getenv("WPS_SETUP_DIR")) return;
     data_dir("System Setup", old, sizeof old);
     snprintf(now, sizeof now, "%s/System Setup", sys);   /* (not setup_dir: it falls back to the old one) */
@@ -3828,6 +3846,8 @@ static void handle(struct client *c, cv *msg)
         j->c = c; c->refs++;
         j->id = id;
         if (d && d[0] == '/') snprintf(j->desk, sizeof j->desk, "%s", d);
+        char real[PATH_MAX];   /* (renamed by its title only from now on) */
+        if (d && d[0] == '/') snprintf(known_desktop, sizeof known_desktop, "%s", realpath(d, real) ? real : d);
         wpo_defer(loop, "first start", first_start_work, first_start_done, j);
     } else if (strcmp(op, "restore_defaults") == 0) {
         const char *d = cv_text(msg, "desktop");   /* (none: the one last opened) */
@@ -4170,7 +4190,7 @@ static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn)
 {
     char sys[PATH_MAX];
     system_dir(sys, sizeof sys);
-    snprintf(comp, cn, "%s/Computer", sys);
+    snprintf(comp, cn, "%s/Storages", sys);   /* (0.2's "Computer": moved at the start) */
     snprintf(drives, dn, "%s/Drives", comp);
 }
 

@@ -142,7 +142,10 @@ check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_sh
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
     check("the desktop is at step 10", "version 10" in f.read())
-COMP = SYS + "/Computer"
+COMP = SYS + "/Storages"
+if PART == "old":   # (run.sh made 0.2's Computer, with a file in it)
+    check("0.2's Computer is moved to Storages, its contents with it", os.path.exists(COMP + "/kept.txt")
+          and not os.path.exists(SYS + "/Computer"), os.listdir(SYS))
 check("step 9: the home folder in Computer", wait(lambda: len(shadows_of(COMP, os.environ["HOME"])) == 1), items(COMP))
 
 
@@ -156,6 +159,9 @@ check("step 10: Computer is titled My Storages", title_of(COMP) == "My Storages"
 r = c.request(op="rename", target=COMP, name="Storage")
 check("renaming WPS's own folder: its title only", r.get("ok") and os.path.isdir(COMP) and title_of(COMP) == "Storage", r)
 c.request(op="rename", target=COMP, name="My Storages")
+for own in (DESK, TPL):   # XDG user folders: their titles only (user-dirs.dirs would not follow)
+    r = c.request(op="rename", target=own, name="Renamed")
+    check("renaming %s: its title only" % os.path.basename(own), r.get("ok") and os.path.isdir(own) and title_of(own) == "Renamed", r)
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
 check("a second start changes nothing", r.get("result") == 10 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
