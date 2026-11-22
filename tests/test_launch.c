@@ -123,7 +123,8 @@ TEST(terminals)
 {
     /* text-mode programs: binaries without window libraries, and scripts */
     CHECK(wps_program_needs_terminal("/usr/bin/true"));
-    CHECK(wps_program_needs_terminal("/usr/bin/vi"));
+    if (access("/usr/bin/vi", R_OK) == 0)   /* (not in a minimal build root) */
+        CHECK(wps_program_needs_terminal("/usr/bin/vi"));
     CHECK(!wps_program_needs_terminal("/usr/bin/ptyxis"));   /* links GTK */
     put("t/s.sh", "#!/bin/sh\n");
     char p[4200];
