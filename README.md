@@ -99,6 +99,8 @@ build/wpsctl shutdown
 
 ## Authorship and license
 
+This project started from fond memories of using OS/2, from Warp 3.0 through WSeB to eComStation, and of missing its Workplace Shell. The original design and ideas are OS/2's, from IBM; this is a new implementation of them for Linux, not affiliated with IBM or with the current owners of OS/2.
+
 WPS for Linux is designed and built by Sungsoo Khim. Its code was written with the assistance of Claude (Anthropic's AI model) through Claude Code; the design, decisions and testing are the author's.
 
 Released under the MIT License: see [LICENSE](LICENSE).
