@@ -1,6 +1,6 @@
 # Roadmap
 
-Draft, 2026-11-21. Version 0.2 is designed in [v0.2-design.md](v0.2-design.md) and planned in [v0.2-plan.md](v0.2-plan.md). Version 0.1 is the baseline: everything below is what is open, deferred or not yet designed after it. The owner adds objectives to this draft; the next design and implementation plan follows from it.
+Draft, 2026-11-21. Version 0.2 is released (tag `v0.2`; [release notes](release-notes-0.2.md)); it was designed in [v0.2-design.md](v0.2-design.md) and planned in [v0.2-plan.md](v0.2-plan.md). Version 0.1 is the baseline: everything below is what is open, deferred or not yet designed after it, with 0.2's objectives marked done. The owner adds objectives to this draft; the next design and implementation plan follows from it.
 
 ## Version 0.1 (the baseline)
 
@@ -22,6 +22,10 @@ Tagged `v0.1`. What it holds:
   - GNOME's keyboard layouts and IBus sources followed live, with Super+Space to switch.
   - XDG autostart; VirtualBox guest support: software drawing on vmwgfx, its shared clipboard.
 - **Tried by hand** on Fedora 45 in a VirtualBox VM, Korean locale: logins between GNOME and WPS both ways, programs (Firefox, Ptyxis, Text Editor, xterm), Hangul input.
+
+## Version 0.2 (released 2026-11-21)
+
+Tagged `v0.2`; the RPMs are attached to its GitHub release. The objectives below (1–6, the RPM, open windows restored at login) are done, and the tray too; COPR was left out (the owner's choice). What it holds is in the [release notes](release-notes-0.2.md).
 
 ## Open and deferred work
 
@@ -61,7 +65,8 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
   - Implement Mutter's RemoteDesktop and ScreenCast interfaces, so GNOME Remote Desktop works.
   - A headless compositor served by wayvnc.
 - **D** **Sharp X11 programs on scaled screens.** wlroots 0.20 offers no XWayland scaling; it needs the compositor's own scaling of X11 windows.
-- **The desktop's own menu** lacks OS/2's Lockup now, Shut down and System setup; **the desktop has no status line**, so its messages are not shown.
+- **The desktop's own menu** lacks OS/2's Lockup now, Shut down and **System Setup** (the owner's, after 0.2: a cascade with the settings objects, as OS/2's desktop menu had); **the desktop has no status line**, so its messages are not shown.
+- **The desktop's background image** (the owner's, after 0.2): a Background page in the desktop's notebook (right click, Properties) to set the image. Today the desktop shows GNOME's background setting.
 - **LaunchPad:**
   - No tooltips.
   - Not a settings object yet: orientation, small icons, float on top (OS/2 had a notebook for it).
@@ -122,21 +127,17 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
 - **Not tried:** fingerprint and smart-card logins through PAM.
 - **Fresh test sessions** create the desktop's shadows in random order, so tests address icons by position with care.
 
-### Packaging and first run (not started; the RPM is a 0.2 objective)
+### Packaging and first run (the RPM done in 0.2)
 
-- **The session runs from the source checkout:**
-  - `tools/install-session.sh` points at it.
-  - `wpsd.service` runs `build/wpsd`.
-- **To make it installable:**
-  - Install to `/usr`, and an RPM.
-  - A versioned protocol between the GUI and wpsd.
-  - Upgrades of the object database.
-- **First login:**
-  - What a new user sees: the desktop's first contents, the LaunchPad, the sound theme.
+- **Done in 0.2:** install to `/usr`, the RPM (`make rpm`, built in mock), versioned databases and upgrades, the default desktop at the first start.
+- **Open:**
+  - Manual pages for `wpsctl`, `wps-shell`, `wps-session` (rpmlint asks for them).
+  - A COPR repository, so `dnf upgrade` finds new versions (skipped for 0.2).
+  - At a new user's first start the desktop can briefly show an extra icon before it settles.
   - A short tour or help object; OS/2 had a Tutorial and an Information folder.
 - **Build dependencies** are listed in the README but not checked by the build.
 
-## Objectives for 0.2 (the owner's, 2026-11-21)
+## Objectives for 0.2 (the owner's, 2026-11-21; done)
 
 Version 0.2 is about the desktop OS/2 users knew - the objects on it from the first start - and being installable. Each objective with what it overlaps in the lists above, how doable it is, and what is still to decide. Sizes are relative: **S** small, **M** medium, **L** large.
 
@@ -235,7 +236,7 @@ A to do, after 0.2 (with network file systems below).
   - A `.spec` with the build dependencies, built with `rpmbuild` (or mock).
   - **Upgrades:** the object database and attribute formats get a version, and 0.2 reads 0.1's.
   - **First start:** the default desktop objects (1–6) are made for a new user.
-- **?** Where it is published: a COPR repository (`dnf copr enable ...` then `dnf install wps`) or an RPM file to download.
+- **Decided:** RPM files attached to the GitHub release; COPR after 0.2.
 
 ### Open windows restored at login (added 2026-11-21)
 
@@ -254,7 +255,7 @@ A to do, after 0.2 (with network file systems below).
 
 ## Proposed order
 
-1. **0.2 The OS/2 desktop, installable** (the owner's objectives). Suggested sequence, each step usable on its own:
+1. **0.2 The OS/2 desktop, installable** (the owner's objectives). **Released 2026-11-21.** Suggested sequence, each step usable on its own:
    1. **Groundwork:** `make install` and installed paths; versioned database and attributes. This makes every later step installable.
    2. **The System folder;** the default desktop objects made at the first start, and 0.1's desktops brought along.
    3. **Trash Can.**
@@ -266,11 +267,11 @@ A to do, after 0.2 (with network file systems below).
       - meters;
       - the tray last (it can move to 0.3).
    7. **The LaunchPad and WarpCenter notebooks; Startup;** the Minimized Window Viewer.
-   8. **The RPM** (`.spec`, and COPR or a file), tried on a fresh Fedora VM.
+   8. **The RPM** (`.spec`, RPM files on the release), tried on a fresh Fedora VM.
 2. **0.3 Daily use and OS/2 fidelity:**
    - Details-view sorting and columns; the folder search field; Open With.
    - Program settings: type, close on exit, terminal.
-   - The desktop's own menu (Lockup, Shut down, System setup).
+   - The desktop's own menu (Lockup, Shut down, System Setup with the settings objects); a Background page for the desktop's image (both the owner's).
    - The icon layout; locking icon positions.
    - Templates' "New" cascade and moving templates.
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.

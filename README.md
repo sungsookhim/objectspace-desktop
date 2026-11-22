@@ -2,7 +2,11 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: **version 0.1** (2026-11-21). The object core (M0–M5) and the GUI (G0–G5) are done: the desktop, folder windows, settings objects, the LaunchPad, Find, drag and drop, input methods and accessibility, running inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). What is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
+Status: **version 0.2** (2026-11-21): the OS/2 desktop, installable. A new user gets System, Programs and the Trash Can on the desktop; Computer and Drives; the WarpCenter with Messages and a tray; Startup; open windows restored at login; an RPM for Fedora 45. Built on 0.1's object core (M0–M5) and GUI (G0–G5): folder windows, settings objects, the LaunchPad, Find, drag and drop, input methods and accessibility, inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). See the [release notes](docs/release-notes-0.2.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
+
+## Installing
+
+On Fedora 45, download the two RPMs from the [latest release](https://github.com/sungsookhim/wps-linux/releases/latest) and run `sudo dnf install ./wps-*.rpm`. Reboot, then choose **WPS** on the login screen, or in GNOME run `gnome-extensions enable wps@wps-linux` and log in again. `make rpm` builds the RPMs from a checkout (needs `rpm-build` and the build dependencies below).
 
 ## Documents
 
@@ -13,6 +17,7 @@ Status: **version 0.1** (2026-11-21). The object core (M0–M5) and the GUI (G0�
 | [docs/roadmap.md](docs/roadmap.md) | Version 0.1's baseline, every open and deferred item, and a proposed order for what follows |
 | [docs/v0.2-design.md](docs/v0.2-design.md) | Version 0.2's design: the default desktop, live folders, Trash Can, Computer and Drives, Programs, the System folder and Startup, WarpCenter, Messages, settings objects, installation and versions |
 | [docs/v0.2-plan.md](docs/v0.2-plan.md) | Version 0.2's implementation plan: nine steps, their checks, order and risks |
+| [docs/release-notes-0.2.md](docs/release-notes-0.2.md) | Version 0.2's release notes: installing, what is new, known issues |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
@@ -28,7 +33,8 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
 6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
 7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `wps-compositor` and the WPS session. Done: version 0.1.
-8. Next: version 0.2 ([roadmap](docs/roadmap.md), [design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md)): the OS/2 desktop, installable.
+8. Version 0.2 ([design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md), [release notes](docs/release-notes-0.2.md)): the OS/2 desktop, installable. Done.
+9. Next: 0.3, daily use and OS/2 fidelity ([roadmap](docs/roadmap.md)).
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 
