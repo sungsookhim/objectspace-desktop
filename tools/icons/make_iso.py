@@ -127,8 +127,8 @@ class Canvas:
             self.k, self.ox, self.oy = fit
         self.im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
         self.d = ImageDraw.Draw(self.im)
-        self.outline = max(1, round(n / 42))                        # 256: 6, 64: 2, 32: 1
-        self.inner = round(n / 85) if variant == "outline" else 0   # 256: 3, 64: 1, <48: none
+        self.outline = max(1, round(n / 85))                        # 256: 3, 64 and down: 1
+        self.inner = round(n / 128) if variant == "outline" else 0  # 256: 2, 128: 1, 64 and down: none
 
     def P(self, x, y, z):
         u, v = x - y, (x + y) / 2 - z
@@ -150,7 +150,7 @@ class Canvas:
             ec = tuple(int(c * 0.55) for c in color[:3]) + (255,)
             self.d.line(pts + [pts[0]], fill=ec, width=self.inner)
 
-    def prism(self, fp, z0, h, base, top=None, smooth=None):
+    def prism(self, fp, z0, h, base, top=None, smooth=None, lift=0.0, edges=True):
         """A footprint (x, y) extruded from z0 up by h."""
         fp = ccw(fp)
         smooth = len(fp) > 8 if smooth is None else smooth
@@ -163,11 +163,19 @@ class Canvas:
         sides.sort(key=lambda s: s[0])
         for _, (ax, ay), (bx, by), nx, ny in sides:
             self.face([(ax, ay, z0), (bx, by, z0), (bx, by, z0 + h), (ax, ay, z0 + h)],
-                      shade(base, side_factor(nx, ny)), edge=not smooth)
-        if smooth and self.inner and not self.rec:   # the side band's outer edge
+                      shade(base, side_factor(nx, ny) * (1 - lift) + TOP * lift), edge=edges and not smooth)
+        if smooth and edges and self.inner and not self.rec:   # the side band's outer edge
             lo = [self.P(x, y, z0) for x, y in fp]
             self.d.line(lo + [lo[0]], fill=tuple(int(c * 0.45) for c in base) + (255,), width=self.inner)
-        self.face([(x, y, z0 + h) for x, y in fp], shade(top or base, TOP))
+        self.face([(x, y, z0 + h) for x, y in fp], shade(top or base, TOP), edge=edges)
+
+    def dome(self, fp_at, z0, h, base, inset, layers=12):
+        """A rounded top: fp_at(d) is the footprint inset by d; each layer
+        steps in as a quarter circle does and turns lighter toward the top."""
+        for i in range(layers):
+            t = i / layers
+            d = inset * (1 - math.sqrt(1 - t * t))
+            self.prism(fp_at(d), z0 + h * t, h / layers + 0.01, base, lift=min(0.9, t ** 1.4), edges=False)
 
     def box(self, x0, x1, y0, y1, z0, z1, base, top=None):
         self.prism(rect(x0, x1, y0, y1), z0, z1 - z0, base, top)
@@ -211,22 +219,35 @@ def sq(x0, x1, z0, z1):
 # ------------------------------------------------------------------ icons
 
 def mouse(c):
-    c.line([(0, -52, 3), (2, -72, 2), (16, -86, 2), (40, -92, 2), (60, -86, 2)], DARK, 5)   # cable
-    c.prism(rrect(-34, 34, -54, 54, 28), 0, 16, PLASTIC)
-    c.prism(rrect(-27, 27, -47, 46, 22), 16, 8, PLASTIC)
-    c.line([(-26, -10, 24), (26, -10, 24)], PLASTIC_D, 3)                     # buttons
-    c.line([(0, -46, 24), (0, -10, 24)], PLASTIC_D, 3)
+    c.line([(0, -50, 3), (2, -72, 2), (16, -86, 2), (40, -92, 2), (60, -86, 2)], DARK, 5)   # cable
+    c.prism(rrect(-34, 34, -56, 56, 30), 0, 8, PLASTIC_D, top=PLASTIC)
+    c.dome(lambda d: rrect(-34 + d, 34 - d, -56 + d, 56 - d, max(4, 30 - d)), 8, 26, PLASTIC, 24)
+    top = 8 + 26
+    c.line([(-17, -14, top - 3), (0, -12, top), (17, -14, top - 3)], PLASTIC_D, 3)   # buttons
+    c.line([(0, -40, top - 4), (0, -12, top)], PLASTIC_D, 3)
+
+
+def cone(c, y, cx, cz, r, depth, steps=6):
+    """A speaker cone sunk into the face y: rings stepping in and back,
+    then the dust cap standing out."""
+    c.on_y(y + 0.1, circ(cx, cz, r + 4), DARK)                                # surround
+    for k in range(steps):
+        t = k / steps
+        c.on_y(y - depth * t, circ(cx, cz, r * (1 - 0.7 * t)), shade((120, 118, 132), 0.62 + 0.3 * t), edge=False)
+    for k in range(3):
+        c.on_y(y - depth + 2 * k, circ(cx, cz, r * 0.32 * (1 - 0.18 * k)), shade((150, 148, 162), 0.7 + 0.12 * k), edge=False)
 
 
 def sound(c):
-    c.box(0, 60, -50, -4, 0, 112, CABINET)
-    for r, col in ((24, DARK), (19, (120, 118, 130)), (7, DARK)):             # woofer
-        c.on_y(-4 + 0.1, circ(30, 38, r), col)
-    for r, col in ((12, DARK), (5, (150, 148, 160))):                         # tweeter
-        c.on_y(-4 + 0.1, circ(30, 88, r), col)
-    for r in (36, 52, 68):                                                    # sound
-        c.line([(30, -4 + r * math.cos(math.radians(a)), 38 + r * math.sin(math.radians(a)))
-                for a in range(-40, 41, 8)], BLUE, 6)
+    c.box(0, 60, -52, -8, 0, 112, CABINET)
+    c.box(2, 58, -8, -3, 2, 110, (100, 96, 110))                              # front baffle
+    cone(c, -3, 30, 40, 19, 10)
+    cone(c, -3, 30, 89, 9, 5, 4)
+    for i, (d, r) in enumerate(((12, 30), (28, 42), (44, 54))):              # sound going out
+        arc = [(30 + r * math.cos(math.radians(a)), 40 + r * math.sin(math.radians(a))) for a in range(118, 243, 6)]
+        col = shade(BLUE, 0.95 - 0.1 * i)[:3]
+        c.line([(x, -3 + d - 3, z) for x, z in arc], shade(col, 0.5)[:3], 6)
+        c.line([(x, -3 + d, z) for x, z in arc], col, 6)
 
 
 def scheme_palette(c):
@@ -253,29 +274,107 @@ def system(c):
     c.on_z(12.1, ellipse(44, 50, 9, 9, 16), shade(METAL, 0.4), edge=False)
 
 
+# glyphs on a face y = const, (x, z) centred on cx, cz, half-size h
+
+def g_padlock(c, y, cx, cz, h):
+    r = h * 0.55
+    c.line([(cx + r * math.cos(math.radians(a)), y + 0.1, cz + h * 0.15 + r * math.sin(math.radians(a))) for a in range(0, 181, 15)],
+           (110, 110, 118), h * 0.3)
+    c.on_y(y + 0.2, sq(cx - h * 0.85, cx + h * 0.85, cz - h, cz + h * 0.2), (214, 168, 40))
+    c.on_y(y + 0.3, circ(cx, cz - h * 0.4, h * 0.18, 10), DARK, edge=False)
+
+
+def g_find(c, y, cx, cz, h):
+    c.line([(cx + h * 0.2, y + 0.1, cz - h * 0.2), (cx + h * 0.9, y + 0.1, cz - h * 0.9)], DARK, h * 0.35)
+    c.on_y(y + 0.2, circ(cx - h * 0.2, cz + h * 0.2, h * 0.68, 16), DARK, edge=False)
+    c.on_y(y + 0.3, circ(cx - h * 0.2, cz + h * 0.2, h * 0.48, 16), (176, 214, 250), edge=False)
+
+
+def g_power(c, y, cx, cz, h):
+    r = h * 0.7
+    c.line([(cx + r * math.cos(math.radians(a)), y + 0.1, cz - h * 0.1 + r * math.sin(math.radians(a))) for a in range(125, 416, 15)],
+           RED, h * 0.28)
+    c.line([(cx, y + 0.2, cz + h * 0.85), (cx, y + 0.2, cz + h * 0.05)], RED, h * 0.28)
+
+
+def g_windows(c, y, cx, cz, h):
+    for k in range(2):
+        x0, z1 = cx - h * 0.9 + k * h * 0.6, cz + h * 0.8 - k * h * 0.6
+        c.on_y(y + 0.1 + k * 0.1, sq(x0, x0 + h * 1.2, z1 - h, z1), WHITE, edge=False)
+        c.on_y(y + 0.15 + k * 0.1, sq(x0, x0 + h * 1.2, z1 - h * 0.28, z1), (30, 40, 140), edge=False)
+
+
+def g_folder(c, y, cx, cz, h):
+    c.on_y(y + 0.1, [(cx - h, cz - h * 0.8), (cx + h, cz - h * 0.8), (cx + h, cz + h * 0.5), (cx - h * 0.1, cz + h * 0.5),
+                     (cx - h * 0.3, cz + h * 0.75), (cx - h, cz + h * 0.75)], (214, 160, 40))
+    c.on_y(y + 0.2, sq(cx - h, cx + h, cz - h * 0.8, cz + h * 0.3), YELLOW)
+
+
+def g_terminal(c, y, cx, cz, h):
+    c.on_y(y + 0.1, sq(cx - h, cx + h, cz - h * 0.8, cz + h * 0.8), (30, 32, 40))
+    c.line([(cx - h * 0.7, y + 0.2, cz + h * 0.4), (cx - h * 0.3, y + 0.2, cz + h * 0.1), (cx - h * 0.7, y + 0.2, cz - h * 0.2)],
+           LCD_ON, h * 0.16)
+    c.on_y(y + 0.2, sq(cx - h * 0.15, cx + h * 0.5, cz - h * 0.45, cz - h * 0.3), LCD_ON, edge=False)
+
+
+def g_document(c, y, cx, cz, h):
+    c.on_y(y + 0.1, [(cx - h * 0.75, cz - h), (cx + h * 0.75, cz - h), (cx + h * 0.75, cz + h * 0.55),
+                     (cx + h * 0.3, cz + h), (cx - h * 0.75, cz + h)], WHITE)
+    for k in range(4):
+        z = cz + h * 0.45 - k * h * 0.38
+        c.on_y(y + 0.2, sq(cx - h * 0.5, cx + h * 0.45, z - h * 0.07, z + h * 0.07), (150, 150, 160), edge=False)
+
+
+def g_envelope(c, y, cx, cz, h):
+    c.on_y(y + 0.1, sq(cx - h, cx + h, cz - h * 0.7, cz + h * 0.7), WHITE)
+    c.line([(cx - h * 0.9, y + 0.2, cz + h * 0.6), (cx, y + 0.2, cz - h * 0.05), (cx + h * 0.9, y + 0.2, cz + h * 0.6)],
+           (120, 120, 130), h * 0.15)
+
+
+def button(c, x0, x1, y, z0, z1, glyph, d=4):
+    c.box(x0, x1, y, y + d, z0, z1, PLASTIC_L)
+    glyph(c, y + d, (x0 + x1) / 2, (z0 + z1) / 2, (min(x1 - x0, z1 - z0)) * 0.34)
+
+
 def launchpad(c):
-    for x in (-70, 64):
-        c.box(x, x + 8, -6, 4, 0, 30, PLASTIC_D)                               # feet
-    c.box(-86, 86, -10, 8, 30, 80, PLASTIC)
-    for i, col in enumerate((BLUE, RED, GREEN, YELLOW)):
-        cx = -60 + i * 40
-        c.box(cx - 16, cx + 16, 8, 13, 38, 72, PLASTIC_L)
-        c.on_y(13.1, sq(cx - 9, cx + 9, 46, 64), col)
-        c.on_z(80.1, [(cx - 7, 2), (cx + 7, 2), (cx, -6)], DARK, edge=False)   # drawer arrow
+    """OS/2's LaunchPad: a floating bar; the system buttons (Lockup, Find,
+    Shut down, Window list) two by two on the left, big object buttons
+    with their drawers' arrows above."""
+    c.box(-96, 100, -10, 6, 20, 84, PLASTIC)
+    for (x0, z0), g in zip(((-90, 54), (-64, 54), (-90, 26), (-64, 26)), (g_padlock, g_find, g_power, g_windows)):
+        button(c, x0, x0 + 24, 6, z0, z0 + 24, g, 3)
+    for x0, g in ((-32, g_folder), (12, g_terminal), (56, g_document)):
+        button(c, x0, x0 + 38, 6, 28, 76, g)
+        cx = x0 + 19
+        c.box(cx - 10, cx + 10, -6, 2, 84, 90, PLASTIC_L)                    # drawer tab
+        c.on_y(2.1, [(cx - 6, 85), (cx + 6, 85), (cx, 89.5)], DARK, edge=False)
 
 
 def warpcenter(c):
-    c.box(-82, 82, -8, 4, 0, 104, PLASTIC)
-    c.on_y(4.1, sq(-76, 76, 6, 98), TEAL)
-    for x, z, col in ((-66, 70, YELLOW), (-66, 40, WHITE), (-66, 12, YELLOW)):   # desktop icons
+    """The WarpCenter: the bar along the screen's top - the desktop menu
+    and window list buttons, the meters, messages, the clock, Lockup and
+    Shut down - over the desktop it serves."""
+    c.box(-94, 94, -8, 4, 16, 86, PLASTIC)
+    c.on_y(4.1, sq(-88, 88, 22, 86), TEAL)
+    for x, z, col in ((-80, 62, YELLOW), (-80, 36, WHITE)):
         c.on_y(4.2, sq(x, x + 14, z, z + 12), col)
-    c.box(-86, 86, -10, 16, 104, 124, PLASTIC_L)                              # the bar
-    c.on_y(16.1, sq(-80, -62, 108, 120), RED)
-    for x in (-52, -36, -20, -4):
-        c.on_y(16.1, sq(x, x + 10, 109, 119), PLASTIC_D)
-    c.on_y(16.1, sq(34, 80, 108, 120), LCD)
-    for x in (40, 52, 68):
-        c.on_y(16.2, sq(x, x + 6, 111, 117), LCD_ON, edge=False)
+    c.box(-100, 100, -10, 14, 86, 118, PLASTIC_L)
+    y = 14
+    button(c, -96, -74, y, 90, 114, lambda c, y, cx, cz, h: (c.on_y(y + 0.1, sq(cx - h, cx + h, cz - h * 0.8, cz + h * 0.8), TEAL),
+                                                              c.on_y(y + 0.2, sq(cx - h * 0.6, cx - h * 0.1, cz + h * 0.1, cz + h * 0.5), YELLOW, edge=False)), 2)
+    button(c, -70, -48, y, 90, 114, g_windows, 2)
+    c.on_y(y + 0.1, sq(-42, -10, 91, 113), LCD)                               # meters
+    for k, hgt in enumerate((16, 9, 19, 6)):
+        x = -39 + k * 7.5
+        c.on_y(y + 0.2, sq(x, x + 5, 93, 93 + hgt), LCD_ON if hgt < 15 else YELLOW, edge=False)
+    g_envelope(c, y, 6, 102, 11)
+    c.on_y(y + 0.1, sq(22, 62, 92, 112), LCD)                                 # clock
+    for x in (25, 33, 45, 53):
+        c.on_y(y + 0.2, sq(x, x + 6, 95, 109), LCD_ON, edge=False)
+    for z in (98, 105):
+        c.on_y(y + 0.2, sq(40, 42, z, z + 2), LCD_ON, edge=False)
+    button(c, 66, 82, y, 92, 112, g_padlock, 2)
+    button(c, 84, 98, y, 92, 112, g_power, 2)
 
 
 def envelope(c, x0, x1, y, z0, z1, col):

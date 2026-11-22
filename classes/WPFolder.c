@@ -119,21 +119,24 @@ bool WPFolder__wpSetIconTitles(wpo_object *self, int64_t choice)
     return true;
 }
 
-bool WPFolder__wpSetIconFont(wpo_object *self, const char *font)
+static bool set_font(wpo_object *self, const char *key, const char *font)
 {
     if (!font || strlen(font) > 120 || strchr(font, '\n') || strchr(font, '\t')) return false;
     if (*font) {   /* "size.Family" */
         char *end;
         long pt = strtol(font, &end, 10);
         if (end == font || *end != '.' || !end[1] || pt < 4 || pt > 72) return false;
-        wps_state_put_str(self, "WPFolder", "icon_font", font);
+        wps_state_put_str(self, "WPFolder", key, font);
     } else {
-        wps_state_remove(self, "WPFolder", "icon_font");
+        wps_state_remove(self, "WPFolder", key);
     }
     WPObject_wpSaveDeferred(self);
     WPObject_wpObjectChanged(self);
     return true;
 }
+
+bool WPFolder__wpSetIconFont(wpo_object *self, const char *font) { return set_font(self, "icon_font", font); }
+bool WPFolder__wpSetTitleFont(wpo_object *self, const char *font) { return set_font(self, "title_font", font); }
 
 bool WPFolder__wpSetLockAll(wpo_object *self, bool on)
 {
@@ -244,8 +247,9 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
     char *cw = NULL;
     wps_state_get_int(self, "WPFolder", "icon_titles", &titles);
     wps_state_get_int(self, "WPFolder", "lock_all", &lock_all);
-    char *ifont = NULL;
+    char *ifont = NULL, *tfont = NULL;
     wps_state_get_str(self, "WPFolder", "icon_font", &ifont);
+    wps_state_get_str(self, "WPFolder", "title_font", &tfont);
     wps_state_get_str(self, "WPFolder", "col_widths", &cw);
     wps_state_get_int(self, "WPFolder", "sort_key", &key);
     wps_state_get_int(self, "WPFolder", "sort_desc", &desc);
@@ -257,15 +261,17 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
              "page\tIcon view\nfield\ticon_titles\tchoice\tTitles\t%lld\twpSetIconTitles\twhole,two lines\n"
              "field\tlock_all\tcheckbox\tLock positions of all icons\t%d\twpSetLockAll\n"
              "field\ticon_font\ttext\tIcon font (e.g. 10.Sans; empty: the System's)\t%s\twpSetIconFont\n"
+             "field\ttitle_font\ttext\tTitle bar font (empty: all title bars')\t%s\twpSetTitleFont\n"
              "page\tDetails view\nfield\tcol_name\tcheckbox\tReal name\t%d\t@col:name\n"
              "field\tcol_type\tcheckbox\tType\t%d\t@col:type\n"
              "field\tcol_size\tcheckbox\tSize\t%d\t@col:size\n"
              "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n"
              "field\tcol_widths\thidden\tWidths\t%s\twpSetColWidths\n",
-             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects, (long long)titles, lock_all != 0, ifont ? ifont : "",
+             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects, (long long)titles, lock_all != 0, ifont ? ifont : "", tfont ? tfont : "",
              (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0, cw ? cw : "");
     free(cw);
     free(ifont);
+    free(tfont);
     (void)line;
     char *r = wps_concat(base, line2);
     free(base);

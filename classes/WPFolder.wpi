@@ -30,6 +30,8 @@ method wpSetLockAll(bool on) -> bool
 # Its icons' title font (the Font Palette's, dropped on its window):
 # "10.Sans", "" the System's for folders.
 method wpSetIconFont(string font) -> bool
+# Its window's title bar font (dropped on its title bar), "" all title bars'.
+method wpSetTitleFont(string font) -> bool
 # Lists the folder's contents; streaming and paging arrive in M4.
 method wpPopulate() -> pending async
 # The Background page (v0.3-design 3): a picture (a path), how it is shown

@@ -12,7 +12,15 @@ static ui_frame_geom geom(ui_surface *s)
 {
     return (ui_frame_geom){ .w = s->w, .h = s->h, .frameless = s->frameless, .maximized = s->maximized,
                             .activated = s->activated, .pointer_inside = s->pointer_inside, .hover = s->hover,
-                            .pressed = s->pressed };
+                            .pressed = s->pressed, .own_title_font = s->own_title_font, .title_font = s->title_font };
+}
+
+void ui_window_set_title_font(ui_surface *s, bool own, ui_font f)
+{
+    if (s->own_title_font == own && (!own || s->title_font == f)) return;
+    s->own_title_font = own;
+    s->title_font = f;
+    ui_frame_damage(s);
 }
 
 ui_rect ui_frame_client(ui_surface *s) { ui_frame_geom g = geom(s); return ui_frame_geom_client(&g); }

@@ -113,6 +113,7 @@ struct folder {
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
     bool lock_all;           /* ... Lock positions of all icons */
     char icon_font[128];     /* its own icon font (the Font Palette's), "" the System's */
+    char title_font[128];    /* its title bar's, "" all title bars' */
     ui_font font;            /* the one its titles are drawn in */
     cairo_surface_t *bg_img;     /* the picture, decoded */
     /* its details view (v0.3-design 4): the sort (choice 0 none, 1 name,
@@ -326,6 +327,7 @@ static void got_bg(void *arg, const cv *reply)
             else if (!strcmp(key, "icon_titles") && v->k == CV_INT) whole = v->i == 0;
             else if (!strcmp(key, "lock_all") && v->k == CV_BOOL) lock_all = v->b;
             else if (!strcmp(key, "icon_font") && v->k == CV_TEXT) snprintf(f->icon_font, sizeof f->icon_font, "%s", v->s);
+            else if (!strcmp(key, "title_font") && v->k == CV_TEXT) snprintf(f->title_font, sizeof f->title_font, "%s", v->s);
             else if (!strncmp(key, "col_", 4) && v->k == CV_BOOL && v->b) {
                 cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
                       : !strcmp(key, "col_date") ? 8u : 0u;
@@ -336,6 +338,7 @@ static void got_bg(void *arg, const cv *reply)
     }
     bg_apply(f);
     folder_font(f);
+    ui_window_set_title_font(f->win, f->title_font[0] != 0, ui_font_named(f->title_font));   /* its own, as on OS/2 */
     layout_lock_all(f->lay, lock_all);
     f->lock_all = lock_all;
     if (whole != f->whole_titles) {   /* the Icon view page's Titles */
@@ -3122,12 +3125,18 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     struct folder *f = ui_surface_data(s);
     ui_container_set_drop_target(f->cont, SIZE_MAX);
     if (!strcmp(mime, MIME_FONT)) {
-        /* the Font Palette's (v0.3-design 10): onto a title bar, every
-         * title bar's; with Shift, every folder's; else this folder's */
+        /* the Font Palette's (v0.3-design 10), as on OS/2 a folder's own:
+         * onto its title bar, its title bar's (with Shift, every title
+         * bar's); else its icons' (with Shift, every folder's) */
         char spec[128];
         snprintf(spec, sizeof spec, "%.*s", (int)strcspn(data, "\r\n"), data);
         if (!ui_font_valid(spec)) return 0;
-        if (!f->desktop && ui_frame_hit(s, x, y) == UI_HIT_TITLE) font_apply("titles", spec);
+        bool title = !f->desktop && ui_frame_hit(s, x, y) == UI_HIT_TITLE;
+        if (title && (mods & UI_MOD_SHIFT)) font_apply("titles", spec);
+        else if (title) {
+            cv v = { .k = CV_TEXT, .s = spec, .len = strlen(spec) };
+            svc_settings_set(f->path, "title_font", &v, -1, ignore_reply, NULL);
+        }
         else if (mods & UI_MOD_SHIFT) font_apply("folders", spec);
         else {
             cv v = { .k = CV_TEXT, .s = spec, .len = strlen(spec) };
@@ -4475,12 +4484,14 @@ static void win_frame(ui_surface *s, double now)
             const char *d = "9.Sans Bold";
             win_drop(s, 300, 300, MIME_FONT, d, strlen(d), UI_DND_COPY, 0, UI_MOD_SHIFT);
             const char *d2 = "11.Serif Italic";
-            win_drop(s, 200, 12, MIME_FONT, d2, strlen(d2), UI_DND_COPY, 0, 0);   /* the title bar */
+            win_drop(s, 200, 12, MIME_FONT, d2, strlen(d2), UI_DND_COPY, 0, 0);              /* its title bar */
+            const char *d3 = "12.Monospace";
+            win_drop(s, 200, 12, MIME_FONT, d3, strlen(d3), UI_DND_COPY, 0, UI_MOD_SHIFT);   /* every title bar */
             step++;
             t0 = now;
         } else if (step == 2 && t > 1500) {
-            fprintf(stderr, "selftest: fonts: with Shift: every folder's %s; its own still %s; on the title bar: title bars' %s\n",
-                    folders_font, f->icon_font, titles_font);
+            fprintf(stderr, "selftest: fonts: with Shift: every folder's %s; its own still %s; its title bar's %s; with Shift every title bar's %s\n",
+                    folders_font, f->icon_font, f->title_font, titles_font);
             fontpal_edit(0);
             fprintf(stderr, "selftest: fonts: Edit font: open %d, %zu families\n", fontpal_edit_is_open(), fontpal_families());
             fontpal_edit_choose("Serif", 16, true, false);

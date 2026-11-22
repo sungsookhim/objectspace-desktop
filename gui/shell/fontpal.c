@@ -428,7 +428,7 @@ static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
     ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1,
-                 "Drag a font onto a folder, the WarpCenter or a title bar (Shift: every folder)", st.w - 12);
+                 "Drag a font onto a folder or its title bar (Shift: all of them), or the WarpCenter", st.w - 12);
     cairo_restore(cr);
 }
 

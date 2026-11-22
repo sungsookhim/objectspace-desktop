@@ -169,9 +169,10 @@ void ui_frame_geom_draw(const ui_frame_geom *s, cairo_t *cr, ui_rect clip, const
         right = sys.x - 6;
     }
     ui_set_color(cr, s->activated ? k->title_text : k->title_text_inactive);
-    double tw = ui_text_width(title_font, title);
+    ui_font tf = s->own_title_font ? s->title_font : title_font;
+    double tw = ui_text_width(tf, title);
     double tx = left + fmax(0, ((right - left) - tw) / 2);   /* centred, as in Warp 4 */
-    ui_text_draw(cr, title_font, tx, t.y + (t.h + ui_font_ascent(title_font)) / 2 - 1, title, right - tx);
+    ui_text_draw(cr, tf, tx, t.y + (t.h + ui_font_ascent(tf)) / 2 - 1, title, right - tx);
     draw_button(cr, s, 0);
     if (buttons_shown(s))
         for (int i = 1; i < 4; i++) draw_button(cr, s, i);

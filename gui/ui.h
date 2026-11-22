@@ -294,6 +294,8 @@ typedef struct {
     double w, h;               /* the whole window, frame included */
     bool frameless, maximized, activated, pointer_inside;
     ui_hit hover, pressed;     /* the part under the pointer, the button held */
+    bool own_title_font;       /* its title in title_font, not all title bars' */
+    ui_font title_font;
 } ui_frame_geom;
 ui_rect ui_frame_geom_client(const ui_frame_geom *g);
 ui_hit ui_frame_geom_hit(const ui_frame_geom *g, double x, double y);
@@ -306,6 +308,9 @@ ui_hit ui_frame_hit(ui_surface *s, double x, double y);
 /* Standard handling of frame clicks; returns true if it used the event. */
 bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e);
 void ui_frame_damage(ui_surface *s);                 /* title bar, e.g. on focus change */
+/* One window's title font (a folder's, from the Font Palette); `own`
+ * false: all title bars' again. */
+void ui_window_set_title_font(ui_surface *s, bool own, ui_font f);
 void ui_frame_system_menu(ui_surface *s, uint32_t serial);
 
 /* ------------------------------------------------------------------ menus */
