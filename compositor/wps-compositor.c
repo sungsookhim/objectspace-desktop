@@ -647,6 +647,11 @@ static void do_resize(void)
     view_set_size(t, cw, ch);
 }
 
+/* Wayland's implicit grab: the surface a button was pressed on keeps the
+ * pointer until every button is up (a rubber band or a drag of a scroll
+ * bar ended outside the window still gets its release). */
+static struct { struct wlr_surface *surface; double ox, oy; } held;
+
 static void process_motion(uint32_t time)
 {
     struct server *s = &server;
@@ -673,6 +678,10 @@ static void process_motion(uint32_t time)
         int i = menu_item_at(s->cursor->x, s->cursor->y);
         if (i >= -1 && i != menu.hot) { menu.hot = i; menu_draw(); }
         set_cursor("default");
+        return;
+    }
+    if (held.surface && held.surface == s->seat->pointer_state.focused_surface && s->seat->pointer_state.button_count > 0) {
+        wlr_seat_pointer_notify_motion(s->seat, time, s->cursor->x - held.ox, s->cursor->y - held.oy);
         return;
     }
     double sx, sy;
@@ -786,6 +795,10 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
             return;
         }
         wlr_seat_pointer_notify_button(s->seat, time, button, WL_POINTER_BUTTON_STATE_RELEASED);
+        if (held.surface && s->seat->pointer_state.button_count == 0) {
+            held.surface = NULL;
+            process_motion(time);   /* the pointer enters what is under it now */
+        }
         return;
     }
     double sx, sy;
@@ -824,6 +837,11 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
         }
     }
     if (t && !surface) return;
+    if (surface && (!held.surface || s->seat->pointer_state.button_count == 0)) {
+        held.surface = surface;
+        held.ox = s->cursor->x - sx;
+        held.oy = s->cursor->y - sy;
+    }
     wlr_seat_pointer_notify_button(s->seat, time, button, WL_POINTER_BUTTON_STATE_PRESSED);
 }
 
