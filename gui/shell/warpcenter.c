@@ -18,16 +18,21 @@
 #include "icons.h"
 #include "tray.h"
 #include "svc.h"
+#include "findwin.h"
+#include "launchpad.h"
 #include "session.h"
 #include "winlist.h"
 
 #define PAD 3
 #define BTN_W 34
 #define KEY_W 40
+#define SYS_W 28           /* Lockup, Find, Log off, Shut down */
 #define METER_W 9
 #define NMETERS 4
 
-enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, P_TRAY, NPARTS };
+/* (P_LOCK..P_SHUTDOWN: OS/2's buttons after the window list, the owner's) */
+enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, P_TRAY,
+            P_LOCK, P_FIND, P_LOGOFF, P_SHUTDOWN, NPARTS };
 
 /* the Desktop menu, read ahead (the menu widget takes whole trees) */
 struct mnode {
@@ -76,7 +81,7 @@ static struct {
     ui_surface *pop;
     int pop_kind;                  /* P_CLOCK or P_METERS */
     int cal_month, cal_year;
-} wc = { .pressed = P_NONE, .timer = -1, .shown = { true, true, true, true, true, true, true } };
+} wc = { .pressed = P_NONE, .timer = -1, .shown = { true, true, true, true, true, true, true, true, true, true, true } };
 
 /* ------------------------------------------------------------- layout */
 
@@ -114,12 +119,34 @@ static double tray_cell(void) { return wc.h - 2 * PAD; }
 /* From the right: the clock, the keyboard, messages, the meters, the
  * tray (other programs' icons, when there are any); parts the WarpCenter
  * object turned off take no room. */
+/* Log off: a door, and an arrow leaving it (centred on 0,0; 30 across). */
+static void glyph_logoff(cairo_t *cr)
+{
+    cairo_set_line_width(cr, 2);
+    cairo_set_source_rgb(cr, 0.55, 0.35, 0.15);
+    cairo_rectangle(cr, -11, -12, 12, 24);
+    cairo_fill(cr);
+    cairo_set_source_rgb(cr, 0.95, 0.85, 0.3);
+    cairo_arc(cr, -2, 1, 1.5, 0, 2 * M_PI);
+    cairo_fill(cr);
+    cairo_set_source_rgb(cr, 0.1, 0.45, 0.1);
+    cairo_set_line_width(cr, 3);
+    cairo_move_to(cr, 1, 0); cairo_line_to(cr, 12, 0);
+    cairo_stroke(cr);
+    cairo_move_to(cr, 13, 0); cairo_line_to(cr, 7, -6); cairo_line_to(cr, 7, 6);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+}
+
 static ui_rect part_rect(int p)
 {
     double h = wc.h - 2 * PAD;
     switch (p) {
     case P_DESKTOP: return (ui_rect){ PAD, PAD, desk_w(), h };
     case P_WINDOWS: return (ui_rect){ PAD + desk_w() + 2, PAD, BTN_W, h };
+    case P_LOCK: case P_FIND: case P_LOGOFF: case P_SHUTDOWN:
+        if (!wc.shown[p]) return (ui_rect){ 0, 0, 0, 0 };
+        return (ui_rect){ PAD + desk_w() + 2 + BTN_W + 6 + (p - P_LOCK) * (SYS_W + 2), PAD, SYS_W, h };
     default: break;
     }
     static const int order[] = { P_CLOCK, P_KEYBOARD, P_MESSAGES, P_METERS, P_TRAY };
@@ -233,6 +260,15 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
                 ui_set_color(cr, ui_scheme_now.text);
                 ui_text_draw(cr, UI_FONT_BOLD, r.x + r.h + 4, r.y + (r.h + ui_text_ascent()) / 2 - 1, desk_label(), r.w - r.h - 6);
             } else glyph_windows(cr, r);
+            cairo_restore(cr);
+        } else if (p >= P_LOCK && p <= P_SHUTDOWN) {
+            ui_bevel(cr, r, !down);
+            cairo_save(cr);
+            cairo_translate(cr, r.x + r.w / 2 + d, r.y + r.h / 2 + d);
+            double sc = fmin(r.w, r.h) / 30;
+            cairo_scale(cr, sc, sc);
+            if (p == P_LOGOFF) glyph_logoff(cr);
+            else launchpad_glyph(cr, p == P_LOCK ? 0 : p == P_FIND ? 1 : 2, (ui_rect){ -15, -15, 30, 30 });
             cairo_restore(cr);
         } else if (p == P_KEYBOARD) {
             ui_bevel(cr, r, down);
@@ -789,6 +825,14 @@ static void press(int p, uint32_t serial, int button)
     case P_CLOCK: open_pop(P_CLOCK, serial); break;
     case P_METERS: open_pop(P_METERS, serial); break;
     case P_MESSAGES: if (wc.open_messages) wc.open_messages(); break;
+    case P_LOCK: session_lock("warpcenter"); break;
+    case P_FIND: {   /* WPS's own Find, from the home folder (Shift held: another) */
+        const char *home = getenv("HOME");
+        findwin_show(home && *home ? home : "/", false);
+        break;
+    }
+    case P_LOGOFF: session_ask_logoff(wc.app, "warpcenter"); break;
+    case P_SHUTDOWN: session_ask_end(wc.app, "warpcenter"); break;
     }
 }
 
@@ -870,7 +914,8 @@ bool warpcenter_is_open(void) { return wc.s != NULL; }
 
 bool warpcenter_press(const char *part)
 {
-    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray" };
+    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray",
+                                               "lock", "find", "logoff", "shutdown" };
     if (!wc.s) return false;
     for (int p = 0; p < NPARTS; p++)
         if (!strcmp(part, names[p])) { press(p, ui_app_input_serial(wc.app), 1); return true; }
@@ -903,6 +948,7 @@ void warpcenter_setting(const char *key, const char *val)
     else if (!strcmp(key, "tray")) wc.shown[P_TRAY] = on;
     else if (!strcmp(key, "keyboard")) wc.shown[P_KEYBOARD] = on;
     else if (!strcmp(key, "messages")) wc.shown[P_MESSAGES] = on;
+    else if (!strcmp(key, "system_buttons")) for (int q = P_LOCK; q <= P_SHUTDOWN; q++) wc.shown[q] = on;
     else if (!strcmp(key, "clock")) wc.clock_mode = !strcmp(val, "12 hours") ? 1 : !strcmp(val, "off") ? 2 : 0;
     else if (!strcmp(key, "seconds")) wc.seconds = on;
     else if (!strcmp(key, "date")) wc.date = on;
@@ -925,7 +971,8 @@ void warpcenter_messages(size_t unread, void (*open_messages)(void))
 
 bool warpcenter_part_rect(const char *part, double *x, double *y, double *w, double *h)
 {
-    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray" };
+    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray",
+                                               "lock", "find", "logoff", "shutdown" };
     for (int p = 0; p < NPARTS; p++) {
         if (strcmp(part, names[p])) continue;
         ui_rect r = part_rect(p);

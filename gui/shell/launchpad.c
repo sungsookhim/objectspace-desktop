@@ -488,6 +488,12 @@ static void drawer_open(size_t i, uint32_t serial)
 
 /* ------------------------------------------------------------------ bar */
 
+static void draw_glyph(cairo_t *cr, size_t i, ui_rect r);
+
+/* The system buttons' pictures (0 Lockup, 1 Find, 2 Shut down, 3 Window
+ * list), for the WarpCenter's buttons too. */
+void launchpad_glyph(cairo_t *cr, int i, ui_rect r) { draw_glyph(cr, (size_t)i, r); }
+
 static void draw_glyph(cairo_t *cr, size_t i, ui_rect r)
 {
     double cx = r.x + r.w / 2, cy = r.y + r.h / 2;

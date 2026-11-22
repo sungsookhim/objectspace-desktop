@@ -97,6 +97,7 @@ static const struct setting warpcenter_settings[] = {
     { "Parts", "keyboard", "checkbox", "Keyboard (input source)", "1", NULL },
     { "Parts", "tray", "checkbox", "Tray (other programs' status icons)", "1", NULL },
     { "Parts", "messages", "checkbox", "Messages", "1", NULL },
+    { "Parts", "system_buttons", "checkbox", "Lockup, Find, Log off and Shut down buttons", "1", NULL },
     { "Clock", "clock", "choice", "Clock", "24 hours", "24 hours,12 hours,off" },
     { "Clock", "seconds", "checkbox", "Seconds", "0", NULL },
     { "Clock", "date", "checkbox", "Date", "0", NULL },

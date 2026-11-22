@@ -41,4 +41,7 @@ bool launchpad_drawer(size_t button, const char *path);   /* as a drop on a draw
 bool launchpad_snapshot(const char *png);
 const char *launchpad_dir(void);
 
+/* The system buttons' pictures (0 Lockup, 1 Find, 2 Shut down, 3 Window list). */
+void launchpad_glyph(cairo_t *cr, int i, ui_rect r);
+
 #endif
