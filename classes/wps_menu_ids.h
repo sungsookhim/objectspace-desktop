@@ -38,6 +38,11 @@
 #define WPS_MI_POWER_OFF      66
 #define WPS_MI_UNLOCK         67
 #define WPS_MI_LOCK           68
+/* Added by the GUI to the desktop's own menu (v0.3-design 2). */
+#define WPS_MI_SYSTEM_SETUP   69    /* cascade: the System Setup folder's objects */
+#define WPS_MI_LOCKUP         70
+#define WPS_MI_SHUTDOWN       71
+#define WPS_MI_SETUP_ITEM    800    /* 800..899: System setup's objects, in the cascade's order */
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

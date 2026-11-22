@@ -36,6 +36,7 @@
 #include "mime.h"
 #include "icons.h"
 #include "filepick.h"
+#include "session.h"
 #include "iconpick.h"
 #include "launchpad.h"
 #include "gnome.h"
@@ -1646,6 +1647,48 @@ static bool open_properties(const char *target)
  * ones and sends the rest back. */
 struct menu_ctx { long folder; size_t item; double x, y; uint32_t serial; };
 
+static char setup_folder[PATH_MAX];   /* System Setup's (the LaunchPad's first buttons) */
+
+/* The desktop menu's System setup cascade (v0.3-design 2): System Setup's
+ * objects, read each time the desktop's menu is asked for. */
+#define MAX_SETUP 100
+static struct setup_entry { char addr[PATH_MAX]; char title[128]; } setup_entries[MAX_SETUP];
+static size_t nsetup;
+
+static int by_setup_title(const void *a, const void *b)
+{
+    return strcasecmp(((const struct setup_entry *)a)->title, ((const struct setup_entry *)b)->title);
+}
+
+static void setup_listed(const cv *reply)
+{
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *its = res ? cv_get(res, "items") : NULL;
+    if (!its || its->k != CV_ARRAY) return;   /* (none: the last ones stay) */
+    nsetup = 0;
+    for (size_t i = 0; i < its->n && nsetup < MAX_SETUP; i++) {
+        const cv *it = &its->items[i];
+        const char *nm = cv_text(it, "name"), *ti = cv_text(it, "title");
+        if (!nm || !*nm || nm[0] == '.') continue;
+        struct setup_entry *e = &setup_entries[nsetup++];
+        if (nm[0] == '\x01') snprintf(e->addr, sizeof e->addr, "%s", nm + 1);   /* a central object */
+        else snprintf(e->addr, sizeof e->addr, "%s/%s", setup_folder, nm);
+        snprintf(e->title, sizeof e->title, "%s", ti && *ti ? ti : nm);
+    }
+    qsort(setup_entries, nsetup, sizeof *setup_entries, by_setup_title);
+}
+
+static void setup_opened(void *arg, const cv *reply)
+{
+    char *addr = arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    const char *msg = reply ? cv_text(reply, "message") : NULL;
+    if (res && cv_text(res, "folder")) open_folder(cv_text(res, "folder"), UI_VIEW_ICON);
+    else if (svc_reply_view(reply)) {}
+    else if (!res && msg && strstr(msg, "opens in the GUI")) open_properties(addr);   /* a settings object: its notebook */
+    else if (!res && msg) fprintf(stderr, "wps-shell: System setup: %s\n", msg);
+    free(addr);
+}
+
 static void convert(const cv *arr, ui_menu_item **out, size_t *n)
 {
     *n = arr && arr->k == CV_ARRAY ? arr->n : 0;
@@ -1731,8 +1774,18 @@ static void menu_chosen(void *arg, int64_t id)
         case WPS_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
         case WPS_MI_WINDOW_LIST: winlist_open(false); break;
+        case WPS_MI_LOCKUP: session_lock("desktop"); break;
+        case WPS_MI_SHUTDOWN: session_ask_end(app, "desktop"); break;
         case WPS_MI_MINIMIZED: winlist_open(true); break;
-        default: svc_menu_select(t, id, selected_done, as_arg(f)); break;
+        default:
+            if (id >= WPS_MI_SETUP_ITEM && (size_t)(id - WPS_MI_SETUP_ITEM) < nsetup) {
+                struct setup_entry *e = &setup_entries[id - WPS_MI_SETUP_ITEM];
+                events_raise("object.open", e->title, "desktop", (ui_rect){ 0, 0, 0, 0 });
+                svc_open(e->addr, false, setup_opened, strdup(e->addr));
+                break;
+            }
+            svc_menu_select(t, id, selected_done, as_arg(f));
+            break;
         }
     }
     free(m);
@@ -1997,9 +2050,18 @@ static void got_menu(void *arg, const cv *reply)
         }
     }
     if (m->item == SIZE_MAX && f->desktop) {
-        /* The desktop's own menu: the window list and the minimized
-         * windows (G4), after the folder's items. */
-        items = realloc(items, (n + 2) * sizeof *items);
+        /* The desktop's own menu, after the folder's items, as OS/2's:
+         * System setup, Lockup now, Shut down (v0.3-design 2); then the
+         * window list and the minimized windows (G4). */
+        ui_menu_item *setup = calloc(nsetup ? nsetup : 1, sizeof *setup);
+        for (size_t k = 0; k < nsetup; k++)
+            setup[k] = (ui_menu_item){ WPS_MI_SETUP_ITEM + (int64_t)k, setup_entries[k].title, true, false, NULL, 0 };
+        items = realloc(items, (n + 7) * sizeof *items);
+        items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_SYSTEM_SETUP, "System setup", nsetup > 0, false, setup, nsetup };
+        items[n++] = (ui_menu_item){ WPS_MI_LOCKUP, "Lockup now", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ WPS_MI_SHUTDOWN, "Shut down...", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
         items[n++] = (ui_menu_item){ WPS_MI_WINDOW_LIST, "Window list", true, false, NULL, 0 };
         items[n++] = (ui_menu_item){ WPS_MI_MINIMIZED, "Minimized windows", true, false, NULL, 0 };
     }
@@ -2024,6 +2086,17 @@ static void got_menu(void *arg, const cv *reply)
     free_converted(items, n);
 }
 
+static void desktop_setup_listed(void *arg, const cv *reply)
+{
+    struct menu_ctx *m = arg;
+    setup_listed(reply);
+    struct folder *f = folder_by_id(m->folder);
+    if (!f) { free(m); return; }
+    char t[PATH_MAX];
+    target_of(f, m->item, t, sizeof t);
+    svc_menu(t, got_menu, m);
+}
+
 static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
 {
     struct folder *f = ctx;
@@ -2033,6 +2106,10 @@ static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     m->x = x;
     m->y = y;
     m->serial = serial;
+    if (i == SIZE_MAX && f->desktop && setup_folder[0]) {   /* System setup's objects first */
+        svc_list(setup_folder, 0, MAX_SETUP, true, desktop_setup_listed, m);
+        return;
+    }
     char t[PATH_MAX];
     target_of(f, i, t, sizeof t);
     svc_menu(t, got_menu, m);
@@ -5127,7 +5204,6 @@ static void apply_setup_object(const char *cls, const cv *settings)
     }
 }
 
-static char setup_folder[PATH_MAX];   /* System Setup's (the LaunchPad's first buttons) */
 
 static void show_warpcenter(void)
 {
