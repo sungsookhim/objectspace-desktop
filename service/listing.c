@@ -40,6 +40,11 @@ struct listing {
     int err;
     uint64_t version;        /* bumped by each edit; a new, unused one for each read */
     bool sorted;             /* in the folder's sort order (v0.3-design 4): additions read it again */
+    /* a window's own listing of the folder (v0.3-design 6): only names
+     * containing `filter`, or without the hidden (dot) ones; read again on
+     * any change. The folder's plain listing has neither. */
+    char filter[128];
+    bool hide;
     long last_index;         /* where the last edit was (see wps_listing_last_index) */
     unsigned gen;            /* bumped when re-read; chunks of an old read are dropped */
     struct waiter *waiters;
@@ -55,18 +60,23 @@ size_t wps_listing_count(void)
     return n;
 }
 
-static struct listing *find(const char *path)
+static struct listing *find_v(const char *path, const char *filter, bool hide)
 {
     for (struct listing *l = listings; l; l = l->next)
-        if (strcmp(l->path, path) == 0) return l;
+        if (!strcmp(l->path, path) && !strcmp(l->filter, filter) && l->hide == hide) return l;
     return NULL;
 }
 
+/* The folder's plain listing (the one changes follow in place). */
+static struct listing *find(const char *path) { return find_v(path, "", false); }
+
 bool wps_listing_has(const char *folder, const char *name)
 {
-    struct listing *l = find(folder);
-    for (size_t i = 0; l && i < l->n; i++)
-        if (!strcmp(l->names[i], name)) return true;
+    for (struct listing *l = listings; l; l = l->next) {
+        if (strcmp(l->path, folder)) continue;
+        for (size_t i = 0; i < l->n; i++)
+            if (!strcmp(l->names[i], name)) return true;
+    }
     return false;
 }
 
@@ -458,6 +468,8 @@ struct read_job {
     struct listing *l;
     unsigned gen;
     char path[PATH_MAX];
+    char filter[128];
+    bool hide;
     int key;       /* the folder's sort, from its object in memory (-2: not loaded, read it) */
     bool desc;
 };
@@ -563,6 +575,30 @@ static void sort_chunk(struct chunk *c, const char *folder, int key, bool desc)
     c->sorted = true;
 }
 
+/* Only the entries whose names (central objects: titles) contain `filter`,
+ * any case. */
+static void filter_chunk(struct chunk *c, const char *filter)
+{
+    size_t w = 0;
+    for (size_t i = 0; i < c->n; i++) {
+        bool keep;
+        if (c->names[i][0] == '\x01') {
+            wps_loaded ld;
+            wps_load(c->names[i] + 1, false, &ld);
+            char *t = NULL;
+            const wps_props *op = ld.err ? NULL : props_of(&ld, "WPObject");
+            keep = op && wps_props_str(op, "title", &t) && t && strcasestr(t, filter);
+            free(t);
+            wps_loaded_free(&ld);
+        } else {
+            keep = strcasestr(c->names[i], filter) != NULL;
+        }
+        if (keep) { c->names[w] = c->names[i]; c->types[w++] = c->types[i]; }
+        else free(c->names[i]);
+    }
+    c->n = w;
+}
+
 static void read_work(void *arg)   /* worker: the whole directory, posted in chunks */
 {
     struct read_job *j = arg;
@@ -579,7 +615,8 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
         if (fp && wps_props_int(fp, "sort_desc", &v)) desc = v != 0;
         wps_loaded_free(&fl);
     }
-    size_t whole_cap = CHUNK;   /* (sorted: one chunk that grows) */
+    size_t whole_cap = CHUNK;   /* (sorted or filtered: one chunk that grows) */
+    bool whole = key >= 0 || j->filter[0];
     DIR *d = opendir(j->path);
     /* Small chunks first, so the first page is ready after a few directory
      * blocks even when the disk cache is cold; then larger ones. */
@@ -599,14 +636,16 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     while ((de = readdir(d))) {
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
         if (!strncmp(de->d_name, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) continue;   /* a job's half-made item */
-        if (key >= 0 && c->n == whole_cap) {
+        if (wps_is_lock_file(de->d_name)) continue;   /* (shown as the in-use emphasis of what it locks) */
+        if (j->hide && de->d_name[0] == '.') continue;
+        if (whole && c->n == whole_cap) {
             whole_cap *= 2;
             c->names = realloc(c->names, whole_cap * sizeof *c->names);
             c->types = realloc(c->types, whole_cap);
         }
         c->names[c->n] = strdup(de->d_name);
         c->types[c->n] = de->d_type;
-        if (++c->n == size && key < 0) {
+        if (++c->n == size && !whole) {
             if (size < CHUNK) size *= 4;
             wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
             c = calloc(1, sizeof *c);
@@ -621,11 +660,13 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     wps_loaded fld;
     wps_load(j->path, false, &fld);
     if (!fld.err && fld.id[0]) {
-        struct central_add ca = { &c, j, size, key >= 0 ? &whole_cap : NULL };
+        struct central_add ca = { &c, j, size, whole ? &whole_cap : NULL };
         wps_central_in(fld.vol, fld.id, add_central, &ca);
     }
     wps_loaded_free(&fld);
+    if (j->filter[0]) filter_chunk(c, j->filter);
     if (key >= 0) sort_chunk(c, j->path, key, desc);
+    else if (whole) c->sorted = true;   /* (filtered: read again on changes, as a sorted one) */
     c->last = true;
     wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
 }
@@ -644,6 +685,8 @@ static void start_read(struct listing *l)
     j->l = l;
     j->gen = l->gen;
     snprintf(j->path, sizeof j->path, "%s", l->path);
+    snprintf(j->filter, sizeof j->filter, "%s", l->filter);
+    j->hide = l->hide;
     /* the folder's sort, as it is now (its object's state may not be
      * written yet: a sort just chosen) */
     j->key = -2;
@@ -660,10 +703,19 @@ static void start_read(struct listing *l)
 void wps_listing_request(const char *folder, size_t offset, size_t count, bool details,
                          wps_page_fn reply, void *arg)
 {
-    struct listing *l = find(folder);
+    wps_listing_request_v(folder, "", false, offset, count, details, reply, arg);
+}
+
+void wps_listing_request_v(const char *folder, const char *filter, bool hide, size_t offset, size_t count, bool details,
+                           wps_page_fn reply, void *arg)
+{
+    if (!filter) filter = "";
+    struct listing *l = find_v(folder, filter, hide);
     if (!l) {
         l = calloc(1, sizeof *l);
         snprintf(l->path, sizeof l->path, "%s", folder);
+        snprintf(l->filter, sizeof l->filter, "%s", filter);
+        l->hide = hide;
         l->next = listings;
         listings = l;
         start_read(l);
@@ -683,8 +735,8 @@ void wps_listing_request(const char *folder, size_t offset, size_t count, bool d
 
 void wps_listing_invalidate(const char *folder)
 {
-    struct listing *l = find(folder);
-    if (l) l->stale = true;
+    for (struct listing *l = listings; l; l = l->next)
+        if (!strcmp(l->path, folder)) l->stale = true;
 }
 
 uint64_t wps_listing_version(const char *folder)
@@ -711,6 +763,9 @@ static void remove_at(struct listing *l, size_t i)
 
 void wps_listing_apply(const char *folder, char kind, const char *name, const char *newname, unsigned char type)
 {
+    /* windows' own listings (filtered, without hidden ones): read again */
+    for (struct listing *v = listings; v; v = v->next)
+        if (!strcmp(v->path, folder) && (v->filter[0] || v->hide)) v->stale = true;
     struct listing *l = find(folder);
     if (!l) return;
     /* Mid-read, the reader may or may not have seen it: read again. */
@@ -721,6 +776,10 @@ void wps_listing_apply(const char *folder, char kind, const char *name, const ch
     if (kind == 'r' && tmp) { kind = 'c'; name = newname; tmp = false; }   /* a job's item finished */
     if (kind == 'r' && !strncmp(newname, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) kind = 'd';
     if (tmp) return;
+    /* lock files are never listed (as when read) */
+    if (kind == 'c' && wps_is_lock_file(name)) return;
+    if (kind == 'r' && wps_is_lock_file(newname)) kind = 'd';
+    if (kind == 'd' && wps_is_lock_file(name)) return;
     /* sorted: an addition or rename belongs somewhere in the order, which
      * windows cannot place: read again (removals follow by position) */
     if (l->sorted && kind != 'd') { l->stale = true; return; }

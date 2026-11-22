@@ -71,5 +71,30 @@ r = c.request(op="settings_set", target=F, values={"col_type": False})
 pages = c.request(op="settings", target=F).get("result") or []
 fields = {x["key"]: x.get("value") for p in pages for x in p.get("fields", [])}
 check("a column off", r.get("ok") and fields.get("col_type") is False and fields.get("col_size") is True, fields)
+# a window's own listing: a filter (any case), without dot names, no lock files
+open(F + "/.hidden", "w").close()
+open(F + "/.~lock.b.txt#", "w").close()
+open(F + "/Report.TXT", "w").close()
+
+
+def names_v(flt="", hidden=True):
+    msg = {"op": "list", "target": F, "offset": 0, "count": 50, "hidden": hidden}
+    if flt:
+        msg["filter"] = flt
+    return sorted(it["name"] for it in (c.request(**msg).get("result") or {}).get("items", []))
+
+
+time.sleep(0.3)
+check("lock files are never listed; dot files are", ".~lock.b.txt#" not in names_v() and ".hidden" in names_v(), names_v())
+check("hidden off: no dot files", ".hidden" not in names_v(hidden=False) and "b.txt" in names_v(hidden=False), names_v(hidden=False))
+check("a filter, any case", names_v("txt") == ["Report.TXT", "aa.txt", "b.txt"], names_v("txt"))
+check("a filter matching a folder", names_v("z") == ["z"], names_v("z"))
+open(F + "/more.txt", "w").close()
+time.sleep(0.5)
+check("a filtered listing follows an addition", "more.txt" in names_v("txt"), names_v("txt"))
+os.remove(F + "/aa.txt")
+time.sleep(0.5)
+check("and a removal", "aa.txt" not in names_v("txt"), names_v("txt"))
+check("the plain listing too", "aa.txt" not in names_v() and "more.txt" in names_v(), names_v())
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

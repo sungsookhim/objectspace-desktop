@@ -1034,6 +1034,9 @@ static void on_fs_event(char kind, const char *from, const char *path)
         for (size_t i = 0; i < x->nfolders; i++) {
             const char *f = x->folders[i];
             bool in_new = path[0] && in_folder(path, f), in_old = from[0] && in_folder(from, f);
+            /* lock files are not listed (only their in-use emphasis shows) */
+            if (in_new && wps_is_lock_file(strrchr(path, '/') + 1)) in_new = false;
+            if (in_old && wps_is_lock_file(strrchr(from, '/') + 1)) in_old = false;
             if (!in_new && !in_old) continue;
             cbuf b;
             /* version: the folder's listing after this change (0: read it again) */
@@ -3783,7 +3786,9 @@ static void handle(struct client *c, cv *msg)
         r->c = c; c->refs++;
         r->id = id;
         snprintf(r->folder, sizeof r->folder, "%s", folder);
-        wps_listing_request(folder, (size_t)off, (size_t)cnt, det && det->k == CV_BOOL && det->b, list_reply, r);
+        const cv *hid = cv_get(msg, "hidden");   /* (false: without dot names) */
+        wps_listing_request_v(folder, cv_text(msg, "filter"), hid && hid->k == CV_BOOL && !hid->b, (size_t)off, (size_t)cnt,
+                              det && det->k == CV_BOOL && det->b, list_reply, r);
     } else if (strcmp(op, "create") == 0) {
         const char *folder = cv_text(msg, "folder"), *clsname = cv_text(msg, "class");
         const char *title = cv_text(msg, "title"), *command = cv_text(msg, "command");

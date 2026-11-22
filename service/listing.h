@@ -60,6 +60,12 @@ void wps_listing_request(const char *folder, size_t offset, size_t count, bool d
 
 /* Something changed in this folder that cannot be followed entry by
  * entry: read it again at the next request for the first page. */
+/* The same, for a window's own listing of the folder (v0.3-design 6):
+ * only names (central objects: titles) containing `filter` (any case;
+ * "" all), and without hidden (dot) names when `hide`. Lock files are
+ * never listed. */
+void wps_listing_request_v(const char *folder, const char *filter, bool hide, size_t offset, size_t count, bool details,
+                           wps_page_fn reply, void *arg);
 void wps_listing_invalidate(const char *folder);
 
 /* Loop thread: an entry of `folder` appeared ('c', name, its type),
