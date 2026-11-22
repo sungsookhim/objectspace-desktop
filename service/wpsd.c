@@ -2614,9 +2614,10 @@ static void empty_done(void *arg)
  *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5);
  *   7: Templates in System, as on OS/2 (the desktop's shadows of it move
  *      there); the desktop puts the Trash Can in its lower right corner;
- *   8: Restore Desktop in System.
+ *   8: Restore Desktop in System;
+ *   9 (0.3): the home folder in Computer (a shadow).
  * After it, the default objects in place are noted (restore_defaults). */
-#define FIRST_START_VERSION 8
+#define FIRST_START_VERSION 9
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
 static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
@@ -2859,6 +2860,13 @@ static void first_start_done(void *arg)
             if (!j->tpl_in_system && !j->ntpl && td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
+        const char *home = getenv("HOME");
+        if (j->from < 9 && home && *home) {   /* step 9: the home folder in Computer */
+            char comp[PATH_MAX], drv[PATH_MAX + 8];
+            computer_dirs(comp, sizeof comp, drv, sizeof drv);
+            wps_mkdirs(comp, 0700);
+            wps_shadow_create(home, comp, first_start_shadow_done, NULL);
+        }
         FILE *f = fopen(marker, "w");
         if (f) {
             fprintf(f, "version %d\n# The desktop's first-start steps done (wpsd); 0.1 wrote no version.\n", FIRST_START_VERSION);
@@ -2991,7 +2999,7 @@ static void builtin_templates_done(void *arg)
  * default folders are made again. Each desktop open notes the ones in
  * place ({op:"first_start"}). */
 #define DEFAULTS_LOC "wps-defaults"
-#define NDEFAULTS 7
+#define NDEFAULTS 8
 
 struct defobj {
     const char *name, *title;
@@ -3046,6 +3054,14 @@ static int defaults_list(const char *desk, struct defobj *d)
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
     d[n] = (struct defobj){ "system.restore", "Restore Desktop", "WPRestoreDesktop", "", "" };
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    const char *uh = getenv("HOME");
+    if (uh && *uh) {
+        char drv[PATH_MAX + 8];
+        d[n] = (struct defobj){ "computer.home", "Home", NULL, "", "" };
+        snprintf(d[n].target, sizeof d[n].target, "%s", uh);
+        computer_dirs(d[n].folder, sizeof d[n].folder, drv, sizeof drv);
+        n++;
+    }
     return n;
 }
 
@@ -3998,6 +4014,9 @@ int main(int argc, char **argv)
         char comp[PATH_MAX], drv[PATH_MAX + 8];
         computer_dirs(comp, sizeof comp, drv, sizeof drv);
         wps_listing_folder_icon(comp, "computer.png");
+        char sys[PATH_MAX];
+        system_dir(sys, sizeof sys);
+        wps_listing_folder_icon(sys, "computer.png");   /* (the owner's: as OS/2's System showed one) */
     }
     wps_udisks_init(loop, drives_changed);
     {

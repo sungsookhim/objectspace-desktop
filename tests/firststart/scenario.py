@@ -141,9 +141,12 @@ check("first start answers its step", r.get("result") == (6 if PART == "old" els
 check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_shadows(SYS))
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
-    check("the desktop is at step 8", "version 8" in f.read())
+    check("the desktop is at step 9", "version 9" in f.read())
+COMP = SYS + "/Computer"
+check("step 9: the home folder in Computer", wait(lambda: len(shadows_of(COMP, os.environ["HOME"])) == 1), items(COMP))
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
-check("a second start changes nothing", r.get("result") == 8 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK), r)
+check("a second start changes nothing", r.get("result") == 9 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
+      and len(shadows_of(COMP, os.environ["HOME"])) == 1, r)
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)
