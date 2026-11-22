@@ -234,8 +234,10 @@ char *WPSetup__wpAddSettingsPages(wpo_object *self, const char *pages)
 /* Settings objects open as their notebook; they are not copied or made. */
 char *WPSetup__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
-    (void)self;
-    return wps_concat(menu, "2\tProperties\n");
+    /* the LaunchPad, the WarpCenter and Messages also open (the palette,
+     * the bar, the list); the others are only their settings */
+    bool opens = wpo_is_a(self, WPLaunchPadClass) || wpo_is_a(self, WPWarpCenterClass) || wpo_is_a(self, WPMessagesClass);
+    return wps_concat(menu, opens ? "1\tOpen\n2\tProperties\n" : "2\tProperties\n");
 }
 
 char *WPSystem__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("System"); }

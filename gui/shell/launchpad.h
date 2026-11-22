@@ -25,6 +25,10 @@
 /* open_folder: the shell opens a folder window for a path. */
 void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char *templates, const char *setup);
 
+/* Whether it is open; bring it forward (opening its object again). */
+bool launchpad_is_open(void);
+void launchpad_raise(void);
+
 /* An event from wpsd: true if it was the LaunchPad's (its folder changed). */
 bool launchpad_event(const char *name, int64_t sub);
 

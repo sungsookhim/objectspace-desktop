@@ -16,6 +16,8 @@
  *   wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET | settings_set TARGET KEY=VALUE...
  *   wpsctl watch [folder PATH]... [object TARGET]... [jobs]
  *   wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME
+ *   wpsctl restore-defaults [DESKTOP]   the default objects back in place (the desktop
+ *                                       last opened, if not named)
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
@@ -55,7 +57,8 @@ static int usage(void)
             "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
             "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n"
             "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n"
-            "       wpsctl vmove vobj:ID FOLDER [copy]\n");
+            "       wpsctl vmove vobj:ID FOLDER [copy]\n"
+            "       wpsctl restore-defaults [DESKTOP]\n");
     return 2;
 }
 
@@ -177,6 +180,12 @@ int main(int argc, char **argv)
         cb_text(&b, "op"); cb_text(&b, "open");
         cb_text(&b, "target"); cb_text(&b, argv[2]);
         cb_text(&b, "confirm"); cb_bool(&b, argc == 4 && !strcmp(argv[3], "confirm"));
+    } else if (!strcmp(op, "restore-defaults")) {
+        if (argc > 3) return usage();
+        cb_map(&b, argc == 3 ? 3 : 2);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, "restore_defaults");
+        if (argc == 3) { cb_text(&b, "desktop"); cb_text(&b, argv[2]); }
     } else if (!strcmp(op, "vmove")) {
         if (argc < 4 || argc > 5) return usage();
         cb_map(&b, 5);

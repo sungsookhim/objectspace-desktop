@@ -1107,14 +1107,7 @@ static void opened(void *arg, const cv *reply)
         confirm_program(f, res);
         return;
     }
-    if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "minimized-windows")) {
-        winlist_open(true);   /* the Minimized Window Viewer */
-        return;
-    }
-    if (res && cv_text(res, "view") && !strcmp(cv_text(res, "view"), "messages")) {
-        messages_open();
-        return;
-    }
+    if (svc_reply_view(reply)) return;
     if (res && cv_text(res, "folder")) {   /* a shadow of a folder, or a link to one */
         open_folder(cv_text(res, "folder"), f->pending_view);
         f->error[0] = 0;
@@ -1853,10 +1846,8 @@ static void startup_opened(void *arg, const cv *reply)
     (void)arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) return;
-    const char *v = cv_text(res, "view");
     if (cv_text(res, "folder")) open_folder(cv_text(res, "folder"), UI_VIEW_ICON);
-    else if (v && !strcmp(v, "messages")) messages_open();
-    else if (v && !strcmp(v, "minimized-windows")) winlist_open(true);
+    else svc_reply_view(reply);
 }
 
 static void got_startup(void *arg, const cv *reply)
@@ -4943,6 +4934,94 @@ static void apply_setup_object(const char *cls, const cv *settings)
     }
 }
 
+static char setup_folder[PATH_MAX];   /* System Setup's (the LaunchPad's first buttons) */
+
+static void show_warpcenter(void)
+{
+    if (warpcenter_is_open()) return;   /* (the bar: always in view) */
+    for (struct folder *f = folders; f; f = f->next)
+        if (f->desktop && !f->closing) {
+            warpcenter_open(app, f->path, getenv("WPS_WARPCENTER_TOP") != NULL || warpcenter_top(), launchpad_open_folder);
+            warpcenter_messages(messages_unread(), messages_open);
+            return;
+        }
+}
+
+/* Opened, or brought forward: never two (only the desktop's process
+ * has one). */
+static void show_launchpad(void)
+{
+    if (launchpad_is_open()) { launchpad_raise(); return; }
+    bool desktop = false;
+    for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
+    if (!desktop) return;
+    char tdir[PATH_MAX];
+    const char *t = getenv("WPS_TEMPLATES_DIR");
+    if (t && *t) snprintf(tdir, sizeof tdir, "%s", t);
+    else user_dir("TEMPLATES", "Templates", tdir, sizeof tdir);
+    launchpad_open(app, launchpad_open_folder, tdir, setup_folder[0] ? setup_folder : NULL);
+}
+
+/* Restore Desktop: asked first; what was put back, said after. */
+static void defaults_restored(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *got = res ? cv_get(res, "restored") : NULL;
+    static const char *const ok[] = { "OK" };
+    if (!res) {
+        char m[512];
+        snprintf(m, sizeof m, "The default objects could not be restored: %s",
+                 reply && cv_text(reply, "message") ? cv_text(reply, "message") : "no answer from wpsd");
+        ui_dialog_open(app, "Restore Desktop", m, ok, 1, 0, NULL, NULL);
+        return;
+    }
+    char m[2048];
+    size_t n = got && got->k == CV_ARRAY ? got->n : 0;
+    if (!n) snprintf(m, sizeof m, "All the default objects are in place: nothing was changed.");
+    else {
+        snprintf(m, sizeof m, "Put back: ");
+        for (size_t i = 0; i < n; i++) {
+            const cv *t = &got->items[i];
+            if (t->k != CV_TEXT) continue;
+            size_t l = strlen(m);
+            snprintf(m + l, sizeof m - l, "%s%s", i ? ", " : "", t->s);
+        }
+        strncat(m, ".", sizeof m - strlen(m) - 1);
+    }
+    ui_dialog_open(app, "Restore Desktop", m, ok, 1, 0, NULL, NULL);
+}
+
+static void restore_chosen(void *ctx, int choice)
+{
+    (void)ctx;
+    if (choice != 0) return;
+    const char *desk = NULL;
+    for (struct folder *f = folders; f && !desk; f = f->next) if (f->desktop && !f->closing) desk = f->path;
+    svc_restore_defaults(desk, defaults_restored, NULL);
+}
+
+static void restore_defaults_ask(void)
+{
+    static const char *const b[] = { "Restore", "Cancel" };
+    ui_dialog_open(app, "Restore Desktop",
+                   "Put the default objects back where they belong? System, Programs and the Trash Can on the desktop; "
+                   "Templates, Startup, the Minimized Window Viewer and the settings objects in System. Ones moved "
+                   "elsewhere or into the Trash Can are moved back; ones gone are made again. Nothing else changes.",
+                   b, 2, 1, restore_chosen, NULL);
+}
+
+/* An open's reply that names a view (svc_reply_view). */
+static bool open_view(const char *v)
+{
+    if (!strcmp(v, "messages")) messages_open();
+    else if (!strcmp(v, "minimized-windows")) winlist_open(true);   /* the Minimized Window Viewer */
+    else if (!strcmp(v, "launchpad")) show_launchpad();
+    else if (!strcmp(v, "warpcenter")) show_warpcenter();
+    else if (!strcmp(v, "restore-defaults")) restore_defaults_ask();
+    else return false;
+    return true;
+}
+
 static void got_setup(void *arg, const cv *reply)
 {
     (void)arg;
@@ -4984,22 +5063,10 @@ static void got_setup(void *arg, const cv *reply)
     static bool started;   /* (settings read again later change neither) */
     bool first = !started && desktop;
     if (desktop) started = true;
-    if (first && want_wc && !warpcenter_is_open()) {
-        for (struct folder *f = folders; f; f = f->next)
-            if (f->desktop && !f->closing) {
-                warpcenter_open(app, f->path, getenv("WPS_WARPCENTER_TOP") != NULL || warpcenter_top(), launchpad_open_folder);
-                warpcenter_messages(messages_unread(), messages_open);
-                break;
-            }
-    }
+    if (folder) snprintf(setup_folder, sizeof setup_folder, "%s", folder);
+    if (first && want_wc) show_warpcenter();
     if (first) windows_at_login();
-    if (first && !getenv("WPS_NO_LAUNCHPAD") && want_lp) {
-        char tdir[PATH_MAX];
-        const char *t = getenv("WPS_TEMPLATES_DIR");
-        if (t && *t) snprintf(tdir, sizeof tdir, "%s", t);
-        else user_dir("TEMPLATES", "Templates", tdir, sizeof tdir);
-        launchpad_open(app, launchpad_open_folder, tdir, folder);
-    }
+    if (first && !getenv("WPS_NO_LAUNCHPAD") && want_lp) show_launchpad();
 }
 
 /* The Scheme Palette's scheme: colours for every window; the desktop's
@@ -5487,6 +5554,7 @@ int main(int argc, char **argv)
         return 1;
     }
     svc_on_event(on_event, NULL);
+    svc_view_fn = open_view;
     svc_subscribe_jobs(ignore_reply, NULL);
     svc_setup(got_setup, NULL);
     /* Settings shared with GNOME: every shell follows its font; the

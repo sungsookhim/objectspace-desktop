@@ -5,6 +5,8 @@
  * is a 4-byte big-endian length and a CBOR map. Requests:
  *   {op:"first_start", desktop}         the desktop's first-start steps not done yet (versioned); the
  *                                       version it was at
+ *   {op:"restore_defaults", desktop?}   the default objects back where they belong (moved back,
+ *                                       out of the trash, or made again) -> {restored:[titles]}
  *   {event:"drives_changed", sub}       drives came, went, mounted or unmounted
  *   {op:"drive", uuid|target, action, pass}   mount|unmount|eject|poweroff|unlock|lock -> its mount point
  *   {op:"drives"}                       the volumes udisks2 (or mountinfo) shows -> [{uuid, title, kind, mount, ...}]
@@ -108,7 +110,10 @@
 #include "WPTrashCan.h"
 #include "WPDrive.h"
 #include "WPMinWinViewer.h"
+#include "WPRestoreDesktop.h"
 #include "WPMessages.h"
+#include "WPLaunchPad.h"
+#include "WPWarpCenter.h"
 #include "messages.h"
 #include "startup.h"
 #include "wps_startup_hook.h"
@@ -1528,8 +1533,18 @@ static void do_open(struct req *r, wpo_object *o)
             argv[2] = NULL;
             what = "xdg-open";
         }
+    } else if (wpo_is_a(o, WPLaunchPadClass) || wpo_is_a(o, WPWarpCenterClass)) {
+        /* opened as the palette or the bar: the desktop shows it, or
+         * brings it forward (never two) */
+        reply_view(r, wpo_is_a(o, WPLaunchPadClass) ? "launchpad" : "warpcenter");
+        wpo_unref(orig);
+        return;
     } else if (wpo_is_a(o, WPMessagesClass)) {
         reply_view(r, "messages");
+        wpo_unref(orig);
+        return;
+    } else if (wpo_is_a(o, WPRestoreDesktopClass)) {
+        reply_view(r, "restore-defaults");   /* the desktop asks, then sends restore_defaults */
         wpo_unref(orig);
         return;
     } else if (wpo_is_a(o, WPMinWinViewerClass)) {
@@ -2594,8 +2609,10 @@ static void empty_done(void *arg)
  *   1 (0.1's): a shadow of the Templates folder, one of System Setup;
  *   2 (0.2's): (the System folder, Programs, Trash Can: v0.2 steps 2-5);
  *   7: Templates in System, as on OS/2 (the desktop's shadows of it move
- *      there); the desktop puts the Trash Can in its lower right corner. */
-#define FIRST_START_VERSION 7
+ *      there); the desktop puts the Trash Can in its lower right corner;
+ *   8: Restore Desktop in System.
+ * After it, the default objects in place are noted (restore_defaults). */
+#define FIRST_START_VERSION 8
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
 static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
@@ -2609,6 +2626,7 @@ struct first_start {
     char gone[8][WPS_ID_LEN + 1];   /* the desktop's shadows of System Setup, removed */
     int ngone;
     char viewer[WPS_ID_LEN + 1];    /* the Minimized Window Viewer, made */
+    char restorer[WPS_ID_LEN + 1];  /* Restore Desktop, made (step 8) */
     char sys[PATH_MAX], autostart[PATH_MAX];
     wps_loaded asld;                /* the autostart folder (titled Startup) */
     char trash[PATH_MAX];           /* the Trash Can: the home trash's files folder */
@@ -2748,6 +2766,14 @@ static void first_start_work(void *arg)
         wps_mkdirs(j->programs, 0700);
         if (wps_set_folder_class(j->programs, "WPProgramsFolder") != 0) j->programs[0] = 0;
     }
+    if (j->from < 8) {
+        /* step 8 (0.2): Restore Desktop in System */
+        wps_loaded sy;
+        wps_load(j->sys, true, &sy);
+        if (sy.err || !sy.id[0] || wps_central_create(sy.vol, sy.id, "WPRestoreDesktop", "Restore Desktop", NULL, j->restorer) != 0)
+            j->restorer[0] = 0;
+        wps_loaded_free(&sy);
+    }
     if (j->from < 7 && j->from >= 1 && wps_templates_dir()[0]) {
         /* step 7 (0.2): the desktop's Templates shadows into System */
         wps_loaded sy, fl;
@@ -2770,6 +2796,8 @@ static void first_start_work(void *arg)
         wps_loaded_free(&fl);
     }
 }
+
+static void defaults_start(struct client *c, int64_t id, const char *desk, bool restore);
 
 static void first_start_done(void *arg)
 {
@@ -2826,6 +2854,7 @@ static void first_start_done(void *arg)
             const char *td = wps_templates_dir();
             if (!j->tpl_in_system && !j->ntpl && td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
         }
+        if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
         FILE *f = fopen(marker, "w");
         if (f) {
             fprintf(f, "version %d\n# The desktop's first-start steps done (wpsd); 0.1 wrote no version.\n", FIRST_START_VERSION);
@@ -2834,6 +2863,7 @@ static void first_start_done(void *arg)
         unlink(legacy);
         log_msg("first start: the desktop %s brought from step %d to %d", j->desk, j->from, FIRST_START_VERSION);
     }
+    if (j->desk[0]) defaults_start(NULL, 0, j->desk, false);   /* the defaults in place, noted */
     wps_loaded_free(&j->asld);
     wps_loaded_free(&j->tld);
     if (!j->c->dead) reply_int(j->c, j->id, j->from);
@@ -2945,6 +2975,342 @@ static void builtin_templates_done(void *arg)
     (void)arg;
     wps_listing_invalidate(wps_templates_dir());
     wpo_defer(loop, "settings objects", setup_objects_work, NULL, NULL);
+}
+
+/* ---- the default objects (0.2): System, Programs and the Trash Can on the
+ * desktop; Templates, Startup, the Minimized Window Viewer and Restore
+ * Desktop in System; the settings objects where they belong. Each is
+ * noted by ID once it is in place (locator "wps-defaults", class WPS, one
+ * prop per object), so {op:"restore_defaults", desktop} can put back the
+ * very object the user moved or deleted (a central object moved gets a
+ * new ID: noted again), or make one if it is gone for good; missing
+ * default folders are made again. Each desktop open notes the ones in
+ * place ({op:"first_start"}). */
+#define DEFAULTS_LOC "wps-defaults"
+#define NDEFAULTS 7
+
+struct defobj {
+    const char *name, *title;
+    const char *cls;            /* a central object of this class; NULL: a shadow of target */
+    char target[PATH_MAX], folder[PATH_MAX];
+};
+
+struct defaults_job {
+    struct client *c;
+    int64_t id;
+    bool restore;
+    char desk[PATH_MAX];
+    struct { char folder[PATH_MAX], id[WPS_ID_LEN + 1], old_folder[PATH_MAX], old_id[WPS_ID_LEN + 1]; } ev[24];
+    int nev;
+    const char *put_back[32];   /* titles, for the reply */
+    int nput;
+    bool made_programs, made_trash, made_computer;
+    bool no_desktop;            /* none named, none known */
+};
+
+static void autostart_dir(char *out, size_t n)
+{
+    const char *xc = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xc && *xc) snprintf(out, n, "%s/autostart", xc);
+    else snprintf(out, n, "%s/.config/autostart", home ? home : "");
+}
+
+static int defaults_list(const char *desk, struct defobj *d)
+{
+    char sys[PATH_MAX], home[PATH_MAX];
+    system_dir(sys, sizeof sys);
+    wps_trash_home(home, sizeof home);
+    int n = 0;
+    d[n] = (struct defobj){ "desktop.system", "System", NULL, "", "" };
+    snprintf(d[n].target, sizeof d[n].target, "%s", sys);
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", desk);
+    d[n] = (struct defobj){ "desktop.programs", "Programs", NULL, "", "" };
+    data_dir("Programs", d[n].target, sizeof d[n].target);
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", desk);
+    d[n] = (struct defobj){ "desktop.trash", "Trash Can", NULL, "", "" };
+    snprintf(d[n].target, sizeof d[n].target, "%s/files", home);
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", desk);
+    if (wps_templates_dir()[0]) {
+        d[n] = (struct defobj){ "system.templates", "Templates", NULL, "", "" };
+        snprintf(d[n].target, sizeof d[n].target, "%s", wps_templates_dir());
+        snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    }
+    d[n] = (struct defobj){ "system.startup", "Startup", NULL, "", "" };
+    autostart_dir(d[n].target, sizeof d[n].target);
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    d[n] = (struct defobj){ "system.viewer", "Minimized Window Viewer", "WPMinWinViewer", "", "" };
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    d[n] = (struct defobj){ "system.restore", "Restore Desktop", "WPRestoreDesktop", "", "" };
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    return n;
+}
+
+struct def_match { const char *tid, *cls; char found[WPS_ID_LEN + 1]; };
+
+static void def_match_one(const char *vol, const char *id, void *user)
+{
+    (void)vol;
+    struct def_match *m = user;
+    if (m->found[0]) return;
+    char loc[WPS_ID_LEN + 8];
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_loaded ld;
+    wps_load(loc, false, &ld);
+    if (!ld.err && (m->cls ? !strcmp(ld.obj_class, m->cls) : m->tid && !strcmp(ld.shadow_of, m->tid)))
+        snprintf(m->found, sizeof m->found, "%s", id);
+    wps_loaded_free(&ld);
+}
+
+/* One like it (a shadow of tid, or of class cls) among folder's central objects. */
+static bool def_find_in(const wps_loaded *folder, const char *tid, const char *cls, char out[WPS_ID_LEN + 1])
+{
+    if (folder->err || !folder->id[0]) return false;
+    struct def_match m = { tid, cls, "" };
+    wps_central_in(folder->vol, folder->id, def_match_one, &m);
+    if (!m.found[0]) return false;
+    memcpy(out, m.found, WPS_ID_LEN + 1);
+    return true;
+}
+
+static void def_note(const char *vol, const char *name, const char *id)
+{
+    char key[256];
+    wps_db_key(key, sizeof key, DEFAULTS_LOC, "WPS", name);
+    wps_db_put(db, vol, key, 's', id, WPS_ID_LEN);
+}
+
+static void def_event(struct defaults_job *j, const char *folder, const char *id, const char *old_folder, const char *old_id)
+{
+    if (j->nev >= 24) return;
+    snprintf(j->ev[j->nev].folder, sizeof j->ev[0].folder, "%s", folder);
+    snprintf(j->ev[j->nev].id, sizeof j->ev[0].id, "%s", id);
+    snprintf(j->ev[j->nev].old_folder, sizeof j->ev[0].old_folder, "%s", old_folder ? old_folder : "");
+    snprintf(j->ev[j->nev].old_id, sizeof j->ev[0].old_id, "%s", old_id ? old_id : "");
+    j->nev++;
+}
+
+/* Move central object `id` into folder `to` (loaded); its old folder's
+ * path for the event. */
+static bool def_move(struct defaults_job *j, const char *id, const wps_loaded *to, const char *to_path, char nid[WPS_ID_LEN + 1])
+{
+    char loc[WPS_ID_LEN + 8], from[PATH_MAX] = "";
+    snprintf(loc, sizeof loc, "vobj:%s", id);
+    wps_loaded ld, fl;
+    wps_load(loc, false, &ld);
+    if (ld.err) { wps_loaded_free(&ld); return false; }
+    snprintf(loc, sizeof loc, "id:%s", ld.folder_id);
+    wps_load(loc, false, &fl);
+    if (!fl.err) snprintf(from, sizeof from, "%s", fl.path);
+    wps_loaded_free(&fl);
+    wps_loaded_free(&ld);
+    if (wps_central_move(id, to->vol, to->id, false, nid) != 0) return false;
+    def_event(j, to_path, nid, from, id);
+    return true;
+}
+
+static bool def_made_dir(const char *path)
+{
+    if (access(path, F_OK) == 0) return false;
+    return wps_mkdirs(path, 0700) == 0;
+}
+
+static void defaults_work(void *arg)
+{
+    struct defaults_job *j = arg;
+    char sys[PATH_MAX], sd[PATH_MAX], home[PATH_MAX], tmp[PATH_MAX + 16];
+    system_dir(sys, sizeof sys);
+    setup_dir(sd, sizeof sd);
+    wps_trash_home(home, sizeof home);
+    if (j->restore) {
+        /* the default folders, if gone (they come back empty, of their class) */
+        if (def_made_dir(sys)) j->put_back[j->nput++] = "the System folder";
+        if (def_made_dir(sd)) j->put_back[j->nput++] = "System Setup";
+        autostart_dir(tmp, sizeof tmp);
+        if (def_made_dir(tmp)) j->put_back[j->nput++] = "the Startup folder";
+        if (wps_templates_dir()[0] && def_made_dir(wps_templates_dir())) j->put_back[j->nput++] = "the Templates folder";
+        data_dir("Programs", tmp, sizeof tmp);
+        if (def_made_dir(tmp)) { j->made_programs = true; j->put_back[j->nput++] = "the Programs folder"; }
+        wps_set_folder_class(tmp, "WPProgramsFolder");
+        snprintf(tmp, sizeof tmp, "%s/files", home);
+        if (def_made_dir(tmp)) { j->made_trash = true; j->put_back[j->nput++] = "the Trash Can"; }
+        wps_set_folder_class(tmp, "WPTrashCan");
+        snprintf(tmp, sizeof tmp, "%s/info", home);
+        wps_mkdirs(tmp, 0700);
+        char comp[PATH_MAX], drv[PATH_MAX + 8];
+        computer_dirs(comp, sizeof comp, drv, sizeof drv);
+        if (def_made_dir(drv)) { j->made_computer = true; j->put_back[j->nput++] = "Computer"; }
+        wps_set_folder_class(comp, "WPComputer");
+        wps_set_folder_class(drv, "WPDrives");
+    }
+    wps_loaded sy;
+    wps_load(sys, true, &sy);
+    if (sy.err || !sy.id[0]) { wps_loaded_free(&sy); return; }
+    wps_props known;
+    wps_props_init(&known);
+    wps_db_get_class(db, sy.vol, DEFAULTS_LOC, "WPS", &known);
+    char key[256], *dk = NULL;
+    wps_db_key(key, sizeof key, DEFAULTS_LOC, "WPS", "desktop");
+    if (!j->desk[0] && wps_props_str(&known, "desktop", &dk) && dk) snprintf(j->desk, sizeof j->desk, "%s", dk);
+    else if (j->desk[0] && (!wps_props_str(&known, "desktop", &dk) || !dk || strcmp(dk, j->desk)))
+        wps_db_put(db, sy.vol, key, 's', j->desk, (uint32_t)strlen(j->desk));   /* (wpsctl restore-defaults) */
+    free(dk);
+    if (!j->desk[0]) { j->no_desktop = true; wps_props_free(&known); wps_loaded_free(&sy); return; }
+    char trash_files[PATH_MAX + 8];
+    snprintf(trash_files, sizeof trash_files, "%s/files", home);
+    wps_loaded tr;
+    wps_load(trash_files, false, &tr);
+    struct defobj d[NDEFAULTS];
+    int n = defaults_list(j->desk, d);
+    for (int i = 0; i < n; i++) {
+        wps_loaded fl, tl;
+        wps_load(d[i].folder, true, &fl);
+        if (fl.err || !fl.id[0] || !S_ISDIR(fl.st.st_mode)) { wps_loaded_free(&fl); continue; }
+        char tid[WPS_ID_LEN + 1] = "";
+        if (!d[i].cls) {
+            wps_load(d[i].target, true, &tl);
+            if (!tl.err) snprintf(tid, sizeof tid, "%s", tl.shadow_of[0] ? tl.shadow_of : tl.id);
+            wps_loaded_free(&tl);
+            if (!tid[0]) { wps_loaded_free(&fl); continue; }
+        }
+        char *rec = NULL, nid[WPS_ID_LEN + 1] = "";
+        wps_props_str(&known, d[i].name, &rec);
+        bool done = false;
+        if (rec && strlen(rec) == WPS_ID_LEN) {
+            /* the one noted: in place, or put back */
+            char loc[WPS_ID_LEN + 8];
+            snprintf(loc, sizeof loc, "vobj:%s", rec);
+            wps_loaded ld;
+            wps_load(loc, false, &ld);
+            if (!ld.err && ld.central) {
+                done = true;
+                if (strcmp(ld.folder_id, fl.id) && j->restore && def_move(j, rec, &fl, d[i].folder, nid)) {
+                    def_note(sy.vol, d[i].name, nid);
+                    j->put_back[j->nput++] = d[i].title;
+                }
+            }
+            wps_loaded_free(&ld);
+        }
+        if (!done && def_find_in(&fl, tid, d[i].cls, nid)) {   /* one is there: noted from now on */
+            def_note(sy.vol, d[i].name, nid);
+            done = true;
+        }
+        if (!done && j->restore) {
+            char was[WPS_ID_LEN + 1];
+            if (def_find_in(&tr, tid, d[i].cls, was) && def_move(j, was, &fl, d[i].folder, nid)) {   /* from the Trash Can */
+                def_note(sy.vol, d[i].name, nid);
+            } else if (wps_central_create(fl.vol, fl.id, d[i].cls ? d[i].cls : "WPShadow", d[i].cls ? d[i].title : NULL,
+                                          d[i].cls ? NULL : tid, nid) == 0) {
+                def_note(sy.vol, d[i].name, nid);
+                def_event(j, d[i].folder, nid, NULL, NULL);
+            } else nid[0] = 0;
+            if (nid[0]) j->put_back[j->nput++] = d[i].title;
+        }
+        free(rec);
+        wps_loaded_free(&fl);
+    }
+    wps_props_free(&known);
+    if (j->restore) {
+        /* the settings objects: each back in its folder; any gone, made again */
+        wps_loaded sf;
+        wps_load(sd, true, &sf);
+        if (!sf.err && sf.id[0]) {
+            char sloc[WPS_ID_LEN + 8];
+            snprintf(sloc, sizeof sloc, "setup:%s", sf.id);
+            wps_props_init(&known);
+            wps_db_get_class(db, sf.vol, sloc, "WPS", &known);
+            char before[NSETUP][WPS_ID_LEN + 1];
+            for (size_t i = 0; i < NSETUP; i++) {
+                char *id = NULL, nid[WPS_ID_LEN + 1];
+                before[i][0] = 0;
+                if (!wps_props_str(&known, setup_classes[i][0], &id) || !id || strlen(id) != WPS_ID_LEN) { free(id); continue; }
+                snprintf(before[i], sizeof before[i], "%s", id);
+                char loc[WPS_ID_LEN + 8];
+                snprintf(loc, sizeof loc, "vobj:%s", id);
+                wps_loaded ld;
+                wps_load(loc, false, &ld);
+                const wps_loaded *home_f = i >= SETUP_IN_SYSTEM ? &sy : &sf;
+                if (!ld.err && strcmp(ld.folder_id, home_f->id) &&
+                    def_move(j, id, home_f, i >= SETUP_IN_SYSTEM ? sys : sd, nid)) {
+                    char key[256];
+                    wps_db_key(key, sizeof key, sloc, "WPS", setup_classes[i][0]);
+                    wps_db_put(db, sf.vol, key, 's', nid, WPS_ID_LEN);
+                    snprintf(before[i], sizeof before[i], "%s", nid);
+                    j->put_back[j->nput++] = setup_classes[i][1];
+                }
+                wps_loaded_free(&ld);
+                free(id);
+            }
+            wps_props_free(&known);
+            setup_objects_work(NULL);   /* makes the ones gone */
+            wps_props_init(&known);
+            wps_db_get_class(db, sf.vol, sloc, "WPS", &known);
+            for (size_t i = 0; i < NSETUP; i++) {
+                char *id = NULL;
+                if (wps_props_str(&known, setup_classes[i][0], &id) && id && strlen(id) == WPS_ID_LEN && strcmp(id, before[i])) {
+                    def_event(j, i >= SETUP_IN_SYSTEM ? sys : sd, id, NULL, NULL);
+                    j->put_back[j->nput++] = setup_classes[i][1];
+                }
+                free(id);
+            }
+            wps_props_free(&known);
+        }
+        wps_loaded_free(&sf);
+    }
+    wps_loaded_free(&tr);
+    wps_loaded_free(&sy);
+}
+
+static void defaults_done(void *arg)
+{
+    struct defaults_job *j = arg;
+    for (int i = 0; i < j->nev; i++) {
+        if (j->ev[i].old_id[0]) {
+            wps_central_forget(j->ev[i].old_id);
+            if (j->ev[i].old_folder[0]) on_central_change(j->ev[i].old_folder, j->ev[i].old_id, 'd');
+        }
+        on_central_change(j->ev[i].folder, j->ev[i].id, 'c');
+    }
+    char home[PATH_MAX], tmp[PATH_MAX + 16];
+    if (j->made_programs) {
+        data_dir("Programs", tmp, sizeof tmp);
+        sobj *old = wps_sobj_by_path(tmp);
+        if (old) wps_sobj_forget(old);
+        wps_programs_sync();
+    }
+    if (j->made_trash) {
+        wps_trash_home(home, sizeof home);
+        snprintf(tmp, sizeof tmp, "%s/files", home);
+        sobj *old = wps_sobj_by_path(tmp);
+        if (old) wps_sobj_forget(old);
+    }
+    if (j->made_computer) drives_changed();
+    if (j->restore && j->no_desktop) {
+        if (j->c && !j->c->dead) reply_error(j->c, j->id, "no desktop", "the desktop has not opened yet: name its folder");
+    } else if (j->restore) {
+        if (j->nput) log_msg("restore defaults: %d put back", j->nput);
+        if (j->c && !j->c->dead) {
+            cbuf val;
+            cb_init(&val);
+            cb_map(&val, 1);
+            cb_text(&val, "restored");
+            cb_array(&val, (size_t)j->nput);
+            for (int i = 0; i < j->nput; i++) cb_text(&val, j->put_back[i]);
+            reply_value_cbor(j->c, j->id, &val);
+            cb_free(&val);
+        }
+    }
+    if (j->c) client_unref(j->c);
+    free(j);
+}
+
+static void defaults_start(struct client *c, int64_t id, const char *desk, bool restore)
+{
+    struct defaults_job *j = calloc(1, sizeof *j);
+    if (c) { j->c = c; c->refs++; }
+    j->id = id;
+    j->restore = restore;
+    snprintf(j->desk, sizeof j->desk, "%s", desk);
+    wpo_defer(loop, restore ? "restore defaults" : "note defaults", defaults_work, defaults_done, j);
 }
 
 /* {op:"setup"} -> {folder, objects:{<class>:{address, settings:{key:value}}}} */
@@ -3359,6 +3725,15 @@ static void handle(struct client *c, cv *msg)
         j->id = id;
         if (d && d[0] == '/') snprintf(j->desk, sizeof j->desk, "%s", d);
         wpo_defer(loop, "first start", first_start_work, first_start_done, j);
+    } else if (strcmp(op, "restore_defaults") == 0) {
+        const char *d = cv_text(msg, "desktop");   /* (none: the one last opened) */
+        char real[PATH_MAX];
+        if (d && !realpath(d, real)) {
+            reply_error(c, id, "bad request", "no such desktop folder");
+            cv_free(msg);
+            return;
+        }
+        defaults_start(c, id, d ? real : "", true);
     } else if (strcmp(op, "setup") == 0) {
         struct setup_req *r = calloc(1, sizeof *r);
         r->c = c; c->refs++;

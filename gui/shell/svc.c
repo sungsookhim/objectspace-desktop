@@ -614,3 +614,20 @@ void svc_startup_add(const char *target, svc_fn fn, void *arg)
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     send_req(o, id, fn, arg);
 }
+
+void svc_restore_defaults(const char *desktop, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("restore_defaults", desktop ? 1 : 0, &id);
+    if (desktop) { cb_text(&o->b, "desktop"); cb_text(&o->b, desktop); }
+    send_req(o, id, fn, arg);
+}
+
+bool (*svc_view_fn)(const char *view);
+
+bool svc_reply_view(const cv *reply)
+{
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    const char *v = res ? cv_text(res, "view") : NULL;
+    return v && svc_view_fn && svc_view_fn(v);
+}

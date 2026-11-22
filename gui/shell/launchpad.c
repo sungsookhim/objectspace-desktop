@@ -271,6 +271,7 @@ static void opened(void *arg, const cv *reply)
     (void)arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { lp.open_folder(cv_text(res, "folder")); return; }
+    if (svc_reply_view(reply)) return;
     const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
     if (!res && msg) fprintf(stderr, "wps-shell: LaunchPad: %s\n", msg);
 }
@@ -1009,3 +1010,10 @@ bool launchpad_drawer(size_t i, const char *path)
 }
 
 bool launchpad_snapshot(const char *png) { return lp.s && ui_surface_snapshot(lp.s, png); }
+
+bool launchpad_is_open(void) { return lp.s != NULL; }
+
+void launchpad_raise(void)
+{
+    if (lp.s) ui_window_activate(lp.s);
+}

@@ -82,6 +82,56 @@ if PART == "startup":
     print("%d failed" % fails)
     sys.exit(1 if fails else 0)
 
+def items(folder):
+    return (c.request(op="list", target=folder, offset=0, count=200, details=True).get("result") or {}).get("items", [])
+
+
+def shadows_of(folder, target):
+    return [it for it in items(folder) if it.get("shadow") and it.get("target_path") == target]
+
+
+def titled(folder, title):
+    return [it for it in items(folder) if it.get("title") == title and not it.get("shadow")]
+
+
+if PART == "restore":
+    # (after "new": the desktop's defaults made; a second start notes them)
+    PROG, TRASH = T + "/xdg/data/wps/Programs", T + "/xdg/data/Trash/files"
+    c.request(op="first_start", desktop=DESK)
+    check("Restore Desktop is in System", wait(lambda: len(titled(SYS, "Restore Desktop")) == 1), items(SYS))
+    time.sleep(0.5)
+
+    def vobj(it):
+        return it["name"][1:]
+
+    # the user's mishaps: Programs dropped on itself, System thrown away,
+    # Startup and the Minimized Window Viewer deleted, the LaunchPad
+    # object moved to the desktop
+    r = c.request(op="vmove", target=vobj(shadows_of(DESK, PROG)[0]), folder=PROG)
+    check("(Programs moved into Programs)", r.get("ok"), r)
+    r = c.request(op="vtrash", target=vobj(shadows_of(DESK, SYS)[0]))
+    check("(System into the Trash Can)", r.get("ok"), r)
+    AUTO = T + "/xdg/config/autostart"
+    r = c.request(op="vdelete", target=vobj(shadows_of(SYS, AUTO)[0]))
+    check("(Startup deleted)", r.get("ok"), r)
+    r = c.request(op="vdelete", target=vobj(titled(SYS, "Minimized Window Viewer")[0]))
+    check("(the Minimized Window Viewer deleted)", r.get("ok"), r)
+    r = c.request(op="vmove", target=vobj(titled(SYS, "LaunchPad")[0]), folder=DESK)
+    check("(the LaunchPad object moved to the desktop)", r.get("ok"), r)
+    r = c.request(op="restore_defaults")
+    got = sorted((r.get("result") or {}).get("restored", []))
+    check("restore: what it put back", got == sorted(["Programs", "System", "Startup", "Minimized Window Viewer", "LaunchPad"]), r)
+    check("Programs: back on the desktop, the same one", len(shadows_of(DESK, PROG)) == 1 and not shadows_of(PROG, PROG),
+          (items(DESK), items(PROG)))
+    check("System: back from the Trash Can", len(shadows_of(DESK, SYS)) == 1 and not shadows_of(TRASH, SYS), items(TRASH))
+    check("Startup: made again", len(shadows_of(SYS, AUTO)) == 1, items(SYS))
+    check("the viewer: made again", len(titled(SYS, "Minimized Window Viewer")) == 1, items(SYS))
+    check("the LaunchPad object: back in System", len(titled(SYS, "LaunchPad")) == 1 and not titled(DESK, "LaunchPad"))
+    r = c.request(op="restore_defaults", desktop=DESK)
+    check("again: nothing to do", r.get("ok") and (r.get("result") or {}).get("restored") == [], r)
+    print("%d failed" % fails)
+    sys.exit(1 if fails else 0)
+
 if PART == "old":
     os.makedirs(SYS, exist_ok=True)
     r = c.request(op="shadow", target=TPL, folder=DESK)
@@ -91,9 +141,9 @@ check("first start answers its step", r.get("result") == (6 if PART == "old" els
 check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_shadows(SYS))
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
-    check("the desktop is at step 7", "version 7" in f.read())
+    check("the desktop is at step 8", "version 8" in f.read())
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
-check("a second start changes nothing", r.get("result") == 7 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK), r)
+check("a second start changes nothing", r.get("result") == 8 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK), r)
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

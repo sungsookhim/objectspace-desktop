@@ -19,6 +19,7 @@
 #include "WPWarpCenter.h"
 #include "WPMessages.h"
 #include "WPMinWinViewer.h"
+#include "WPRestoreDesktop.h"
 #include "WPTrashCan.h"
 #include "WPComputer.h"
 #include "WPDrives.h"
@@ -48,7 +49,7 @@ wpo_status wps_classes_register(void)
         WPAbstract_register, WPProgram_register, WPShadow_register,
         WPSetup_register, WPSystem_register, WPSound_register, WPMouse_register, WPSchemePalette_register,
         WPLaunchPad_register, WPWarpCenter_register, WPMessages_register,
-        WPMinWinViewer_register, WPTrashCan_register, WPComputer_register, WPDrives_register, WPDrive_register, WPProgramsFolder_register,
+        WPMinWinViewer_register, WPRestoreDesktop_register, WPTrashCan_register, WPComputer_register, WPDrives_register, WPDrive_register, WPProgramsFolder_register,
     };
     for (size_t i = 0; i < sizeof regs / sizeof regs[0]; i++) {
         wpo_status st = regs[i]();

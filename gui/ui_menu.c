@@ -37,6 +37,7 @@ struct menu_root {
     ui_app *app;
     bool grab;             /* the root took a grab; so may its cascades */
     double ox, oy, closed_at;
+    bool (*icon_fn)(void *arg, int64_t id, void *item);
 };
 
 /* At most one menu tree exists: Wayland requires popups to be destroyed
@@ -64,6 +65,24 @@ void ui_menu_items_free(ui_menu_item *items, size_t n)
 }
 
 static bool is_sep(const ui_menu_item *it) { return it->label && !strcmp(it->label, "-"); }
+
+#define ICON_W 20
+
+/* Whether any item has an icon: the labels move right for it. */
+static bool item_icon(struct menu_root *r, const ui_menu_item *it, ui_item *out)
+{
+    memset(out, 0, sizeof *out);
+    out->loaded = out->detailed = true;
+    return r->icon_fn && !is_sep(it) && r->icon_fn(r->arg, it->id, out);
+}
+
+static double icon_room(struct menu_root *r, const ui_menu_item *items, size_t n)
+{
+    ui_item ii;
+    for (size_t i = 0; i < n; i++)
+        if (item_icon(r, &items[i], &ii)) return ICON_W;
+    return 0;
+}
 
 static double item_y(struct menu *m, size_t i)
 {
@@ -106,6 +125,7 @@ static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_fill(cr, (ui_rect){ 0, 0, m->w, m->h }, k->menu_bg);
     }
     ui_bevel(cr, (ui_rect){ 0, 0, m->w, m->h }, true);
+    double room = icon_room(m->root, m->items, m->n);
     for (size_t i = 0; i < m->n; i++) {
         const ui_menu_item *it = &m->items[i];
         double y = item_y(m, i);
@@ -129,12 +149,17 @@ static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             cairo_line_to(cr, 15, y + 6);
             cairo_stroke(cr);
         }
+        ui_item ii;
+        if (room && item_icon(m->root, it, &ii)) {
+            ui_draw_item_icon(cr, &ii, 20, y + 3, 16);
+            ui_set_color(cr, tc);
+        }
         char label[256];
         snprintf(label, sizeof label, "%s", it->label);
         char *key = strchr(label, '\t');   /* "Text\tShortcut": shortcut right-aligned */
         if (key) *key++ = 0;
         double base = y + (ITEM_H + ui_text_ascent()) / 2 - 1;
-        ui_text_draw(cr, UI_FONT_REGULAR, 22, base, label, m->w - 44);
+        ui_text_draw(cr, UI_FONT_REGULAR, 22 + room, base, label, m->w - 44 - room);
         if (key) ui_text_draw(cr, UI_FONT_REGULAR, m->w - 22 - ui_text_width(UI_FONT_REGULAR, key), base, key, 0);
         if (it->nitems) {
             cairo_move_to(cr, m->w - 12, y + 7);
@@ -289,14 +314,14 @@ static void open_menu(struct menu_root *r, struct menu *parent, ui_surface *on, 
     m->items = items;
     m->n = n;
     m->hot = -1;
-    double w = 120;
+    double w = 120, room = icon_room(r, items, n);
     for (size_t i = 0; i < n; i++)
         if (!is_sep(&items[i])) {
             char label[256];
             snprintf(label, sizeof label, "%s", items[i].label);
             char *key = strchr(label, '\t');
             if (key) *key++ = 0;
-            double tw = ui_text_width(UI_FONT_REGULAR, label) + 22 + 30 + (key ? ui_text_width(UI_FONT_REGULAR, key) + 24 : 0);
+            double tw = ui_text_width(UI_FONT_REGULAR, label) + 22 + 30 + (key ? ui_text_width(UI_FONT_REGULAR, key) + 24 : 0) + room;
             if (tw > w) w = tw;
         }
     m->w = w;
@@ -349,9 +374,20 @@ static void finish(struct menu_root *r, int64_t id)
     ui_app_post(r->app, finish_now, r);
 }
 
+static bool (*next_icon_fn)(void *arg, int64_t id, void *item);
+
+void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
+                         ui_menu_fn fn, void *arg, bool (*icon_fn)(void *arg, int64_t id, void *item))
+{
+    next_icon_fn = icon_fn;
+    ui_menu_popup(parent, items, n, x, y, serial, fn, arg);
+}
+
 void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                    ui_menu_fn fn, void *arg)
 {
+    bool (*icon_fn)(void *, int64_t, void *) = next_icon_fn;
+    next_icon_fn = NULL;
     if (!n) { if (fn) fn(arg, -1); return; }
     if (active) {
         struct menu_root *old = active;
@@ -373,6 +409,7 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     r->oy = y;
     r->fn = fn;
     r->arg = arg;
+    r->icon_fn = icon_fn;
     r->items = copy_items(items, n);
     r->n = n;
     ui_rect anchor = { x, y, 1, 1 };

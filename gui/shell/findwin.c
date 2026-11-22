@@ -226,6 +226,7 @@ static void opened(void *arg, const cv *reply)
     (void)arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { open_folder(cv_text(res, "folder")); return; }
+    if (svc_reply_view(reply)) return;
     const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
     if (!res && msg) fprintf(stderr, "wps-shell: Find: %s\n", msg);
 }

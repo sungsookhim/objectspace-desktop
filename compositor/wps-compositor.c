@@ -2031,9 +2031,12 @@ static void on_popup_commit(struct wl_listener *l, void *data)
     (void)data;
     struct popup *p = wl_container_of(l, p, commit);
     if (!p->xdg->base->initial_commit) return;
-    /* the screen, in the parent's surface coordinates */
+    /* the screen, in the root window's surface coordinates (wlroots wants
+     * those: a cascade's parent is itself a popup) */
     /* (the parent is a wl_surface: its xdg surface holds the scene tree) */
     struct wlr_xdg_surface *px = p->xdg->parent ? wlr_xdg_surface_try_from_wlr_surface(p->xdg->parent) : NULL;
+    while (px && px->role == WLR_XDG_SURFACE_ROLE_POPUP && px->popup && px->popup->parent)
+        px = wlr_xdg_surface_try_from_wlr_surface(px->popup->parent);
     struct wlr_scene_tree *pt = px ? px->data : NULL;
     int lx = 0, ly = 0;
     if (pt) wlr_scene_node_coords(&pt->node, &lx, &ly);

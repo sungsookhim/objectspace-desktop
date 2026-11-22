@@ -86,11 +86,19 @@ typedef struct {
 } svc_message;
 /* Into Startup: an autostart entry for a program or script, else a shadow. */
 void svc_startup_add(const char *target, svc_fn fn, void *arg);
+/* The default objects back in place (Restore Desktop) -> {restored:[titles]}. */
+void svc_restore_defaults(const char *desktop, svc_fn fn, void *arg);
 void svc_msg_add(const svc_message *m, svc_fn fn, void *arg);
 void svc_msg_list(svc_fn fn, void *arg);
 /* ids: n of them, or all messages when n is 0; read, closed: -1 unchanged. */
 void svc_msg_set(const int64_t *ids, size_t n, int read, int closed, svc_fn fn, void *arg);
 void svc_msg_delete(const int64_t *ids, size_t n, svc_fn fn, void *arg);
 void svc_msg_closed(int64_t nid, const char *sender, svc_fn fn, void *arg);
+
+/* An open's reply naming a view (messages, minimized-windows, launchpad,
+ * warpcenter): the desktop shows it. Every part that opens objects passes
+ * such replies here; true if it was one. */
+extern bool (*svc_view_fn)(const char *view);
+bool svc_reply_view(const cv *reply);
 
 #endif
