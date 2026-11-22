@@ -32,7 +32,7 @@ T=$(sed -n 's/^T=//p' "$S/out.txt")
 # swatch at 590,331) gives a colour: green at 616,381.
 cat > "$S/page" <<EOS
 3.5 click 600 300 right
-4.2 click 650 360
+4.2 click 650 382
 5.5 click 818 204
 6.2 click 843 271
 7 click 590 331

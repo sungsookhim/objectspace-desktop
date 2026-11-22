@@ -50,6 +50,11 @@
 #define WPS_MI_OPEN_OTHER    199
 #define WPS_MI_OPEN_APP      200
 #define WPS_MI_OPEN_APPS      48
+/* New > on a folder's background menu (v0.3-design 9): the templates,
+ * WPS_MI_NEW + k, by title (made at the click's spot). */
+#define WPS_MI_NEW_MENU      299
+#define WPS_MI_NEW           300
+#define WPS_MI_NEWS           64
 /* Added by the GUI itself to a folder window's background menu. */
 #define WPS_MI_VIEW           30    /* cascade: switch this window's view */
 #define WPS_MI_VIEW_ICON      31

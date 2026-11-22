@@ -5,6 +5,7 @@
  * any); Up, and a path field to type or paste into. A double click on a
  * folder (or Enter) goes into it; on a file it picks it: chosen(owner, key,
  * the file's path), and the picker closes. Escape closes it unchosen.
+ * "folder": folders only, and Use this folder chooses the one shown.
  */
 #ifndef WPS_FILEPICK_H
 #define WPS_FILEPICK_H
@@ -17,7 +18,7 @@
 typedef void (*filepick_fn)(long owner, const char *key, const char *path);
 
 void filepick_init(ui_app *a);
-/* `for_title`: what it is for (in its title); `kind`: "image", "audio" or "". */
+/* `for_title`: what it is for (in its title); `kind`: "image", "audio", "folder" or "". */
 void filepick_open(const char *for_title, const char *kind, const char *start, filepick_fn chosen, long owner,
                    const char *key);
 
@@ -29,5 +30,6 @@ const char *filepick_name(size_t i);
 bool filepick_go(const char *folder);
 bool filepick_activate(size_t i);          /* as a double click */
 bool filepick_snapshot(const char *png);
+bool filepick_use(void);                  /* Use this folder */
 
 #endif

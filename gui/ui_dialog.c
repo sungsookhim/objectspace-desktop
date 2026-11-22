@@ -228,6 +228,14 @@ ui_dialog *ui_dialog_open_entry(ui_app *a, const char *title, const char *messag
 
 const char *ui_dialog_text(ui_dialog *d) { return d->entry ? ui_entry_text(d->entry) : ""; }
 
+void ui_dialog_set_text(ui_dialog *d, const char *text)
+{
+    if (!d->entry) return;
+    ui_entry_set_text(d->entry, text);
+    ui_entry_select_all(d->entry);
+    ui_surface_damage_all(d->win);
+}
+
 ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
                           int default_button, ui_dialog_fn fn, void *ctx)
 {

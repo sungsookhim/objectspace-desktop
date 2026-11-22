@@ -449,6 +449,7 @@ ui_dialog *ui_dialog_open(ui_app *a, const char *title, const char *message, con
 ui_dialog *ui_dialog_open_entry(ui_app *a, const char *title, const char *message, bool secret, const char *const *buttons,
                                 size_t n, int default_button, ui_dialog_fn fn, void *ctx);
 const char *ui_dialog_text(ui_dialog *d);
+void ui_dialog_set_text(ui_dialog *d, const char *text);   /* the field's text, selected */
 ui_surface *ui_dialog_surface(ui_dialog *d);
 void ui_dialog_key(ui_dialog *d, const ui_key_event *e);   /* as if typed (self-tests) */
 

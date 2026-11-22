@@ -1936,7 +1936,27 @@ static bool open_properties(const char *target)
 
 /* Menus: the service gives the items; the GUI carries out the well-known
  * ones and sends the rest back. */
-struct menu_ctx { long folder; size_t item; double x, y; uint32_t serial; };
+/* Where a new or dropped object lands (placed at x, y in icon view). */
+struct land { long folder; char dest[PATH_MAX]; int64_t x, y; bool place; };
+static void made_new(void *arg, const cv *reply);
+
+struct menu_ctx {
+    long folder; size_t item; double x, y; uint32_t serial;
+    char **tpl, **tpl_title;   /* New > (a background menu): the templates' addresses and titles */
+    size_t ntpl;
+};
+
+/* Self-tests: the menu given here instead of shown (it chooses with menu_chosen). */
+static void (*menu_hook)(struct menu_ctx *m, const ui_menu_item *items, size_t n);
+static void menu_chosen(void *arg, int64_t id);
+
+static void menu_ctx_free(struct menu_ctx *m)
+{
+    for (size_t i = 0; i < m->ntpl; i++) { free(m->tpl[i]); free(m->tpl_title[i]); }
+    free(m->tpl);
+    free(m->tpl_title);
+    free(m);
+}
 
 static char setup_folder[PATH_MAX];   /* System Setup's (the LaunchPad's first buttons) */
 
@@ -2041,11 +2061,26 @@ static void menu_chosen(void *arg, int64_t id)
                 svc_open_with(t, NULL, (int)(id - WPS_MI_OPEN_APP), false, opened, as_arg(f));
                 break;
             }
+            if (id >= WPS_MI_NEW && id < WPS_MI_NEW + WPS_MI_NEWS && (size_t)(id - WPS_MI_NEW) < m->ntpl) {
+                /* New > a template: an object made from it here, at the click */
+                struct land *l = calloc(1, sizeof *l);
+                l->folder = f->id;
+                snprintf(l->dest, sizeof l->dest, "%s", f->path);
+                l->place = ui_container_view(f->cont) == UI_VIEW_ICON && !f->filter[0];
+                if (l->place) {
+                    double lx, ly;
+                    ui_container_to_list(f->cont, m->x, m->y, &lx, &ly);
+                    l->x = lx < 0 ? 0 : (int64_t)lx;
+                    l->y = ly < 0 ? 0 : (int64_t)ly;
+                }
+                svc_from_template(m->tpl[id - WPS_MI_NEW], f->path, NULL, made_new, l);
+                break;
+            }
             svc_menu_select(t, id, selected_done, as_arg(f));
             break;
         }
     }
-    free(m);
+    menu_ctx_free(m);
 }
 
 /* ---- Drives (v0.2-design 5): their menu's actions, the passphrase */
@@ -2282,7 +2317,7 @@ static void got_menu(void *arg, const cv *reply)
     struct menu_ctx *m = arg;
     struct folder *f = folder_by_id(m->folder);
     const cv *res = reply ? cv_get(reply, "result") : NULL;
-    if (!f || !res) { free(m); return; }
+    if (!f || !res) { menu_ctx_free(m); return; }
     ui_menu_item *items;
     size_t n;
     convert(res, &items, &n);
@@ -2329,6 +2364,13 @@ static void got_menu(void *arg, const cv *reply)
         memmove(items + at + 1, items + at, (n - at) * sizeof *items);
         items[at] = (ui_menu_item){ WPS_MI_OPEN_PARENT, "Open parent", strcmp(f->path, "/") != 0, false, NULL, 0 };
         n++;
+        /* New > the Templates folder's templates (v0.3-design 9) */
+        ui_menu_item *news = calloc(m->ntpl ? m->ntpl : 1, sizeof *news);
+        for (size_t k = 0; k < m->ntpl; k++) news[k] = (ui_menu_item){ WPS_MI_NEW + (int64_t)k, m->tpl_title[k], true, false, NULL, 0 };
+        items = realloc(items, (n + 7) * sizeof *items);
+        memmove(items + at + 2, items + at + 1, (n - at - 1) * sizeof *items);
+        items[at + 1] = (ui_menu_item){ WPS_MI_NEW_MENU, "New", m->ntpl > 0, false, news, m->ntpl };
+        n++;
         items[n++] = (ui_menu_item){ WPS_MI_FIND, "Find...", true, false, NULL, 0 };
         items[n++] = (ui_menu_item){ WPS_MI_SORT, "Sort", icons, false, sorts, 4 };
         if (!f->desktop) {
@@ -2367,8 +2409,54 @@ static void got_menu(void *arg, const cv *reply)
     /* No grab (serial 0): the button was released before the service
      * answered, and GNOME refuses a grab then, dismissing the menu at once.
      * The shell closes its own menus on clicks elsewhere. */
+    if (menu_hook) { menu_hook(m, items, n); free_converted(items, n); return; }   /* (self-tests) */
     ui_menu_popup(f->win, items, n, m->x, m->y, 0, menu_chosen, m);
     free_converted(items, n);
+}
+
+static void templates_dir(char *out, size_t n);
+
+static int tpl_cmp(const void *a, const void *b, void *ctx)
+{
+    char **t = ctx;
+    return strcoll(t[*(const size_t *)a], t[*(const size_t *)b]);
+}
+
+/* A background menu: the templates first (New >), then the menu. */
+static void got_templates(void *arg, const cv *reply)
+{
+    struct menu_ctx *m = arg;
+    struct folder *f = folder_by_id(m->folder);
+    if (!f) { menu_ctx_free(m); return; }
+    const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
+    char tdir[PATH_MAX];
+    templates_dir(tdir, sizeof tdir);
+    size_t n = items && items->k == CV_ARRAY ? items->n : 0;
+    if (n > WPS_MI_NEWS) n = WPS_MI_NEWS;
+    char **addr = calloc(n ? n : 1, sizeof *addr), **title = calloc(n ? n : 1, sizeof *title);
+    size_t k = 0;
+    for (size_t i = 0; i < n; i++) {
+        const char *nm = cv_text(&items->items[i], "name"), *ti = cv_text(&items->items[i], "title");
+        if (!nm) continue;
+        if (nm[0] == '\x01') addr[k] = strdup(nm + 1);   /* a central one (Folder, Data File, Program) */
+        else if (asprintf(&addr[k], "%s/%s", tdir, nm) < 0) continue;
+        title[k] = strdup(ti && *ti ? ti : nm[0] == '\x01' ? "?" : nm);
+        k++;
+    }
+    /* by title */
+    size_t *o = malloc((k ? k : 1) * sizeof *o);
+    for (size_t i = 0; i < k; i++) o[i] = i;
+    qsort_r(o, k, sizeof *o, tpl_cmp, title);
+    m->tpl = calloc(k ? k : 1, sizeof *m->tpl);
+    m->tpl_title = calloc(k ? k : 1, sizeof *m->tpl_title);
+    for (size_t i = 0; i < k; i++) { m->tpl[i] = addr[o[i]]; m->tpl_title[i] = title[o[i]]; }
+    m->ntpl = k;
+    free(o);
+    free(addr);
+    free(title);
+    char t[PATH_MAX];
+    target_of(f, m->item, t, sizeof t);
+    svc_menu(t, got_menu, m);
 }
 
 static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
@@ -2380,6 +2468,12 @@ static void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     m->x = x;
     m->y = y;
     m->serial = serial;
+    if (i == SIZE_MAX) {
+        char tdir[PATH_MAX];
+        templates_dir(tdir, sizeof tdir);
+        svc_list_v(tdir, "", false, 0, WPS_MI_NEWS, true, got_templates, m);
+        return;
+    }
     char t[PATH_MAX];
     target_of(f, i, t, sizeof t);
     svc_menu(t, got_menu, m);
@@ -2910,6 +3004,7 @@ static bool reposition(struct folder *f, double x, double y)
 struct drop_at { bool place; double lx, ly; };
 
 static void do_drop(struct folder *f, const char *dest, const char *mime, const char *data, int how, struct drop_at at);
+static bool drop_moves_templates;   /* Shift held: templates are moved, not made from */
 
 /* The compositor said "ask" (Alt in GNOME): a menu at the drop point. */
 struct ask_ctx { long folder; char dest[PATH_MAX]; char *mime, *data; struct drop_at at; };
@@ -3000,8 +3095,13 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     struct drop_at at = { item == SIZE_MAX && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON, 0, 0 };
     if (at.place) ui_container_to_list(f->cont, x, y, &at.lx, &at.ly);
     int how = w == 2 ? DROP_SHADOW : w == 1 ? DROP_COPY : DROP_MOVE;
-    if (w == 0 && how == DROP_MOVE && cur_drag && !strcmp(dest, f->path) && ui_container_view(f->cont) == UI_VIEW_ICON &&
-        reposition(f, x, y))
+    /* Templates (OS/2): a drag makes a new object from them, even within
+     * their own folder; Shift+drag moves the template itself */
+    bool tpl_move = (mods & UI_MOD_SHIFT) && !(mods & UI_MOD_CTRL);
+    bool has_tpl = false;
+    for (size_t k = 0; cur_drag && cur_drag->tpl && k < cur_drag->n; k++) has_tpl |= cur_drag->tpl[k];
+    if (w == 0 && how == DROP_MOVE && cur_drag && (tpl_move || !has_tpl) && !strcmp(dest, f->path) &&
+        ui_container_view(f->cont) == UI_VIEW_ICON && reposition(f, x, y))
         return UI_DND_MOVE;
     if (w < 0) {
         struct ask_ctx *a = calloc(1, sizeof *a);
@@ -3023,13 +3123,14 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     if (getenv("WPS_DEBUG_DND"))
         fprintf(stderr, "dnd: dropping as %s\n", how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
     raise_in(f, "object.drop", dest, how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
+    drop_moves_templates = tpl_move && how == DROP_MOVE;
     do_drop(f, dest, mime, data, how, at);
+    drop_moves_templates = false;
     return how == DROP_MOVE ? UI_DND_MOVE : UI_DND_COPY;
 }
 
 /* A shadow or central object made or moved by a drop: place it where it
  * was dropped once the service gives its address. */
-struct land { long folder; char dest[PATH_MAX]; int64_t x, y; bool place; };
 
 static void landed(void *arg, const cv *reply);
 
@@ -3052,43 +3153,115 @@ static void rename_new_now(struct folder *f)
         }
 }
 
-/* Create another (OS/2): a new, empty object of the same kind beside
- * item i (the folder itself for SIZE_MAX), its name ready to edit. */
+/* Create another (OS/2): a new object of the same kind as item i (the
+ * folder itself for SIZE_MAX), or made from it if it is a template; a
+ * dialog asks its name and folder (v0.3-design 9). */
 static void made_new(void *arg, const cv *reply);
+
+struct another {
+    long folder;
+    char dir[PATH_MAX], cls[32], what[32], name[NAME_MAX + 32], tpl[PATH_MAX];
+    ui_dialog *dlg;
+};
+static struct another *another_now;   /* (one at a time) */
+
+static void another_ask(struct another *a);
+
+static void another_folder(long owner, const char *key, const char *path)
+{
+    (void)owner; (void)key;
+    if (!another_now) return;
+    snprintf(another_now->dir, sizeof another_now->dir, "%s", path);
+    another_ask(another_now);
+}
+
+static void another_chosen(void *ctx, int choice)
+{
+    struct another *a = ctx;
+    if (a->dlg) {
+        const char *t = ui_dialog_text(a->dlg);
+        if (t && *t) snprintf(a->name, sizeof a->name, "%s", t);
+    }
+    a->dlg = NULL;
+    if (choice == 1) {   /* Folder...: chosen, then asked again */
+        filepick_open("Create Another", "folder", a->dir, another_folder, 0, "");
+        return;
+    }
+    if (choice == 0 && !strchr(a->name, '/')) {
+        struct land *l = calloc(1, sizeof *l);
+        l->folder = a->folder;
+        snprintf(l->dest, sizeof l->dest, "%s", a->dir);
+        if (a->tpl[0]) svc_from_template(a->tpl, a->dir, a->name, made_new, l);
+        else svc_create(a->dir, a->cls, a->name, made_new, l);
+        struct folder *f = folder_by_id(a->folder);
+        if (f && strcmp(a->dir, f->path)) {
+            char m[PATH_MAX + 64];
+            snprintf(m, sizeof m, "Made in %s", a->dir);
+            set_status(f->id, m);
+        }
+    } else if (choice == 0) {
+        struct folder *f = folder_by_id(a->folder);
+        if (f) set_status(f->id, "Not made: a name cannot have '/' in it");
+    }
+    if (another_now == a) another_now = NULL;
+    free(a);
+}
+
+static void another_ask(struct another *a)
+{
+    char msg[PATH_MAX + 128];
+    snprintf(msg, sizeof msg, "A new %s in the folder %s. Its name:", a->what, a->dir);
+    static const char *const b[] = { "Create", "Folder...", "Cancel" };
+    a->dlg = ui_dialog_open_entry(app, "Create Another", msg, false, b, 3, 0, another_chosen, a);
+    ui_dialog_set_text(a->dlg, a->name);
+}
+
 static void create_another(struct folder *f, size_t i)
 {
     struct row *rw = row_at(f, i);
-    char dir[PATH_MAX], title[NAME_MAX + 32];
-    const char *cls;
+    struct another *a = calloc(1, sizeof *a);
+    a->folder = f->id;
     if (i == SIZE_MAX || is_tree(f)) {
         char t[PATH_MAX];
         target_of(f, i, t, sizeof t);
         char *sl = strrchr(t, '/');
-        if (!sl || sl == t) return;
+        if (!sl || sl == t) { free(a); return; }
         *sl = 0;
-        snprintf(dir, sizeof dir, "%s", t);
-        cls = "WPFolder";
-        snprintf(title, sizeof title, "New Folder");
+        snprintf(a->dir, sizeof a->dir, "%s", t);
+        snprintf(a->cls, sizeof a->cls, "WPFolder");
+        snprintf(a->what, sizeof a->what, "folder");
+        snprintf(a->name, sizeof a->name, "New Folder");
     } else {
-        if (!rw || rw->shadow || rw->link || rw->name[0] == '\x01' || rw->tpl) {
-            set_status(f->id, "Create another works on files, folders and programs (drag a template to make one from it)");
+        if (!rw || rw->shadow || rw->link || (rw->name[0] == '\x01' && !rw->tpl)) {
+            set_status(f->id, "Create another works on files, folders, programs and templates");
+            free(a);
             return;
         }
-        snprintf(dir, sizeof dir, "%s", f->path);
+        snprintf(a->dir, sizeof a->dir, "%s", f->path);
         size_t nl = strlen(rw->name);
-        if (rw->kind == UI_KIND_FOLDER) { cls = "WPFolder"; snprintf(title, sizeof title, "New Folder"); }
-        else if (nl > 8 && !strcmp(rw->name + nl - 8, ".desktop")) { cls = "WPProgram"; snprintf(title, sizeof title, "New Program"); }
-        else {
+        if (rw->tpl) {
+            target_of(f, i, a->tpl, sizeof a->tpl);   /* made from the template */
+            snprintf(a->what, sizeof a->what, "object from the template");
+            snprintf(a->name, sizeof a->name, "%s", rw->title ? rw->title : rw->name);
+        } else if (rw->kind == UI_KIND_FOLDER) {
+            snprintf(a->cls, sizeof a->cls, "WPFolder");
+            snprintf(a->what, sizeof a->what, "folder");
+            snprintf(a->name, sizeof a->name, "New Folder");
+        } else if (nl > 8 && !strcmp(rw->name + nl - 8, ".desktop")) {
+            snprintf(a->cls, sizeof a->cls, "WPProgram");
+            snprintf(a->what, sizeof a->what, "program");
+            snprintf(a->name, sizeof a->name, "New Program");
+        } else {
             /* a data file of the same type: the same extension */
             const char *dot = strrchr(rw->name, '.');
-            cls = "WPDataFile";
-            snprintf(title, sizeof title, "New Data File%s", dot && dot != rw->name ? dot : "");
+            snprintf(a->cls, sizeof a->cls, "WPDataFile");
+            snprintf(a->what, sizeof a->what, "data file");
+            snprintf(a->name, sizeof a->name, "New Data File%s", dot && dot != rw->name ? dot : "");
         }
     }
-    struct land *l = calloc(1, sizeof *l);
-    l->folder = f->id;
-    snprintf(l->dest, sizeof l->dest, "%s", dir);
-    svc_create(dir, cls, title, made_new, l);
+    if (another_now && !another_now->dlg) free(another_now);   /* (an earlier one left at its folder picker) */
+    another_now = a;
+    another_ask(a);
 }
 
 /* A new object was made (from a template, or Create another): place it
@@ -3168,7 +3341,7 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
         if (cur_drag && k < cur_drag->n && !strcmp(cur_drag->paths[k], p)) { ox = cur_drag->dx[k]; oy = cur_drag->dy[k]; }
         int64_t px = at.lx + ox < 0 ? 0 : (int64_t)(at.lx + ox), py = at.ly + oy < 0 ? 0 : (int64_t)(at.ly + oy);
         k++;
-        if (tpl && !shadow) {
+        if (tpl && !shadow && !drop_moves_templates) {
             /* A template dropped (moved or copied): a new object from it,
              * where it was dropped, with its name ready to edit (OS/2). */
             struct land *l = calloc(1, sizeof *l);
@@ -4118,10 +4291,114 @@ static void selftest_cascade(void *arg, const cv *reply)
     fprintf(stderr, "selftest: openwith: Open: %s\n", out);
 }
 
+/* WPS_SHELL_SELFTEST=templates: New > printed, its Folder chosen. */
+static void selftest_new_menu(struct menu_ctx *m, const ui_menu_item *items, size_t n)
+{
+    char out[512] = "";
+    int64_t folder_id = -1;
+    for (size_t i = 0; i < n; i++) {
+        if (items[i].id != WPS_MI_NEW_MENU) continue;
+        for (size_t k = 0; k < items[i].nitems; k++) {
+            snprintf(out + strlen(out), sizeof out - strlen(out), "%s%s", k ? ", " : "", items[i].items[k].label);
+            if (!strcmp(items[i].items[k].label, "Folder")) folder_id = items[i].items[k].id;
+        }
+    }
+    fprintf(stderr, "selftest: templates: New: %s\n", out);
+    menu_hook = NULL;
+    menu_chosen(m, folder_id);
+}
+
+static bool selftest_pos(struct folder *f, const char *name, double *x, double *y)
+{
+    for (size_t i = 0; i < f->m.total; i++)
+        if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), name)) { layout_pos(f->lay, i, x, y); return true; }
+    return false;
+}
+
 static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "templates")) {
+        /* Templates (0.3 step 8): New > at a spot; Create another into a
+         * folder chosen in the picker; a template dragged makes an object,
+         * Shift+dragged moves. <D> has a.txt (made a template here) and sub/. */
+        static double t0, ax, ay;
+        static int step;
+        if (!t0) { if (!f->m.complete || !f->arranged_by_name) return; t0 = now; }
+        double t = now - t0;
+        char p[PATH_MAX];
+        if (step == 0) {
+            menu_hook = selftest_new_menu;
+            src_menu(f, SIZE_MAX, 420, 330, 0);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 2000) {
+            double x, y, lx, ly;
+            ui_container_to_list(f->cont, 420, 330, &lx, &ly);
+            bool made = selftest_pos(f, "Folder", &x, &y);
+            fprintf(stderr, "selftest: templates: New > Folder: made %d, at the click %d\n", made, made && fabs(x - lx) < 2 && fabs(y - ly) < 2);
+            size_t a = SIZE_MAX;
+            for (size_t i = 0; i < f->m.total; i++) if (model_name(&f->m, i) && !strcmp(model_name(&f->m, i), "a.txt")) a = i;
+            create_another(f, a);
+            ui_dialog_set_text(another_now->dlg, "made.txt");
+            ui_key_event tab = { .sym = XKB_KEY_Tab }, enter = { .sym = XKB_KEY_Return };
+            ui_dialog_key(another_now->dlg, &tab);
+            ui_dialog_key(another_now->dlg, &enter);   /* Folder... */
+            snprintf(p, sizeof p, "%s/sub", f->path);
+            fprintf(stderr, "selftest: templates: Folder...: the picker %d\n", filepick_is_open());
+            filepick_go(p);
+            filepick_use();
+            fprintf(stderr, "selftest: templates: asked again: in %s\n", another_now && another_now->dlg ? strrchr(another_now->dir, '/') : "?");
+            if (another_now && another_now->dlg) ui_dialog_key(another_now->dlg, &enter);   /* Create */
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            struct stat sst;
+            snprintf(p, sizeof p, "%s/sub/made.txt", f->path);
+            fprintf(stderr, "selftest: templates: Create another: sub/made.txt %d\n", stat(p, &sst) == 0);
+            snprintf(p, sizeof p, "%s/a.txt", f->path);
+            cv v = { .k = CV_BOOL, .b = true };
+            svc_settings_set(p, "template", &v, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if ((step == 3 || step == 5) && t > 1500) {
+            /* a.txt dragged within its folder: plain, then with Shift */
+            snprintf(p, sizeof p, "%s/a.txt", f->path);
+            selftest_pos(f, "a.txt", &ax, &ay);
+            struct dragging d = { 0 };
+            char *ps[1] = { p };
+            bool tp[1] = { true };
+            double dx[1] = { 0 }, dy[1] = { 0 };
+            d.paths = ps; d.n = 1; d.tpl = tp; d.dx = dx; d.dy = dy;
+            snprintf(d.src_folder, sizeof d.src_folder, "%s", f->path);
+            char data[PATH_MAX + 16];
+            snprintf(data, sizeof data, "%s\ttemplate\n", p);
+            struct dragging *was = cur_drag;
+            cur_drag = &d;
+            win_drop(s, 560, step == 3 ? 400 : 450, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, step == 3 ? 0 : UI_MOD_SHIFT);
+            cur_drag = was;
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 2000) {
+            double x, y;
+            struct stat sst;
+            snprintf(p, sizeof p, "%s/a (2).txt", f->path);
+            fprintf(stderr, "selftest: templates: dragged: a new object %d, the template stayed %d\n", stat(p, &sst) == 0,
+                    selftest_pos(f, "a.txt", &x, &y) && x == ax && y == ay);
+            step++;
+            t0 = now;
+        } else if (step == 6 && t > 1500) {
+            double x, y;
+            struct stat sst;
+            snprintf(p, sizeof p, "%s/a (3).txt", f->path);
+            fprintf(stderr, "selftest: templates: Shift+dragged: moved %d, nothing made %d\n",
+                    selftest_pos(f, "a.txt", &x, &y) && (x != ax || y != ay), stat(p, &sst) != 0);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "openwith")) {
         /* Open With (0.3 step 7): <D> has a.txt; text/plain's default is
          * the Hold program (selftest.sh), which keeps it open 2 s. */
@@ -5960,6 +6237,13 @@ static void show_warpcenter(void)
         }
 }
 
+static void templates_dir(char *out, size_t n)
+{
+    const char *t = getenv("WPS_TEMPLATES_DIR");
+    if (t && *t) snprintf(out, n, "%s", t);
+    else user_dir("TEMPLATES", "Templates", out, n);
+}
+
 /* Opened, or brought forward: never two (only the desktop's process
  * has one). */
 static void show_launchpad(void)
@@ -5969,9 +6253,7 @@ static void show_launchpad(void)
     for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
     if (!desktop) return;
     char tdir[PATH_MAX];
-    const char *t = getenv("WPS_TEMPLATES_DIR");
-    if (t && *t) snprintf(tdir, sizeof tdir, "%s", t);
-    else user_dir("TEMPLATES", "Templates", tdir, sizeof tdir);
+    templates_dir(tdir, sizeof tdir);
     launchpad_open(app, launchpad_open_folder, tdir, setup_folder[0] ? setup_folder : NULL);
 }
 

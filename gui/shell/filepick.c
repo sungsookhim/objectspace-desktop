@@ -18,6 +18,7 @@
 #define M 8
 #define ROW 24
 #define UP_W 60
+#define USE_W 120         /* a folder's: Use this folder */
 #define STATUS_H 20
 #define PREVIEW 64
 #define MAX_LOADING 4         /* previews being made at once */
@@ -30,7 +31,7 @@ struct ent {
     cairo_surface_t *img;
 };
 
-enum { F_UP, F_PATH, F_LIST, F_COUNT };
+enum { F_UP, F_PATH, F_LIST, F_USE, F_COUNT };
 
 static ui_app *app;
 
@@ -44,7 +45,7 @@ static struct picker {
     size_t n;
     bool truncated;
     int focus;
-    bool up_pressed;
+    bool up_pressed, use_pressed;
     int dragging;
     unsigned gen;             /* changes with the folder and on close: late previews are dropped */
     int loading;
@@ -74,6 +75,7 @@ static bool wanted(const char *name)
 {
     if (!strcmp(pk.kind, "image")) return has_ext(name, image_exts);
     if (!strcmp(pk.kind, "audio")) return has_ext(name, audio_exts);
+    if (!strcmp(pk.kind, "folder")) return false;   /* folders only */
     return true;
 }
 
@@ -260,7 +262,8 @@ static void path_entered(void)
 
 /* --------------------------------------------------------------- window */
 
-struct rects { ui_rect up, path, list, status; };
+struct rects { ui_rect up, path, use, list, status; };
+static bool folder_kind(void) { return !strcmp(pk.kind, "folder"); }
 
 static struct rects rects(void)
 {
@@ -268,7 +271,9 @@ static struct rects rects(void)
     struct rects r;
     double y = c.y + M, x = c.x + M;
     r.up = (ui_rect){ x, y, UP_W, ROW };
-    r.path = (ui_rect){ x + UP_W + 8, y, c.x + c.w - M - (x + UP_W + 8), ROW };
+    double right = c.x + c.w - M - (folder_kind() ? USE_W + 8 : 0);
+    r.path = (ui_rect){ x + UP_W + 8, y, right - (x + UP_W + 8), ROW };
+    r.use = (ui_rect){ right + 8, y, folder_kind() ? USE_W : 0, ROW };
     r.status = (ui_rect){ c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
     double ly = y + ROW + M;
     r.list = (ui_rect){ c.x, ly, c.w, r.status.y - ly };
@@ -304,6 +309,16 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_text_draw(cr, UI_FONT_REGULAR, r.up.x + (r.up.w - tw) / 2 + pk.up_pressed,
                      r.up.y + (ROW + ui_text_ascent()) / 2 - 1 + pk.up_pressed, "Up", r.up.w - 6);
         if (pk.focus == F_UP) focus_ring(cr, r.up);
+        if (folder_kind()) {
+            ui_fill(cr, r.use, k->face);
+            ui_bevel(cr, r.use, !pk.use_pressed);
+            ui_set_color(cr, k->text);
+            const char *u = "Use this folder";
+            double uw = ui_text_width(UI_FONT_REGULAR, u);
+            ui_text_draw(cr, UI_FONT_REGULAR, r.use.x + (r.use.w - uw) / 2 + pk.use_pressed,
+                         r.use.y + (ROW + ui_text_ascent()) / 2 - 1 + pk.use_pressed, u, r.use.w - 6);
+            if (pk.focus == F_USE) focus_ring(cr, r.use);
+        }
         ui_entry_draw(pk.path, cr, r.path, pk.focus == F_PATH);
     }
     ui_container_draw(pk.cont, cr, clip);
@@ -314,8 +329,9 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     size_t files = 0;
     for (size_t i = 0; i < pk.n; i++) files += !pk.v[i].dir;
     const char *what = !strcmp(pk.kind, "image") ? "picture" : !strcmp(pk.kind, "audio") ? "sound" : "file";
-    snprintf(msg, sizeof msg, "%zu %s%s%s; double-click one to use it, a folder to open it", files, what, files == 1 ? "" : "s",
-             pk.truncated ? " (the first ones)" : "");
+    if (folder_kind()) snprintf(msg, sizeof msg, "Double-click a folder to open it; Use this folder chooses the one shown");
+    else snprintf(msg, sizeof msg, "%zu %s%s%s; double-click one to use it, a folder to open it", files, what, files == 1 ? "" : "s",
+                  pk.truncated ? " (the first ones)" : "");
     ui_set_color(cr, k->text);
     cairo_save(cr);
     cairo_rectangle(cr, r.status.x + 2, r.status.y + 2, r.status.w - 4, r.status.h - 4);
@@ -330,6 +346,7 @@ static void a11y(void)
     ui_a11y_info i = { .index = pk.focus, .count = F_COUNT };
     switch (pk.focus) {
     case F_UP: i.role = UI_ROLE_BUTTON; i.name = "Up"; i.at = r.up; break;
+    case F_USE: i.role = UI_ROLE_BUTTON; i.name = "Use this folder"; i.at = r.use; break;
     case F_PATH: i.role = UI_ROLE_ENTRY; i.name = "Folder or file"; i.text = ui_entry_text(pk.path); i.at = r.path; break;
     default: return;   /* the list says which file */
     }
@@ -367,11 +384,18 @@ static void pk_pointer(ui_surface *s, const ui_pointer_event *e)
             return;
         }
         if (ui_rect_has(r.up, e->x, e->y)) { set_focus(F_UP); pk.up_pressed = true; ui_surface_damage_all(s); }
+        if (folder_kind() && ui_rect_has(r.use, e->x, e->y)) { set_focus(F_USE); pk.use_pressed = true; ui_surface_damage_all(s); }
         return;
     }
     if ((e->kind == UI_MOTION || e->kind == UI_RELEASE) && pk.dragging) {
         if (ui_entry_pointer(pk.path, e, r.path) != UI_ENTRY_NONE) ui_surface_damage_all(s);
         if (e->kind == UI_RELEASE) pk.dragging = 0;
+    }
+    if (e->kind == UI_RELEASE && pk.use_pressed) {
+        pk.use_pressed = false;
+        ui_surface_damage_all(s);
+        if (ui_rect_has(r.use, e->x, e->y)) { char p[PATH_MAX]; snprintf(p, sizeof p, "%s", pk.folder); pick_path(p); }
+        return;
     }
     if (e->kind == UI_RELEASE && pk.up_pressed) {
         pk.up_pressed = false;
@@ -385,7 +409,8 @@ static void pk_key(ui_surface *s, const ui_key_event *e)
 {
     if (e->sym == XKB_KEY_Tab || e->sym == XKB_KEY_ISO_Left_Tab) {
         bool back = e->sym == XKB_KEY_ISO_Left_Tab || (e->mods & UI_MOD_SHIFT);
-        set_focus((pk.focus + (back ? F_COUNT - 1 : 1)) % F_COUNT);
+        int nf = folder_kind() ? F_COUNT : F_USE;   /* (Use: a folder's only) */
+        set_focus((pk.focus + (back ? nf - 1 : 1)) % nf);
         return;
     }
     if (e->sym == XKB_KEY_Escape) { close_picker(); return; }
@@ -400,6 +425,9 @@ static void pk_key(ui_surface *s, const ui_key_event *e)
     }
     case F_LIST:
         ui_container_key(pk.cont, e);
+        return;
+    case F_USE:
+        if (enter || e->sym == XKB_KEY_space) { char p[PATH_MAX]; snprintf(p, sizeof p, "%s", pk.folder); pick_path(p); }
         return;
     default:
         if (enter || e->sym == XKB_KEY_space) go_up();
@@ -452,7 +480,8 @@ void filepick_open(const char *for_title, const char *kind, const char *start, f
     pk.owner = owner;
     snprintf(pk.key, sizeof pk.key, "%s", key);
     snprintf(pk.kind, sizeof pk.kind, "%s", kind ? kind : "");
-    const char *what = !strcmp(pk.kind, "image") ? "a Picture" : !strcmp(pk.kind, "audio") ? "a Sound" : "a File";
+    const char *what = !strcmp(pk.kind, "image") ? "a Picture" : !strcmp(pk.kind, "audio") ? "a Sound"
+                     : !strcmp(pk.kind, "folder") ? "a Folder" : "a File";
     snprintf(pk.title, sizeof pk.title, "Choose %s%s%s", what, for_title && *for_title ? " - " : "", for_title ? for_title : "");
     if (pk.s && !pk.closing) {   /* one at a time: it now picks for this */
         ui_window_set_title(pk.s, pk.title);
@@ -460,7 +489,7 @@ void filepick_open(const char *for_title, const char *kind, const char *start, f
         ui_window_activate(pk.s);
         return;
     }
-    pk.up_pressed = false;
+    pk.up_pressed = pk.use_pressed = false;
     pk.path = ui_entry_new("");
     pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.FilePicker", 600, 460);
     ui_window_set_title(pk.s, pk.title);
@@ -480,3 +509,11 @@ const char *filepick_name(size_t i) { return pk.s && i < pk.n ? pk.v[i].name : N
 bool filepick_go(const char *folder) { return pk.s && read_folder(folder); }
 bool filepick_activate(size_t i) { if (!pk.s || i >= pk.n) return false; activate(i); return true; }
 bool filepick_snapshot(const char *png) { return pk.s && ui_surface_snapshot(pk.s, png); }
+bool filepick_use(void)
+{
+    if (!pk.s || !folder_kind()) return false;
+    char p[PATH_MAX];
+    snprintf(p, sizeof p, "%s", pk.folder);
+    pick_path(p);
+    return true;
+}
