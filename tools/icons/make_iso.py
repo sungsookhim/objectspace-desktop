@@ -119,8 +119,11 @@ class Canvas:
     """World: x to the lower right, y to the lower left, z up; the viewer
     looks from +x+y. Screen: u = x - y, v = (x + y) / 2 - z (2:1)."""
 
-    def __init__(self, n, variant, fit=None):
+    def __init__(self, n, variant, fit=None, size=None):
         self.n, self.variant = n, variant
+        # drawn for a desktop size: icons draw their small design (a bigger
+        # identifying feature, fewer details) - not the master shrunk
+        self.small = (size or n) <= 48
         self.rec = fit is None
         self.bbox = [1e9, 1e9, -1e9, -1e9]
         if not self.rec:
@@ -131,13 +134,14 @@ class Canvas:
         self.inner = round(n / 128) if variant == "outline" else 0  # 256: 2, 128: 1, 64 and down: none
 
     tx = ty = tz = 0
+    sc = 1.0
 
-    def at(self, dx, dy, dz=0):
-        """Shift what follows (call again with 0, 0 to stop)."""
-        self.tx, self.ty, self.tz = dx, dy, dz
+    def at(self, dx, dy, dz=0, sc=1.0):
+        """Scale, then shift, what follows (at(0, 0) to stop)."""
+        self.tx, self.ty, self.tz, self.sc = dx, dy, dz, sc
 
     def P(self, x, y, z):
-        x, y, z = x + self.tx, y + self.ty, z + self.tz
+        x, y, z = x * self.sc + self.tx, y * self.sc + self.ty, z * self.sc + self.tz
         u, v = x - y, (x + y) / 2 - z
         if self.rec:
             b = self.bbox
@@ -226,7 +230,7 @@ class Canvas:
         pts = [self.P(*p) for p in pts3]
         if self.rec:
             return
-        self.d.line(pts, fill=color + (255,), width=max(1, round(w * self.k)), joint="curve")
+        self.d.line(pts, fill=color + (255,), width=max(1, round(w * self.k * self.sc)), joint="curve")
 
     def finish(self):
         if self.variant != "outline":
@@ -295,8 +299,13 @@ def sound(c):
     c.box(2, 58, -8, -3, 2, 110, (100, 96, 110))                              # front baffle
     cone(c, -3, 30, 40, 19, 10)
     cone(c, -3, 30, 89, 9, 5, 4)
-    note(c, 26, -14, 86, True, BLUE)                                          # music, in front
-    note(c, 46, -30, 40, False, RED)
+    if c.small:                                                               # one big note
+        c.at(-30, 40, 30, 1.6)
+        note(c, 0, 0, 0, True, BLUE)
+        c.at(0, 0)
+    else:
+        note(c, 26, -14, 86, True, BLUE)                                      # music, in front
+        note(c, 46, -30, 40, False, RED)
 
 
 def scheme_palette(c):
@@ -304,8 +313,11 @@ def scheme_palette(c):
     c.on_z(7.1, ellipse(-46, 26, 10, 8, 16), shade(WOOD, 0.45), edge=False)   # thumb hole
     blobs = [((-52, -10), RED), ((-36, -32), YELLOW), ((-8, -42), GREEN),
              ((20, -40), BLUE), ((44, -26), PURPLE), ((56, -2), WHITE)]
+    r = 11
+    if c.small:                                                               # fewer, bigger
+        blobs, r = [((-44, -14), RED), ((-14, -36), YELLOW), ((20, -34), BLUE), ((48, -10), GREEN)], 16
     for (x, y), col in sorted(blobs, key=lambda b: b[0][0] + b[0][1]):
-        c.prism(ellipse(x, y, 11, 11, 16), 7, 6, col)
+        c.prism(ellipse(x, y, r, r, 16), 7, 6 if r < 14 else 9, col)
     c.box(-36, -22, 19, 25, 8, 13, (90, 70, 50))                              # brush: bristles
     c.box(-22, -10, 18, 26, 7, 14, METAL)                                     # ferrule
     c.box(-10, 66, 19, 25, 8, 13, RED)                                        # handle
@@ -413,6 +425,16 @@ def launchpad(c):
     """OS/2's LaunchPad: a floating bar; the system buttons (Lockup, Find,
     Shut down, Window list) two by two on the left, big object buttons
     with their drawers' arrows above."""
+    if c.small:                                                               # Lockup, Shut down; two big buttons
+        c.box(-64, 70, -10, 6, 20, 84, PLASTIC)
+        button(c, -58, -28, 6, 54, 80, g_padlock, 3)
+        button(c, -58, -28, 6, 24, 50, g_power, 3)
+        for x0, g in ((-22, g_folder), (24, g_terminal)):
+            button(c, x0, x0 + 42, 6, 26, 78, g)
+            cx = x0 + 21
+            c.box(cx - 12, cx + 12, -6, 2, 84, 92, PLASTIC_L)
+            c.on_y(2.1, [(cx - 8, 85), (cx + 8, 85), (cx, 91)], DARK, edge=False)
+        return
     c.box(-96, 100, -10, 6, 20, 84, PLASTIC)
     for (x0, z0), g in zip(((-90, 54), (-64, 54), (-90, 26), (-64, 26)), (g_padlock, g_find, g_power, g_windows)):
         button(c, x0, x0 + 24, 6, z0, z0 + 24, g, 3)
@@ -427,6 +449,19 @@ def warpcenter(c):
     """The WarpCenter: the bar along the screen's top - the desktop menu
     and window list buttons, the meters, messages, the clock, Lockup and
     Shut down - over the desktop it serves."""
+    if c.small:                                                               # a deep bar: menu button, meters, clock
+        c.box(-70, 70, -8, 4, 30, 80, PLASTIC)
+        c.on_y(4.1, sq(-64, 64, 36, 80), TEAL)
+        c.box(-74, 74, -10, 14, 80, 124, PLASTIC_L)
+        c.on_y(14.1, sq(-68, -44, 86, 118), TEAL)
+        c.on_y(14.2, sq(-62, -54, 100, 110), YELLOW, edge=False)
+        c.on_y(14.1, sq(-38, -6, 86, 118), LCD)
+        for k, hgt in enumerate((22, 12, 26)):
+            c.on_y(14.2, sq(-35 + k * 10, -28 + k * 10, 89, 89 + hgt), YELLOW if hgt > 20 else LCD_ON, edge=False)
+        c.on_y(14.1, sq(2, 68, 86, 118), LCD)
+        for x in (7, 21, 41, 55):
+            c.on_y(14.2, sq(x, x + 9, 91, 113), LCD_ON, edge=False)
+        return
     c.box(-94, 94, -8, 4, 16, 86, PLASTIC)
     c.on_y(4.1, sq(-88, 88, 22, 86), TEAL)
     for x, z, col in ((-80, 62, YELLOW), (-80, 36, WHITE)):
@@ -481,6 +516,11 @@ def dashed_rect(c, z, x0, x1, y0, y1, col, dash=7, w=2.5):
 def restore_desktop(c):
     """Restore Desktop: the desktop with its default objects, and the
     arrow turning back round it (back to how it was)."""
+    if c.small:                                                               # the arrow alone, bold
+        ring = ring_arrow(0, 55, 48, 70, 80, 380, 40)
+        c.on_y(-6, ring, shade(GREEN, 0.5), edge=False)
+        c.on_y(0, ring, GREEN)
+        return
     c.box(-56, 56, -8, 0, 10, 100, PLASTIC)                                   # the desktop, standing
     c.on_y(0.1, sq(-50, 50, 16, 94), TEAL)
     g_folder(c, 0.2, -30, 74, 11)                                             # its default objects
@@ -496,7 +536,7 @@ def restore_desktop(c):
 
 def minwin_viewer(c):
     c.box(-70, 70, -50, 50, 0, 8, PLASTIC)
-    for x0, y0 in ((-62, -34), (-46, -6), (-30, 22)):
+    for x0, y0 in (((-58, -20), (-34, 18)) if c.small else ((-62, -34), (-46, -6), (-30, 22))):
         c.box(x0, x0 + 96, y0 - 3, y0 + 3, 8, 84, PLASTIC_L)
         c.on_y(y0 + 3.1, sq(x0 + 5, x0 + 91, 13, 66), WHITE)
         c.on_y(y0 + 3.1, sq(x0 + 5, x0 + 91, 68, 79), BLUE)
@@ -552,7 +592,10 @@ def folder(c, opened=False, emblem=None):
     W, N = (0, math.sin(a), math.cos(a)), (0, math.cos(a), -math.sin(a))
     c.plate(rect(x0, x1, 0, HF), (0, YF, 0), (1, 0, 0), W, N, TH, FOLD)
     if emblem:
-        c.at(FX1 - 4, 4)
+        if c.small:
+            c.at(FX1 - 30, 8, 0, 1.5)
+        else:
+            c.at(FX1 - 4, 4)
         emblem(c)
         c.at(0, 0)
 
@@ -613,7 +656,7 @@ SET_B = [entry for name, title, e in FOLDERS
 
 
 def render(fn, n, variant):
-    rec = Canvas(256, variant)
+    rec = Canvas(256, variant, size=n)
     fn(rec)
     u0, v0, u1, v1 = rec.bbox
     room = 256 - 2 * 14
