@@ -448,24 +448,19 @@ def dashed_rect(c, z, x0, x1, y0, y1, col, dash=7, w=2.5):
 
 
 def restore_desktop(c):
-    """Restore Desktop: default objects put back where they belong - the
-    Trash Can in its place, a folder coming down into its marked place."""
-    c.box(-64, 64, -54, 54, 0, 8, TEAL)
-    c.prism(ellipse(-42, 22, 17, 17, 24), 8, 42, (176, 180, 188))           # the Trash Can, in place
-    c.on_z(50.1, ellipse(-42, 22, 12, 12, 20), shade((176, 180, 188), 0.45), edge=False)
-    x0, x1, y0, y1 = -4, 44, 14, 30                                          # the folder's place
-    c.on_z(8.1, rect(x0 + 3, x1 - 3, y0 + 3, y1 - 3), shade(TEAL, 0.55), edge=False)
-    dashed_rect(c, 8.2, x0 - 4, x1 + 4, y0 - 4, y1 + 4, WHITE)
-    lift = 34
-    for x in (x0, x1):                                                       # dropping straight down
-        for z in range(14, lift, 8):
-            c.line([(x, y1, z), (x, y1, z + 4)], WHITE, 2)
-    c.box(x0, x0 + 20, y0, y1, lift + 36, lift + 42, (214, 160, 40))         # the folder: tab, body
-    c.box(x0, x1, y0, y1, lift, lift + 36, YELLOW)
-    ax = (x0 + x1) / 2                                                       # the arrow, pointing down
-    shape = [(ax - 7, 140), (ax + 7, 140), (ax + 7, 112), (ax + 17, 112), (ax, 92), (ax - 17, 112), (ax - 7, 112)]
-    c.on_y(y1 - 4, shape, shade(GREEN, 0.5), edge=False)
-    c.on_y(y1, shape, GREEN)
+    """Restore Desktop: the desktop with its default objects, and the
+    arrow turning back round it (back to how it was)."""
+    c.box(-56, 56, -8, 0, 10, 100, PLASTIC)                                   # the desktop, standing
+    c.on_y(0.1, sq(-50, 50, 16, 94), TEAL)
+    g_folder(c, 0.2, -30, 74, 11)                                             # its default objects
+    c.on_y(0.3, sq(-38, -22, 36, 54), (176, 180, 188))                        # Trash Can
+    c.on_y(0.4, sq(-36, -24, 52, 56), PLASTIC_D, edge=False)
+    c.on_y(0.3, sq(4, 22, 66, 82), PLASTIC_L)                                 # Computer
+    c.on_y(0.4, sq(7, 19, 70, 80), SCREEN, edge=False)
+    g_document(c, 0.2, 13, 44, 10)
+    ring = ring_arrow(0, 55, 62, 71, 80, 380, 48)                             # back, round it
+    c.on_y(12, ring, shade(GREEN, 0.5), edge=False)
+    c.on_y(16, ring, GREEN)
 
 
 def minwin_viewer(c):
