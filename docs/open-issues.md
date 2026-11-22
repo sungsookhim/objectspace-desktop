@@ -14,6 +14,10 @@ Known problems and gaps found while building and trying the GUI (G2–G5), as of
 
 ## Desktop and GNOME (stage 1)
 
+- **The Background page works but is not yet intuitive** (the owner's check of 0.3 step 3, 2026-11-22: "knobs are there", good enough for now). To polish later:
+  - An empty colour swatch looks white, while the desktop shows OS/2's teal without a colour: the swatch should show what is used (or a "none" mark).
+  - The picture's field shows a path: a small preview of the picture would read better.
+  - Colours by dragging from a Colour Palette (roadmap, for later).
 - **An extra icon at a new user's first start** (seen once on the VM with the 0.2.0 RPM: four icons, then the three defaults). Not reproduced headless: `tests/gui/selftest.sh first` (with `SHELL_ARGS=--desktop`) records the desktop's icons through a first start and reports the most seen; three runs, with and without a Templates folder, went from none to the three defaults. wpsd's listing goes from empty to the three at once.
 - **Primary monitor only.** The desktop covers the primary monitor's work area; other monitors show GNOME's own background. One desktop window per monitor (or one spanning them) is needed.
 - **Without the extension** the desktop is an ordinary full-screen window: it covers other windows when clicked and is in Alt+Tab.
