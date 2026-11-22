@@ -17,7 +17,7 @@
 #define TAB_H 24
 #define ROW_H 30
 #define FIELD_H 24
-#define LABEL_W 140
+#define LABEL_W 170
 #define MARGIN 14
 #define BUTTON_W 80
 #define BUTTON_H 24
@@ -54,6 +54,9 @@ struct ui_notebook {
     struct field *icon_field;   /* an icon field's button held down (icon_pressed 0, 1), or NULL */
     int icon_pressed;
     struct field *drop_on;      /* an icon field a drag is over */
+    ui_surface *pal;            /* a colour field's palette, open */
+    struct field *pal_field;
+    int pal_hot;
     char status[256];
     ui_notebook_set_fn set;
     ui_notebook_close_fn closed;
@@ -190,14 +193,19 @@ static ui_rect spin_rect(ui_rect r, bool up)
 /* A file field: its path, and Browse... after it; a colour field: its
  * swatch, then its "#rrggbb". */
 #define BROWSE_W 80
-static ui_rect file_button(ui_rect r) { return (ui_rect){ r.x + r.w - BROWSE_W, r.y, BROWSE_W, r.h }; }
+#define NONE_W 56
+/* a file field's buttons: 0 Browse..., 1 None (no file) */
+static ui_rect file_button(ui_rect r, int i)
+{
+    return i ? (ui_rect){ r.x + r.w - NONE_W, r.y, NONE_W, r.h } : (ui_rect){ r.x + r.w - NONE_W - 4 - BROWSE_W, r.y, BROWSE_W, r.h };
+}
 static ui_rect color_swatch(ui_rect r) { return (ui_rect){ r.x, r.y, FIELD_H, FIELD_H }; }
 
 /* Where a field's text is typed (number: before its arrows). */
 static ui_rect entry_rect(const struct field *f, ui_rect r)
 {
     if (f->kind == UI_FIELD_NUMBER) r.w -= 16;
-    else if (f->kind == UI_FIELD_FILE) r.w -= BROWSE_W + 6;
+    else if (f->kind == UI_FIELD_FILE) r.w -= BROWSE_W + NONE_W + 10;
     else if (f->kind == UI_FIELD_COLOR) { r.x += FIELD_H + 6; r.w -= FIELD_H + 6; }
     return r;
 }
@@ -205,7 +213,7 @@ static ui_rect entry_rect(const struct field *f, ui_rect r)
 /* The button of an icon field (i: 0 Choose..., 1 Default) or file field (Browse...). */
 static ui_rect field_button(const struct field *f, ui_rect r, int i)
 {
-    return f->kind == UI_FIELD_FILE ? file_button(r) : icon_button(r, i);
+    return f->kind == UI_FIELD_FILE ? file_button(r, i) : icon_button(r, i);
 }
 
 bool ui_parse_color(const char *t, double rgb[3])
@@ -397,13 +405,16 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             ui_rect er = entry_rect(f, r);
             if (nb->drop_on == f) { ui_fill(cr, er, k->selection); ui_bevel(cr, er, false); }
             else ui_entry_draw(f->entry, cr, er, focused);
-            ui_rect b = file_button(r);
-            bool down = nb->icon_field == f;
-            ui_fill(cr, b, k->face);
-            ui_bevel(cr, b, !down);
-            ui_set_color(cr, k->text);
-            double tw = ui_text_width(UI_FONT_REGULAR, "Browse...");
-            ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + down, b.y + base_off + down, "Browse...", b.w - 4);
+            static const char *const fl[2] = { "Browse...", "None" };
+            for (int bi = 0; bi < 2; bi++) {
+                ui_rect b = file_button(r, bi);
+                bool down = nb->icon_field == f && nb->icon_pressed == bi;
+                ui_fill(cr, b, k->face);
+                ui_bevel(cr, b, !down);
+                ui_set_color(cr, bi == 1 && !(f->v.text && *f->v.text) ? k->disabled_text : k->text);
+                double tw = ui_text_width(UI_FONT_REGULAR, fl[bi]);
+                ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + down, b.y + base_off + down, fl[bi], b.w - 4);
+            }
             break;
         }
         case UI_FIELD_COLOR: {
@@ -664,6 +675,7 @@ static void icon_action(ui_notebook *nb, struct field *f, int which)
 {
     if (!nb->set) return;
     if (f->kind == UI_FIELD_FILE) {
+        if (which == 1) { ui_notebook_set_value(nb, f->key, ""); return; }   /* None */
         commit_entry(nb, f);
         ui_value v = { .text = NULL };
         nb->set(nb->ctx, f->key, UI_FIELD_FILE, &v);
@@ -743,6 +755,99 @@ static uint32_t nb_drop(ui_surface *s, double x, double y, const char *mime, con
     return UI_DND_COPY;
 }
 
+/* ---- a colour field's palette: OS/2's colours, a grid to click (the
+ * "#rrggbb" field stays for any other) */
+
+#define PAL_COLS 8
+#define PAL_ROWS 6
+#define PAL_CELL 22
+#define PAL_PAD 6
+#define PAL_NONE_H 24
+static const unsigned pal_colors[PAL_COLS * PAL_ROWS] = {
+    0x000000, 0x404040, 0x808080, 0xa0a0a0, 0xc0c0c0, 0xcccccc, 0xe0e0e0, 0xffffff,
+    0x800000, 0xff0000, 0xff8080, 0x804000, 0xff8000, 0xffc080, 0x808000, 0xffff00,
+    0x008000, 0x00c000, 0x80ff80, 0x008080, 0x00ffff, 0x80ffff, 0x004080, 0x0080ff,
+    0x000080, 0x0000ff, 0x8080ff, 0x400080, 0x8000ff, 0xc080ff, 0x800080, 0xff00ff,
+    0x003040, 0x306080, 0x6090c0, 0x3a6ea5, 0x5070a0, 0x8098c0, 0xb0c4de, 0xdde8f4,
+    0x403020, 0x806040, 0xc0a080, 0xf0e0c0, 0x204020, 0x406040, 0x80a080, 0xc0e0c0,
+};
+
+static ui_rect pal_cell(int i) { return (ui_rect){ PAL_PAD + (i % PAL_COLS) * PAL_CELL, PAL_PAD + (i / PAL_COLS) * PAL_CELL, PAL_CELL - 2, PAL_CELL - 2 }; }
+static ui_rect pal_none(void) { return (ui_rect){ PAL_PAD, PAL_PAD + PAL_ROWS * PAL_CELL + 2, PAL_COLS * PAL_CELL - 2, PAL_NONE_H - 4 }; }
+static int pal_at(double x, double y)
+{
+    for (int i = 0; i < PAL_COLS * PAL_ROWS; i++) if (ui_rect_has(pal_cell(i), x, y)) return i;
+    return ui_rect_has(pal_none(), x, y) ? PAL_COLS * PAL_ROWS : -1;
+}
+
+static void pal_free(void *arg)
+{
+    ui_notebook *nb = arg;
+    if (nb->pal) ui_surface_destroy(nb->pal);
+    nb->pal = NULL;
+    nb->pal_field = NULL;
+}
+
+static void pal_close(ui_notebook *nb)
+{
+    if (nb->pal) ui_app_post(ui_surface_app(nb->win), pal_free, nb);
+}
+
+static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+{
+    (void)clip;
+    ui_notebook *nb = ui_surface_data(s);
+    const ui_scheme *k = &ui_scheme_now;
+    ui_rect all = { 0, 0, 2 * PAL_PAD + PAL_COLS * PAL_CELL, 2 * PAL_PAD + PAL_ROWS * PAL_CELL + PAL_NONE_H };
+    ui_fill(cr, all, k->face);
+    ui_bevel(cr, all, true);
+    for (int i = 0; i < PAL_COLS * PAL_ROWS; i++) {
+        ui_rect c = pal_cell(i);
+        unsigned v = pal_colors[i];
+        cairo_set_source_rgb(cr, (v >> 16) / 255.0, ((v >> 8) & 255) / 255.0, (v & 255) / 255.0);
+        cairo_rectangle(cr, c.x, c.y, c.w, c.h);
+        cairo_fill(cr);
+        ui_bevel(cr, c, false);
+        if (nb->pal_hot == i) { ui_set_color(cr, k->text); cairo_set_line_width(cr, 2); cairo_rectangle(cr, c.x - 1, c.y - 1, c.w + 2, c.h + 2); cairo_stroke(cr); }
+    }
+    ui_rect n = pal_none();
+    ui_fill(cr, n, nb->pal_hot == PAL_COLS * PAL_ROWS ? k->selection : k->face);
+    ui_bevel(cr, n, true);
+    ui_set_color(cr, nb->pal_hot == PAL_COLS * PAL_ROWS ? k->selection_text : k->text);
+    double tw = ui_text_width(UI_FONT_REGULAR, "No colour");
+    ui_text_draw(cr, UI_FONT_REGULAR, n.x + (n.w - tw) / 2, n.y + (n.h + ui_text_ascent()) / 2 - 1, "No colour", n.w - 4);
+}
+
+static void pal_pointer(ui_surface *s, const ui_pointer_event *e)
+{
+    ui_notebook *nb = ui_surface_data(s);
+    int i = pal_at(e->x, e->y);
+    if (e->kind == UI_MOTION && i != nb->pal_hot) { nb->pal_hot = i; ui_surface_damage_all(s); return; }
+    if (e->kind != UI_RELEASE || i < 0 || !nb->pal_field) return;
+    char hex[8] = "";
+    if (i < PAL_COLS * PAL_ROWS) snprintf(hex, sizeof hex, "#%06x", pal_colors[i]);
+    ui_notebook_set_value(nb, nb->pal_field->key, hex);
+    pal_close(nb);
+}
+
+static void pal_dismissed(ui_surface *s) { pal_close(ui_surface_data(s)); }
+
+static void pal_key(ui_surface *s, const ui_key_event *e)
+{
+    if (e->sym == XKB_KEY_Escape) pal_close(ui_surface_data(s));
+}
+
+static const ui_surface_ops pal_ops = { .draw = pal_draw, .pointer = pal_pointer, .key = pal_key, .dismissed = pal_dismissed };
+
+static void palette_open(ui_notebook *nb, struct field *f, ui_rect at, uint32_t serial)
+{
+    if (nb->pal) return;
+    nb->pal_field = f;
+    nb->pal_hot = -1;
+    nb->pal = ui_popup_new(ui_surface_app(nb->win), nb->win, &pal_ops, nb, at, 2 * PAL_PAD + PAL_COLS * PAL_CELL,
+                           2 * PAL_PAD + PAL_ROWS * PAL_CELL + PAL_NONE_H, serial);
+}
+
 static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
 {
     ui_notebook *nb = ui_surface_data(s);
@@ -787,11 +892,17 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
                 }
             r = icon_box(r);
         }
-        if (pg->f[k].kind == UI_FIELD_FILE && ui_rect_has(file_button(r), e->x, e->y)) {
+        for (int bi = 0; bi < 2 && pg->f[k].kind == UI_FIELD_FILE; bi++)
+            if (ui_rect_has(file_button(r, bi), e->x, e->y)) {
+                set_focus(nb, (int)k);
+                nb->icon_field = &pg->f[k];
+                nb->icon_pressed = bi;
+                damage(nb);
+                return;
+            }
+        if (pg->f[k].kind == UI_FIELD_COLOR && ui_rect_has(color_swatch(r), e->x, e->y)) {
             set_focus(nb, (int)k);
-            nb->icon_field = &pg->f[k];
-            nb->icon_pressed = 0;
-            damage(nb);
+            palette_open(nb, &pg->f[k], color_swatch(r), e->serial);
             return;
         }
         if (!ui_rect_has(r, e->x, e->y)) continue;
@@ -916,6 +1027,7 @@ static void destroy_later(void *arg)
 void ui_notebook_close(ui_notebook *nb)
 {
     if (nb->closing) return;
+    if (nb->pal) { ui_surface_destroy(nb->pal); nb->pal = NULL; }
     commit_entry(nb, focused_field(nb));
     nb->closing = true;
     ui_app_post(ui_surface_app(nb->win), destroy_later, nb);

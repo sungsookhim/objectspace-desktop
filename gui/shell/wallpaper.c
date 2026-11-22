@@ -90,7 +90,16 @@ static void read_settings(void)
         snprintf(want.options, sizeof want.options, "%s", how[own.mode >= 0 && own.mode <= 4 ? own.mode : 2]);
         if (own.color[0]) parse_color(own.color, want.c1);
         memcpy(want.c2, want.c1, sizeof want.c2);
-        if (own.path[0]) snprintf(want.uri, sizeof want.uri, "file://%s", own.path);
+        if (own.path[0]) {   /* a URI: odd characters escaped (glycin reads no others, e.g. Korean names) */
+            size_t u = (size_t)snprintf(want.uri, sizeof want.uri, "file://");
+            for (const unsigned char *q = (const unsigned char *)own.path; *q && u < sizeof want.uri - 4; q++) {
+                if ((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || strchr("/-_.~", *q))
+                    want.uri[u++] = (char)*q;
+                else
+                    u += (size_t)snprintf(want.uri + u, sizeof want.uri - u, "%%%02X", *q);
+            }
+            want.uri[u] = 0;
+        }
         return;
     }
     const char *fixed = getenv("WPS_WALLPAPER");          /* tests: this picture, no GNOME settings */

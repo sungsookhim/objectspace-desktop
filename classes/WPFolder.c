@@ -147,8 +147,8 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
              "field\tbg_image\tfile\tImage\t%s\twpSetBgImage\timage\n"
              "field\tbg_mode\tchoice\tShown\t%lld\twpSetBgMode\tcentred,tiled,scaled to fill,scaled to fit,stretched\n"
              "field\tbg_color\tcolor\tColour\t%s\twpSetBgColor\n",
-             desk ? (gnome ? "field\tbg_gnome\tcheckbox\tUse GNOME's background\t1\twpSetBgGnome\n"
-                           : "field\tbg_gnome\tcheckbox\tUse GNOME's background\t0\twpSetBgGnome\n") : "",
+             desk ? (gnome ? "field\tbg_gnome\tcheckbox\tGNOME's background\t1\twpSetBgGnome\n"
+                           : "field\tbg_gnome\tcheckbox\tGNOME's background\t0\twpSetBgGnome\n") : "",
              img ? img : "", (long long)mode, col ? col : "");
     free(img);
     free(col);

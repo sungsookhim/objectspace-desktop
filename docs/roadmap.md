@@ -275,6 +275,7 @@ A to do, after 0.2 (with network file systems below).
    - The icon layout; locking icon positions.
    - Templates' "New" cascade and moving templates.
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
+   - **The Colour Palette** (OS/2's; the owner's, 2026-11-22, for later): colours dragged onto a folder's or the desktop's background, a window's parts or a notebook's colour field, as fonts are from the Font Palette. The Background page has a click palette meanwhile.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
 3. **0.4 Look of other programs and Work Areas:** the theming pieces above, and frames for GTK 4 programs.
    - **Icons in several sizes** (the owner's spec, 2026-11-21; analysed and agreed for 0.4):
