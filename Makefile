@@ -11,6 +11,7 @@
 #   make session  everything the WPS session runs
 #   make install  DESTDIR=... PREFIX=/usr (build with the same PREFIX); make uninstall
 #   make install-check  install into a scratch root and run a session from it
+#   make dist | srpm | rpm  the tarball and spec, the source RPM, the RPMs (build/rpm)
 #   make clean
 
 CC      ?= cc
@@ -94,19 +95,19 @@ SERVICE := service/wpsd.c service/objects.c service/tracker.c service/shadows.c 
 
 $(B)/wpsd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ $(SERVICE) $(RUNTIME) $(CLASSES) -lsqlite3 -ldl -lpthread -lsystemd
+	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ $(SERVICE) $(RUNTIME) $(CLASSES) $(LDFLAGS) -lsqlite3 -ldl -lpthread -lsystemd
 
 $(B)/wps-plughost: service/plughost.c service/cbor.c $(RUNTIME) $(GEN)/.stamp $(wildcard classes/*.c classes/*.h)
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ service/plughost.c service/cbor.c $(RUNTIME) $(CLASSES) -ldl -lpthread
+	$(CC) $(CFLAGS) $(SAN) $(INC) -rdynamic -o $@ service/plughost.c service/cbor.c $(RUNTIME) $(CLASSES) $(LDFLAGS) -ldl -lpthread
 
 $(B)/wps-watchd: service/watchd.c service/cbor.c service/cbor.h
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/watchd.c service/cbor.c
+	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/watchd.c service/cbor.c $(LDFLAGS)
 
 $(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/wpsctl.c service/cbor.c
+	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/wpsctl.c service/cbor.c $(LDFLAGS)
 
 # M5: a plug-in for wps-plughost, and one built against a newer WPFolder
 # (1.1) than the one installed, which must be refused.
@@ -141,7 +142,9 @@ $(TV)/plugins/myfolder.so: tests/plugins/MyFolder.c tests/plugins/MyFolder.wpi $
 	$(CC) $(CFLAGS) $(SAN) -fPIC -shared $(INC) -I$(B)/gen-myfolder \
 	    -o $@ tests/plugins/MyFolder.c $(B)/gen-myfolder/MyFolder.reg.c
 
-test: all
+# (unit-test: the unit tests only, for the RPM's %check: the scenarios
+# below need a user session's runtime folder and bus)
+unit-test: all
 	$(TV)/test_runtime $(TV)/plugins
 	$(TV)/test_loop
 	$(TV)/test_attrs $(TV)/attrs-tmp
@@ -149,6 +152,8 @@ test: all
 	$(TV)/test_cbor
 	$(TV)/test_launch $(TV)/launch-tmp
 	$(TV)/test_ui_damage
+
+test: unit-test
 	tests/drives/run.sh
 	tests/programs/run.sh
 	tests/messages/run.sh
@@ -192,7 +197,8 @@ m0:
 # frame and sound timing. Needs cairo, harfbuzz, freetype, fontconfig,
 # wayland, xkbcommon and pipewire development packages.
 G0      := $(B)/g0
-G0FLAGS := -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation $(VFLAGS)
+# OPTFLAGS: the distribution's (the RPM's %{optflags}), after ours.
+G0FLAGS := -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation $(VFLAGS) $(OPTFLAGS)
 XDGXML  := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/stable/xdg-shell/xdg-shell.xml
 
 $(G0)/xdg-shell-client-protocol.h: $(XDGXML)
@@ -256,7 +262,7 @@ SHFLAGS = $(shell pkg-config --cflags libpipewire-0.3 $(SNDFILE)) $(if $(SNDFILE
 SHLIBS  = $(shell pkg-config --libs libpipewire-0.3 $(SNDFILE)) -lsystemd
 
 $(B)/wps-shell: $(UIDEPS)
-	$(CC) $(G0FLAGS) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS) $(SHLIBS)
+	$(CC) $(G0FLAGS) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(LDFLAGS) $(UILIBS) $(SHLIBS)
 
 $(B)/wps-shell-asan: $(UIDEPS)
 	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS) $(SHLIBS)
@@ -290,7 +296,7 @@ $(TV)/ssd-client: tests/comp/ssd-client.c $(G0)/xdg-shell-client-protocol.h $(G0
 	$(CC) $(G0FLAGS) -I$(G0) -o $@ tests/comp/ssd-client.c $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-protocol.c $$(pkg-config --cflags --libs wayland-client)
 $(B)/wps-compositor: $(COMPSRC) gui/ui.h compositor/comp.h
 	@mkdir -p $(B)
-	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE -DHAVE_SD_BUS $(COMPPAM) -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lpthread -lm
+	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE -DHAVE_SD_BUS $(COMPPAM) -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $(LDFLAGS) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lpthread -lm
 
 $(TV)/test_ui_entry: tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c gui/ui.h
 	@mkdir -p $(TV)
@@ -353,4 +359,24 @@ uninstall:
 clean:
 	rm -rf $(GEN) $(B)/gen-* $(TV)
 
-.PHONY: all plugins test check m0 m2 m3 g0 gui gui-test clean install uninstall install-check
+# The RPM (v0.2-design 11.3): make dist (the tarball of HEAD and
+# build/wps.spec), make srpm, make rpm (rpmbuild in build/rpm). The RPM's
+# version is VERSION with "-" as "~" (0.2.0-dev sorts before 0.2.0); its
+# release 1 for a release, the commit count for a development build.
+RPMVER  := $(subst -,~,$(WPS_VERSION))
+RPMREL  := $(if $(findstring -,$(WPS_VERSION)),$(shell git rev-list --count HEAD 2>/dev/null || echo 0),1)
+DIST    := wps-$(RPMVER)
+RPMTOP  := $(abspath $(B))/rpm
+dist:
+	@mkdir -p $(B)
+	git archive --format=tar.gz --prefix=$(DIST)/ -o $(B)/$(DIST).tar.gz HEAD
+	sed -e 's|@VERSION@|$(RPMVER)|g' -e 's|@RELEASE@|$(RPMREL)|g' \
+	    -e "s|@DATE@|$$(LC_ALL=C date -d @$$(git log -1 --format=%ct) '+%a %b %d %Y')|" packaging/wps.spec.in > $(B)/wps.spec
+	@echo "$(B)/$(DIST).tar.gz, $(B)/wps.spec (from HEAD: commit first)"
+srpm: dist
+	rpmbuild -bs --define "_topdir $(RPMTOP)" --define "_sourcedir $(abspath $(B))" $(B)/wps.spec
+rpm: dist
+	rpmbuild -ba --define "_topdir $(RPMTOP)" --define "_sourcedir $(abspath $(B))" $(B)/wps.spec
+	@ls $(RPMTOP)/RPMS/*/*.rpm $(RPMTOP)/SRPMS/*.rpm
+
+.PHONY: all plugins test check m0 m2 m3 g0 gui gui-test clean install uninstall install-check dist srpm rpm unit-test
