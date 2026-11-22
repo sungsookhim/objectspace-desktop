@@ -3496,6 +3496,31 @@ static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "first") && f->desktop) {
+        /* A new desktop's first start: its icons as they come, never more
+         * than it ends with (an object listed twice for a moment) */
+        static double t0;
+        static long last = -1, most = 0;
+        if (!t0) t0 = now;
+        long n = (long)f->m.total;
+        if (n != last) {
+            char names[400] = "";
+            for (size_t i = 0; i < f->m.total && strlen(names) < 300; i++) {
+                struct row *rw = row_at(f, i);
+                snprintf(names + strlen(names), sizeof names - strlen(names), "%s%s", i ? ", " : "",
+                         rw && rw->title ? rw->title : model_name(&f->m, i) ? model_name(&f->m, i) : "?");
+            }
+            fprintf(stderr, "selftest: first start: %.1f s: %ld icons: %s\n", (now - t0) / 1000, n, names);
+            last = n;
+            if (n > most) most = n;
+        }
+        if (now - t0 > 5000) {
+            fprintf(stderr, "selftest: first start: at most %ld icons, %ld at the end\n", most, n);
+            ui_app_quit(app);
+            t0 = 1e18;
+        }
+        return;
+    }
     if (st && !strcmp(st, "ctxmenu")) {
         /* A right click on the background, as GNOME delivers it (with a
          * real-looking serial); the menu must still be open afterwards. */

@@ -14,6 +14,7 @@ Known problems and gaps found while building and trying the GUI (G2–G5), as of
 
 ## Desktop and GNOME (stage 1)
 
+- **An extra icon at a new user's first start** (seen once on the VM with the 0.2.0 RPM: four icons, then the three defaults). Not reproduced headless: `tests/gui/selftest.sh first` (with `SHELL_ARGS=--desktop`) records the desktop's icons through a first start and reports the most seen; three runs, with and without a Templates folder, went from none to the three defaults. wpsd's listing goes from empty to the three at once.
 - **Primary monitor only.** The desktop covers the primary monitor's work area; other monitors show GNOME's own background. One desktop window per monitor (or one spanning them) is needed.
 - **Without the extension** the desktop is an ordinary full-screen window: it covers other windows when clicked and is in Alt+Tab.
 - **The desktop once ended by itself** about 10 s after starting (exit status 0) in the nested session; the extension restarted it. Not seen since. `try-desktop.sh` sets `WPS_UI_DEBUG_EXIT=1`, so the next occurrence logs why the main loop ended.
