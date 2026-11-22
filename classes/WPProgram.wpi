@@ -11,5 +11,12 @@ method wpQueryCommand() -> string
 method wpSetCommand(string command) -> bool
 # An autostart entry (in Startup): whether it starts at login.
 method wpSetStartAtLogin(bool on) -> bool
+# The Program page (v0.3-design 8): its type (0 automatic: a desktop
+# entry's Terminal key; 1 a window; 2 text mode, in a terminal), Close
+# window on exit (text mode; on by default), and its working directory
+# ("": home). Kept in WPS's state, not in the desktop entry.
+method wpSetProgramType(int choice) -> bool
+method wpSetCloseOnExit(bool on) -> bool
+method wpSetWorkingDir(string dir) -> bool
 override wpAddSettingsPages
 classoverride wpclsQueryTitle

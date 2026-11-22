@@ -71,6 +71,21 @@ int wps_app_argv(const char *id, const char *file, char *buf, size_t n, char **a
 /* Always use `id` for `file`'s type: the user's mimeapps.list (GNOME's too). */
 bool wps_app_set_default(const char *file, const char *id);
 
+/* A program's Association page (v0.3-design 8): the types its desktop
+ * entry opens ("a;b;"), the user's copy first; set: written to the user's
+ * copy (made from the entry; GNOME reads it too). */
+bool wps_app_types(const char *desktop, char *out, size_t n);
+bool wps_app_set_types(const char *desktop, const char *types);
+
+/* The System object's Terminal: a name from the list ("automatic": the
+ * first installed), and a command used instead when not empty. */
+void wps_terminal_choose(const char *choice, const char *command);
+/* The terminal used now (for tests and the notebook), NULL: none. */
+const char *wps_terminal_now(void);
+/* Close window on exit off: argv run so that the terminal stays open
+ * until Enter after it ends. The new count. */
+int wps_hold_wrap(char **argv, int argc, int max);
+
 /* Run argv[0..argc) in a terminal window: $WPS_TERMINAL (words the
  * command is appended to), else xdg-terminal-exec, else the first
  * installed common terminal, each asked for a window of its own. Shifts

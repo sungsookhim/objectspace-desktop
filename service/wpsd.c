@@ -107,6 +107,8 @@
 #include "shadows.h"
 #include "WPShadow.h"
 #include "WPProgram.h"
+#include "WPSystem.h"
+#include "WPSetup.h"
 #include "WPFolder.h"
 #include "WPTrashCan.h"
 #include "WPDrive.h"
@@ -949,8 +951,24 @@ static void collect_shadow(const char *vol, const char *id, void *user)
     if (sh->n < 32) snprintf(sh->ids[sh->n++], sizeof sh->ids[0], "%s", id);
 }
 
+/* The System object's Terminal (v0.3-design 8), for text-mode programs. */
+static void terminal_from_system(wpo_object *o)
+{
+    char *t = WPSetup_wpQuerySettings(o), choice[64] = "", cmd[1024] = "";
+    for (char *q = t, *l; q && (l = strsep(&q, "\n"));) {
+        char *tab = strchr(l, '\t');
+        if (!tab) continue;
+        *tab = 0;
+        if (!strcmp(l, "terminal")) snprintf(choice, sizeof choice, "%s", tab + 1);
+        else if (!strcmp(l, "terminal_command")) snprintf(cmd, sizeof cmd, "%s", tab + 1);
+    }
+    free(t);
+    wps_terminal_choose(choice, cmd);
+}
+
 static void on_object_changed(wpo_object *o)
 {
+    if (wpo_is_a(o, WPSystemClass)) terminal_from_system(o);
     if (wpo_is_a(o, WPTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
     sobj *rec = wps_sobj_of(o);
     const char *path = rec ? rec->path : wps_object_path(o);
@@ -1290,6 +1308,19 @@ static wpo_object *home_folder_of(wpo_object *o, char *fpath, size_t n)
 static char *settings_text(wpo_object *o)
 {
     char *t = call_text(o, "wpAddSettingsPages", ""), fpath[PATH_MAX];
+    /* a program from a desktop entry: its Association page (OS/2's), the
+     * types it opens */
+    sobj *so = wps_sobj_of(o);
+    size_t sl = so ? strlen(so->path) : 0;
+    if (wpo_is_a(o, WPProgramClass) && so && !so->central && sl > 8 && !strcmp(so->path + sl - 8, ".desktop")) {
+        char types[1024] = "", line[1200];
+        wps_app_types(so->path, types, sizeof types);
+        for (char *q = types; *q; q++) if (*q == '\t') *q = ' ';
+        snprintf(line, sizeof line, "page\tAssociation\nfield\tmime_types\ttext\tTypes it opens (MIME, separated by ;)\t%s\t@assoc\n", types);
+        char *r2 = wps_concat(t, line);
+        free(t);
+        t = r2;
+    }
     wpo_object *f = home_folder_of(o, fpath, sizeof fpath);
     char *g = strstr(t, "page\tGeneral\n");
     if (!f || !g || (g != t && g[-1] != '\n')) return t;
@@ -1323,6 +1354,12 @@ static const char *apply_settings(wpo_object *o, const cv *values)
         for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
         if (!f) { err = "no such setting"; break; }
         wpo_value a, r;
+        if (!strcmp(f->setter, "@assoc")) {
+            sobj *so = wps_sobj_of(o);
+            if (!so || val->k != CV_TEXT || !wps_app_set_types(so->path, val->s)) { err = "the types could not be stored"; break; }
+            WPObject_wpObjectChanged(o);
+            continue;
+        }
         if (!strcmp(f->setter, "@lock")) {
             char fpath[PATH_MAX];
             wpo_object *fo = home_folder_of(o, fpath, sizeof fpath);
@@ -1643,9 +1680,25 @@ static void do_open(struct req *r, wpo_object *o)
         int argc = wps_split_exec_files(cmd, nfiles ? files : NULL, nfiles, buf, sizeof buf, argv, 64);
         if (argc == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
         size_t pl = strlen(path);
-        if (pl > 8 && !strcmp(path + pl - 8, ".desktop") && wps_desktop_wants_terminal(path) &&
-            !wps_terminal_wrap(argv, argc, 64)) {
-            reply_error(r->c, r->id, "failed", "it runs in a terminal, and no terminal program was found (set WPS_TERMINAL)");
+        /* its Program page (v0.3-design 8): the type, Close window on
+         * exit, the working directory */
+        int64_t ptype = 0, close_exit = 1;
+        char *wd = NULL;
+        wps_state_get_int(o, "WPProgram", "ptype", &ptype);
+        wps_state_get_int(o, "WPProgram", "close_on_exit", &close_exit);
+        wps_state_get_str(o, "WPProgram", "cwd", &wd);
+        if (wd && *wd) {
+            const char *home = getenv("HOME");
+            if (wd[0] == '~') snprintf(cwd, sizeof cwd, "%s%s", home ? home : "", wd + 1);
+            else snprintf(cwd, sizeof cwd, "%s", wd);
+            struct stat ws;
+            if (stat(cwd, &ws) != 0 || !S_ISDIR(ws.st_mode)) cwd[0] = 0;   /* (gone: home, as without one) */
+        }
+        free(wd);
+        bool term = ptype == 2 || (ptype == 0 && pl > 8 && !strcmp(path + pl - 8, ".desktop") && wps_desktop_wants_terminal(path));
+        if (term && !close_exit) argc = wps_hold_wrap(argv, argc, 64);
+        if (term && !wps_terminal_wrap(argv, argc, 64)) {
+            reply_error(r->c, r->id, "failed", "it runs in a terminal, and no terminal program was found (System: Programs page)");
             wpo_unref(orig);
             return;
         }
@@ -3244,11 +3297,54 @@ static void setup_objects_work(void *arg)
     wps_loaded_free(&fl);
 }
 
+/* The System object, read once the settings objects are there (its
+ * Terminal), and kept: its changes come through on_object_changed. */
+static wps_loaded system_ld;
+static wpo_object *system_obj;
+
+static void system_load_work(void *arg)
+{
+    (void)arg;
+    char sd[PATH_MAX];
+    setup_dir(sd, sizeof sd);
+    wps_loaded fl;
+    wps_load(sd, false, &fl);
+    wps_props known;
+    wps_props_init(&known);
+    char sloc[WPS_ID_LEN + 8], *id = NULL;
+    snprintf(sloc, sizeof sloc, "setup:%s", fl.id);
+    system_ld.err = ENOENT;
+    if (!fl.err && fl.id[0]) wps_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    if (wps_props_str(&known, "WPSystem", &id) && id) {
+        char loc[WPS_ID_LEN + 8];
+        snprintf(loc, sizeof loc, "vobj:%s", id);
+        wps_load(loc, false, &system_ld);
+    }
+    free(id);
+    wps_props_free(&known);
+    wps_loaded_free(&fl);
+}
+
+static void system_loaded(void *arg)
+{
+    (void)arg;
+    wpo_object *o = system_ld.err ? NULL : wps_object_from_loaded(&system_ld);
+    wps_loaded_free(&system_ld);
+    if (o && wpo_is_a(o, WPSystemClass)) { system_obj = o; terminal_from_system(o); }
+    else wpo_unref(o);
+}
+
+static void system_load_done(void *arg)
+{
+    (void)arg;
+    if (!system_obj) wpo_defer(loop, "the System object", system_load_work, system_loaded, NULL);
+}
+
 static void builtin_templates_done(void *arg)
 {
     (void)arg;
     wps_listing_invalidate(wps_templates_dir());
-    wpo_defer(loop, "settings objects", setup_objects_work, NULL, NULL);
+    wpo_defer(loop, "settings objects", setup_objects_work, system_load_done, NULL);
 }
 
 /* ---- the default objects (0.2): System, Programs and the Trash Can on the

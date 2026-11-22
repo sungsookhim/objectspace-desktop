@@ -8,7 +8,7 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/wps-openwith-XXXX")
 RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-ow-XXXX")
 mkdir -p "$T/f" "$T/share/applications" "$T/share/mime" "$T/xdg/config" "$T/home"
 export T HOME="$T/home" WPS_CONFIG_DIR="$T/config" WPS_STATE_DIR="$T/state" WPS_RUNTIME_DIR="$RT" WPS_SAVE_DELAY_MS=100
-export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" WPS_TEMPLATES_DIR="$T/templates"
+export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" WPS_TEMPLATES_DIR="$T/templates" WPS_SETUP_DIR="$T/setup" WPS_TERMINAL=
 export WPS_UDISKS_BUS="unix:path=$RT/none" LANG=ko_KR.UTF-8 LC_ALL= LC_MESSAGES= XDG_CURRENT_DESKTOP=WPS
 python3 tests/openwith/scenario.py setup
 "$REPO/build/wpsd" 2> "$T/wpsd.log" &

@@ -527,24 +527,62 @@ static const char *const terminals[][5] = {
     { "xterm", "-e", NULL },
 };
 
+/* The System object's Terminal (v0.3-design 8). */
+static char term_choice[64] = "automatic", term_cmd[1024];
+
+void wps_terminal_choose(const char *choice, const char *command)
+{
+    snprintf(term_choice, sizeof term_choice, "%s", choice && *choice ? choice : "automatic");
+    snprintf(term_cmd, sizeof term_cmd, "%s", command ? command : "");
+}
+
+const char *wps_terminal_now(void)
+{
+    if (term_cmd[0]) return term_cmd;
+    const char *env = getenv("WPS_TERMINAL");
+    if (env && *env) return env;
+    for (size_t t = 0; t < sizeof terminals / sizeof *terminals; t++)
+        if (!strcmp(term_choice, terminals[t][0]) && on_path(terminals[t][0])) return terminals[t][0];
+    for (size_t t = 0; t < sizeof terminals / sizeof *terminals; t++)
+        if (on_path(terminals[t][0])) return terminals[t][0];
+    return NULL;
+}
+
 int wps_terminal_wrap(char **argv, int argc, int max)
 {
     char *pre[16];
     int k = 0;
-    const char *env = getenv("WPS_TERMINAL");
+    const char *env = term_cmd[0] ? term_cmd : getenv("WPS_TERMINAL");
     static char envbuf[1024];
     if (env && *env) {
-        /* the user's choice: the command goes after these words */
+        /* the user's command (the System object's, else WPS_TERMINAL): the
+         * program's goes after these words */
         k = wps_split_exec(env, NULL, envbuf, sizeof envbuf, pre, 16);
     } else {
-        for (size_t t = 0; t < sizeof terminals / sizeof *terminals && !k; t++)
-            if (on_path(terminals[t][0]))
-                for (int i = 0; terminals[t][i]; i++) pre[k++] = (char *)terminals[t][i];
+        /* the System object's choice if it is installed, else the first installed */
+        for (int pass = 0; pass < 2 && !k; pass++)
+            for (size_t t = 0; t < sizeof terminals / sizeof *terminals && !k; t++)
+                if ((pass || !strcmp(term_choice, terminals[t][0])) && on_path(terminals[t][0]))
+                    for (int i = 0; terminals[t][i]; i++) pre[k++] = (char *)terminals[t][i];
     }
     if (!k || argc + k >= max) return 0;
     memmove(argv + k, argv, (size_t)(argc + 1) * sizeof *argv);
     memcpy(argv, pre, (size_t)k * sizeof *argv);
     return argc + k;
+}
+
+/* Close window on exit off: the terminal waits for Enter after the
+ * program ends (with any terminal: through sh). */
+int wps_hold_wrap(char **argv, int argc, int max)
+{
+    static const char script[] = "\"$@\"; s=$?; printf '\\n[%s ended (exit status %d). Press Enter to close this window.]' \"$1\" \"$s\"; read -r _";
+    if (argc < 1 || argc + 4 >= max) return argc;
+    memmove(argv + 4, argv, (size_t)(argc + 1) * sizeof *argv);
+    argv[0] = "sh";
+    argv[1] = "-c";
+    argv[2] = (char *)script;
+    argv[3] = "sh";
+    return argc + 4;
 }
 
 bool wps_desktop_wants_terminal(const char *desktop);
@@ -675,6 +713,25 @@ int wps_apps_for_file(const char *file, char *mime_out, size_t mn, wps_app *out,
                 snprintf(f, sizeof f, "%s%s/mimeapps.list", pass ? data[i] : cfg[i], pass ? "/applications" : "");
                 if (ini_get(f, "[Added Associations]", mime, val, sizeof val)) n = add_apps(val, out, n, max);
             }
+        /* the user's own entries (an Association page's copies: no
+         * mimeinfo.cache there, usually) */
+        if (nd > 0 && n < max) {
+            char d[PATH_MAX + 16];
+            snprintf(d, sizeof d, "%s/applications", data[0]);
+            DIR *dir = opendir(d);
+            struct dirent *de;
+            while (dir && n < max && (de = readdir(dir))) {
+                size_t l = strlen(de->d_name);
+                if (l < 9 || strcmp(de->d_name + l - 8, ".desktop") || app_listed(out, n, de->d_name)) continue;
+                char p[PATH_MAX + NAME_MAX + 32], types[4096];
+                snprintf(p, sizeof p, "%s/%s", d, de->d_name);
+                if (!ini_get(p, "[Desktop Entry]", "MimeType", types, sizeof types)) continue;
+                bool has = false;
+                for (char *q = types, *t; !has && (t = strsep(&q, ";"));) has = !strcmp(t, mime);
+                if (has && strlen(p) < PATH_MAX && app_read(de->d_name, p, &out[n], false)) n++;
+            }
+            if (dir) closedir(dir);
+        }
         for (int i = 0; i < nd && n < max; i++) {
             char f[PATH_MAX + 64];
             snprintf(f, sizeof f, "%s/applications/mimeinfo.cache", data[i]);
@@ -771,6 +828,45 @@ static bool ini_set(const char *file, const char *section, const char *key, cons
     if (ok && rename(tmp, file) != 0) ok = false;
     if (!ok) unlink(tmp);
     return ok;
+}
+
+bool wps_app_types(const char *desktop, char *out, size_t n)
+{
+    const char *base = strrchr(desktop, '/') ? strrchr(desktop, '/') + 1 : desktop;
+    char path[PATH_MAX];
+    if (!find_desktop(base, path, sizeof path)) snprintf(path, sizeof path, "%s", desktop);   /* (the user's copy first) */
+    out[0] = 0;
+    return ini_get(path, "[Desktop Entry]", "MimeType", out, n);
+}
+
+bool wps_app_set_types(const char *desktop, const char *types)
+{
+    if (strchr(types, '\n') || strchr(types, '\r')) return false;
+    const char *base = strrchr(desktop, '/') ? strrchr(desktop, '/') + 1 : desktop;
+    char dirs[1][PATH_MAX];
+    if (xdg_dirs(false, dirs, 1) < 1) return false;
+    char ud[PATH_MAX + 16], mine[PATH_MAX + NAME_MAX + 32], src[PATH_MAX];
+    snprintf(ud, sizeof ud, "%s/applications", dirs[0]);
+    snprintf(mine, sizeof mine, "%s/%s", ud, base);
+    if (access(mine, F_OK) != 0) {
+        /* a copy of the entry in the user's own (GNOME reads it too) */
+        if (!find_desktop(base, src, sizeof src)) snprintf(src, sizeof src, "%s", desktop);
+        FILE *in = fopen(src, "re");
+        if (!in) return false;
+        mkdir(dirs[0], 0700);
+        mkdir(ud, 0700);
+        FILE *o = fopen(mine, "wxe");
+        if (!o) { fclose(in); return false; }
+        char buf[8192];
+        size_t r;
+        bool ok = true;
+        while ((r = fread(buf, 1, sizeof buf, in)) > 0) ok &= fwrite(buf, 1, r, o) == r;
+        fclose(in);
+        if (fclose(o) != 0 || !ok) { unlink(mine); return false; }
+    }
+    char t[4096];
+    snprintf(t, sizeof t, "%s%s", types, *types && types[strlen(types) - 1] != ';' ? ";" : "");
+    return ini_set(mine, "[Desktop Entry]", "MimeType", t);
 }
 
 bool wps_app_set_default(const char *file, const char *id)

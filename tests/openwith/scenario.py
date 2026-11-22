@@ -13,8 +13,12 @@ A = T + "/share/applications"
 
 if len(sys.argv) > 1 and sys.argv[1] == "setup":
     with open(T + "/fakeapp", "w") as f:
-        f.write('#!/bin/sh\necho "$@" >> "%s/ran.log"\n' % T)
+        f.write('#!/bin/sh\necho "$@ @$(pwd)" >> "%s/ran.log"\n' % T)
     os.chmod(T + "/fakeapp", 0o755)
+    with open(T + "/faketerm", "w") as f:   # a terminal: what it was asked to run
+        f.write('#!/bin/sh\necho "$@" >> "%s/term.log"\n' % T)
+    os.chmod(T + "/faketerm", 0o755)
+    os.mkdir(T + "/work")
 
     def entry(name, mimes, extra=""):
         with open(A + "/" + name + ".desktop", "w") as f:
@@ -33,7 +37,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "setup":
         f.write("text/x-csrc text/plain\n")
     with open(T + "/xdg/config/mimeapps.list", "w") as f:
         f.write("[Default Applications]\ntext/plain=viewer.desktop\n")
-    for n in ("doc.txt", "prog.c"):
+    for n in ("doc.txt", "prog.c", "pic.png"):
         with open(T + "/f/" + n, "w") as f:
             f.write("hello\n")
     sys.exit(0)
@@ -102,6 +106,46 @@ check("an unknown program: refused", not r.get("ok"), r)
 apps = [a["name"] for a in c.request(op="apps").get("result") or []]
 check("every application for the picker (not hidden ones), by name",
       "편집기" in apps and "Viewer" in apps and "Other" in apps and "Quiet" not in apps and "Gone" not in apps, apps)
+
+
+# ---- program settings (v0.3-design 8)
+ED = A + "/editor.desktop"
+
+
+def pages(target):
+    st = c.request(op="settings", target=target).get("result") or []
+    return {p["title"]: {f["key"]: f.get("value") for f in p.get("fields", [])} for p in st}
+
+
+pg = pages(ED)
+check("the Program page: type, close on exit, working directory", pg.get("Program", {}).get("program_type") == 0
+      and pg["Program"].get("close_on_exit") is True and pg["Program"].get("cwd") == "", pg.get("Program"))
+check("the Association page: the types it opens", pg.get("Association", {}).get("mime_types") == "text/plain;", pg.get("Association"))
+r = c.request(op="settings_set", target=ED, values={"mime_types": "text/plain;image/png"})
+mine = os.environ["XDG_DATA_HOME"] + "/applications/editor.desktop"
+check("types changed: the user's copy of the entry", r.get("ok") and os.path.exists(mine)
+      and "MimeType=text/plain;image/png;\n" in open(mine).read(), r)
+check("... and Open on a picture offers it", ("편집기", False) in cascade("pic.png"), cascade("pic.png"))
+check("... the system's entry untouched", "MimeType=text/plain;\n" in open(ED).read())
+
+setup = c.request(op="setup").get("result") or {}
+sysaddr = ((setup.get("objects") or {}).get("WPSystem") or {}).get("address")
+r = c.request(op="settings_set", target=sysaddr, values={"terminal_command": T + "/faketerm --run"})
+check("the System object: a terminal command", r.get("ok"), (sysaddr, r))
+r = c.request(op="settings_set", target=ED, values={"program_type": 2, "close_on_exit": False, "cwd": T + "/work"})
+check("set: text mode, kept open, a working directory", r.get("ok"), r)
+r = c.request(op="open", target=ED)
+t0 = time.time()
+while time.time() - t0 < 3 and not os.path.exists(T + "/term.log"):
+    time.sleep(0.1)
+tl = open(T + "/term.log").read() if os.path.exists(T + "/term.log") else ""
+check("opened in that terminal, held open after it ends", r.get("ok") and tl.startswith("--run sh -c ")
+      and "Press Enter" in tl and (T + "/fakeapp editor") in tl, (r, tl))
+r = c.request(op="settings_set", target=ED, values={"program_type": 1})
+os.remove(T + "/term.log")
+r = c.request(op="open", target=ED)
+check("a window program: no terminal, in its working directory", r.get("ok") and wait_ran("@" + T + "/work")
+      and not os.path.exists(T + "/term.log"), (r, ran()))
 
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)
