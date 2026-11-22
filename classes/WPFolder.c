@@ -85,6 +85,43 @@ wpo_pending *WPFolder__wpPopulate(wpo_object *self)
     return p;
 }
 
+/* ---- the details view: sort and columns */
+
+bool WPFolder__wpSetSortKey(wpo_object *self, int64_t choice)
+{
+    if (choice < 0 || choice > 4) return false;
+    wps_state_put_int(self, "WPFolder", "sort_key", choice - 1);   /* (-1: none, the folder's own order) */
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+bool WPFolder__wpSetSortDesc(wpo_object *self, bool on)
+{
+    wps_state_put_int(self, "WPFolder", "sort_desc", on);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+/* "name=1", "type=0", ...: one column on or off */
+bool WPFolder__wpSetColumn(wpo_object *self, const char *which_on)
+{
+    static const char *const names[] = { "name", "type", "size", "date" };
+    const char *eq = which_on ? strchr(which_on, '=') : NULL;
+    if (!eq) return false;
+    int bit = -1;
+    for (int i = 0; i < 4; i++) if ((size_t)(eq - which_on) == strlen(names[i]) && !strncmp(which_on, names[i], strlen(names[i]))) bit = i;
+    if (bit < 0) return false;
+    int64_t cols = 15;
+    wps_state_get_int(self, "WPFolder", "cols", &cols);
+    cols = eq[1] == '1' ? cols | (1 << bit) : cols & ~(1 << bit);
+    wps_state_put_int(self, "WPFolder", "cols", cols);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
 /* ---- the Background page */
 
 static bool set_bg_str(wpo_object *self, const char *key, const char *v)
@@ -127,10 +164,22 @@ bool WPFolder__wpSetBgGnome(wpo_object *self, bool on)
 char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
-    snprintf(line, sizeof line, "page\tView\nfield\tsort\tchoice\tSort by\t%d\twpSetSortOrder\tname,type,size,date\n"
-             "field\tlocal\tcheckbox\tKeep objects as files here\t%d\twpSetLocalObjects\n",
-             WPFolder_data(self)->sort_order, WPFolder_data(self)->local_objects);
-    char *r = wps_concat(base, line);
+    int64_t key = -1, desc = 0, cols = 15;
+    wps_state_get_int(self, "WPFolder", "sort_key", &key);
+    wps_state_get_int(self, "WPFolder", "sort_desc", &desc);
+    wps_state_get_int(self, "WPFolder", "cols", &cols);
+    char line2[640];
+    snprintf(line2, sizeof line2, "page\tView\nfield\tsort_key\tchoice\tSort by\t%lld\twpSetSortKey\tnone,name,type,size,last write\n"
+             "field\tsort_desc\tcheckbox\tDescending\t%d\twpSetSortDesc\n"
+             "field\tlocal\tcheckbox\tKeep objects as files here\t%d\twpSetLocalObjects\n"
+             "page\tDetails view\nfield\tcol_name\tcheckbox\tReal name\t%d\t@col:name\n"
+             "field\tcol_type\tcheckbox\tType\t%d\t@col:type\n"
+             "field\tcol_size\tcheckbox\tSize\t%d\t@col:size\n"
+             "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n",
+             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects,
+             (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0);
+    (void)line;
+    char *r = wps_concat(base, line2);
     free(base);
     /* Background (OS/2's page): the desktop's has Use GNOME's background */
     char *img = NULL, *col = NULL;

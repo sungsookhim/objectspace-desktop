@@ -8,6 +8,7 @@
 #include "launch.h"
 #include "objects.h"
 #include "shadows.h"
+#include "wps_state.h"
 
 #include <dirent.h>
 #include <pthread.h>
@@ -38,6 +39,7 @@ struct listing {
     bool complete, loading, stale;
     int err;
     uint64_t version;        /* bumped by each edit; a new, unused one for each read */
+    bool sorted;             /* in the folder's sort order (v0.3-design 4): additions read it again */
     long last_index;         /* where the last edit was (see wps_listing_last_index) */
     unsigned gen;            /* bumped when re-read; chunks of an old read are dropped */
     struct waiter *waiters;
@@ -416,6 +418,7 @@ struct chunk {
     unsigned char *types;
     size_t n;
     bool last;
+    bool sorted;             /* the whole folder, sorted (one chunk) */
     int err;
 };
 
@@ -444,18 +447,24 @@ static void chunk_done(void *arg)   /* loop thread */
         memcpy(l->types + l->n, c->types, c->n);
     }
     l->n += c->n;
-    if (c->last) { l->complete = true; l->loading = false; l->err = c->err; }
+    if (c->last) { l->complete = true; l->loading = false; l->err = c->err; l->sorted = c->sorted; }
     free(c->names);
     free(c->types);
     free(c);
     serve(l);
 }
 
-struct read_job { struct listing *l; unsigned gen; char path[PATH_MAX]; };
+struct read_job {
+    struct listing *l;
+    unsigned gen;
+    char path[PATH_MAX];
+    int key;       /* the folder's sort, from its object in memory (-2: not loaded, read it) */
+    bool desc;
+};
 
 /* Central objects are listed as "\x01vobj:<id>": not a file name (no file
  * name starts with \x01), and the address to use for them. */
-struct central_add { struct chunk **c; struct read_job *j; size_t size; };
+struct central_add { struct chunk **c; struct read_job *j; size_t size; size_t *whole_cap; /* sorted: grow, do not post */ };
 
 static void add_central(const char *vol, const char *id, void *user)
 {
@@ -464,9 +473,14 @@ static void add_central(const char *vol, const char *id, void *user)
     struct chunk *c = *ca->c;
     char name[64];
     snprintf(name, sizeof name, "\x01vobj:%s", id);
+    if (ca->whole_cap && c->n == *ca->whole_cap) {
+        *ca->whole_cap *= 2;
+        c->names = realloc(c->names, *ca->whole_cap * sizeof *c->names);
+        c->types = realloc(c->types, *ca->whole_cap);
+    }
     c->names[c->n] = strdup(name);
     c->types[c->n] = DT_UNKNOWN;
-    if (++c->n == CHUNK) {
+    if (++c->n == CHUNK && !ca->whole_cap) {
         wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
         c = calloc(1, sizeof *c);
         c->l = ca->j->l;
@@ -477,9 +491,95 @@ static void add_central(const char *vol, const char *id, void *user)
     }
 }
 
+/* ---- a folder's sort order (its WPFolder sort_key: -1 none, 0 name,
+ * 1 type, 2 size, 3 last write; sort_desc): folders first, then the key,
+ * then the name. Central objects sort by their titles. */
+struct sort_ent { char *name; unsigned char type; bool dir; char *key; int64_t size, mtime; };
+struct sort_ctx { int key; bool desc; };
+
+static const char *ext_of(const char *name)
+{
+    const char *d = strrchr(name, '.');
+    return d && d != name ? d + 1 : "";
+}
+
+static int sort_cmp(const void *a, const void *b, void *arg)
+{
+    const struct sort_ent *x = a, *y = b;
+    const struct sort_ctx *cx = arg;
+    if (x->dir != y->dir) return x->dir ? -1 : 1;   /* folders first, either way */
+    int r = 0;
+    switch (cx->key) {
+    case 1: r = strcasecmp(ext_of(x->key), ext_of(y->key)); break;
+    case 2: r = x->size < y->size ? -1 : x->size > y->size; break;
+    case 3: r = x->mtime < y->mtime ? -1 : x->mtime > y->mtime; break;
+    default: break;
+    }
+    if (!r) r = strcasecmp(x->key, y->key);
+    if (!r) r = strcmp(x->key, y->key);
+    return cx->desc ? -r : r;
+}
+
+/* The chunk (every entry of the folder) in the folder's order. */
+static void sort_chunk(struct chunk *c, const char *folder, int key, bool desc)
+{
+    struct sort_ent *v = calloc(c->n ? c->n : 1, sizeof *v);
+    for (size_t i = 0; i < c->n; i++) {
+        struct sort_ent *e = &v[i];
+        e->name = c->names[i];
+        e->type = c->types[i];
+        char p[PATH_MAX + NAME_MAX + 2];
+        snprintf(p, sizeof p, "%s/%s", folder, e->name);
+        if (e->name[0] == '\x01') {   /* a central object: its title */
+            wps_loaded ld;
+            wps_load(e->name + 1, false, &ld);
+            char *t = NULL;
+            const wps_props *op = ld.err ? NULL : props_of(&ld, "WPObject");
+            if (op && wps_props_str(op, "title", &t) && t) e->key = t;
+            else free(t);
+            wps_loaded_free(&ld);
+        } else {
+            struct stat st;
+            bool need = key == 2 || key == 3 || e->type == DT_UNKNOWN || e->type == DT_LNK;
+            if (need && stat(p, &st) == 0) {
+                e->size = st.st_size;
+                e->mtime = st.st_mtim.tv_sec;
+                if (e->type != DT_LNK) e->type = S_ISDIR(st.st_mode) ? DT_DIR : DT_REG;
+                e->dir = S_ISDIR(st.st_mode);
+            } else {
+                e->dir = e->type == DT_DIR;
+            }
+        }
+        if (!e->key) e->key = strdup(e->name);
+    }
+    struct sort_ctx cx = { key, desc };
+    qsort_r(v, c->n, sizeof *v, sort_cmp, &cx);
+    for (size_t i = 0; i < c->n; i++) {
+        c->names[i] = v[i].name;
+        c->types[i] = v[i].type;
+        free(v[i].key);
+    }
+    free(v);
+    c->sorted = true;
+}
+
 static void read_work(void *arg)   /* worker: the whole directory, posted in chunks */
 {
     struct read_job *j = arg;
+    /* the folder's sort order: then it is read whole, sorted, and posted at once */
+    int key = j->key;
+    bool desc = j->desc;
+    if (key == -2) {   /* (not in memory: as stored) */
+        key = -1;
+        wps_loaded fl;
+        wps_load(j->path, false, &fl);
+        const wps_props *fp = fl.err ? NULL : props_of(&fl, "WPFolder");
+        int64_t v;
+        if (fp && wps_props_int(fp, "sort_key", &v) && v >= 0 && v <= 3) key = (int)v;
+        if (fp && wps_props_int(fp, "sort_desc", &v)) desc = v != 0;
+        wps_loaded_free(&fl);
+    }
+    size_t whole_cap = CHUNK;   /* (sorted: one chunk that grows) */
     DIR *d = opendir(j->path);
     /* Small chunks first, so the first page is ready after a few directory
      * blocks even when the disk cache is cold; then larger ones. */
@@ -499,9 +599,14 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     while ((de = readdir(d))) {
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
         if (!strncmp(de->d_name, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) continue;   /* a job's half-made item */
+        if (key >= 0 && c->n == whole_cap) {
+            whole_cap *= 2;
+            c->names = realloc(c->names, whole_cap * sizeof *c->names);
+            c->types = realloc(c->types, whole_cap);
+        }
         c->names[c->n] = strdup(de->d_name);
         c->types[c->n] = de->d_type;
-        if (++c->n == size) {
+        if (++c->n == size && key < 0) {
             if (size < CHUNK) size *= 4;
             wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
             c = calloc(1, sizeof *c);
@@ -516,10 +621,11 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     wps_loaded fld;
     wps_load(j->path, false, &fld);
     if (!fld.err && fld.id[0]) {
-        struct central_add ca = { &c, j, size };
+        struct central_add ca = { &c, j, size, key >= 0 ? &whole_cap : NULL };
         wps_central_in(fld.vol, fld.id, add_central, &ca);
     }
     wps_loaded_free(&fld);
+    if (key >= 0) sort_chunk(c, j->path, key, desc);
     c->last = true;
     wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
 }
@@ -538,6 +644,16 @@ static void start_read(struct listing *l)
     j->l = l;
     j->gen = l->gen;
     snprintf(j->path, sizeof j->path, "%s", l->path);
+    /* the folder's sort, as it is now (its object's state may not be
+     * written yet: a sort just chosen) */
+    j->key = -2;
+    sobj *so = wps_sobj_by_path(l->path);
+    if (so && so->o) {
+        int64_t v = -1;
+        j->key = wps_state_get_int(so->o, "WPFolder", "sort_key", &v) && v >= 0 && v <= 3 ? (int)v : -1;
+        v = 0;
+        j->desc = wps_state_get_int(so->o, "WPFolder", "sort_desc", &v) && v;
+    }
     wpo_defer(loop, "read folder", read_work, free, j);
 }
 
@@ -605,6 +721,9 @@ void wps_listing_apply(const char *folder, char kind, const char *name, const ch
     if (kind == 'r' && tmp) { kind = 'c'; name = newname; tmp = false; }   /* a job's item finished */
     if (kind == 'r' && !strncmp(newname, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) kind = 'd';
     if (tmp) return;
+    /* sorted: an addition or rename belongs somewhere in the order, which
+     * windows cannot place: read again (removals follow by position) */
+    if (l->sorted && kind != 'd') { l->stale = true; return; }
     ssize_t i = index_of(l, name);
     if (kind == 'c') {
         if (i >= 0) return;

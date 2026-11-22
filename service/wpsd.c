@@ -1250,6 +1250,17 @@ static const char *apply_settings(wpo_object *o, const cv *values)
         for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
         if (!f) { err = "no such setting"; break; }
         wpo_value a, r;
+        if (!strncmp(f->setter, "@col:", 5)) {
+            /* a details view's column on or off: wpSetColumn("name=1") */
+            char arg[64];
+            bool on = val->k == CV_BOOL ? val->b : val->k == CV_INT ? val->i != 0 : false;
+            snprintf(arg, sizeof arg, "%s=%d", f->setter + 5, on);
+            wpo_value av = wpo_v_string(arg);
+            if (wpo_send(o, "wpSetColumn", &av, 1, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
+            wpo_value_clear(&av);
+            wpo_value_clear(&r);
+            continue;
+        }
         if (!strcmp(f->setter, "@")) {
             /* A settings object's field: wpSetSetting(key, value as text). */
             char num[32];
@@ -1272,6 +1283,9 @@ static const char *apply_settings(wpo_object *o, const cv *values)
         else if (r.type == 'b' && !r.u.b) err = "the setter refused the value";
         wpo_value_clear(&a);
         wpo_value_clear(&r);
+        /* a folder's sort: its listing is read again in the new order */
+        if (!err && (!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
+            wps_listing_invalidate(WPFileSystem_data(o)->path);
     }
     return err;
 }

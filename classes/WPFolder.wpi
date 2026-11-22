@@ -24,6 +24,12 @@ method wpPopulate() -> pending async
 # (0 centred, 1 tiled, 2 scaled to fill, 3 scaled to fit, 4 stretched), a
 # colour (#rrggbb, "" none), and for the desktop whether GNOME's
 # background is shown instead (the default).
+# The details view (v0.3-design 4): its sort (the listing's order; 0 none,
+# 1 name, 2 type, 3 size, 4 last write), descending, and its columns
+# (bits: 1 real name, 2 type, 4 size, 8 last write; the title always).
+method wpSetSortKey(int choice) -> bool
+method wpSetSortDesc(bool on) -> bool
+method wpSetColumn(string which_on) -> bool
 method wpSetBgImage(string path) -> bool
 method wpSetBgMode(int mode) -> bool
 method wpSetBgColor(string color) -> bool
