@@ -22,6 +22,8 @@
 /* desktop: the desktop folder (its menu); open_folder: a folder window. */
 void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folder)(const char *path));
 bool warpcenter_is_open(void);
+/* Draw it again (an icon became ready). */
+void warpcenter_damage(void);
 
 /* The WarpCenter object's settings (edge, meters, keyboard, messages,
  * clock, seconds, date), applied at once. */

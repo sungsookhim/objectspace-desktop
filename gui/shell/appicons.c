@@ -46,7 +46,7 @@ static bool theme_file(const char *name, char *png, size_t n, char *svg, size_t 
         else snprintf(svg, m, "%s", name);
         return exists(name);
     }
-    static const char *const sizes[] = { "64x64", "48x48", "128x128", "96x96", "256x256", "32x32" };
+    static const char *const sizes[] = { "64x64", "48x48", "128x128", "96x96", "256x256", "32x32", "24x24", "22x22" };
     static const char *const themes[] = { "hicolor", "Adwaita", "AdwaitaLegacy" };
     const char *x = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     char user[PATH_MAX], fp[PATH_MAX];
@@ -55,8 +55,9 @@ static bool theme_file(const char *name, char *png, size_t n, char *svg, size_t 
     snprintf(fp, sizeof fp, "%s/.local/share/flatpak/exports/share/icons", home ? home : "/nonexistent");
     const char *roots[] = { user, "/usr/share/icons", "/usr/local/share/icons", "/var/lib/flatpak/exports/share/icons", fp };
     char p[PATH_MAX];
-    /* (programs' icons are "apps"; notifications name "status" ones too) */
-    static const char *const cats[] = { "apps", "status", "devices", "categories" };
+    /* (programs' icons are "apps"; notifications and tray icons name
+     * "status" ones too, some only in AdwaitaLegacy's "legacy") */
+    static const char *const cats[] = { "apps", "status", "devices", "categories", "legacy" };
     for (size_t c = 0; c < sizeof cats / sizeof *cats; c++)
     for (size_t t = 0; t < 3; t++)
         for (size_t r = 0; r < 5; r++) {
@@ -68,6 +69,14 @@ static bool theme_file(const char *name, char *png, size_t n, char *svg, size_t 
             if (!*svg && exists(p)) snprintf(svg, m, "%s", p);
         }
     if (*svg) return true;
+    /* symbolic ones last (Adwaita's status icons, many tray icons'):
+     * NAME-symbolic, or NAME if it is one */
+    for (size_t c = 0; c < sizeof cats / sizeof *cats; c++)
+        for (size_t r = 0; r < 5; r++) {
+            snprintf(p, sizeof p, "%s/Adwaita/symbolic/%s/%s%s.svg", roots[r], cats[c], name,
+                     strstr(name, "-symbolic") ? "" : "-symbolic");
+            if (exists(p)) { snprintf(svg, m, "%s", p); return true; }
+        }
     snprintf(p, sizeof p, "/usr/share/pixmaps/%s.png", name);
     if (exists(p)) { snprintf(png, n, "%s", p); return true; }
     snprintf(p, sizeof p, "/usr/share/pixmaps/%s.svg", name);

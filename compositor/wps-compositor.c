@@ -2327,7 +2327,7 @@ static void script_step(const char *line)
         idle_activity();   /* as input from a hand */
         wlr_cursor_warp_closest(server.cursor, NULL, x, y);
         process_motion(t);
-        uint32_t btn = !strcmp(extra, "right") ? 0x111 : 0x110;
+        uint32_t btn = !strcmp(extra, "right") ? 0x111 : !strcmp(extra, "middle") ? 0x112 : 0x110;
         if (!strcmp(cmd, "click") || !strcmp(cmd, "down") || !strcmp(cmd, "dclick")) process_button(t, btn, true);
         if (!strcmp(cmd, "click") || !strcmp(cmd, "up") || !strcmp(cmd, "dclick")) process_button(t, btn, false);
         if (!strcmp(cmd, "dclick")) { process_button(t, btn, true); process_button(t, btn, false); }

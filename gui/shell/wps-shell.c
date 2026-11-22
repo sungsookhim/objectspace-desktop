@@ -979,6 +979,7 @@ static size_t src_count(void *ctx)
 /* A program's icon was made (an SVG, by glycin): every window draws again. */
 static void appicons_ready(void)
 {
+    warpcenter_damage();   /* (the tray's icons) */
     for (struct folder *f = folders; f; f = f->next)
         if (!f->closing && f->cont) ui_container_changed(f->cont, 0, SIZE_MAX);
 }

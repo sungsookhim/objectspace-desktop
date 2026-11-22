@@ -16,6 +16,7 @@
 
 #include "events.h"
 #include "icons.h"
+#include "tray.h"
 #include "svc.h"
 #include "winlist.h"
 
@@ -25,7 +26,7 @@
 #define METER_W 9
 #define NMETERS 4
 
-enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, NPARTS };
+enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, P_TRAY, NPARTS };
 
 /* the Desktop menu, read ahead (the menu widget takes whole trees) */
 struct mnode {
@@ -74,7 +75,7 @@ static struct {
     ui_surface *pop;
     int pop_kind;                  /* P_CLOCK or P_METERS */
     int cal_month, cal_year;
-} wc = { .pressed = P_NONE, .timer = -1, .shown = { true, true, true, true, true, true } };
+} wc = { .pressed = P_NONE, .timer = -1, .shown = { true, true, true, true, true, true, true } };
 
 /* ------------------------------------------------------------- layout */
 
@@ -101,10 +102,17 @@ static double msg_w(void)
     return wc.h - 2 * PAD + 6 + (wc.unread ? ui_text_width(UI_FONT_BOLD, t) + 4 : 0);
 }
 
-static bool part_shown(int p) { return p == P_CLOCK ? wc.clock_mode != 2 : wc.shown[p]; }
+static bool part_shown(int p)
+{
+    if (p == P_TRAY) return wc.shown[p] && tray_count() > 0;
+    return p == P_CLOCK ? wc.clock_mode != 2 : wc.shown[p];
+}
 
-/* From the right: the clock, the keyboard, messages, the meters; parts
- * the WarpCenter object turned off take no room. */
+static double tray_cell(void) { return wc.h - 2 * PAD; }
+
+/* From the right: the clock, the keyboard, messages, the meters, the
+ * tray (other programs' icons, when there are any); parts the WarpCenter
+ * object turned off take no room. */
 static ui_rect part_rect(int p)
 {
     double h = wc.h - 2 * PAD;
@@ -113,12 +121,13 @@ static ui_rect part_rect(int p)
     case P_WINDOWS: return (ui_rect){ PAD + desk_w() + 2, PAD, BTN_W, h };
     default: break;
     }
-    static const int order[] = { P_CLOCK, P_KEYBOARD, P_MESSAGES, P_METERS };
+    static const int order[] = { P_CLOCK, P_KEYBOARD, P_MESSAGES, P_METERS, P_TRAY };
     double x = wc.w - PAD;
     for (size_t i = 0; i < sizeof order / sizeof *order; i++) {
         int q = order[i];
         if (!part_shown(q)) { if (q == p) return (ui_rect){ 0, 0, 0, 0 }; continue; }
-        double w = q == P_CLOCK ? clock_w() : q == P_KEYBOARD ? KEY_W : q == P_MESSAGES ? msg_w() : NMETERS * (METER_W + 3) + 7;
+        double w = q == P_CLOCK ? clock_w() : q == P_KEYBOARD ? KEY_W : q == P_MESSAGES ? msg_w()
+                 : q == P_TRAY ? (double)tray_count() * tray_cell() + 4 : NMETERS * (METER_W + 3) + 7;
         x -= w;
         if (q == p) return (ui_rect){ x, PAD, w, h };
         x -= 4;
@@ -239,6 +248,28 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         } else if (p == P_CLOCK) {
             ui_bevel(cr, r, false);
             centred_text(cr, r, wc.clock, d);
+        } else if (p == P_TRAY) {
+            ui_bevel(cr, r, false);
+            double c = tray_cell(), sz = fmin(22, c - 4);
+            for (size_t i = 0, n = tray_count(); i < n; i++) {
+                cairo_surface_t *im = tray_icon(i);
+                double x = r.x + 2 + (double)i * c + (c - sz) / 2, y = r.y + (r.h - sz) / 2;
+                if (!im) {   /* (not read yet, or none): a dot */
+                    ui_set_color(cr, k->shadow);
+                    cairo_arc(cr, x + sz / 2, y + sz / 2, 3, 0, 2 * M_PI);
+                    cairo_fill(cr);
+                    continue;
+                }
+                int iw = cairo_image_surface_get_width(im), ih = cairo_image_surface_get_height(im);
+                if (iw <= 0 || ih <= 0) continue;
+                cairo_save(cr);
+                cairo_translate(cr, x, y);
+                cairo_scale(cr, sz / iw, sz / ih);
+                cairo_set_source_surface(cr, im, 0, 0);
+                cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+                cairo_paint(cr);
+                cairo_restore(cr);
+            }
         } else if (p == P_METERS) {
             ui_bevel(cr, r, false);
             static const double col[NMETERS][3] = { { 0.2, 0.7, 0.3 }, { 0.25, 0.45, 0.85 }, { 0.85, 0.55, 0.15 }, { 0.6, 0.35, 0.8 } };
@@ -796,6 +827,14 @@ static void wc_pointer(ui_surface *s, const ui_pointer_event *e)
         if (wc.pop && p != wc.pop_kind) pop_free();   /* another part, or the bar: it closes */
         if (p == P_NONE) return;
         if (p == P_DESKTOP || p == P_CLOCK || p == P_METERS) { press(p, e->serial, 1); return; }   /* (menus and pop-ups open on press) */
+        if (p == P_TRAY) {   /* (its menus too) */
+            ui_rect r = part_rect(P_TRAY);
+            double c = tray_cell();
+            size_t i = (size_t)fmax(0, (e->x - r.x - 2) / c);
+            ui_rect at = { r.x + 2 + (double)i * c, wc.top ? r.y + r.h : r.y, 1, 1 };
+            tray_press(i, e->button, wc.s, at, e->serial);
+            return;
+        }
         wc.pressed = p;
         damage();
     } else if (e->kind == UI_RELEASE && wc.pressed != P_NONE) {
@@ -842,13 +881,16 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
     }
     winlist_ext("keyboard", "report");
     build_start();
+    tray_init(a, damage);   /* (the session's tray: only with the bar) */
 }
+
+void warpcenter_damage(void) { damage(); }
 
 bool warpcenter_is_open(void) { return wc.s != NULL; }
 
 bool warpcenter_press(const char *part)
 {
-    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock" };
+    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray" };
     if (!wc.s) return false;
     for (int p = 0; p < NPARTS; p++)
         if (!strcmp(part, names[p])) { press(p, ui_app_input_serial(wc.app), 1); return true; }
@@ -878,6 +920,7 @@ void warpcenter_setting(const char *key, const char *val)
             if (wc.s) winlist_ext("panel", top ? "top" : "bottom");
         }
     } else if (!strcmp(key, "meters")) wc.shown[P_METERS] = on;
+    else if (!strcmp(key, "tray")) wc.shown[P_TRAY] = on;
     else if (!strcmp(key, "keyboard")) wc.shown[P_KEYBOARD] = on;
     else if (!strcmp(key, "messages")) wc.shown[P_MESSAGES] = on;
     else if (!strcmp(key, "clock")) wc.clock_mode = !strcmp(val, "12 hours") ? 1 : !strcmp(val, "off") ? 2 : 0;
@@ -902,7 +945,7 @@ void warpcenter_messages(size_t unread, void (*open_messages)(void))
 
 bool warpcenter_part_rect(const char *part, double *x, double *y, double *w, double *h)
 {
-    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock" };
+    static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray" };
     for (int p = 0; p < NPARTS; p++) {
         if (strcmp(part, names[p])) continue;
         ui_rect r = part_rect(p);
