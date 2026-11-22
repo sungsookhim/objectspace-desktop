@@ -54,8 +54,8 @@ Each item says where it stands. **D** marks something the owner deferred; **?** 
   - Deduplication against local `.wpobj` files.
   - Cleanup after their folder is deleted outside WPS.
   - Becoming `.wpobj` files when moved into a folder that keeps files.
-- **Delete in tree view** deletes only the item with the cursor.
-- **Confirmations** are read from `system.conf`, not yet from the System object.
+- **Delete in tree view:** done in 0.3 step 1 (the whole selection).
+- **Confirmations:** read from the System object (checked in 0.3 step 1).
 - **Big folders:** a batch of changes costs time in proportion to the folder; the selection survives a change by name only up to 256 items.
 
 ### Desktop and session
