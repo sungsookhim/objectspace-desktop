@@ -33,124 +33,85 @@ Tagged `v0.3`; the RPMs are attached to its GitHub release. All eleven steps of 
 
 ## Open and deferred work
 
-Each item says where it stands. **D** marks something the owner deferred; **?** a choice still to make.
+Everything still open after 0.3, by area; the version each goes into is in **Proposed order** below. Done items moved to the release notes. **D** marks something the owner deferred; **?** a choice still to make.
 
-### Folders and objects (daily use)
+### Icons
 
-- **D** **Details view sorting and columns.** Click a heading to sort (again: reversed); choose the columns globally (System Setup) and per folder. Sorting belongs in wpsd (rows are paged and shared). **?** Kept per folder (OS/2's "Always maintain sort order", also used by Arrange) or per window; OS/2's column set or today's plus Type.
-- **D** **OS/2's icon layout.** Every title whole, rows as tall as their tallest title: done in 0.3 step 6 (the free layout with variable widths: the owner's to-do below).
-- **A search field in folder windows** that filters the view (today Ctrl+F opens Find on the folder). Needs the folder model to show a subset.
-- **Sort by size:** folders and shadows sort by their own stored size, so they mix with files; folders first would be tidier.
-- **The owner's to-do (2026-11-22):**
-  - **Icon size** for icon views and the desktop, a System choice: 32, 40 or 64 pixels (today 32).
-  - **Prevent delete** on an object's General page (OS/2's no-delete style): Delete and drops on the Trash Can refuse it, by accident or not, until it is unchecked. The Trash Can and My System are the examples; WPS's own objects could start with it on.
-  - **Lock position:** done in 0.3 step 6 (also asked for here); dragging only locked icons within their folder shows the no-drop pointer.
-- **The owner's to-do (2026-11-22, after 0.3 step 6):**
-  - **OS/2's free (non-grid) icon layout:** cells as wide as their titles too (variable horizontal spacing, as OS/2's), so very wide titles get room instead of wrapping in a 100-pixel cell. Today's icon view stays as the grid layout; the folder's Icon view page chooses **grid** or **free**. Effort: M, about one plan step: per-item widths in `layout.c` (rows packed left to right, wrapping at the window's width), the container's hit tests and title wrapping at each item's width, Arrange and Lock position the same, tests.
-  - **UI:** the resize pointer over a details view's column edges; the Background page's polish (open-issues).
-  - **Where the search field sits** (Ctrl+F): a setting - top (today), bottom, floating.
-  - **Folder windows remember their place** (2026-11-22): a folder window opens where it was last closed, at its last size (kept with the folder, as OS/2's did), not at the default spot; the view (icon, details, tree) too.
-  - **Confirm an extension change on rename** (2026-11-22): renaming a file in the GUI so that its extension changes (report.odt to report.txt, or the extension removed or added) asks first: "Change the extension from .odt to .txt? The file may open differently." with Use .txt / Keep .odt / Cancel. With Show file extensions off the extension is kept anyway (step 8), so this is for when it is shown.
-- **File types from metadata, as OS/2's .TYPE EA** (the owner's question, 2026-11-22): Linux has extended attributes (`user.*` on ext4, XFS, Btrfs; not on FAT/exFAT; kept by `cp -a`, `tar --xattrs`, lost by most archives, mail and cloud copies), and freedesktop's common attributes name `user.mime_type`. Few programs read it; GNOME decides by name and content. **Proposed:** WPS honours `user.mime_type` when a file has one (its icon, Open ▸, the Association pages), and a data file's Type field (OS/2's Type page) sets it; files without one go by extension as now. Programs other than WPS would still go by the name.
-- **The Trash Can:** done in 0.2 step 3 (browse, restore, empty, drops, shadows trashed and restorable, empty and full icons).
-- **Lock icon positions:** done in 0.3 step 6.
-- **Open With** ("comes in G2" in the menu); types with no default application go through `xdg-open`, untracked.
-- **Program settings missing:**
-  - Program type: text-mode or not is guessed from the ELF file, and scripts always get a terminal.
-  - "Close window on exit".
-  - The terminal to use: `WPS_TERMINAL` today.
-- **Hidden and lock files** (`.~lock.*#`, `.*.swp`) are listed. **Decided** (0.3): lock files never listed; Show hidden files is one system choice in the System object.
-- **Templates:**
-  - Moving a template by dragging (every drag makes a new object).
-  - A "New" cascade listing the templates.
-  - Create another asking for a name and folder, as OS/2 did.
-  - New data files' titles include the extension.
-- **Central objects:**
-  - Deduplication against local `.wpobj` files.
-  - Cleanup after their folder is deleted outside WPS.
-  - Becoming `.wpobj` files when moved into a folder that keeps files.
-- **Delete in tree view:** done in 0.3 step 1 (the whole selection).
-- **Confirmations:** read from the System object (checked in 0.3 step 1).
+- **Icons in several sizes** (the owner's spec, 2026-11-21): `.wpsicon` packages, SVG through librsvg, the open (animation) icon. Detailed under 0.4.
+- **Icon size** for icon views and the desktop, a System choice: 32, 40 or 64 pixels (the owner's to-do; 48 too, as the new icon set draws it).
+- **The new icon set** (isometric, BeOS / Warp 4 style) is being drawn in another session (`tools/icons/make_iso.py`); 0.4 packages it as WPS's own icons.
+- An object's icon is a copy: a changed source image does not follow; icons no object uses stay in `wps/icons`; templates copy their icon's PNG.
+- No drop on the icon picker to add an image to the library.
+
+### Folder windows
+
+- **OS/2's free (non-grid) icon layout:** cells as wide as their titles (variable horizontal spacing); grid or free on the folder's Icon view page (the owner's to-do; M, about one step).
+- **Folder windows remember their place:** position, size and view kept with the folder, as on OS/2 (the owner's to-do).
+- **Where the search field sits:** top (today), bottom, floating (the owner's to-do).
+- **The resize pointer** over a details view's column edges (the owner's to-do).
+- **The desktop has no status line:** its messages (moved to the trash, errors) are not shown. A transient message on the desktop, or a notification.
+- **Icon positions stored by 0.2** were laid out for two-line titles: long titles may overlap until Arrange (found in 0.3 step 6). An Arrange offered once, or positions moved down on the first open.
+- **Sort by size:** folders and shadows sort by their own stored size (folders first would be tidier).
 - **Big folders:** a batch of changes costs time in proportion to the folder; the selection survives a change by name only up to 256 items.
 
-### Desktop and session
+### Objects: safety and types
 
+- **Prevent delete** on an object's General page (OS/2's no-delete style); WPS's own objects could start with it on (the owner's to-do).
+- **Confirm an extension change on rename** (when extensions are shown; the owner's to-do).
+- **File types from metadata, as OS/2's .TYPE EA:** **?** WPS honours `user.mime_type` when a file has one; a data file's **Type page** sets it (the owner's question).
+- **A Program page for executable files** (today they keep the guess: text mode or not from the ELF file; scripts always get a terminal; programs that load their window library at run time get a terminal they do not need) (found in 0.3 step 7).
+- **A shadow's menu** is the shadow's own (Open, Properties): OS/2 showed its original's (Open With on a shadow of a file, for one) (found in 0.3 step 10).
+- **Programs that hand the file to a running instance** (most GNOME apps, Firefox) show it in use only for a moment.
+- **Programs started by wpsd get no activation token,** so GNOME may open them behind the active window.
+
+### Palettes and fonts
+
+- **The Colour Palette** (OS/2's; the owner's): colours dragged onto backgrounds, a window's parts, a notebook's colour field, as fonts are from the Font Palette.
+- **The Background page's polish:** an empty colour swatch looks white while the desktop shows teal; a small preview instead of the picture's path (the owner's check of 0.3 step 3).
+- **Fonts in all WPS windows:** notebooks, dialogs, Find, the window list use the interface font; the Font Palette reaches folders, title bars, menus and the WarpCenter (found in 0.3 step 9).
+- **Font sizes** from the Font Palette ignore GNOME's text scaling factor; **Edit font** has no style list (only Bold and Italic), as OS/2's had.
+- Other programs' title bars take only the font for all title bars, not a folder's (by design: they are not folders).
+- A cascade from a drawer on a vertical LaunchPad's left side opens to the right (menus open rightward first).
+
+### Windows, session and the compositor
+
+- **Work Area folders** (OS/2's; designed in [v0.3-design.md](v0.3-design.md) section 12; moved to 0.4 by the owner).
 - **D** **More than one monitor:** the desktop covers the first screen only, in both modes.
-- **D** **WPS over RDP.** Remote logins start headless and the compositor needs a seat. Options:
-  - Implement Mutter's RemoteDesktop and ScreenCast interfaces, so GNOME Remote Desktop works.
-  - A headless compositor served by wayvnc.
-- **D** **Sharp X11 programs on scaled screens.** wlroots 0.20 offers no XWayland scaling; it needs the compositor's own scaling of X11 windows.
-- **The desktop's own menu** lacks OS/2's Lockup now, Shut down and **System Setup** (the owner's, after 0.2: a cascade with the settings objects, as OS/2's desktop menu had); **the desktop has no status line**, so its messages are not shown.
-- **The desktop's background image** (the owner's, after 0.2): a Background page in the desktop's notebook (right click, Properties) to set the image. Today the desktop shows GNOME's background setting.
-- **LaunchPad:**
-  - No tooltips.
-  - Not a settings object yet: orientation, small icons, float on top (OS/2 had a notebook for it).
-  - Drawers are read when opened, not followed.
-  - No keyboard shortcut to reach it.
-- **Input methods:**
-  - The candidate window (e.g. Hanja) is not placed at the text.
-  - No bidirectional text.
-  - Text being composed is dropped when focus moves.
-  - No on-screen keyboard.
-- **Session settings read at login:** idle and lock times. Suspend after idle (GNOME's power settings) is not done.
-- **Fonts:** WPS follows GNOME's interface font; no Font Palette of its own.
-- **Sound object:** events are text fields; a list to pick from with Play would be friendlier.
-- **Inside GNOME (stage 1):**
-  - Without the extension the desktop is an ordinary window.
-  - Programs started by wpsd get no activation token.
-  - One process per desktop: a second `wps-shell` does not hand over to the first.
-  - Mutter holds frame callbacks for a scroll layer that covers a surface.
+- **WPS's frame around GTK 4 / libadwaita programs:** a per-application setting to hide their title bar and frame them.
+- **D** **Sharp X11 programs on scaled screens** (the compositor's own scaling of X11 windows).
+- **D** **WPS over RDP:** Mutter's RemoteDesktop and ScreenCast interfaces, or a headless compositor served by wayvnc.
+- **Suspend after idle** (GNOME's power settings) is not followed.
+- **Inside GNOME:** float on top and Super for the WPS menu are the WPS session's only; without the extension the desktop is an ordinary window; a second `wps-shell` does not hand over to the first; Mutter holds frame callbacks for a scroll layer that covers a surface.
 
 ### Look of other programs (not designed)
 
-- **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours.
-  - Likely pieces: a GTK 3 theme, a GTK 4 / libadwaita stylesheet (limited by design), a Qt style, a WPS icon and cursor theme.
-  - All of it driven by the scheme objects.
-  - **?** How far to go with libadwaita.
-- **WPS's frame around GTK 4 / libadwaita programs:** they offer no protocol for it. A per-application setting would hide their title bar and frame them.
+- **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours: a GTK 3 theme, a GTK 4 / libadwaita stylesheet (limited by design), a Qt style, a WPS icon and cursor theme, all driven by the scheme objects. **?** How far to go with libadwaita.
 
 ### Object core (deferred in its design)
 
-- **Network filesystems (NFS, SMB):** extended attributes vary, and remote changes are not reported.
-- **Undo for jobs:** a move, copy or delete taken back.
-- **Disk full and quota errors during jobs.**
+- **Network file systems (NFS, SMB):** extended attributes vary, remote changes are not reported; the Network object.
+- **Undo for jobs;** disk full and quota errors during jobs.
+- **Central objects:** deduplication against local `.wpobj` files; cleanup after their folder is deleted outside WPS; becoming `.wpobj` files when moved into a folder that keeps files.
+- **Find:** titles, classes and settings are not searched; nothing is indexed.
+- **Scale:** a per-folder index beyond about a million entries; the watch helper with many thousands of folders.
 - **Opt-in shared layouts** for team folders.
-- **Scale:**
-  - A per-folder index for folders beyond about a million entries.
-  - The watch helper registering many thousands of folders (a hash table by handle, subtree registration).
+- **Plug-ins:** calls between objects inside a plug-in; classes for abstract objects; one host for several packages; a real third-party plug-in.
 - **Editors not yet tested** for identity across saves: Kate, VS Code.
-- **Plug-ins:**
-  - Calls between objects inside a plug-in.
-  - Plug-in classes for abstract objects.
-  - Grouping packages in one host.
-  - A real third-party plug-in to prove the API.
-- **Find** searches names only: titles, classes and settings are not searched, and nothing is indexed.
 
-### Accessibility
+### Input methods and accessibility
 
-- Screen readers follow the focus only: a window's other contents are not exposed, and there is no Action interface.
-- Not tried with Orca itself.
-- Alt+Space is GNOME's own window menu inside GNOME; WPS's system menu is on Shift+Esc.
+- The candidate window (e.g. Hanja) is not placed at the text; text being composed is dropped when focus moves; no bidirectional text; no on-screen keyboard; not tried with a real CJK engine headless.
+- Screen readers follow the focus only (no exposed contents, no Action interface); not tried with Orca itself. Alt+Space inside GNOME is GNOME's window menu (WPS's: Shift+Esc).
 
 ### Tests and quality
 
-- **The session from the login screen** is tested by hand only; automated tests cover the compositor, desktop and lock screen headless.
-- **Unchecked or flaky tests:**
-  - M4 scenario 38 (a job resumed after logout) timed out once.
-  - The two-window drag self-test was not rerun after the latest drag-and-drop changes.
-  - One headless run in ten once missed an X11 window.
-- **Not tried:** fingerprint and smart-card logins through PAM.
-- **Fresh test sessions** create the desktop's shadows in random order, so tests address icons by position with care.
+- **Unchecked or flaky:** M4 scenario 38 (a job resumed after logout) timed out once; the two-window drag self-test was not rerun; one headless run in ten once missed an X11 window; under headless GNOME the real pointer can hide a LaunchPad tooltip (tested in the WPS session instead).
+- **Not automated:** the session from the login screen (by hand); fingerprint and smart-card logins through PAM (not tried).
+- **Speed:** Open With's list and New's templates are read when the menu opens (on wpsd's loop and in the window, a few files each): fine so far, worth watching.
 
-### Packaging and first run (the RPM done in 0.2)
+### Packaging
 
-- **Done in 0.2:** install to `/usr`, the RPM (`make rpm`, built in mock), versioned databases and upgrades, the default desktop at the first start.
-- **Open:**
-  - Manual pages for `wpsctl`, `wps-shell`, `wps-session` (rpmlint asks for them).
-  - A COPR repository, so `dnf upgrade` finds new versions (skipped for 0.2).
-  - At a new user's first start the desktop can briefly show an extra icon before it settles.
-  - A short tour or help object; OS/2 had a Tutorial and an Information folder.
-- **Build dependencies** are listed in the README but not checked by the build.
+- A COPR repository, so `dnf upgrade` finds new versions (skipped so far, the owner's choice); publishing beyond Fedora.
 
 ## Objectives for 0.2 (the owner's, 2026-11-21; done)
 
@@ -292,23 +253,44 @@ A to do, after 0.2 (with network file systems below).
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
    - **The Colour Palette** (OS/2's; the owner's, 2026-11-22, for later): colours dragged onto a folder's or the desktop's background, a window's parts or a notebook's colour field, as fonts are from the Font Palette. The Background page has a click palette meanwhile.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
-3. **0.4 Look of other programs and Work Areas:** the theming pieces above, and frames for GTK 4 programs.
-   - **Icons in several sizes** (the owner's spec, 2026-11-21; analysed and agreed for 0.4):
-     - **A package per icon:** `NAME.wpsicon`, a zip holding any of `16.png`, `32.png`, `64.png`, `96.png`, `128.png`, `256.png` and `icon.svg` (the names give the sizes; no manifest). 256 is the master when there is no SVG. A single picture still works (a package of one); `.ico` and `.icns` are unpacked into theirs. `wpsctl icon pack DIR OUT.wpsicon`; Choose... takes packages.
-     - **Choosing a size**, in device pixels (a 16 px menu icon at scale 2 wants 32): the exact size; else the SVG; else the nearest larger, scaled down; else the nearest smaller, scaled up. (The SVG comes before scaling a larger picture down: a 256 shrunk to 22 blurs.)
-     - **SVG drawn by librsvg** in the process (a new build dependency, on every GNOME system), sharp at any size.
-     - **WPS's own icons** (computer, drives, trash, programs) become packages made from SVG masters.
-     - **The open icon** (OS/2's animation icon; the owner's): a second icon, shown while the object is open (a folder with a window, a program running). Empty for most objects (the normal one shows, with the in-use emphasis as now); folders and some programs set it. The Icon page gets a second icon field, "Open".
-     - **Later:** icons travelling with their files (OS/2 kept them in extended attributes; here a file holds a path).
-     - **Size: M–L.**
-   - **Work Area folders** (OS/2's; added 2026-11-21; moved from 0.3 by the owner; designed in [v0.3-design.md](v0.3-design.md) section 12). A folder set as a work area treats the programs opened from it as one group, and also restores them at login (programs restarted in their folder). Opening, minimizing and closing the folder do the same to the group's windows.
-     - **Builds on:** wpsd's tracking of which programs were started from which object (the in-use emphasis), the compositor's per-program window control (step 6), and open windows restored at login (0.2).
-     - **New:** linking a program's process to its windows (the compositor), the folder's setting in its notebook, and the group's state kept at logout.
-     - **Inside GNOME:** through the extension.
-     - **Size: M–L.**
-
-4. **0.5 Platform:**
-   - RDP; more than one monitor; sharp X11 when scaled.
-   - The Network object and network file systems.
-   - Undo for jobs.
-5. **1.0 Release:** accessibility beyond focus, first-run tour, the deferred tests, publishing beyond Fedora.
+3. **0.4 Icons, folders and objects** (WPS's own; one new build dependency, librsvg). Grouped so each step touches one part of the code:
+   1. **Icons** (M–L; `icons.c`, wpsd's icon fields, the Icon page):
+      - **A package per icon:** `NAME.wpsicon`, a zip holding any of `16.png`, `32.png`, `64.png`, `96.png`, `128.png`, `256.png` and `icon.svg` (the names give the sizes; no manifest). 256 is the master when there is no SVG. A single picture still works (a package of one); `.ico` and `.icns` are unpacked into theirs. `wpsctl icon pack DIR OUT.wpsicon`; Choose... takes packages.
+      - **Choosing a size**, in device pixels (a 16 px menu icon at scale 2 wants 32): the exact size; else the SVG; else the nearest larger, scaled down; else the nearest smaller, scaled up.
+      - **SVG drawn by librsvg** in the process, sharp at any size.
+      - **WPS's own icons become packages of the isometric set** being drawn in `tools/icons/make_iso.py` (another session, 2026-11-22: BeOS / Warp 4 style; sets A System Setup objects, B special folders, C data files, D the basic kinds, E WPS's own icons redrawn; each size drawn on its own from a 256 px master: 256, 64, 48, 40, 32; outline and flat variants). The generator writes `.wpsicon` packages (its per-size PNGs; no SVG needed) into `data/icons`, and the RPM installs them; **?** which variant is the default (or a System choice).
+      - **The open icon** (OS/2's animation icon): a second icon, shown while the object is open; the Icon page's second field, "Open".
+      - **Icon size** for icon views and the desktop (System: 32, 40, 48, 64), each drawn for its size in WPS's set, so sharp; other icons through the size choice above.
+   2. **Folder layout and windows** (M; `layout.c`, the container, the folder's settings):
+      - **OS/2's free icon layout** (cells as wide as their titles), grid or free per folder;
+      - **folder windows remember** their position, size and view;
+      - the search field's place (top, bottom, floating); the resize pointer on column edges;
+      - positions from 0.2 that overlap long titles: arranged once, if the folder has never been arranged in 0.3;
+      - **the desktop's status line:** its messages shown for a moment at the bottom of the desktop.
+   3. **Objects: safety and types** (M; wpsd's delete and rename, WPDataFile, WPProgram):
+      - **Prevent delete** (General page; WPS's own objects on);
+      - **confirm an extension change on rename;**
+      - **the Type page** of data files, and `user.mime_type` honoured (**?** the owner's choice: in 0.4, or later);
+      - **a Program page for executable files** (type, close on exit, working directory, as for programs);
+      - **a shadow's menu is its original's** (Open With on a shadow of a file);
+      - programs started by wpsd get an **activation token** (they come to the front).
+   4. **The Colour Palette and fonts everywhere** (M; the palettes, `ui_notebook`, `ui_dialog`):
+      - **the Colour Palette** (OS/2's): colours dragged onto backgrounds (a folder's, the desktop's), a window's title bar and frame, a notebook's colour field;
+      - **the Background page's polish:** the swatch shows the colour in use; a preview of the picture;
+      - **the Font Palette's fonts in every WPS window** (notebooks, dialogs, Find, the window list: a font dropped there sets "dialogs");
+      - font sizes follow GNOME's text scaling; Edit font gets a style list.
+   5. **Work Area folders** (M–L; the compositor, wpsd's tracking, the session): a folder set as a work area groups the programs opened from it; opening, minimizing and closing the folder do the same to their windows; restored at login. Builds on the in-use tracking, the compositor's per-program window control and the restored windows of 0.2; inside GNOME through the extension.
+   6. **Fixes and tests carried** (S): the flaky and unrerun tests above; Open With's list read off wpsd's loop; the LaunchPad drawer cascade opening outward on the left; the release (RPMs, notes, tag).
+4. **0.5 The look of other programs and more screens** (the compositor and themes):
+   - **Themes driven by the scheme objects:** a GTK 3 theme, a WPS icon theme (from 0.4's packages) and cursor theme; a GTK 4 / libadwaita stylesheet as far as it goes (**?** how far); a Qt style.
+   - **WPS's frame around GTK 4 / libadwaita programs** (a per-application setting).
+   - **More than one monitor** (the desktop on each; the WarpCenter on one) (**D** until then).
+   - **Sharp X11 programs on scaled screens.**
+   - **Suspend after idle.**
+5. **0.6 Network and jobs** (wpsd and the object core):
+   - **The Network object** and network file systems (NFS, SMB).
+   - **Undo for jobs;** disk full and quota errors.
+   - **Central objects:** deduplication, cleanup, becoming `.wpobj` files.
+   - **Find** in titles, classes and settings; an index.
+   - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).
+6. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
