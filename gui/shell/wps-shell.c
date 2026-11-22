@@ -35,6 +35,7 @@
 #include "findwin.h"
 #include "mime.h"
 #include "icons.h"
+#include "filepick.h"
 #include "iconpick.h"
 #include "launchpad.h"
 #include "gnome.h"
@@ -1459,7 +1460,8 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
             d->label = cv_text(fd, "label");
             d->kind = !type || !strcmp(type, "text") ? UI_FIELD_TEXT : !strcmp(type, "checkbox") ? UI_FIELD_CHECKBOX
                       : !strcmp(type, "number") ? UI_FIELD_NUMBER : !strcmp(type, "icon") ? UI_FIELD_ICON
-                      : !strcmp(type, "info") ? UI_FIELD_INFO : UI_FIELD_CHOICE;
+                      : !strcmp(type, "info") ? UI_FIELD_INFO : !strcmp(type, "file") ? UI_FIELD_FILE
+                      : !strcmp(type, "color") ? UI_FIELD_COLOR : UI_FIELD_CHOICE;
             if (v && v->k == CV_TEXT) d->value.text = (char *)v->s;
             else if (v && v->k == CV_INT) d->value.number = v->i;
             else if (v && v->k == CV_BOOL) d->value.checked = v->b;
@@ -1562,6 +1564,13 @@ void props_icon_from(long props, const char *key, const char *image)
     icons_import(image, icon_made, r);
 }
 
+/* Browse...'s choice: into the field, which applies it. */
+static void props_file_chosen(long owner, const char *key, const char *path)
+{
+    struct props *p = props_by_id(owner);
+    if (p && p->nb) ui_notebook_set_value(p->nb, key, path);
+}
+
 static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_value *v)
 {
     struct props *p = ctx;
@@ -1571,6 +1580,11 @@ static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_v
         if (*v->text) { props_icon_from(p->id, key, v->text); return; }                     /* an image dropped */
         /* Default: "" below */
     }
+    if (kind == UI_FIELD_FILE && !v->text) {   /* Browse... */
+        const char *home = getenv("HOME");
+        filepick_open(p->title, ui_notebook_field_hint(p->nb, key), home && *home ? home : "/", props_file_chosen, p->id, key);
+        return;
+    }
     if (!strcmp(key, "title") && kind == UI_FIELD_TEXT) {
         /* Decided: a file's title is its name; the service renames it (or,
          * without permission, keeps it as a title). */
@@ -1578,7 +1592,7 @@ static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_v
         return;
     }
     cv val = { 0 };
-    if (kind == UI_FIELD_TEXT || kind == UI_FIELD_ICON) { val.k = CV_TEXT; val.s = v->text ? v->text : ""; val.len = strlen(val.s); }
+    if (kind == UI_FIELD_TEXT || kind == UI_FIELD_ICON || kind == UI_FIELD_FILE || kind == UI_FIELD_COLOR) { val.k = CV_TEXT; val.s = v->text ? v->text : ""; val.len = strlen(val.s); }
     else if (kind == UI_FIELD_CHECKBOX) { val.k = CV_BOOL; val.b = v->checked; }
     else { val.k = CV_INT; val.i = v->number; }
     svc_settings_set(p->target, key, &val, p->changes, props_applied, arg);
@@ -3492,10 +3506,89 @@ static void selftest_after_close(void *arg)
     ui_app_quit(app);
 }
 
+/* WPS_SHELL_SELFTEST=fields: what a notebook's fields set, printed. */
+static ui_notebook *selftest_nb;
+
+static void selftest_file_chosen(long owner, const char *key, const char *path)
+{
+    (void)owner;
+    const char *base = strrchr(path, '/');
+    fprintf(stderr, "selftest: fields: picked %s\n", base ? base + 1 : path);
+    if (selftest_nb) ui_notebook_set_value(selftest_nb, key, path);
+}
+
+static void selftest_field_set(void *ctx, const char *key, ui_field_kind kind, const ui_value *v)
+{
+    (void)ctx;
+    if (kind == UI_FIELD_FILE && !v->text) {
+        fprintf(stderr, "selftest: fields: Browse...\n");
+        filepick_open("Fields", ui_notebook_field_hint(selftest_nb, key), "/", selftest_file_chosen, 0, key);
+        return;
+    }
+    const char *base = v->text ? strrchr(v->text, '/') : NULL;
+    fprintf(stderr, "selftest: fields: set %s = %s\n", key, base ? base + 1 : v->text ? v->text : "");
+}
+
 static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "fields")) {
+        /* A notebook's file and colour fields (0.3): a colour typed (a bad
+         * one put back), Browse... into <D>/pics (pictures only), one
+         * picked into the field; a dropped path. */
+        static double t0;
+        static int step;
+        ui_notebook *nb = selftest_nb;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0) {
+            static const char *const kind[] = { "image" };
+            static ui_field_desc fd[2];
+            fd[0] = (ui_field_desc){ "picture", "Image", UI_FIELD_FILE, { .text = "" }, kind, 1 };
+            fd[1] = (ui_field_desc){ "colour", "Colour", UI_FIELD_COLOR, { .text = "#336699" }, NULL, 0 };
+            static ui_page_desc pd[1];
+            pd[0] = (ui_page_desc){ "Background", fd, 2 };
+            selftest_nb = ui_notebook_open(app, "Fields", pd, 1, selftest_field_set, NULL, NULL);
+            step++;
+        } else if (step == 1 && t > 800) {
+            ui_notebook_set_value(nb, "colour", "nonsense");
+            ui_notebook_set_value(nb, "colour", "#C00");
+            fprintf(stderr, "selftest: fields: hint \"%s\"\n", ui_notebook_field_hint(nb, "picture"));
+            const char *shot = getenv("WPS_FIELDS_SHOT");   /* prefix: -notebook.png, -picker.png */
+            char png[PATH_MAX];
+            if (shot) { snprintf(png, sizeof png, "%s-notebook.png", shot); ui_surface_snapshot(ui_notebook_surface(nb), png); }
+            /* Browse... (as its button does): the owner opens the picker */
+            ui_value v = { .text = NULL };
+            selftest_field_set(nb, "picture", UI_FIELD_FILE, &v);
+            step++;
+        } else if (step == 2 && t > 1500) {
+            char pics[PATH_MAX + 8];
+            snprintf(pics, sizeof pics, "%s/pics", f->path);
+            filepick_go(pics);
+            char names[200] = "";
+            for (size_t i = 0; i < filepick_count(); i++)
+                snprintf(names + strlen(names), sizeof names - strlen(names), "%s%s", i ? " " : "", filepick_name(i));
+            fprintf(stderr, "selftest: fields: the picker in pics shows: %s\n", names);
+            step++;
+        } else if (step == 3 && t > 2300) {
+            const char *shot = getenv("WPS_FIELDS_SHOT");
+            char png[PATH_MAX];
+            if (shot) { snprintf(png, sizeof png, "%s-picker.png", shot); filepick_snapshot(png); }
+            for (size_t i = 0; i < filepick_count(); i++)
+                if (!strcmp(filepick_name(i), "sub")) filepick_activate(i);   /* into a folder */
+            fprintf(stderr, "selftest: fields: into sub: %s\n", strrchr(filepick_folder(), '/') + 1);
+            for (size_t i = 0; i < filepick_count(); i++)
+                if (!strcmp(filepick_name(i), "b.png")) filepick_activate(i);   /* picked */
+            fprintf(stderr, "selftest: fields: picker open after picking: %d\n", filepick_is_open());
+            step++;
+        } else if (step == 4 && t > 3000) {
+            ui_notebook_close(nb);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "first") && f->desktop) {
         /* A new desktop's first start: its icons as they come, never more
          * than it ends with (an object listed twice for a moment) */
@@ -5638,6 +5731,7 @@ int main(int argc, char **argv)
     icons_init(app);
     appicons_init(appicons_ready);
     iconpick_init(app, launchpad_open_folder);
+    filepick_init(app);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

@@ -130,7 +130,7 @@ static struct page *copy_pages(const ui_page_desc *src, size_t n)
             f->nchoices = d->nchoices;
             f->choices = calloc(f->nchoices ? f->nchoices : 1, sizeof *f->choices);
             for (size_t c = 0; c < f->nchoices; c++) f->choices[c] = strdup(d->choices[c]);
-            if (f->kind == UI_FIELD_TEXT || f->kind == UI_FIELD_NUMBER) {
+            if (f->kind == UI_FIELD_TEXT || f->kind == UI_FIELD_NUMBER || f->kind == UI_FIELD_FILE || f->kind == UI_FIELD_COLOR) {
                 f->entry = ui_entry_new("");
                 entry_from_value(f);
             }
@@ -170,6 +170,7 @@ static ui_rect control_rect(ui_notebook *nb, size_t k)
     for (size_t i = 0; i < k; i++) y += row_h(&pg->f[i]);
     if (f->kind == UI_FIELD_CHECKBOX) w = FIELD_H;
     else if (f->kind == UI_FIELD_NUMBER) w = fmin(w, 140);
+    else if (f->kind == UI_FIELD_COLOR) w = fmin(w, FIELD_H + 6 + 100);
     else if (f->kind == UI_FIELD_CHOICE) w = fmin(w, 220);
     return (ui_rect){ x, y, w, f->kind == UI_FIELD_ICON ? ICON_BOX : FIELD_H };
 }
@@ -181,6 +182,42 @@ static ui_rect icon_button(ui_rect r, int i) { return (ui_rect){ r.x + ICON_BOX 
 static ui_rect spin_rect(ui_rect r, bool up)
 {
     return (ui_rect){ r.x + r.w - 16, up ? r.y : r.y + r.h / 2, 16, r.h / 2 };
+}
+
+/* A file field: its path, and Browse... after it; a colour field: its
+ * swatch, then its "#rrggbb". */
+#define BROWSE_W 80
+static ui_rect file_button(ui_rect r) { return (ui_rect){ r.x + r.w - BROWSE_W, r.y, BROWSE_W, r.h }; }
+static ui_rect color_swatch(ui_rect r) { return (ui_rect){ r.x, r.y, FIELD_H, FIELD_H }; }
+
+/* Where a field's text is typed (number: before its arrows). */
+static ui_rect entry_rect(const struct field *f, ui_rect r)
+{
+    if (f->kind == UI_FIELD_NUMBER) r.w -= 16;
+    else if (f->kind == UI_FIELD_FILE) r.w -= BROWSE_W + 6;
+    else if (f->kind == UI_FIELD_COLOR) { r.x += FIELD_H + 6; r.w -= FIELD_H + 6; }
+    return r;
+}
+
+/* The button of an icon field (i: 0 Choose..., 1 Default) or file field (Browse...). */
+static ui_rect field_button(const struct field *f, ui_rect r, int i)
+{
+    return f->kind == UI_FIELD_FILE ? file_button(r) : icon_button(r, i);
+}
+
+bool ui_parse_color(const char *t, double rgb[3])
+{
+    if (!t) return false;
+    if (*t == '#') t++;
+    size_t n = strlen(t);
+    if (n != 6 && n != 3) return false;
+    for (size_t i = 0; i < n; i++)
+        if (!strchr("0123456789abcdefABCDEF", t[i])) return false;
+    for (int i = 0; i < 3; i++) {
+        char hx[3] = { t[n == 6 ? 2 * i : i], t[n == 6 ? 2 * i + 1 : i], 0 };
+        rgb[i] = strtol(hx, NULL, 16) / 255.0;
+    }
+    return true;
 }
 
 static ui_rect button_rect(ui_notebook *nb, int i)
@@ -340,6 +377,34 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         case UI_FIELD_ICON:
             draw_icon_field(nb, f, cr, r, focused);
             break;
+        case UI_FIELD_FILE: {
+            ui_rect er = entry_rect(f, r);
+            if (nb->drop_on == f) { ui_fill(cr, er, k->selection); ui_bevel(cr, er, false); }
+            else ui_entry_draw(f->entry, cr, er, focused);
+            ui_rect b = file_button(r);
+            bool down = nb->icon_field == f;
+            ui_fill(cr, b, k->face);
+            ui_bevel(cr, b, !down);
+            ui_set_color(cr, k->text);
+            double tw = ui_text_width(UI_FONT_REGULAR, "Browse...");
+            ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + down, b.y + base_off + down, "Browse...", b.w - 4);
+            break;
+        }
+        case UI_FIELD_COLOR: {
+            ui_rect sw = color_swatch(r);
+            double rgb[3];
+            bool ok = ui_parse_color(f->v.text, rgb);
+            if (ok) {
+                cairo_set_source_rgb(cr, rgb[0], rgb[1], rgb[2]);
+                cairo_rectangle(cr, sw.x, sw.y, sw.w, sw.h);
+                cairo_fill(cr);
+            } else {
+                ui_fill(cr, sw, k->client_bg);
+            }
+            ui_bevel(cr, sw, false);
+            ui_entry_draw(f->entry, cr, entry_rect(f, r), focused);
+            break;
+        }
         case UI_FIELD_NUMBER: {
             ui_rect er = { r.x, r.y, r.w - 16, r.h };
             ui_entry_draw(f->entry, cr, er, focused);
@@ -417,6 +482,15 @@ static void commit_entry(ui_notebook *nb, struct field *f)
         if (end == t || *end) { entry_from_value(f); damage(nb); return; }   /* not a number: put it back */
         if (v == f->v.number) return;
         f->v.number = v;
+    } else if (f->kind == UI_FIELD_COLOR) {
+        double rgb[3];
+        char norm[8];
+        if (!ui_parse_color(t, rgb)) { entry_from_value(f); damage(nb); return; }   /* not a colour: put it back */
+        snprintf(norm, sizeof norm, "#%02x%02x%02x", (int)lround(rgb[0] * 255), (int)lround(rgb[1] * 255), (int)lround(rgb[2] * 255));
+        if (!strcmp(norm, f->v.text ? f->v.text : "")) { entry_from_value(f); return; }
+        free(f->v.text);
+        f->v.text = strdup(norm);
+        entry_from_value(f);
     } else {
         if (!strcmp(t, f->v.text ? f->v.text : "")) return;
         free(f->v.text);
@@ -433,8 +507,8 @@ static void set_focus(ui_notebook *nb, int i)
     struct field *f = focused_field(nb);
     if (f && f->entry) ui_entry_select_all(f->entry);
     /* an input method for text fields (not numbers) */
-    bool text = f && f->entry && f->kind == UI_FIELD_TEXT;
-    ui_text_input_focus(nb->win, text ? f->entry : NULL, text ? control_rect(nb, (size_t)i) : (ui_rect){ 0, 0, 0, 0 });
+    bool text = f && f->entry && (f->kind == UI_FIELD_TEXT || f->kind == UI_FIELD_FILE);
+    ui_text_input_focus(nb->win, text ? f->entry : NULL, text ? entry_rect(f, control_rect(nb, (size_t)i)) : (ui_rect){ 0, 0, 0, 0 });
     damage(nb);
 }
 
@@ -462,6 +536,16 @@ static void a11y_nb(ui_notebook *nb)
         i.at = control_rect(nb, (size_t)nb->focus);
         switch (f->kind) {
         case UI_FIELD_TEXT: i.role = UI_ROLE_ENTRY; i.text = ui_entry_text(f->entry); break;
+        case UI_FIELD_FILE:
+            i.role = UI_ROLE_ENTRY;
+            i.text = ui_entry_text(f->entry);
+            i.description = "a file; Alt+Down: Browse...";
+            break;
+        case UI_FIELD_COLOR:
+            i.role = UI_ROLE_ENTRY;
+            i.text = ui_entry_text(f->entry);
+            i.description = "a colour, as #rrggbb";
+            break;
         case UI_FIELD_INFO: i.role = UI_ROLE_ENTRY; i.text = f->v.text; break;   /* (read only) */
         case UI_FIELD_NUMBER:
             i.role = UI_ROLE_SPIN_BUTTON;
@@ -551,10 +635,17 @@ static void undo(ui_notebook *nb)
     damage(nb);
 }
 
-/* Choose... (0) or Default (1) of an icon field: its owner does it. */
+/* Choose... (0) or Default (1) of an icon field, Browse... of a file
+ * field: its owner does it. */
 static void icon_action(ui_notebook *nb, struct field *f, int which)
 {
     if (!nb->set) return;
+    if (f->kind == UI_FIELD_FILE) {
+        commit_entry(nb, f);
+        ui_value v = { .text = NULL };
+        nb->set(nb->ctx, f->key, UI_FIELD_FILE, &v);
+        return;
+    }
     if (which == 1 && !(f->v.text && *f->v.text)) return;   /* already the kind's */
     ui_value v = { .text = which == 1 ? "" : NULL };
     nb->set(nb->ctx, f->key, UI_FIELD_ICON, &v);
@@ -564,8 +655,10 @@ static void icon_action(ui_notebook *nb, struct field *f, int which)
 static struct field *icon_field_at(ui_notebook *nb, double x, double y)
 {
     struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
-    for (size_t k = 0; pg && k < pg->n; k++)
+    for (size_t k = 0; pg && k < pg->n; k++) {
         if (pg->f[k].kind == UI_FIELD_ICON && ui_rect_has(icon_box(control_rect(nb, k)), x, y)) return &pg->f[k];
+        if (pg->f[k].kind == UI_FIELD_FILE && ui_rect_has(control_rect(nb, k), x, y)) return &pg->f[k];
+    }
     return NULL;
 }
 
@@ -618,6 +711,10 @@ static uint32_t nb_drop(ui_surface *s, double x, double y, const char *mime, con
     }
     path[o] = 0;
     if (!o) return 0;
+    if (f->kind == UI_FIELD_FILE) {   /* the path, as if typed */
+        ui_notebook_set_value(nb, f->key, path);
+        return UI_DND_COPY;
+    }
     ui_value v = { .text = path };
     nb->set(nb->ctx, f->key, UI_FIELD_ICON, &v);
     return UI_DND_COPY;
@@ -630,8 +727,7 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         if (ui_frame_pointer(s, e) && e->kind == UI_PRESS) return;
     struct field *ff = focused_field(nb);
     if (ff && ff->entry && (e->kind == UI_MOTION || e->kind == UI_RELEASE)) {
-        ui_rect r = control_rect(nb, (size_t)nb->focus);
-        if (ff->kind == UI_FIELD_NUMBER) r.w -= 16;
+        ui_rect r = entry_rect(ff, control_rect(nb, (size_t)nb->focus));
         if (ui_entry_pointer(ff->entry, e, r) != UI_ENTRY_NONE) damage(nb);
     }
     if (e->kind == UI_RELEASE && nb->icon_field) {
@@ -641,7 +737,7 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         damage(nb);
         struct page *pg = &nb->pages[nb->page];
         for (size_t k = 0; k < pg->n; k++)
-            if (&pg->f[k] == f && ui_rect_has(icon_button(control_rect(nb, k), b), e->x, e->y)) icon_action(nb, f, b);
+            if (&pg->f[k] == f && ui_rect_has(field_button(f, control_rect(nb, k), b), e->x, e->y)) icon_action(nb, f, b);
         return;
     }
     if (e->kind == UI_RELEASE && nb->pressed_button >= 0) {
@@ -668,6 +764,13 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
                 }
             r = icon_box(r);
         }
+        if (pg->f[k].kind == UI_FIELD_FILE && ui_rect_has(file_button(r), e->x, e->y)) {
+            set_focus(nb, (int)k);
+            nb->icon_field = &pg->f[k];
+            nb->icon_pressed = 0;
+            damage(nb);
+            return;
+        }
         if (!ui_rect_has(r, e->x, e->y)) continue;
         struct field *f = &pg->f[k];
         set_focus(nb, (int)k);
@@ -687,10 +790,12 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         case UI_FIELD_NUMBER:
             if (ui_rect_has(spin_rect(r, true), e->x, e->y)) { step_number(nb, f, 1); break; }
             if (ui_rect_has(spin_rect(r, false), e->x, e->y)) { step_number(nb, f, -1); break; }
-            r.w -= 16;
             /* fall through */
         case UI_FIELD_TEXT:
-            if (ui_entry_pointer(f->entry, e, r) != UI_ENTRY_NONE) damage(nb);
+        case UI_FIELD_FILE:
+        case UI_FIELD_COLOR:
+            if (ui_rect_has(entry_rect(f, r), e->x, e->y) && ui_entry_pointer(f->entry, e, entry_rect(f, r)) != UI_ENTRY_NONE)
+                damage(nb);
             break;
         }
         return;
@@ -748,6 +853,10 @@ static void nb_key(ui_surface *s, const ui_key_event *e)
         if (e->sym == XKB_KEY_Up) { step_number(nb, f, 1); return; }
         if (e->sym == XKB_KEY_Down) { step_number(nb, f, -1); return; }
         /* fall through */
+    case UI_FIELD_FILE:
+        if (f->kind == UI_FIELD_FILE && e->sym == XKB_KEY_Down && (e->mods & UI_MOD_ALT)) { icon_action(nb, f, 0); return; }
+        /* fall through */
+    case UI_FIELD_COLOR:
     case UI_FIELD_TEXT:
         switch (ui_entry_key(f->entry, e)) {
         case UI_ENTRY_COMMIT: commit_entry(nb, f); ui_entry_select_all(f->entry); damage(nb); break;
@@ -850,3 +959,27 @@ void ui_notebook_show_page(ui_notebook *nb, size_t page) { show_page(nb, page); 
 ui_surface *ui_notebook_surface(ui_notebook *nb) { return nb->win; }
 
 size_t ui_notebook_page(ui_notebook *nb) { return nb ? nb->page : 0; }
+
+static struct field *field_by_key(ui_notebook *nb, const char *key)
+{
+    for (size_t p = 0; p < nb->npages; p++)
+        for (size_t k = 0; k < nb->pages[p].n; k++)
+            if (!strcmp(nb->pages[p].f[k].key, key)) return &nb->pages[p].f[k];
+    return NULL;
+}
+
+bool ui_notebook_set_value(ui_notebook *nb, const char *key, const char *text)
+{
+    struct field *f = nb && !nb->closing ? field_by_key(nb, key) : NULL;
+    if (!f || !f->entry || f->kind == UI_FIELD_NUMBER) return false;
+    ui_entry_set_text(f->entry, text ? text : "");
+    commit_entry(nb, f);   /* (a colour checked; unchanged: nothing applied) */
+    damage(nb);
+    return true;
+}
+
+const char *ui_notebook_field_hint(ui_notebook *nb, const char *key)
+{
+    struct field *f = nb ? field_by_key(nb, key) : NULL;
+    return f && f->nchoices ? f->choices[0] : "";
+}

@@ -391,7 +391,13 @@ ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect
  * dropped on it (to be made into an icon), or NULL when Choose... was
  * pressed; the notebook shows the new icon when ui_notebook_update says. */
 /* UI_FIELD_INFO: value.text shown, not changed (a drive's size, ...). */
-typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO } ui_field_kind;
+/* UI_FIELD_FILE: value.text is a path, typed, dropped on it, or from
+ * Browse...: its owner's `set` gets value.text NULL for Browse... (then
+ * ui_notebook_set_value with the path chosen). choices[0], if any, says
+ * what it takes ("image", "audio"): ui_notebook_field_hint. */
+/* UI_FIELD_COLOR: value.text "#rrggbb", shown as a swatch beside it. */
+typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO,
+               UI_FIELD_FILE, UI_FIELD_COLOR } ui_field_kind;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */
 typedef struct {
     const char *key, *label;
@@ -412,6 +418,11 @@ void ui_notebook_close(ui_notebook *nb);
 ui_surface *ui_notebook_surface(ui_notebook *nb);
 void ui_notebook_show_page(ui_notebook *nb, size_t page);
 size_t ui_notebook_page(ui_notebook *nb);     /* the page shown */
+/* A text, file or colour field's new value, applied (Browse...'s choice). */
+bool ui_notebook_set_value(ui_notebook *nb, const char *key, const char *text);
+const char *ui_notebook_field_hint(ui_notebook *nb, const char *key);   /* a file field's choices[0], or "" */
+/* "#rrggbb" (or "rrggbb", "#rgb") as 0..1 colour parts; false if not one. */
+bool ui_parse_color(const char *t, double rgb[3]);
 
 typedef enum { UI_KIND_FILE, UI_KIND_FOLDER, UI_KIND_PROGRAM, UI_KIND_LINK, UI_KIND_OTHER } ui_kind;
 
