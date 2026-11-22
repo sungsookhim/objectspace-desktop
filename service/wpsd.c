@@ -2177,6 +2177,29 @@ static void rename_done(void *arg)
     free(j);
 }
 
+static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
+static void system_dir(char *out, size_t n);
+static void setup_dir(char *out, size_t n);
+static void data_dir(const char *name, char *out, size_t n);
+static void autostart_dir(char *out, size_t n);
+
+/* WPS's own folders: System, My Storages (Computer), Drives, Programs,
+ * System Setup, the Trash Can, Startup. */
+static bool own_folder(const char *path)
+{
+    if (!path || !*path) return false;
+    char d[7][PATH_MAX + 8];
+    system_dir(d[0], sizeof d[0]);
+    computer_dirs(d[1], sizeof d[1], d[2], sizeof d[2]);
+    data_dir("Programs", d[3], sizeof d[3]);
+    setup_dir(d[4], sizeof d[4]);
+    wps_trash_home(d[5], sizeof d[5]);
+    strncat(d[5], "/files", sizeof d[5] - strlen(d[5]) - 1);
+    autostart_dir(d[6], sizeof d[6]);
+    for (int i = 0; i < 7; i++) if (!strcmp(path, d[i])) return true;
+    return false;
+}
+
 static void do_rename(struct req *r, wpo_object *o)
 {
     const char *name = cv_text(&r->msg, "name");
@@ -2184,7 +2207,9 @@ static void do_rename(struct req *r, wpo_object *o)
         reply_error(r->c, r->id, "bad request", "a name must be non-empty, without '/', and not . or ..");
         return;
     }
-    if (!wpo_is_a(o, WPFileSystemClass)) {   /* programs and abstract objects: the title */
+    if (!wpo_is_a(o, WPFileSystemClass) || own_folder(r->tgt.path)) {
+        /* programs and abstract objects, and WPS's own folders (found by
+         * their paths: renamed, they would be lost): the title */
         WPObject_wpSetTitle(o, name);
         reply_ok_object(r, o, NULL);
         return;
@@ -2652,9 +2677,11 @@ static void empty_done(void *arg)
  *   7: Templates in System, as on OS/2 (the desktop's shadows of it move
  *      there); the desktop puts the Trash Can in its lower right corner;
  *   8: Restore Desktop in System;
- *   9 (0.3): the home folder in Computer (a shadow).
+ *   9 (0.3): the home folder in Computer (a shadow);
+ *  10 (0.3): titles (the owner's): System "My System - <host name>",
+ *      Computer "My Storages" (unless titled already).
  * After it, the default objects in place are noted (restore_defaults). */
-#define FIRST_START_VERSION 9
+#define FIRST_START_VERSION 10
 static void setup_dir(char *out, size_t n);
 static void system_dir(char *out, size_t n);
 static void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
@@ -2671,6 +2698,7 @@ struct first_start {
     char restorer[WPS_ID_LEN + 1];  /* Restore Desktop, made (step 8) */
     char sys[PATH_MAX], autostart[PATH_MAX];
     wps_loaded asld;                /* the autostart folder (titled Startup) */
+    wps_loaded sysld, compld;       /* step 10: System and Computer, titled */
     char trash[PATH_MAX];           /* the Trash Can: the home trash's files folder */
     char programs[PATH_MAX];        /* Programs (step 6) */
     char tpl_moved[8][WPS_ID_LEN + 1];   /* step 7: the desktop's Templates shadows */
@@ -2808,6 +2836,14 @@ static void first_start_work(void *arg)
         wps_mkdirs(j->programs, 0700);
         if (wps_set_folder_class(j->programs, "WPProgramsFolder") != 0) j->programs[0] = 0;
     }
+    if (j->from < 10) {   /* step 10 (0.3): their titles, set in first_start_done */
+        char comp[PATH_MAX], drv[PATH_MAX + 8];
+        computer_dirs(comp, sizeof comp, drv, sizeof drv);
+        wps_mkdirs(drv, 0700);   /* (as step 5: there on every desktop since) */
+        wps_set_folder_class(comp, "WPComputer");
+        wps_load(j->sys, true, &j->sysld);
+        wps_load(comp, true, &j->compld);
+    }
     if (j->from < 8) {
         /* step 8 (0.2): Restore Desktop in System */
         wps_loaded sy;
@@ -2897,6 +2933,15 @@ static void first_start_done(void *arg)
             if (!j->tpl_in_system && !j->ntpl && td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
+        if (j->from < 10) {   /* step 10: titles, unless the user gave them some */
+            char host[256] = "", t[300];
+            if (gethostname(host, sizeof host - 1) != 0 || !host[0]) snprintf(host, sizeof host, "this computer");
+            snprintf(t, sizeof t, "My System - %s", host);
+            wpo_object *so = j->sysld.err ? NULL : wps_object_from_loaded(&j->sysld);
+            if (so && wpo_is_a(so, WPObjectClass) && !WPObject_data(so)->title) WPObject_wpSetTitle(so, t);
+            wpo_object *co = j->compld.err ? NULL : wps_object_from_loaded(&j->compld);
+            if (co && wpo_is_a(co, WPObjectClass) && !WPObject_data(co)->title) WPObject_wpSetTitle(co, "My Storages");
+        }
         const char *home = getenv("HOME");
         if (j->from < 9 && home && *home) {   /* step 9: the home folder in Computer */
             char comp[PATH_MAX], drv[PATH_MAX + 8];
@@ -2914,6 +2959,8 @@ static void first_start_done(void *arg)
     }
     if (j->desk[0]) defaults_start(NULL, 0, j->desk, false);   /* the defaults in place, noted */
     wps_loaded_free(&j->asld);
+    wps_loaded_free(&j->sysld);
+    wps_loaded_free(&j->compld);
     wps_loaded_free(&j->tld);
     if (!j->c->dead) reply_int(j->c, j->id, j->from);
     client_unref(j->c);
@@ -3070,7 +3117,7 @@ static int defaults_list(const char *desk, struct defobj *d)
     system_dir(sys, sizeof sys);
     wps_trash_home(home, sizeof home);
     int n = 0;
-    d[n] = (struct defobj){ "desktop.system", "System", NULL, "", "" };
+    d[n] = (struct defobj){ "desktop.system", "My System", NULL, "", "" };
     snprintf(d[n].target, sizeof d[n].target, "%s", sys);
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", desk);
     d[n] = (struct defobj){ "desktop.programs", "Programs", NULL, "", "" };
@@ -3195,7 +3242,7 @@ static void defaults_work(void *arg)
         wps_mkdirs(tmp, 0700);
         char comp[PATH_MAX], drv[PATH_MAX + 8];
         computer_dirs(comp, sizeof comp, drv, sizeof drv);
-        if (def_made_dir(drv)) { j->made_computer = true; j->put_back[j->nput++] = "Computer"; }
+        if (def_made_dir(drv)) { j->made_computer = true; j->put_back[j->nput++] = "My Storages"; }
         wps_set_folder_class(comp, "WPComputer");
         wps_set_folder_class(drv, "WPDrives");
     }

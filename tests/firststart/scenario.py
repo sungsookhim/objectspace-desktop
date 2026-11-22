@@ -120,7 +120,7 @@ if PART == "restore":
     check("(the LaunchPad object moved to the desktop)", r.get("ok"), r)
     r = c.request(op="restore_defaults")
     got = sorted((r.get("result") or {}).get("restored", []))
-    check("restore: what it put back", got == sorted(["Programs", "System", "Startup", "Minimized Window Viewer", "LaunchPad"]), r)
+    check("restore: what it put back", got == sorted(["Programs", "My System", "Startup", "Minimized Window Viewer", "LaunchPad"]), r)
     check("Programs: back on the desktop, the same one", len(shadows_of(DESK, PROG)) == 1 and not shadows_of(PROG, PROG),
           (items(DESK), items(PROG)))
     check("System: back from the Trash Can", len(shadows_of(DESK, SYS)) == 1 and not shadows_of(TRASH, SYS), items(TRASH))
@@ -141,12 +141,24 @@ check("first start answers its step", r.get("result") == (6 if PART == "old" els
 check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_shadows(SYS))
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
-    check("the desktop is at step 9", "version 9" in f.read())
+    check("the desktop is at step 10", "version 10" in f.read())
 COMP = SYS + "/Computer"
 check("step 9: the home folder in Computer", wait(lambda: len(shadows_of(COMP, os.environ["HOME"])) == 1), items(COMP))
+
+
+def title_of(target):
+    pages = c.request(op="settings", target=target).get("result") or []
+    return ([x.get("value") for p in pages for x in p.get("fields", []) if x.get("key") == "title"] or [None])[0]
+
+
+check("step 10: System is titled My System - <host>", (title_of(SYS) or "").startswith("My System - "), title_of(SYS))
+check("step 10: Computer is titled My Storages", title_of(COMP) == "My Storages", title_of(COMP))
+r = c.request(op="rename", target=COMP, name="Storage")
+check("renaming WPS's own folder: its title only", r.get("ok") and os.path.isdir(COMP) and title_of(COMP) == "Storage", r)
+c.request(op="rename", target=COMP, name="My Storages")
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
-check("a second start changes nothing", r.get("result") == 9 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
+check("a second start changes nothing", r.get("result") == 10 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
       and len(shadows_of(COMP, os.environ["HOME"])) == 1, r)
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)
