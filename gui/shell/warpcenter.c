@@ -18,6 +18,7 @@
 #include "icons.h"
 #include "tray.h"
 #include "svc.h"
+#include "session.h"
 #include "winlist.h"
 
 #define PAD 3
@@ -740,37 +741,16 @@ static void opened(void *arg, const cv *reply)
     if (!res && reply && cv_text(reply, "message")) fprintf(stderr, "wps-shell: WarpCenter: %s\n", cv_text(reply, "message"));
 }
 
-static const char *const end_how[] = { "poweroff", "reboot", "logout" };
-
-static void end_chosen(void *ctx, int choice)
-{
-    (void)ctx;
-    if (choice < 0 || choice > 2) return;
-    events_raise("session.end", end_how[choice], "warpcenter", (ui_rect){ 0, 0, 0, 0 });
-    winlist_ext("shutdown", end_how[choice]);
-}
-
-static void logoff_chosen(void *ctx, int choice)
-{
-    if (choice == 0) end_chosen(ctx, 2);
-}
-
 static void menu_chosen(void *arg, int64_t id)
 {
     (void)arg;
     wc.want_menu = false;
     damage();
     if (id == M_WINLIST) winlist_open(false);
-    else if (id == M_LOCK) winlist_ext("lock", NULL);
-    else if (id == M_LOGOFF) {
-        static const char *const buttons[] = { "Log off", "Cancel" };
-        ui_dialog_open(wc.app, "Log Off", "End this session and log off?", buttons, 2, 0, logoff_chosen, NULL);
-    }
-    else if (id == M_SHUTDOWN) {
-        static const char *const buttons[] = { "Shut down", "Restart", "Log off", "Cancel" };
-        ui_dialog_open(wc.app, "Shut Down", "End this session: shut the computer down, restart it, or log off?", buttons, 4, 0,
-                       end_chosen, NULL);
-    } else if (id >= M_FIRST && (size_t)(id - M_FIRST) < wc.nflat) {
+    else if (id == M_LOCK) session_lock("warpcenter");
+    else if (id == M_LOGOFF) session_ask_logoff(wc.app, "warpcenter");
+    else if (id == M_SHUTDOWN) session_ask_end(wc.app, "warpcenter");
+    else if (id >= M_FIRST && (size_t)(id - M_FIRST) < wc.nflat) {
         struct mnode *n = wc.flat[id - M_FIRST];
         events_raise("object.open", n->title, "warpcenter", (ui_rect){ 0, 0, 0, 0 });
         if (n->folder && n->addr[0] == '/') wc.open_folder(n->addr);
