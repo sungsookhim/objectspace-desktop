@@ -54,7 +54,8 @@ static double status_h(void) { double h = ceil(ui_scheme_now.font_px + 9); retur
 enum { P_NONE, P_NAMES, P_DETAILED };
 
 struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon;
-             float cellh;   /* its icon's cell with the whole title (0: not measured yet) */ };
+             float cellh;   /* its icon's cell with the whole title (0: not measured yet) */
+             char *noext;   /* its title without the extension (Show file extensions off), made when shown */ };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
 /* A folder's contents as read from the service, a page at a time. */
@@ -145,6 +146,34 @@ static struct folder *folder_by_id(long id)
 
 static void *as_arg(struct folder *f) { return (void *)(intptr_t)f->id; }
 static bool show_hidden = true;   /* the System object's Show hidden files (v0.3-design 6) */
+static bool show_ext = true;      /* ... Show file extensions in titles (the owner's, 0.3 step 8) */
+
+/* The length of a data file's name without its extension ("a.tar.gz":
+ * "a"), or 0 if it has none to hide. */
+static size_t name_sans_ext(const char *n)
+{
+    const char *d = strrchr(n, '.');
+    if (!d || d == n || !d[1] || strlen(d) > 12) return 0;
+    size_t l = (size_t)(d - n);
+    if (l > 4 && !strncasecmp(n + l - 4, ".tar", 4)) l -= 4;
+    return l;
+}
+
+/* What an item's icon is titled: its title (a file's is its name), and
+ * with Show file extensions off a data file's name without the extension. */
+static const char *row_shown(struct row *r)
+{
+    if (!r->name) return "";
+    const char *t = r->title ? r->title : r->name[0] == '\x01' ? "" : r->name;   /* a central object: its title comes with details */
+    if (show_ext || r->kind != UI_KIND_FILE || r->shadow || r->link || r->name[0] == '\x01' || (r->title && strcmp(r->title, r->name)))
+        return t;
+    size_t nl = strlen(r->name);
+    if (nl > 8 && !strcmp(r->name + nl - 8, ".desktop")) return t;
+    size_t l = name_sans_ext(r->name);
+    if (!l) return t;
+    if (!r->noext) r->noext = strndup(r->name, l);
+    return r->noext ? r->noext : t;
+}
 static struct folder *from_arg(void *arg) { return folder_by_id((long)(intptr_t)arg); }
 
 /* ---- backgrounds (v0.3-design 3): the desktop's (its own, or GNOME's
@@ -366,6 +395,7 @@ static void model_free(struct model *m)
             free(m->pages[p]->rows[r].title);
             free(m->pages[p]->rows[r].target);
             free(m->pages[p]->rows[r].icon);
+            free(m->pages[p]->rows[r].noext);
         }
         free(m->pages[p]);
     }
@@ -482,6 +512,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
         free(dst->title);
         free(dst->target);
         free(dst->icon);
+        free(dst->noext);
+        dst->noext = NULL;
         dst->target = dst->icon = NULL;
         dst->name = strdup(nm ? nm : "?");
         dst->title = ti && *ti ? strdup(ti) : NULL;
@@ -1245,7 +1277,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     out->detailed = pg->state == P_DETAILED;
     out->kind = r->kind;
     out->name = r->name;
-    out->title = r->title ? r->title : r->name[0] == '\x01' ? "" : r->name;   /* a central object: its title comes with details */
+    out->title = row_shown(r);
     out->size = r->size;
     out->mtime = r->mtime;
     out->shadow = r->shadow;
@@ -1413,7 +1445,7 @@ static double lay_h(void *ctx, size_t i)
     if (!f->whole_titles) return UI_CELL_H;
     struct row *r = row_at(f, i);
     if (!r || !r->name) return UI_CELL_H;
-    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height(r->title ? r->title : r->name[0] == '\x01' ? "" : r->name);
+    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height(row_shown(r));
     return r->cellh;
 }
 
@@ -2510,6 +2542,17 @@ static void src_rename(void *ctx, size_t i, const char *name)
         if (rw->title && !strcmp(rw->title, name)) return;
         svc_rename(rw->target, name, renamed, as_arg(f));
         return;
+    }
+    /* its extension hidden (Show file extensions off): kept, unless typed
+     * again ("x.txt" typed for x.odt is x.txt.odt: its type stays) */
+    char full[NAME_MAX + 64];
+    if (rw && rw->noext && row_shown(rw) == rw->noext) {
+        const char *ext = rw->name + strlen(rw->noext);
+        size_t nl = strlen(name), el = strlen(ext);
+        if (nl < el || strcasecmp(name + nl - el, ext)) {
+            snprintf(full, sizeof full, "%s%s", name, ext);
+            name = full;
+        }
     }
     if (old && !strcmp(old, name)) return;
     /* Shown at once (the service's answer and the change's event follow
@@ -4319,6 +4362,45 @@ static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "ext")) {
+        /* Show file extensions off (0.3 step 8): titles without them, and
+         * renaming keeps the file's. <D>: report.odt archive.tar.gz notes dir.d/ */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete) return; t0 = now; }
+        double t = now - t0;
+        char out[300] = "";
+        if (step == 0) {
+            show_ext = false;
+            for (size_t i = 0; i < f->m.total; i++) {
+                ui_item it;
+                src_item(f, i, &it);
+                snprintf(out + strlen(out), sizeof out - strlen(out), "%s%s", i ? ", " : "", it.title);
+            }
+            fprintf(stderr, "selftest: ext: titles: %s\n", out);
+            for (size_t i = 0; i < f->m.total; i++)
+                if (!strcmp(model_name(&f->m, i), "report.odt")) src_rename(f, i, "summary");
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            struct stat sst;
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/summary.odt", f->path);
+            fprintf(stderr, "selftest: ext: renamed \"summary\": summary.odt %d\n", stat(p, &sst) == 0);
+            for (size_t i = 0; i < f->m.total; i++)
+                if (!strcmp(model_name(&f->m, i), "summary.odt")) src_rename(f, i, "summary.txt");
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            struct stat sst;
+            char p[PATH_MAX];
+            snprintf(p, sizeof p, "%s/summary.txt.odt", f->path);   /* (as with hidden extensions elsewhere: its type stays) */
+            fprintf(stderr, "selftest: ext: renamed \"summary.txt\": summary.txt.odt %d\n", stat(p, &sst) == 0);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "templates")) {
         /* Templates (0.3 step 8): New > at a spot; Create another into a
          * folder chosen in the picker; a template dragged makes an object,
@@ -6216,6 +6298,17 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
+            else if (!strcmp(key, "show_ext") && show_ext != !strcmp(val, "1")) {
+                show_ext = !strcmp(val, "1");   /* every title again, and the rows' heights */
+                for (struct folder *x = folders; x; x = x->next) {
+                    if (x->closing || is_tree(x)) continue;
+                    for (size_t p = 0; p < x->m.npages; p++)
+                        for (size_t k = 0; x->m.pages[p] && k < PAGE; k++) x->m.pages[p]->rows[k].cellh = 0;
+                    layout_update(x->lay, x->m.total, lay_name, x, true, NULL);
+                    ui_container_changed(x->cont, 0, SIZE_MAX);
+                    if (ui_container_view(x->cont) == UI_VIEW_ICON) ui_container_layout_changed(x->cont);
+                }
+            }
             else if (!strcmp(key, "show_hidden") && show_hidden != !strcmp(val, "1")) {
                 show_hidden = !strcmp(val, "1");   /* every window lists again */
                 for (struct folder *x = folders; x; x = x->next)
