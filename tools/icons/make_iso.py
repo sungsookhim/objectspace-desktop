@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WPS's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files; set D: the basic kinds).
+"""WPS's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files; set D: the basic kinds; set E: WPS's own icons redrawn).
 
 Style: isometric pixel art after BeOS / OS/2 Warp 4, 2:1 lines (2 across
 for 1 down; verticals straight), light from the upper left (top lightest,
@@ -13,7 +13,7 @@ Two variants:
   flat      - no outline: faces told apart by their shades alone
 
 Run from the tree's top:
-  python3 tools/icons/make_iso.py OUTDIR [--set A|B] [--sizes 256,64,48,40,32]
+  python3 tools/icons/make_iso.py OUTDIR [--set A..E] [--sizes 256,128,96,64,32]
 Writes OUTDIR/set-X/VARIANT/NAME-SIZE.png and contact sheets (needs Pillow)."""
 import argparse
 import math
@@ -909,6 +909,158 @@ SET_D = [("program", "Program", program), ("program-text", "Text-mode program", 
          ("object", "Object", abstract_object), ("link-mark", "Link mark", link_mark)]
 
 
+# -------------------------------------- set E: WPS's own icons, redrawn
+
+def computer(c):
+    """Computer: a monitor showing the desktop (System is the whole
+    machine: case, monitor, keyboard)."""
+    c.box(-40, 40, -30, 6, 0, 7, PLASTIC_D)                                   # base, neck
+    c.box(-9, 9, -22, -8, 7, 34, PLASTIC_D)
+    c.box(-46, 46, -48, -14, 44, 104, PLASTIC_D)                              # back
+    c.box(-64, 64, -14, -2, 30, 118, PLASTIC)                                 # bezel
+    c.on_y(-1.9, sq(-56, 56, 38, 110), TEAL)
+    if c.small:
+        c.on_y(-1.8, sq(-46, -26, 82, 100), YELLOW, edge=False)
+        c.on_y(-1.8, sq(-46, -26, 50, 70), WHITE, edge=False)
+    else:
+        for z, col in ((92, YELLOW), (70, WHITE), (48, YELLOW)):
+            c.on_y(-1.8, sq(-48, -36, z, z + 10), col, edge=False)
+        c.on_y(-1.8, sq(-56, 56, 104, 110), PLASTIC_L, edge=False)
+    c.on_y(-1.9, circ(54, 34, 3, 8), LCD_ON, edge=False)
+
+
+CAN, CAN_D = (176, 180, 188), (130, 134, 142)
+
+
+def can_body(c, r0=28, r1=36, h=84):
+    """A can wider at the top: stacked rings, ribs down its front."""
+    n = 10
+    for i in range(n):
+        r = r0 + (r1 - r0) * i / n
+        c.prism(ellipse(0, 0, r, r, 32), h * i / n, h / n + 0.01, CAN, edges=False)
+    for a in (20, 50, 80):                                                    # ribs
+        rad = math.radians(a)
+        c.line([(r0 * math.cos(rad) * 1.02, r0 * math.sin(rad) * 1.02, 6),
+                (r1 * math.cos(rad) * 1.02, r1 * math.sin(rad) * 1.02, h - 8)], CAN_D, 4)
+    c.on_z(h + 0.1, ellipse(0, 0, r1 - 4, r1 - 4, 32), shade(CAN, 0.42), edge=False)   # its dark inside
+
+
+def trash_empty(c):
+    can_body(c)
+    c.prism(ellipse(0, 0, 40, 40, 32), 84, 6, CAN)                            # the lid, on
+    c.box(-12, 12, -4, 4, 90, 98, CAN_D)                                      # its handle
+
+
+def trash_full(c):
+    """Full: the lid leaning on it behind, crumpled paper heaped above the rim."""
+    t = math.radians(14)                                                       # the lid, on its edge, leaning back
+    c.plate(ccw(circ(0, 0, 38, 32)), (30, -42, 46), (1, 0, 0), (0, -math.sin(t), math.cos(t)), (0, math.cos(t), math.sin(t)), 5, CAN)
+    W, N = (0, -math.sin(t), math.cos(t)), (0, math.cos(t), math.sin(t))
+    c.plate(rect(-12, 12, -3, 3), (30 + 0, -42 + 5 * N[1], 46 + 5 * N[2]), (1, 0, 0), W, N, 6, CAN_D)   # its handle
+    can_body(c)
+    balls = [(-14, -12, 13), (12, -14, 12), (-2, 12, 14), (18, 10, 10), (2, -2, 13)]
+    for x, y, r in sorted(balls, key=lambda b: b[0] + b[1]):
+        c.dome(lambda d, x=x, y=y, r=r: ellipse(x, y, max(2, r - d), max(2, r - d), 12), 80, r * 1.4, WHITE, r, 6)
+
+
+def lamp(c, y, x, z, on, r=5):
+    c.on_y(y, circ(x, z, r * 2 if c.small else r, 12), LCD_ON if on else (110, 112, 118))
+
+
+def d_disk(c, on, root=False):
+    c.box(-64, 64, -36, 36, 0, 32, (186, 188, 194))
+    for x in range(-52, -12, 9):
+        c.on_y(36.1, sq(x, x + 4, 8, 24), PLASTIC_D, edge=False)
+    if root:                                                                   # the system's: a blue slash
+        c.on_z(32.1, [(-10, -26), (4, -26), (18, 26), (4, 26)], BLUE)
+    lamp(c, 36.2, 48, 16, on, 6)
+
+
+def d_usb(c, on):
+    c.box(-58, 34, -20, 20, 0, 24, BLUE)                                      # the stick
+    c.box(34, 70, -14, 14, 4, 20, (200, 204, 214))                            # its plug
+    c.on_z(20.1, rect(46, 54, -8, -2), DARK, edge=False)
+    c.on_z(20.1, rect(46, 54, 2, 8), DARK, edge=False)
+    c.on_z(24.1, rect(-46, 20, -12, -6), SCREEN_L, edge=False)
+    lamp(c, 20.2, -40, 12, on, 5)
+
+
+def d_optical(c, on):
+    c.box(-64, 64, -36, 36, 0, 26, (186, 188, 194))                           # the drive, its tray out
+    c.box(-46, 46, 36, 70, 10, 16, PLASTIC_D)
+    c.prism(ellipse(0, 54, 34, 34, 36), 16, 3, (210, 214, 224))               # the disc on it
+    c.line([(28 * math.cos(math.radians(a)), 54 + 28 * math.sin(math.radians(a)), 19.2) for a in range(200, 300, 10)], (150, 170, 230), 5)
+    c.line([(28 * math.cos(math.radians(a)), 54 + 28 * math.sin(math.radians(a)), 19.2) for a in range(20, 120, 10)], (230, 170, 210), 5)
+    c.on_z(19.3, ellipse(0, 54, 7, 7, 12), PLASTIC_D, edge=False)
+    lamp(c, 36.1, 50, 18, on, 4)
+
+
+def d_sd(c, on):
+    pts = [(-34, 0), (34, 0), (34, 86), (-18, 86), (-34, 70)]
+    c.plate(pts, (0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0), 5, BLUE)
+    for x in range(-24, 30, 10):
+        c.on_y(5.1, sq(x, x + 6, 66, 80), (230, 196, 70))
+    c.on_y(5.1, sq(-24, 24, 14, 46), PLASTIC_L)                               # its label
+    lamp(c, 5.2, 22, 6, on, 5)
+
+
+def sys_lock(c):
+    """Lockup: a padlock."""
+    r = 22
+    path = [(-r, 0, 52), (-r, 0, 70)] + [(r * math.cos(math.radians(a)), 0, 70 + r * math.sin(math.radians(a))) for a in range(180, -1, -12)] + [(r, 0, 52)]
+    c.line(path, (120, 122, 130), 9)
+    c.box(-38, 38, -14, 14, 0, 58, (214, 168, 40))
+    c.on_y(14.1, circ(0, 34, 7, 12), DARK, edge=False)
+    c.on_y(14.1, sq(-3, 3, 14, 32), DARK, edge=False)
+
+
+def sys_find(c):
+    """Find: a magnifying glass."""
+    a = math.radians(-40)
+    c.line([(18, 0, 30), (52, 0, -4)], DARK, 16)                               # the handle
+    c.plate(ccw(circ(0, 52, 36, 32)), (0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0), 8, (150, 152, 160))
+    c.on_y(8.1, circ(0, 52, 26, 32), (176, 214, 250))
+    c.on_y(8.2, [(-16, 62), (-6, 72), (-2, 68), (-12, 58)], WHITE, edge=False)
+
+
+def sys_power(c):
+    """Shut down: the power mark, standing."""
+    r = 34
+    arc = [(r * math.cos(math.radians(a)), 0, 40 + r * math.sin(math.radians(a))) for a in range(125, 416, 10)]
+    c.line([(x, -5, z) for x, _, z in arc], shade(RED, 0.5)[:3], 12)
+    c.line(arc, RED, 12)
+    c.line([(0, -5, 84), (0, -5, 40)], shade(RED, 0.5)[:3], 12)
+    c.line([(0, 0, 84), (0, 0, 40)], RED, 12)
+
+
+def sys_windows(c):
+    """Window list: windows, one behind another."""
+    for x0, y0 in ((-50, -24), (-26, 14)):
+        c.box(x0, x0 + 80, y0 - 4, y0, 0, 64, PLASTIC_L)
+        c.on_y(y0 + 0.1, sq(x0 + 4, x0 + 76, 4, 50), WHITE)
+        c.on_y(y0 + 0.1, sq(x0 + 4, x0 + 76, 52, 60), (30, 40, 140))
+
+
+def sys_logoff(c):
+    """Log off: a door, open, an arrow going out."""
+    c.box(-40, 30, -10, -2, 0, 100, (150, 110, 70))                            # the frame
+    c.on_y(-1.9, sq(-32, 22, 0, 92), (40, 40, 48))                             # the way out
+    a = math.radians(55)                                                       # the door, swung open
+    c.plate(rect(0, 54, 0, 92), (-32, -2, 0), (math.cos(a) * 1, math.sin(a), 0), (0, 0, 1), (-math.sin(a), math.cos(a), 0), 4, (196, 150, 96))
+    shape = [(-60, 40), (-30, 40), (-30, 28), (-6, 50), (-30, 72), (-30, 60), (-60, 60)]
+    c.on_y(30, [(x + 40, z) for x, z in shape], GREEN)
+
+
+SET_E = [("computer", "Computer", computer), ("trash-empty", "Trash Can", trash_empty),
+         ("trash-full", "Trash Can (full)", trash_full)]
+for kind, title, fn in (("disk", "Disk", lambda c, on: d_disk(c, on)), ("root", "System disk", lambda c, on: d_disk(c, on, True)),
+                        ("usb", "USB stick", d_usb), ("optical", "CD/DVD", d_optical), ("sd", "SD card", d_sd)):
+    SET_E.append((f"drive-{kind}", title, lambda c, fn=fn: fn(c, True)))
+    SET_E.append((f"drive-{kind}-off", title + " (not mounted)", lambda c, fn=fn: fn(c, False)))
+SET_E += [("sys-lockup", "Lockup", sys_lock), ("sys-find", "Find", sys_find), ("sys-shutdown", "Shut down", sys_power),
+          ("sys-windows", "Window list", sys_windows), ("sys-logoff", "Log off", sys_logoff)]
+
+
 def render(fn, n, variant):
     rec = Canvas(256, variant, size=n)
     fn(rec)
@@ -968,14 +1120,14 @@ def sheets(out, imgs, sizes, ICONS, tag):
     sh.save(f"{out}/sheet-small.png")
 
 
-SETS = {"A": SET_A, "B": SET_B, "C": SET_C, "D": SET_D}
+SETS = {"A": SET_A, "B": SET_B, "C": SET_C, "D": SET_D, "E": SET_E}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
     ap.add_argument("--set", default="A", choices=sorted(SETS))
-    ap.add_argument("--sizes", default="256,64,48,40,32")
+    ap.add_argument("--sizes", default="256,128,96,64,32")   # the standard sizes (docs/roadmap.md 0.4)
     a = ap.parse_args()
     sizes = [int(s) for s in a.sizes.split(",")]
     icons, out = SETS[a.set], f"{a.out}/set-{a.set}"

@@ -255,12 +255,18 @@ A to do, after 0.2 (with network file systems below).
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
 3. **0.4 Icons, folders and objects** (WPS's own; one new build dependency, librsvg). Grouped so each step touches one part of the code:
    1. **Icons** (M–L; `icons.c`, wpsd's icon fields, the Icon page):
-      - **A package per icon:** `NAME.wpsicon`, a zip holding any of `16.png`, `32.png`, `64.png`, `96.png`, `128.png`, `256.png` and `icon.svg` (the names give the sizes; no manifest). 256 is the master when there is no SVG. A single picture still works (a package of one); `.ico` and `.icns` are unpacked into theirs. `wpsctl icon pack DIR OUT.wpsicon`; Choose... takes packages.
-      - **Choosing a size**, in device pixels (a 16 px menu icon at scale 2 wants 32): the exact size; else the SVG; else the nearest larger, scaled down; else the nearest smaller, scaled up.
+      - **A package per icon:** `NAME.wpsicon`, a zip holding PNGs named by their size (`SIZE.png`, square, any size) and optionally `icon.svg`; no manifest. **The standard sizes are 256 (the master), 128, 96, 64 and 32** (the owner's, 2026-11-22): WPS's own packages always hold all five, and `wpsctl icon pack` makes any of them missing from the largest picture given. **Any other size a package holds (16, 40, 48, 80, ...) is used too**, as its exact match. A single picture still works (a package of one); `.ico` and `.icns` are unpacked into theirs. `wpsctl icon pack DIR OUT.wpsicon`; Choose... takes packages.
+      - **Choosing a size**, in device pixels (a 16 px menu icon at scale 2 wants 32), best first:
+        1. the exact size;
+        2. the SVG;
+        3. a size that is a whole multiple of it (2x, 3x, ...; the smallest such), averaged down n x n - clean, no uneven steps (48 from 96, 16 from 32);
+        4. the nearest larger, scaled down smoothly (40 from 64);
+        5. the nearest smaller, scaled up: by a whole factor with nearest-neighbour (pixel art stays sharp: 64 from 32), else smoothly.
+        Never a fractional nearest-neighbour scale (uneven pixels).
       - **SVG drawn by librsvg** in the process, sharp at any size.
-      - **WPS's own icons become packages of the isometric set** being drawn in `tools/icons/make_iso.py` (another session, 2026-11-22: BeOS / Warp 4 style; sets A System Setup objects, B special folders, C data files, D the basic kinds, E WPS's own icons redrawn; each size drawn on its own from a 256 px master: 256, 64, 48, 40, 32; outline and flat variants). The generator writes `.wpsicon` packages (its per-size PNGs; no SVG needed) into `data/icons`, and the RPM installs them; **?** which variant is the default (or a System choice).
+      - **WPS's own icons become packages of the isometric set** drawn by `tools/icons/make_iso.py` (2026-11-22: BeOS / Warp 4 style; sets A System Setup objects, B special folders (closed and open), C data files, D the basic kinds, E WPS's own icons redrawn; outline and flat variants). Every size is drawn on its own from the same shapes, not scaled from the master: the five standard sizes by default (`--sizes` adds others); sizes 48 and under get the small design (a bigger identifying feature, fewer details). The generator writes `.wpsicon` packages (its per-size PNGs; no SVG needed) into `data/icons`, and the RPM installs them; **?** which variant is the default (or a System choice).
       - **The open icon** (OS/2's animation icon): a second icon, shown while the object is open; the Icon page's second field, "Open".
-      - **Icon size** for icon views and the desktop (System: 32, 40, 48, 64), each drawn for its size in WPS's set, so sharp; other icons through the size choice above.
+      - **Icon size** for icon views and the desktop (System: 32, 40, 48, 64): 32 and 64 are standard sizes, so exact; 48 comes from 96 (2x, rule 3), 40 from 64 (rule 4) unless a package holds its own.
    2. **Folder layout and windows** (M; `layout.c`, the container, the folder's settings):
       - **OS/2's free icon layout** (cells as wide as their titles), grid or free per folder;
       - **folder windows remember** their position, size and view;
