@@ -28,6 +28,9 @@ struct ui_container {
     bool no_scrollbars;      /* the desktop: none drawn, none taken */
     ui_layer_draw_fn backdrop;   /* behind the items, if set (the desktop) */
     void *backdrop_ctx;
+    ui_layer_draw_fn background; /* a folder window's (scrolls with the items) */
+    void *background_ctx;
+    bool bg_picture;             /* a picture behind: titles as on the desktop */
     ui_surface *s;
     const ui_container_src *src;
     void *ctx;
@@ -864,13 +867,13 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
     bool sel = sel_get(c, i);
     if (sel) ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->selection);
     else if (full) {   /* over its neighbours: on a ground of its own */
-        if (c->backdrop) { cairo_set_source_rgba(cr, 0, 0, 0, 0.55); cairo_rectangle(cr, bx, ty, tw + 4, h); cairo_fill(cr); }
+        if (c->backdrop || c->bg_picture) { cairo_set_source_rgba(cr, 0, 0, 0, 0.55); cairo_rectangle(cr, bx, ty, tw + 4, h); cairo_fill(cr); }
         else ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->client_bg);
     }
     for (int l = 0; l < n; l++) {
         double lw = fmin(maxw, ui_text_width(UI_FONT_REGULAR, lines[l]));
         double tx = r.x + (r.w - lw) / 2, by = ty + 2 + l * LABEL_H + (LABEL_H + ui_text_ascent()) / 2 - 2;
-        if (c->backdrop && !sel) {
+        if ((c->backdrop || c->bg_picture) && !sel) {
             /* on a picture: light text with a dark shadow reads on anything */
             cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
             ui_text_draw(cr, UI_FONT_REGULAR, tx + 1, by + 1, lines[l], maxw);
@@ -957,6 +960,7 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
     double x[6];
     columns(c, x);
     if (c->backdrop) c->backdrop(c->backdrop_ctx, cr, clip);
+    else if (c->background) c->background(c->background_ctx, cr, clip);
     else ui_fill(cr, clip, k->client_bg);
     double lh = line_h(c), off = c->view == UI_VIEW_ICON ? 4 : 0;
     double r0 = floor((clip.y - off) / lh), r1 = floor((clip.y + clip.h - off) / lh);
@@ -1550,6 +1554,17 @@ void ui_container_set_backdrop(ui_container *c, ui_layer_draw_fn fn, void *ctx)
     if (c->layer) ui_layer_damage_all(c->layer);
     ui_surface_damage_all(c->s);
 }
+
+void ui_container_set_background(ui_container *c, ui_layer_draw_fn fn, void *ctx, bool picture)
+{
+    c->background = fn;
+    c->background_ctx = ctx;
+    c->bg_picture = fn && picture;
+    if (c->layer) ui_layer_damage_all(c->layer);
+    ui_surface_damage_all(c->s);
+}
+
+ui_rect ui_container_list_rect(ui_container *c) { return list_rect(c); }
 
 void ui_container_select(ui_container *c, size_t i)
 {

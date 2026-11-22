@@ -99,6 +99,13 @@ struct folder {
     char **spot_new;         /* new objects whose spots are to be stored (store_spots) */
     size_t nspot_new;
     char error[256];
+    /* its Background page (v0.3-design 3), followed by a subscription to
+     * the folder object itself */
+    int64_t bg_sub;
+    char bg_image[PATH_MAX], bg_color[16], bg_img_path[PATH_MAX];
+    int bg_mode;
+    bool bg_gnome;
+    cairo_surface_t *bg_img;     /* the picture, decoded */
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
     unsigned bench_seed;
@@ -121,6 +128,135 @@ static struct folder *folder_by_id(long id)
 
 static void *as_arg(struct folder *f) { return (void *)(intptr_t)f->id; }
 static struct folder *from_arg(void *arg) { return folder_by_id((long)(intptr_t)arg); }
+
+/* ---- backgrounds (v0.3-design 3): the desktop's (its own, or GNOME's
+ * through wallpaper.c) and folder windows' (behind their items) */
+
+/* Behind a folder window's items, in content coordinates: its colour, and
+ * its picture laid out on the first screenful (tiled: everywhere). */
+static void folder_bg_draw(void *ctx, cairo_t *cr, ui_rect clip)
+{
+    struct folder *f = ctx;
+    double rgb[3];
+    if (ui_parse_color(f->bg_color, rgb)) cairo_set_source_rgb(cr, rgb[0], rgb[1], rgb[2]);
+    else ui_set_color(cr, ui_scheme_now.client_bg);
+    cairo_rectangle(cr, clip.x, clip.y, clip.w, clip.h);
+    cairo_fill(cr);
+    if (!f->bg_img) return;
+    ui_rect v = ui_container_list_rect(f->cont);
+    double w = v.w, h = v.h, iw = cairo_image_surface_get_width(f->bg_img), ih = cairo_image_surface_get_height(f->bg_img);
+    if (iw <= 0 || ih <= 0 || w <= 0 || h <= 0) return;
+    cairo_save(cr);
+    cairo_rectangle(cr, clip.x, clip.y, clip.w, clip.h);
+    cairo_clip(cr);
+    if (f->bg_mode == 1) {   /* tiled */
+        cairo_pattern_t *pt = cairo_pattern_create_for_surface(f->bg_img);
+        cairo_pattern_set_extend(pt, CAIRO_EXTEND_REPEAT);
+        cairo_set_source(cr, pt);
+        cairo_pattern_destroy(pt);
+        cairo_paint(cr);
+    } else {
+        double sx = 1, sy = 1;
+        if (f->bg_mode == 2) sx = sy = fmax(w / iw, h / ih);        /* scaled to fill */
+        else if (f->bg_mode == 3) sx = sy = fmin(w / iw, h / ih);   /* scaled to fit */
+        else if (f->bg_mode == 4) { sx = w / iw; sy = h / ih; }      /* stretched */
+        cairo_rectangle(cr, 0, 0, w, h);   /* (the first screenful) */
+        cairo_clip(cr);
+        cairo_translate(cr, (w - iw * sx) / 2, (h - ih * sy) / 2);
+        cairo_scale(cr, sx, sy);
+        cairo_set_source_surface(cr, f->bg_img, 0, 0);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+    }
+    cairo_restore(cr);
+}
+
+static void bg_show(struct folder *f)
+{
+    bool any = f->bg_image[0] || f->bg_color[0];
+    ui_container_set_background(f->cont, any ? folder_bg_draw : NULL, any ? f : NULL, f->bg_img != NULL);
+}
+
+struct bg_load { long folder; char path[PATH_MAX]; };
+
+static void bg_loaded(void *ctx, const char *png)
+{
+    struct bg_load *l = ctx;
+    struct folder *f = folder_by_id(l->folder);
+    if (f && !f->closing && !strcmp(f->bg_img_path, l->path)) {
+        if (f->bg_img) cairo_surface_destroy(f->bg_img);
+        f->bg_img = png ? cairo_image_surface_create_from_png(png) : NULL;
+        if (f->bg_img && cairo_surface_status(f->bg_img) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(f->bg_img); f->bg_img = NULL; }
+        if (!f->bg_img) fprintf(stderr, "wps-shell: %s: cannot read the background picture %s\n", f->path, l->path);
+        bg_show(f);
+    }
+    free(l);
+}
+
+static void bg_apply(struct folder *f)
+{
+    if (f->desktop) {   /* GNOME's, or its own */
+        wallpaper_own(!f->bg_gnome, f->bg_image, f->bg_mode, f->bg_color);
+        return;
+    }
+    if (strcmp(f->bg_img_path, f->bg_image)) {
+        snprintf(f->bg_img_path, sizeof f->bg_img_path, "%s", f->bg_image);
+        if (f->bg_img) cairo_surface_destroy(f->bg_img);
+        f->bg_img = NULL;
+        if (f->bg_image[0]) {
+            struct bg_load *l = calloc(1, sizeof *l);
+            l->folder = f->id;
+            snprintf(l->path, sizeof l->path, "%s", f->bg_image);
+            char out[PATH_MAX];
+            if (icons_preview(f->bg_image, 1920, out, sizeof out, bg_loaded, l)) bg_loaded(l, out);   /* (a PNG, or made before) */
+        }
+    }
+    bg_show(f);
+}
+
+static void got_bg(void *arg, const cv *reply)
+{
+    struct folder *f = from_arg(arg);
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!f || f->closing || !res || res->k != CV_ARRAY) return;
+    f->bg_image[0] = f->bg_color[0] = 0;
+    f->bg_mode = 2;
+    f->bg_gnome = true;
+    for (size_t i = 0; i < res->n; i++) {
+        const cv *fs = cv_get(&res->items[i], "fields");
+        for (size_t k = 0; fs && fs->k == CV_ARRAY && k < fs->n; k++) {
+            const cv *fd = &fs->items[k], *v = cv_get(fd, "value");
+            const char *key = cv_text(fd, "key");
+            if (!key || !v) continue;
+            if (!strcmp(key, "bg_image") && v->k == CV_TEXT) snprintf(f->bg_image, sizeof f->bg_image, "%s", v->s);
+            else if (!strcmp(key, "bg_color") && v->k == CV_TEXT) snprintf(f->bg_color, sizeof f->bg_color, "%s", v->s);
+            else if (!strcmp(key, "bg_mode") && v->k == CV_INT) f->bg_mode = (int)v->i;
+            else if (!strcmp(key, "bg_gnome") && v->k == CV_BOOL) f->bg_gnome = v->b;
+        }
+    }
+    bg_apply(f);
+}
+
+static void bg_read(struct folder *f) { svc_settings(f->path, got_bg, as_arg(f)); }
+
+static void got_bg_sub(void *arg, const cv *reply)
+{
+    struct folder *f = from_arg(arg);
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    if (!res || res->k != CV_INT) return;
+    if (!f || f->closing) { svc_unsubscribe(res->i); return; }
+    f->bg_sub = res->i;
+}
+
+/* Its Background read, and followed (changes made in its notebook). */
+static void bg_follow(struct folder *f)
+{
+    if (f->bg_sub) svc_unsubscribe(f->bg_sub);
+    f->bg_sub = 0;
+    const char *t[1] = { f->path };
+    svc_subscribe_objects(t, 1, got_bg_sub, as_arg(f));
+    bg_read(f);
+}
 
 static struct folder *open_folder(const char *path, ui_view view);
 static bool tree_event(struct folder *f, int64_t sub);
@@ -668,6 +804,7 @@ static void folder_moved(const char *from, const char *to)
         if (f->sub) svc_unsubscribe(f->sub);
         f->sub = 0;
         svc_subscribe_folder(f->path, got_sub, as_arg(f));
+        bg_follow(f);
         if (is_tree(f)) tree_start(f);   /* the tree's paths changed: read it again */
         ui_surface_damage_all(f->win);
     }
@@ -712,6 +849,10 @@ static void on_event(void *arg, const cv *ev)
     if (!strcmp(name, "trash_changed")) { trash_changed(); return; }
     if (!strcmp(name, "drives_changed")) { drives_changed_event(); return; }
     for (struct folder *f = folders; f; f = f->next) {
+        if (f->bg_sub && f->bg_sub == sub) {   /* the folder object itself: its Background */
+            if (!f->closing && !strcmp(name, "object_changed")) bg_read(f);
+            continue;
+        }
         if (!f->closing && f->troot && tree_event(f, sub)) continue;
         if (f->sub != sub || f->closing) continue;
         if (!strcmp(name, "content_added") || !strcmp(name, "content_removed") || !strcmp(name, "object_moved")) {
@@ -3402,6 +3543,8 @@ static void free_folder(struct folder *f)
     for (struct folder **pp = &folders; *pp; pp = &(*pp)->next)
         if (*pp == f) { *pp = f->next; break; }
     if (f->sub) svc_unsubscribe(f->sub);
+    if (f->bg_sub) svc_unsubscribe(f->bg_sub);
+    if (f->bg_img) cairo_surface_destroy(f->bg_img);
     changes_clear(f);
     free(f->changes);
     tree_free(f);
@@ -5482,6 +5625,8 @@ static void on_corner_timer(void *arg, int fd, short rev)
 static void first_started(void *arg, const cv *reply)
 {
     (void)arg;
+    for (struct folder *f = folders; f; f = f->next)
+        if (f->desktop && !f->closing) bg_follow(f);   /* its Background (its own, or GNOME's) */
     if (!getenv("WPS_NO_STARTUP")) startup_at_login();
     int64_t from = -1;
     if (!reply || !cv_int(reply, "result", &from) || from >= 7 || corner_timer >= 0) return;
@@ -5721,6 +5866,7 @@ static struct folder *open_window(const char *path, ui_view view, bool desktop)
     if (!desktop) raise_in(f, "window.open", NULL, "folder");
     notify_in_use(f->path);
     svc_subscribe_folder(f->path, got_sub, as_arg(f));
+    if (!desktop) bg_follow(f);   /* (the desktop's after its first start: then wpsd knows it is the desktop) */
     svc_layout(f->path, got_layout, as_arg(f));
     request_more(f, false);
     return f;

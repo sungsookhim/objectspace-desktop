@@ -501,6 +501,13 @@ static void commit_entry(ui_notebook *nb, struct field *f)
     } else if (f->kind == UI_FIELD_COLOR) {
         double rgb[3];
         char norm[8];
+        if (!*t) {   /* emptied: no colour */
+            if (!f->v.text || !*f->v.text) return;
+            free(f->v.text);
+            f->v.text = strdup("");
+            apply(nb, f);
+            return;
+        }
         if (!ui_parse_color(t, rgb)) { entry_from_value(f); damage(nb); return; }   /* not a colour: put it back */
         snprintf(norm, sizeof norm, "#%02x%02x%02x", (int)lround(rgb[0] * 255), (int)lround(rgb[1] * 255), (int)lround(rgb[2] * 255));
         if (!strcmp(norm, f->v.text ? f->v.text : "")) { entry_from_value(f); return; }

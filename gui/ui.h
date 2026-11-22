@@ -536,6 +536,12 @@ void ui_container_select_none(ui_container *c);
  * coordinates, as for scroll layers); titles then get a shadow, for
  * reading on a picture (the desktop). NULL: back to the plain one. */
 void ui_container_set_backdrop(ui_container *c, ui_layer_draw_fn fn, void *ctx);
+/* A folder window's background (its Background page): drawn behind the
+ * items in content coordinates (it scrolls with them); `picture`: titles
+ * get the backdrop's light text, to read on anything. NULL: the scheme's. */
+void ui_container_set_background(ui_container *c, ui_layer_draw_fn fn, void *ctx, bool picture);
+/* The list's area: where the items are seen (window coordinates). */
+ui_rect ui_container_list_rect(ui_container *c);
 /* (Drawing then goes straight to the window, with no scroll layer: a
  * layer covering a whole surface stops its frame callbacks in Mutter.) */
 void ui_container_select(ui_container *c, size_t i);

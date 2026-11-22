@@ -2200,6 +2200,8 @@ static char known_desktop[PATH_MAX];   /* the desktop's folder (its first_start 
  * renamed, user-dirs.dirs would not follow). */
 static bool wps_folder(const char *path);
 
+static bool is_desktop(const char *path) { return known_desktop[0] && path && !strcmp(path, known_desktop); }
+
 static bool own_folder(const char *path)
 {
     if (!path || !*path) return false;
@@ -4149,6 +4151,7 @@ int main(int argc, char **argv)
     system_folder_init();
     wps_drive_query = drive_query;
     wps_startup_query = startup_query;
+    wps_is_desktop = is_desktop;
     wps_startup_set = startup_set;
     {
         char comp[PATH_MAX], drv[PATH_MAX + 8];

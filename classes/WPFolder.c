@@ -4,7 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "WPFileSystem.h"
 #include "wps_classes.h"
+#include "wps_startup_hook.h"
+
+bool (*wps_is_desktop)(const char *path);
 
 char *WPFolder__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
@@ -81,6 +85,45 @@ wpo_pending *WPFolder__wpPopulate(wpo_object *self)
     return p;
 }
 
+/* ---- the Background page */
+
+static bool set_bg_str(wpo_object *self, const char *key, const char *v)
+{
+    wps_state_put_str(self, "WPFolder", key, v ? v : "");
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+bool WPFolder__wpSetBgImage(wpo_object *self, const char *path)
+{
+    if (path && *path && path[0] != '/') return false;
+    return set_bg_str(self, "bg_image", path);
+}
+
+bool WPFolder__wpSetBgMode(wpo_object *self, int64_t mode)
+{
+    if (mode < 0 || mode > 4) return false;
+    wps_state_put_int(self, "WPFolder", "bg_mode", mode);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+bool WPFolder__wpSetBgColor(wpo_object *self, const char *color)
+{
+    if (color && *color && (color[0] != '#' || strlen(color) != 7)) return false;
+    return set_bg_str(self, "bg_color", color);
+}
+
+bool WPFolder__wpSetBgGnome(wpo_object *self, bool on)
+{
+    wps_state_put_int(self, "WPFolder", "bg_gnome", on);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
 char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
     char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
@@ -89,7 +132,30 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
              WPFolder_data(self)->sort_order, WPFolder_data(self)->local_objects);
     char *r = wps_concat(base, line);
     free(base);
-    return r;
+    /* Background (OS/2's page): the desktop's has Use GNOME's background */
+    char *img = NULL, *col = NULL;
+    int64_t mode = 2, gnome = 1;
+    wps_state_get_str(self, "WPFolder", "bg_image", &img);
+    wps_state_get_str(self, "WPFolder", "bg_color", &col);
+    wps_state_get_int(self, "WPFolder", "bg_mode", &mode);
+    wps_state_get_int(self, "WPFolder", "bg_gnome", &gnome);
+    const char *path = wpo_is_a(self, WPFileSystemClass) ? WPFileSystem_data(self)->path : NULL;
+    bool desk = path && wps_is_desktop && wps_is_desktop(path);
+    size_t n = (img ? strlen(img) : 0) + 512;
+    char *bg = malloc(n);
+    snprintf(bg, n, "page\tBackground\n%s"
+             "field\tbg_image\tfile\tImage\t%s\twpSetBgImage\timage\n"
+             "field\tbg_mode\tchoice\tShown\t%lld\twpSetBgMode\tcentred,tiled,scaled to fill,scaled to fit,stretched\n"
+             "field\tbg_color\tcolor\tColour\t%s\twpSetBgColor\n",
+             desk ? (gnome ? "field\tbg_gnome\tcheckbox\tUse GNOME's background\t1\twpSetBgGnome\n"
+                           : "field\tbg_gnome\tcheckbox\tUse GNOME's background\t0\twpSetBgGnome\n") : "",
+             img ? img : "", (long long)mode, col ? col : "");
+    free(img);
+    free(col);
+    char *r2 = wps_concat(r, bg);
+    free(r);
+    free(bg);
+    return r2;
 }
 
 char *WPFolder__wpclsQueryTitle(wpo_object *self)

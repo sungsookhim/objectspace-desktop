@@ -13,4 +13,8 @@
 extern bool (*wps_startup_query)(wpo_object *o, bool *on);
 extern bool (*wps_startup_set)(wpo_object *o, bool on);
 
+/* The desktop's folder (its Background page has Use GNOME's background);
+ * the service fills it. NULL: none known. */
+extern bool (*wps_is_desktop)(const char *path);
+
 #endif

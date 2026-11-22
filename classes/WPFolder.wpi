@@ -20,5 +20,13 @@ method wpSetIconPos(object child, int x, int y) -> bool
 method wpQueryIconPos(object child) -> string
 # Lists the folder's contents; streaming and paging arrive in M4.
 method wpPopulate() -> pending async
+# The Background page (v0.3-design 3): a picture (a path), how it is shown
+# (0 centred, 1 tiled, 2 scaled to fill, 3 scaled to fit, 4 stretched), a
+# colour (#rrggbb, "" none), and for the desktop whether GNOME's
+# background is shown instead (the default).
+method wpSetBgImage(string path) -> bool
+method wpSetBgMode(int mode) -> bool
+method wpSetBgColor(string color) -> bool
+method wpSetBgGnome(bool on) -> bool
 override wpAddSettingsPages
 classoverride wpclsQueryTitle

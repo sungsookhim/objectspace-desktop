@@ -76,6 +76,8 @@ static void parse_color(const char *s, double c[3])
     if (s && sscanf(s, "#%02x%02x%02x", &r, &g, &b) == 3) { c[0] = r / 255.0; c[1] = g / 255.0; c[2] = b / 255.0; }
 }
 
+static struct { bool on; char path[PATH_MAX]; int mode; char color[16]; } own;
+
 static void read_settings(void)
 {
     char v[PATH_MAX + 64];
@@ -83,6 +85,14 @@ static void read_settings(void)
     snprintf(want.options, sizeof want.options, "zoom");
     snprintf(want.shading, sizeof want.shading, "solid");
     want.c1[0] = 0.0; want.c1[1] = 0.5; want.c1[2] = 0.5;   /* OS/2's desktop teal, when GNOME says nothing */
+    if (own.on) {   /* the desktop's own (its Background page) */
+        static const char *const how[] = { "centered", "wallpaper", "zoom", "scaled", "stretched" };
+        snprintf(want.options, sizeof want.options, "%s", how[own.mode >= 0 && own.mode <= 4 ? own.mode : 2]);
+        if (own.color[0]) parse_color(own.color, want.c1);
+        memcpy(want.c2, want.c1, sizeof want.c2);
+        if (own.path[0]) snprintf(want.uri, sizeof want.uri, "file://%s", own.path);
+        return;
+    }
     const char *fixed = getenv("WPS_WALLPAPER");          /* tests: this picture, no GNOME settings */
     if (fixed) {
         if (*fixed) snprintf(want.uri, sizeof want.uri, "%s%s", fixed[0] == '/' ? "file://" : "", fixed);
@@ -418,3 +428,13 @@ void wallpaper_draw(cairo_t *cr, ui_rect clip)
 }
 
 const char *wallpaper_showing(void) { return showing; }
+
+void wallpaper_own(bool on, const char *path, int mode, const char *color)
+{
+    if (on == own.on && !strcmp(own.path, path ? path : "") && mode == own.mode && !strcmp(own.color, color ? color : "")) return;
+    own.on = on;
+    snprintf(own.path, sizeof own.path, "%s", path ? path : "");
+    own.mode = mode;
+    snprintf(own.color, sizeof own.color, "%s", color ? color : "");
+    if (app) reload();
+}

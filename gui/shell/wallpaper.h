@@ -28,6 +28,12 @@ void wallpaper_set_size(double w, double h, int scale);
  * desktop's top left at 0,0). */
 void wallpaper_draw(cairo_t *cr, ui_rect clip);
 
+/* The desktop's own background (its Background page, v0.3-design 3)
+ * instead of GNOME's: a picture's path ("" none), how it is shown (0
+ * centred, 1 tiled, 2 scaled to fill, 3 scaled to fit, 4 stretched) and a
+ * colour ("#rrggbb", "" OS/2's teal). on false: GNOME's again. */
+void wallpaper_own(bool on, const char *path, int mode, const char *color);
+
 /* For tests: what is shown now ("color", or the picture's path). */
 const char *wallpaper_showing(void);
 
