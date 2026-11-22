@@ -1928,9 +1928,15 @@ static void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_v
         if (*v->text) { props_icon_from(p->id, key, v->text); return; }                     /* an image dropped */
         /* Default: "" below */
     }
-    if (kind == UI_FIELD_FILE && !v->text) {   /* Browse... */
-        const char *home = getenv("HOME");
-        filepick_open(p->title, ui_notebook_field_hint(p->nb, key), home && *home ? home : "/", props_file_chosen, p->id, key);
+    if (kind == UI_FIELD_FILE && v->text && v->checked) {   /* a sound's Play */
+        if (!events_play(v->text)) ui_notebook_set_status(p->nb, "That sound cannot be played (not found, or a format not read)");
+        return;
+    }
+    if (kind == UI_FIELD_FILE && !v->text) {   /* Browse... (sounds: the sound theme's folder first) */
+        const char *home = getenv("HOME"), *hint = ui_notebook_field_hint(p->nb, key);
+        const char *start = home && *home ? home : "/";
+        if (hint && !strcmp(hint, "audio") && access("/usr/share/sounds/freedesktop/stereo", R_OK) == 0) start = "/usr/share/sounds/freedesktop/stereo";
+        filepick_open(p->title, hint, start, props_file_chosen, p->id, key);
         return;
     }
     if (!strcmp(key, "title") && kind == UI_FIELD_TEXT) {
@@ -4488,6 +4494,44 @@ static void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 4 && t > 1500) {
             fprintf(stderr, "selftest: fonts: read back: %s\n", f->icon_font);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "soundpage")) {
+        /* The Sound object's page (0.3 step 9): each event a sound field
+         * (Browse..., None, Play); Play plays it; a file set is used. */
+        static double t0;
+        static int step;
+        static unsigned played0;
+        if (!t0) { if (!f->m.complete || !setup_addr("WPSound")[0]) return; t0 = now; }
+        double t = now - t0;
+        struct props *p = NULL;
+        for (struct props *x = props_open; x; x = x->next) if (!strcmp(x->target, setup_addr("WPSound"))) p = x;
+        if (step == 0) {
+            open_properties(setup_addr("WPSound"));
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            fprintf(stderr, "selftest: soundpage: notebook %d, window.open's hint %s\n", p && p->nb,
+                    p && p->nb ? ui_notebook_field_hint(p->nb, "window.open") : "?");
+            played0 = sound_played();
+            char wav[PATH_MAX];   /* (a WAV: read with or without libsndfile) */
+            snprintf(wav, sizeof wav, "%s/beep.wav", f->path);
+            ui_value v = { .text = wav, .checked = true };
+            if (p) props_set(p, "job.done", UI_FIELD_FILE, &v);
+            fprintf(stderr, "selftest: soundpage: Play: PipeWire %s (formats %s), started %u\n", sound_ready() ? "connected" : "not there",
+                    sound_formats(), sound_played() - played0);
+            cv sv = { .k = CV_TEXT, .s = "/usr/share/sounds/freedesktop/stereo/bell.oga" };
+            sv.len = strlen(sv.s);
+            svc_settings_set(setup_addr("WPSound"), "window.open", &sv, -1, ignore_reply, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            const char *w = events_sound_for("window.open");
+            fprintf(stderr, "selftest: soundpage: a file set: window.open plays %s; Play started %u by now\n", w ? strrchr(w, '/') + 1 : "nothing",
+                    sound_played() - played0);
             ui_app_quit(app);
             step++;
         }

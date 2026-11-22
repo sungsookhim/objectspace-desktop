@@ -405,7 +405,9 @@ ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect
 /* UI_FIELD_FILE: value.text is a path, typed, dropped on it, or from
  * Browse...: its owner's `set` gets value.text NULL for Browse... (then
  * ui_notebook_set_value with the path chosen). choices[0], if any, says
- * what it takes ("image", "audio"): ui_notebook_field_hint. */
+ * what it takes ("image", "audio"): ui_notebook_field_hint. A sound's
+ * ("audio") has Play too: `set` gets value.checked true and its text, to
+ * play it, not to store it. */
 /* UI_FIELD_COLOR: value.text "#rrggbb", shown as a swatch beside it. */
 typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO,
                UI_FIELD_FILE, UI_FIELD_COLOR } ui_field_kind;

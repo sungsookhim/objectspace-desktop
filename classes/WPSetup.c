@@ -47,26 +47,26 @@ static const struct setting system_settings[] = {
 static const struct setting sound_settings[] = {
     { "Setup", "enabled", "checkbox", "Play sounds for actions", "1", NULL },
     { "Setup", "volume", "text", "Volume (0-100)", "70", NULL },
-    { "Events", "shell.startup", "text", "Startup", "service-login", NULL },
-    { "Events", "shell.shutdown", "text", "Shutdown", "", NULL },
-    { "Events", "window.open", "text", "Open window", "", NULL },
-    { "Events", "window.close", "text", "Close window", "", NULL },
-    { "Events", "window.minimize", "text", "Minimize window", "", NULL },
-    { "Events", "window.maximize", "text", "Maximize window", "", NULL },
-    { "Events", "window.restore", "text", "Restore window", "", NULL },
-    { "Events", "menu.open", "text", "Open menu", "", NULL },
-    { "Events", "menu.select", "text", "Select menu item", "", NULL },
-    { "Events", "object.open", "text", "Open object", "", NULL },
-    { "Events", "object.drag", "text", "Begin drag", "", NULL },
-    { "Events", "object.drop", "text", "Drop", "", NULL },
-    { "Events", "object.create", "text", "Create object", "", NULL },
-    { "Events", "object.trash", "text", "Move to the trash", "trash-empty", NULL },
-    { "Events", "object.delete", "text", "Delete", "", NULL },
-    { "Events", "job.done", "text", "Job finished", "complete", NULL },
-    { "Events", "job.failed", "text", "Job failed", "dialog-error", NULL },
-    { "Events", "alert.info", "text", "Information", "dialog-information", NULL },
-    { "Events", "alert.warning", "text", "Warning", "dialog-warning", NULL },
-    { "Events", "alert.error", "text", "Error", "dialog-error", NULL },
+    { "Events", "shell.startup", "sound", "Startup", "service-login", NULL },
+    { "Events", "shell.shutdown", "sound", "Shutdown", "", NULL },
+    { "Events", "window.open", "sound", "Open window", "", NULL },
+    { "Events", "window.close", "sound", "Close window", "", NULL },
+    { "Events", "window.minimize", "sound", "Minimize window", "", NULL },
+    { "Events", "window.maximize", "sound", "Maximize window", "", NULL },
+    { "Events", "window.restore", "sound", "Restore window", "", NULL },
+    { "Events", "menu.open", "sound", "Open menu", "", NULL },
+    { "Events", "menu.select", "sound", "Select menu item", "", NULL },
+    { "Events", "object.open", "sound", "Open object", "", NULL },
+    { "Events", "object.drag", "sound", "Begin drag", "", NULL },
+    { "Events", "object.drop", "sound", "Drop", "", NULL },
+    { "Events", "object.create", "sound", "Create object", "", NULL },
+    { "Events", "object.trash", "sound", "Move to the trash", "trash-empty", NULL },
+    { "Events", "object.delete", "sound", "Delete", "", NULL },
+    { "Events", "job.done", "sound", "Job finished", "complete", NULL },
+    { "Events", "job.failed", "sound", "Job failed", "dialog-error", NULL },
+    { "Events", "alert.info", "sound", "Information", "dialog-information", NULL },
+    { "Events", "alert.warning", "sound", "Warning", "dialog-warning", NULL },
+    { "Events", "alert.error", "sound", "Error", "dialog-error", NULL },
     { NULL, NULL, NULL, NULL, NULL, NULL },
 };
 
@@ -240,6 +240,8 @@ char *WPSetup__wpAddSettingsPages(wpo_object *self, const char *pages)
                      option_index(t[i].options, v ? v : ""), t[i].options);
         else if (!strcmp(t[i].kind, "checkbox"))
             snprintf(line + o, n - o, "field\t%s\tcheckbox\t%s\t%d\t@\n", t[i].key, t[i].label, v && !strcmp(v, "1"));
+        else if (!strcmp(t[i].kind, "sound"))   /* a theme sound's name or a file: Browse..., None, Play */
+            snprintf(line + o, n - o, "field\t%s\tfile\t%s\t%s\t@\taudio\n", t[i].key, t[i].label, v ? v : "");
         else
             snprintf(line + o, n - o, "field\t%s\ttext\t%s\t%s\t@\n", t[i].key, t[i].label, v ? v : "");
         char *r = wps_concat(out, line);

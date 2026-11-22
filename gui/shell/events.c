@@ -200,3 +200,10 @@ void events_raise(const char *name, const char *object, const char *cls, ui_rect
                 events_sound_for(name) ? " -> " : "", events_sound_for(name) ? events_sound_for(name) : "");
     for (int i = 0; i < nsubs; i++) subs[i].fn(&e, subs[i].ctx);
 }
+
+bool events_play(const char *value)
+{
+    char path[PATH_MAX];
+    if (!value || !find_sound(value, path, sizeof path)) return false;
+    return sound_play(path, volume);
+}

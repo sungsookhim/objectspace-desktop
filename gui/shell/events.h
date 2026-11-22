@@ -53,6 +53,9 @@ void events_reload(void);
  * each key (enabled, volume, or an event name) with its value (a theme
  * sound, a file, or "" for none). GNOME's event-sounds switch still
  * silences everything. */
+/* Play a Sound object's value now (a theme sound's name or a file): its
+ * Play button. False if there is no such sound. */
+bool events_play(const char *value);
 void events_setup_begin(void);
 void events_setup_set(const char *key, const char *value);
 

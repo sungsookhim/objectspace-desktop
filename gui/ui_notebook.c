@@ -194,18 +194,22 @@ static ui_rect spin_rect(ui_rect r, bool up)
  * swatch, then its "#rrggbb". */
 #define BROWSE_W 80
 #define NONE_W 56
-/* a file field's buttons: 0 Browse..., 1 None (no file) */
+#define PLAY_W 50
+/* a file field's buttons: 0 Browse..., 1 None (no file), 2 Play (sounds) */
 static ui_rect file_button(ui_rect r, int i)
 {
+    if (i == 2) return (ui_rect){ r.x + r.w - NONE_W - 4 - BROWSE_W - 4 - PLAY_W, r.y, PLAY_W, r.h };
     return i ? (ui_rect){ r.x + r.w - NONE_W, r.y, NONE_W, r.h } : (ui_rect){ r.x + r.w - NONE_W - 4 - BROWSE_W, r.y, BROWSE_W, r.h };
 }
+static bool is_audio(const struct field *f) { return f->kind == UI_FIELD_FILE && f->nchoices && !strcmp(f->choices[0], "audio"); }
+static int file_buttons(const struct field *f) { return is_audio(f) ? 3 : 2; }
 static ui_rect color_swatch(ui_rect r) { return (ui_rect){ r.x, r.y, FIELD_H, FIELD_H }; }
 
 /* Where a field's text is typed (number: before its arrows). */
 static ui_rect entry_rect(const struct field *f, ui_rect r)
 {
     if (f->kind == UI_FIELD_NUMBER) r.w -= 16;
-    else if (f->kind == UI_FIELD_FILE) r.w -= BROWSE_W + NONE_W + 10;
+    else if (f->kind == UI_FIELD_FILE) r.w -= BROWSE_W + NONE_W + 10 + (is_audio(f) ? PLAY_W + 4 : 0);
     else if (f->kind == UI_FIELD_COLOR) { r.x += FIELD_H + 6; r.w -= FIELD_H + 6; }
     return r;
 }
@@ -405,13 +409,13 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             ui_rect er = entry_rect(f, r);
             if (nb->drop_on == f) { ui_fill(cr, er, k->selection); ui_bevel(cr, er, false); }
             else ui_entry_draw(f->entry, cr, er, focused);
-            static const char *const fl[2] = { "Browse...", "None" };
-            for (int bi = 0; bi < 2; bi++) {
+            static const char *const fl[3] = { "Browse...", "None", "Play" };
+            for (int bi = 0; bi < file_buttons(f); bi++) {
                 ui_rect b = file_button(r, bi);
                 bool down = nb->icon_field == f && nb->icon_pressed == bi;
                 ui_fill(cr, b, k->face);
                 ui_bevel(cr, b, !down);
-                ui_set_color(cr, bi == 1 && !(f->v.text && *f->v.text) ? k->disabled_text : k->text);
+                ui_set_color(cr, bi >= 1 && !(f->v.text && *f->v.text) ? k->disabled_text : k->text);
                 double tw = ui_text_width(UI_FONT_REGULAR, fl[bi]);
                 ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + down, b.y + base_off + down, fl[bi], b.w - 4);
             }
@@ -676,6 +680,13 @@ static void icon_action(ui_notebook *nb, struct field *f, int which)
     if (!nb->set) return;
     if (f->kind == UI_FIELD_FILE) {
         if (which == 1) { ui_notebook_set_value(nb, f->key, ""); return; }   /* None */
+        if (which == 2) {   /* Play: what it holds now, nothing stored */
+            commit_entry(nb, f);
+            if (!(f->v.text && *f->v.text)) return;
+            ui_value v = { .text = f->v.text, .checked = true };
+            nb->set(nb->ctx, f->key, UI_FIELD_FILE, &v);
+            return;
+        }
         commit_entry(nb, f);
         ui_value v = { .text = NULL };
         nb->set(nb->ctx, f->key, UI_FIELD_FILE, &v);
@@ -892,7 +903,7 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
                 }
             r = icon_box(r);
         }
-        for (int bi = 0; bi < 2 && pg->f[k].kind == UI_FIELD_FILE; bi++)
+        for (int bi = 0; pg->f[k].kind == UI_FIELD_FILE && bi < file_buttons(&pg->f[k]); bi++)
             if (ui_rect_has(file_button(r, bi), e->x, e->y)) {
                 set_focus(nb, (int)k);
                 nb->icon_field = &pg->f[k];
