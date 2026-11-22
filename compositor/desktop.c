@@ -368,6 +368,7 @@ static void command(char *line)
         const char *eq = strchr(arg, '=');
         if (!eq || (size_t)(eq - arg) >= sizeof key) return;
         snprintf(key, sizeof key, "%.*s", (int)(eq - arg), arg);
+        if (!strcmp(key, "title_font")) { ui_frame_set_title_font(ui_font_named(eq + 1)); comp_redraw_frames(); return; }   /* the Font Palette's */
         if (ui_scheme_set_option(key, eq + 1)) comp_redraw_frames();
         return;
     }

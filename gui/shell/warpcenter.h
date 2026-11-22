@@ -24,6 +24,8 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
 bool warpcenter_is_open(void);
 /* Draw it again (an icon became ready). */
 void warpcenter_damage(void);
+void warpcenter_set_font(ui_font f);   /* the Font Palette's */
+void warpcenter_on_font(void (*fn)(const char *spec));   /* a font dropped on it */
 
 /* The WarpCenter object's settings (edge, meters, keyboard, messages,
  * clock, seconds, date), applied at once. */

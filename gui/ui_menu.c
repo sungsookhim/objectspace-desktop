@@ -9,9 +9,19 @@
 
 #include "ui_internal.h"
 
-#define ITEM_H 22
+#define ITEM_H item_h()
 #define SEP_H 7
 #define PAD 3
+
+/* All menus' font (the Font Palette's; the interface font unless set). */
+static ui_font menu_font = UI_FONT_REGULAR;
+void ui_menu_set_font(ui_font f) { menu_font = f; }
+static double item_h(void)
+{
+    if (menu_font == UI_FONT_REGULAR) return 22;   /* (as always) */
+    double h = ceil(ui_font_line_h(menu_font)) + 6;
+    return h > 22 ? h : 22;
+}
 
 struct menu_root;
 
@@ -158,9 +168,9 @@ static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         snprintf(label, sizeof label, "%s", it->label);
         char *key = strchr(label, '\t');   /* "Text\tShortcut": shortcut right-aligned */
         if (key) *key++ = 0;
-        double base = y + (ITEM_H + ui_text_ascent()) / 2 - 1;
-        ui_text_draw(cr, UI_FONT_REGULAR, 22 + room, base, label, m->w - 44 - room);
-        if (key) ui_text_draw(cr, UI_FONT_REGULAR, m->w - 22 - ui_text_width(UI_FONT_REGULAR, key), base, key, 0);
+        double base = y + (ITEM_H + ui_font_ascent(menu_font)) / 2 - 1;
+        ui_text_draw(cr, menu_font, 22 + room, base, label, m->w - 44 - room);
+        if (key) ui_text_draw(cr, menu_font, m->w - 22 - ui_text_width(menu_font, key), base, key, 0);
         if (it->nitems) {
             cairo_move_to(cr, m->w - 12, y + 7);
             cairo_line_to(cr, m->w - 8, y + 11);
@@ -321,7 +331,7 @@ static void open_menu(struct menu_root *r, struct menu *parent, ui_surface *on, 
             snprintf(label, sizeof label, "%s", items[i].label);
             char *key = strchr(label, '\t');
             if (key) *key++ = 0;
-            double tw = ui_text_width(UI_FONT_REGULAR, label) + 22 + 30 + (key ? ui_text_width(UI_FONT_REGULAR, key) + 24 : 0) + room;
+            double tw = ui_text_width(menu_font, label) + 22 + 30 + (key ? ui_text_width(menu_font, key) + 24 : 0) + room;
             if (tw > w) w = tw;
         }
     m->w = w;

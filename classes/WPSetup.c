@@ -7,6 +7,7 @@
 
 #include "WPMouse.h"
 #include "WPSchemePalette.h"
+#include "WPFontPalette.h"
 #include "WPSound.h"
 #include "WPSystem.h"
 #include "WPLaunchPad.h"
@@ -33,6 +34,9 @@ static const struct setting system_settings[] = {
     { "Login", "restore_windows", "checkbox", "Restore open windows at login", "1", NULL },
     { "Folders", "show_hidden", "checkbox", "Show hidden files (names starting with a dot)", "1", NULL },
     { "Folders", "show_ext", "checkbox", "Show file extensions in titles", "1", NULL },
+    { "Fonts", "font_folders", "text", "Folders' icon titles (e.g. 10.Sans; empty: the interface font)", "", NULL },
+    { "Fonts", "font_menus", "text", "Menus", "", NULL },
+    { "Fonts", "font_titles", "text", "Title bars", "", NULL },
     { "Programs", "terminal", "choice", "Terminal for text-mode programs", "automatic",
       "automatic,xdg-terminal-exec,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" },
     { "Programs", "terminal_command", "text", "Or this command (the program goes after it)", "", NULL },
@@ -106,6 +110,14 @@ static const struct setting warpcenter_settings[] = {
     { "Clock", "clock", "choice", "Clock", "24 hours", "24 hours,12 hours,off" },
     { "Clock", "seconds", "checkbox", "Seconds", "0", NULL },
     { "Clock", "date", "checkbox", "Date", "0", NULL },
+    { "Font", "font", "text", "Font (e.g. 10.Sans; empty: the interface font)", "", NULL },
+    { NULL, NULL, NULL, NULL, NULL, NULL },
+};
+
+/* The palette's samples (OS/2's had a dozen), "size.Family [Bold] [Italic]". */
+static const struct setting fontpalette_settings[] = {
+    { "Fonts", "fonts", "text", "Samples (separated by ;)",
+      "8.Sans;9.Sans;10.Sans;12.Sans;14.Sans;10.Sans Bold;10.Serif;12.Serif;14.Serif Bold;10.Monospace;12.Monospace;18.Sans", NULL },
     { NULL, NULL, NULL, NULL, NULL, NULL },
 };
 
@@ -125,6 +137,7 @@ static const struct setting *table(wpo_object *self)
     if (!strcmp(n, "WPLaunchPad")) return launchpad_settings;
     if (!strcmp(n, "WPWarpCenter")) return warpcenter_settings;
     if (!strcmp(n, "WPMessages")) return messages_settings;
+    if (!strcmp(n, "WPFontPalette")) return fontpalette_settings;
     return NULL;
 }
 
@@ -243,7 +256,8 @@ char *WPSetup__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
     /* the LaunchPad, the WarpCenter and Messages also open (the palette,
      * the bar, the list); the others are only their settings */
-    bool opens = wpo_is_a(self, WPLaunchPadClass) || wpo_is_a(self, WPWarpCenterClass) || wpo_is_a(self, WPMessagesClass);
+    bool opens = wpo_is_a(self, WPLaunchPadClass) || wpo_is_a(self, WPWarpCenterClass) || wpo_is_a(self, WPMessagesClass) ||
+                 wpo_is_a(self, WPFontPaletteClass);
     return wps_concat(menu, opens ? "1\tOpen\n2\tProperties\n" : "2\tProperties\n");
 }
 
@@ -251,6 +265,7 @@ char *WPSystem__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdu
 char *WPSound__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Sound"); }
 char *WPMouse__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Mouse"); }
 char *WPSchemePalette__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Scheme Palette"); }
+char *WPFontPalette__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Font Palette"); }
 char *WPLaunchPad__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("LaunchPad"); }
 char *WPWarpCenter__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("WarpCenter"); }
 char *WPMessages__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Messages"); }

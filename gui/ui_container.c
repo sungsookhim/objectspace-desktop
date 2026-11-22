@@ -13,8 +13,10 @@
 
 #include "ui_internal.h"
 
-#define ROW_H 20
-#define LABEL_H 16               /* a line of an icon's title */
+/* A row (details, tree) and a line of an icon's title: from the
+ * container's font (the folder's, from the Font Palette). */
+#define ROW_H row_h_of(c)
+#define LABEL_H label_h_of(c)
 #define LABEL_MAX 12             /* lines of a whole title shown */
 #define HEAD_H 20
 #define SB_W 16
@@ -32,6 +34,7 @@ struct ui_container {
     void *background_ctx;
     bool bg_picture;             /* a picture behind: titles as on the desktop */
     bool whole_titles;           /* every title whole, cells as tall as they need */
+    ui_font font;                /* the items' titles (the interface font unless set) */
     ui_surface *s;
     const ui_container_src *src;
     void *ctx;
@@ -118,6 +121,10 @@ static double max_hscroll(ui_container *c)
 }
 
 static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SBW(c), c->r.y, SBW(c), c->r.h }; }
+
+/* (the interface font's as always; a palette font's as it needs) */
+static double row_h_of(const ui_container *c) { return c->font == UI_FONT_REGULAR ? 20 : fmax(20, ceil(ui_font_line_h(c->font)) + 4); }
+static double label_h_of(const ui_container *c) { return c->font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(c->font))); }
 
 static size_t cols(ui_container *c)
 {
@@ -676,7 +683,7 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
     ui_fill(cr, r, sel ? k->selection : (i % 2 ? k->alt_row : k->client_bg));
     ui_item it = { 0 };
     c->src->item(c->ctx, i, &it);
-    double base = r.y + (ROW_H + ui_text_ascent()) / 2 - 1;
+    double base = r.y + (ROW_H + ui_font_ascent(c->font)) / 2 - 1;
     if (!it.loaded) {
         ui_fill(cr, (ui_rect){ x[1], r.y + 6, 140, 8 }, k->placeholder);
     } else {
@@ -686,10 +693,10 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
         char one[512];   /* a title's line breaks: spaces on one line */
         snprintf(one, sizeof one, "%s", it.title ? it.title : "");
         for (char *q = one; *q; q++) if (*q == '\n') *q = ' ';
-        ui_text_draw(cr, UI_FONT_REGULAR, x[1], base, one, x[2] - x[1] - 6);
+        ui_text_draw(cr, c->font, x[1], base, one, x[2] - x[1] - 6);
         ui_set_color(cr, sel ? k->selection_text : k->text);
         const char *nm = it.name ? it.name : "";
-        if (x[3] - x[2] > 4 && nm[0] != '\x01') ui_text_draw(cr, UI_FONT_REGULAR, x[2], base, nm, x[3] - x[2] - 6);
+        if (x[3] - x[2] > 4 && nm[0] != '\x01') ui_text_draw(cr, c->font, x[2], base, nm, x[3] - x[2] - 6);
         if (x[4] - x[3] > 4) {   /* its type: Folder, Program, or its file's extension */
             char ty[40];
             const char *dot = strrchr(nm, '.');
@@ -700,7 +707,7 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
                 snprintf(ty, sizeof ty, "%s", dot + 1);
                 for (char *q = ty; *q; q++) if (*q >= 'a' && *q <= 'z') *q = (char)(*q - 32);
             } else snprintf(ty, sizeof ty, "File");
-            ui_text_draw(cr, UI_FONT_REGULAR, x[3], base, ty, x[4] - x[3] - 6);
+            ui_text_draw(cr, c->font, x[3], base, ty, x[4] - x[3] - 6);
         }
         if (it.detailed) {
             char sz[32], dt[32];
@@ -710,9 +717,9 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
             struct tm tm;
             localtime_r(&t, &tm);
             strftime(dt, sizeof dt, "%Y-%m-%d %H:%M", &tm);
-            double w = ui_text_width(UI_FONT_REGULAR, sz);
-            if (x[5] - x[4] > 4) ui_text_draw(cr, UI_FONT_REGULAR, x[5] - 10 - w, base, sz, 0);   /* sizes align right */
-            if (x[6] - x[5] > 4) ui_text_draw(cr, UI_FONT_REGULAR, x[5], base, dt, x[6] - x[5] - 4);
+            double w = ui_text_width(c->font, sz);
+            if (x[5] - x[4] > 4) ui_text_draw(cr, c->font, x[5] - 10 - w, base, sz, 0);   /* sizes align right */
+            if (x[6] - x[5] > 4) ui_text_draw(cr, c->font, x[5], base, dt, x[6] - x[5] - 4);
         } else {
             if (x[5] - x[4] > 4) ui_fill(cr, (ui_rect){ x[5] - 60, r.y + 6, 50, 8 }, k->placeholder);
             if (x[6] - x[5] > 4) ui_fill(cr, (ui_rect){ x[5], r.y + 6, 100, 8 }, k->placeholder);
@@ -780,11 +787,11 @@ static void draw_tree_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     double ix = ex + INDENT;
     item_icon(cr, &it, ix, r.y + 2, 16);
     const char *t = it.title ? it.title : "";
-    double tx = ix + 20, tw = ui_text_width(UI_FONT_REGULAR, t), maxw = r.x + r.w - tx - 4;
+    double tx = ix + 20, tw = ui_text_width(c->font, t), maxw = r.x + r.w - tx - 4;
     if (tw > maxw) tw = maxw;
     if (sel) ui_fill(cr, (ui_rect){ tx - 2, r.y + 1, tw + 4, ROW_H - 2 }, k->selection);
     ui_set_color(cr, sel ? k->selection_text : k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, tx, r.y + (ROW_H + ui_text_ascent()) / 2 - 1, t, maxw);
+    ui_text_draw(cr, c->font, tx, r.y + (ROW_H + ui_font_ascent(c->font)) / 2 - 1, t, maxw);
     if (c->focused && c->has_cursor && c->cursor == i) {
         ui_set_color(cr, sel ? k->selection_text : k->cursor);
         cairo_set_dash(cr, &dash, 1, 0);
@@ -833,7 +840,7 @@ static void shadow_mark(cairo_t *cr, double x, double y, double size)
  * long for a line. At most maxl lines; past them the rest goes on the last
  * (drawn cut, with an ellipsis). Returns the number of lines; *all: the
  * whole title fit. */
-static int wrap_title(const char *t, double maxw, char out[][256], int maxl, bool *all)
+static int wrap_title(ui_font font, const char *t, double maxw, char out[][256], int maxl, bool *all)
 {
     int n = 0;
     *all = true;
@@ -851,7 +858,7 @@ static int wrap_title(const char *t, double maxw, char out[][256], int maxl, boo
             while (*we && *we != ' ' && *we != '\n') we++;
             char trial[256];
             snprintf(trial, sizeof trial, "%s%.*s", line, (int)(we - p), p);
-            if (ui_text_width(UI_FONT_REGULAR, trial) <= maxw) {
+            if (ui_text_width(font, trial) <= maxw) {
                 snprintf(line, sizeof line, "%s", trial);
                 ll = strlen(line);
                 p = we;
@@ -865,7 +872,7 @@ static int wrap_title(const char *t, double maxw, char out[][256], int maxl, boo
                 while ((q[cl] & 0xc0) == 0x80) cl++;
                 char t2[256];
                 snprintf(t2, sizeof t2, "%.*s", (int)(q + cl - p), p);
-                if (q > p && ui_text_width(UI_FONT_REGULAR, t2) > maxw) break;
+                if (q > p && ui_text_width(font, t2) > maxw) break;
                 q += cl;
             }
             snprintf(line, sizeof line, "%.*s", (int)(q - p), p);
@@ -898,7 +905,7 @@ static bool label_expanded(ui_container *c, size_t i, const ui_item *it)
     if (!sel_get(c, i)) return false;
     char lines[2][256];
     bool all;
-    wrap_title(it->title, CELL_W - 8, lines, 2, &all);
+    wrap_title(c->font, it->title, CELL_W - 8, lines, 2, &all);
     return !all;
 }
 
@@ -908,9 +915,9 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
     char lines[LABEL_MAX][256];
     bool all;
     double maxw = r.w - 8;
-    int n = wrap_title(it->title ? it->title : "", maxw, lines, full ? LABEL_MAX : 2, &all);
+    int n = wrap_title(c->font, it->title ? it->title : "", maxw, lines, full ? LABEL_MAX : 2, &all);
     double tw = 0;
-    for (int l = 0; l < n; l++) tw = fmax(tw, fmin(maxw, ui_text_width(UI_FONT_REGULAR, lines[l])));
+    for (int l = 0; l < n; l++) tw = fmax(tw, fmin(maxw, ui_text_width(c->font, lines[l])));
     double ty = r.y + ICON + 8, h = n * LABEL_H + 4;
     double bx = r.x + (r.w - tw) / 2 - 2;
     bool sel = sel_get(c, i);
@@ -920,18 +927,18 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
         else ui_fill(cr, (ui_rect){ bx, ty, tw + 4, h }, k->client_bg);
     }
     for (int l = 0; l < n; l++) {
-        double lw = fmin(maxw, ui_text_width(UI_FONT_REGULAR, lines[l]));
-        double tx = r.x + (r.w - lw) / 2, by = ty + 2 + l * LABEL_H + (LABEL_H + ui_text_ascent()) / 2 - 2;
+        double lw = fmin(maxw, ui_text_width(c->font, lines[l]));
+        double tx = r.x + (r.w - lw) / 2, by = ty + 2 + l * LABEL_H + (LABEL_H + ui_font_ascent(c->font)) / 2 - 2;
         if ((c->backdrop || c->bg_picture) && !sel) {
             /* on a picture: light text with a dark shadow reads on anything */
             cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
-            ui_text_draw(cr, UI_FONT_REGULAR, tx + 1, by + 1, lines[l], maxw);
+            ui_text_draw(cr, c->font, tx + 1, by + 1, lines[l], maxw);
             if (it->shadow) cairo_set_source_rgb(cr, 0.75, 0.85, 1.0);
             else cairo_set_source_rgb(cr, 1, 1, 1);
         } else {
             ui_set_color(cr, sel ? k->selection_text : it->shadow ? k->shadow_text : k->text);
         }
-        ui_text_draw(cr, UI_FONT_REGULAR, tx, by, lines[l], maxw);
+        ui_text_draw(cr, c->font, tx, by, lines[l], maxw);
     }
     if (c->focused && c->has_cursor && c->cursor == i) {
         ui_set_color(cr, sel ? k->selection_text : k->cursor);
@@ -961,13 +968,23 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     if (!label_expanded(c, i, &it)) draw_label(c, cr, i, &it, r, c->whole_titles && free_icons(c));
 }
 
-double ui_icon_cell_height(const char *title)
+double ui_icon_cell_height_font(ui_font font, const char *title)
 {
     char lines[LABEL_MAX][256];
     bool all;
-    int n = wrap_title(title ? title : "", CELL_W - 8, lines, LABEL_MAX, &all);
-    double h = ICON + 8 + n * LABEL_H + 4 + 4;
+    int n = wrap_title(font, title ? title : "", CELL_W - 8, lines, LABEL_MAX, &all);
+    double lh = font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(font)));
+    double h = ICON + 8 + n * lh + 4 + 4;
     return h > CELL_H ? h : CELL_H;
+}
+
+double ui_icon_cell_height(const char *title) { return ui_icon_cell_height_font(UI_FONT_REGULAR, title); }
+
+void ui_container_set_font(ui_container *c, ui_font f)
+{
+    if (c->font == f) return;
+    c->font = f;
+    damage_list(c);
 }
 
 void ui_container_set_whole_titles(ui_container *c, bool on)

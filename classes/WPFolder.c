@@ -119,6 +119,22 @@ bool WPFolder__wpSetIconTitles(wpo_object *self, int64_t choice)
     return true;
 }
 
+bool WPFolder__wpSetIconFont(wpo_object *self, const char *font)
+{
+    if (!font || strlen(font) > 120 || strchr(font, '\n') || strchr(font, '\t')) return false;
+    if (*font) {   /* "size.Family" */
+        char *end;
+        long pt = strtol(font, &end, 10);
+        if (end == font || *end != '.' || !end[1] || pt < 4 || pt > 72) return false;
+        wps_state_put_str(self, "WPFolder", "icon_font", font);
+    } else {
+        wps_state_remove(self, "WPFolder", "icon_font");
+    }
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
 bool WPFolder__wpSetLockAll(wpo_object *self, bool on)
 {
     wps_state_put_int(self, "WPFolder", "lock_all", on);
@@ -228,24 +244,28 @@ char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
     char *cw = NULL;
     wps_state_get_int(self, "WPFolder", "icon_titles", &titles);
     wps_state_get_int(self, "WPFolder", "lock_all", &lock_all);
+    char *ifont = NULL;
+    wps_state_get_str(self, "WPFolder", "icon_font", &ifont);
     wps_state_get_str(self, "WPFolder", "col_widths", &cw);
     wps_state_get_int(self, "WPFolder", "sort_key", &key);
     wps_state_get_int(self, "WPFolder", "sort_desc", &desc);
     wps_state_get_int(self, "WPFolder", "cols", &cols);
-    char line2[900];
+    char line2[1400];
     snprintf(line2, sizeof line2, "page\tView\nfield\tsort_key\tchoice\tSort by\t%lld\twpSetSortKey\tnone,name,type,size,last write\n"
              "field\tsort_desc\tcheckbox\tDescending\t%d\twpSetSortDesc\n"
              "field\tlocal\tcheckbox\tKeep objects as files here\t%d\twpSetLocalObjects\n"
              "page\tIcon view\nfield\ticon_titles\tchoice\tTitles\t%lld\twpSetIconTitles\twhole,two lines\n"
              "field\tlock_all\tcheckbox\tLock positions of all icons\t%d\twpSetLockAll\n"
+             "field\ticon_font\ttext\tIcon font (e.g. 10.Sans; empty: the System's)\t%s\twpSetIconFont\n"
              "page\tDetails view\nfield\tcol_name\tcheckbox\tReal name\t%d\t@col:name\n"
              "field\tcol_type\tcheckbox\tType\t%d\t@col:type\n"
              "field\tcol_size\tcheckbox\tSize\t%d\t@col:size\n"
              "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n"
              "field\tcol_widths\thidden\tWidths\t%s\twpSetColWidths\n",
-             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects, (long long)titles, lock_all != 0,
+             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects, (long long)titles, lock_all != 0, ifont ? ifont : "",
              (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0, cw ? cw : "");
     free(cw);
+    free(ifont);
     (void)line;
     char *r = wps_concat(base, line2);
     free(base);

@@ -44,6 +44,9 @@ struct mnode {
     size_t nkids;
 };
 
+/* Its font (the Font Palette's; the interface font unless set). */
+static ui_font wc_font = UI_FONT_REGULAR, wc_bold = UI_FONT_BOLD;
+
 static struct {
     ui_app *app;
     ui_surface *s;
@@ -93,19 +96,19 @@ static double clock_w(void)
     char t[64];
     snprintf(t, sizeof t, "%s", wc.clock);
     for (char *q = t; *q; q++) if (*q >= '0' && *q <= '9') *q = '8';
-    return ui_text_width(UI_FONT_REGULAR, t) + 20;
+    return ui_text_width(wc_font, t) + 20;
 }
 
 /* The Desktop button: its picture and the desktop's name, as OS/2's
  * WarpCenter's first button. */
 static const char *desk_label(void) { return "Desktop"; }
-static double desk_w(void) { return wc.h - 2 * PAD + ui_text_width(UI_FONT_BOLD, desk_label()) + 14; }
+static double desk_w(void) { return wc.h - 2 * PAD + ui_text_width(wc_bold, desk_label()) + 14; }
 
 static double msg_w(void)
 {
     char t[16];
     snprintf(t, sizeof t, "%zu", wc.unread);
-    return wc.h - 2 * PAD + 6 + (wc.unread ? ui_text_width(UI_FONT_BOLD, t) + 4 : 0);
+    return wc.h - 2 * PAD + 6 + (wc.unread ? ui_text_width(wc_bold, t) + 4 : 0);
 }
 
 static bool part_shown(int p)
@@ -232,9 +235,9 @@ static void glyph_envelope(cairo_t *cr, ui_rect r, bool unread)
 
 static void centred_text(cairo_t *cr, ui_rect r, const char *t, double d)
 {
-    double tw = ui_text_width(UI_FONT_REGULAR, t);
+    double tw = ui_text_width(wc_font, t);
     ui_set_color(cr, ui_scheme_now.text);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.x + (r.w - tw) / 2 + d, r.y + (r.h + ui_text_ascent()) / 2 - 1 + d, t, r.w);
+    ui_text_draw(cr, wc_font, r.x + (r.w - tw) / 2 + d, r.y + (r.h + ui_font_ascent(wc_font)) / 2 - 1 + d, t, r.w);
 }
 
 static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
@@ -258,7 +261,7 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             if (p == P_DESKTOP) {
                 glyph_desktop(cr, (ui_rect){ r.x + 2, r.y, r.h, r.h });
                 ui_set_color(cr, ui_scheme_now.text);
-                ui_text_draw(cr, UI_FONT_BOLD, r.x + r.h + 4, r.y + (r.h + ui_text_ascent()) / 2 - 1, desk_label(), r.w - r.h - 6);
+                ui_text_draw(cr, wc_bold, r.x + r.h + 4, r.y + (r.h + ui_font_ascent(wc_font)) / 2 - 1, desk_label(), r.w - r.h - 6);
             } else glyph_windows(cr, r);
             cairo_restore(cr);
         } else if (p >= P_LOCK && p <= P_SHUTDOWN) {
@@ -280,7 +283,7 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
                 char t[16];
                 snprintf(t, sizeof t, "%zu", wc.unread);
                 ui_set_color(cr, ui_scheme_now.text);
-                ui_text_draw(cr, UI_FONT_BOLD, r.x + r.h + 2 + d, r.y + (r.h + ui_text_ascent()) / 2 - 1 + d, t, r.w - r.h);
+                ui_text_draw(cr, wc_bold, r.x + r.h + 2 + d, r.y + (r.h + ui_font_ascent(wc_font)) / 2 - 1 + d, t, r.w - r.h);
             }
         } else if (p == P_CLOCK) {
             ui_bevel(cr, r, false);
@@ -518,8 +521,8 @@ static void pop_draw_calendar(cairo_t *cr, ui_rect r)
         for (char *q = wd; *q; q++)
             if (((unsigned char)*q & 0xc0) != 0x80 && ++chars > 2) { *q = 0; break; }
         ui_set_color(cr, k->disabled_text);
-        double tw = ui_text_width(UI_FONT_REGULAR, wd);
-        ui_text_draw(cr, UI_FONT_REGULAR, x0 + d * CAL_CELL + (CAL_CELL - tw) / 2, y0 + CAL_CELL / 2 + 4, wd, CAL_CELL);
+        double tw = ui_text_width(wc_font, wd);
+        ui_text_draw(cr, wc_font, x0 + d * CAL_CELL + (CAL_CELL - tw) / 2, y0 + CAL_CELL / 2 + 4, wd, CAL_CELL);
     }
     time_t now = time(NULL);
     struct tm today;
@@ -540,8 +543,8 @@ static void pop_draw_calendar(cairo_t *cr, ui_rect r)
         char t[4];
         snprintf(t, sizeof t, "%d", day);
         ui_set_color(cr, is_today ? k->selection_text : k->text);
-        double tw = ui_text_width(UI_FONT_REGULAR, t);
-        ui_text_draw(cr, UI_FONT_REGULAR, c.x + (c.w - tw) / 2, c.y + (c.h + ui_text_ascent()) / 2 - 1, t, c.w);
+        double tw = ui_text_width(wc_font, t);
+        ui_text_draw(cr, wc_font, c.x + (c.w - tw) / 2, c.y + (c.h + ui_font_ascent(wc_font)) / 2 - 1, t, c.w);
     }
 }
 
@@ -565,7 +568,7 @@ static void pop_draw_meters(cairo_t *cr, ui_rect r)
     human(wc.net_rate, a, sizeof a, "/s");
     snprintf(lines[3], sizeof lines[3], "Network: %s", a);
     ui_set_color(cr, ui_scheme_now.text);
-    for (int i = 0; i < 4; i++) ui_text_draw(cr, UI_FONT_REGULAR, r.x + 12, r.y + 12 + (i + 1) * 20 - 4, lines[i], r.w - 20);
+    for (int i = 0; i < 4; i++) ui_text_draw(cr, wc_font, r.x + 12, r.y + 12 + (i + 1) * 20 - 4, lines[i], r.w - 20);
 }
 
 static void open_pop(int kind, uint32_t serial)
@@ -879,7 +882,32 @@ static void wc_resized(ui_surface *s, double w, double h)
 
 static void wc_close(ui_surface *s) { (void)s; }   /* (it stays) */
 
-static const ui_surface_ops wc_ops = { .draw = wc_draw, .pointer = wc_pointer, .resized = wc_resized, .close = wc_close };
+/* A font from the Font Palette dropped on it: its own. */
+static void (*on_font)(const char *spec);
+void warpcenter_on_font(void (*fn)(const char *spec)) { on_font = fn; }
+
+static uint32_t wc_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
+                               unsigned mods, const char **mime)
+{
+    (void)s; (void)x; (void)y; (void)src_actions; (void)mods;
+    for (size_t i = 0; i < n; i++) if (!strcmp(mimes[i], "application/x-wps-font")) { *mime = mimes[i]; return UI_DND_COPY; }
+    return 0;
+}
+
+static uint32_t wc_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
+                        uint32_t start_action, unsigned mods)
+{
+    (void)s; (void)x; (void)y; (void)len; (void)action; (void)start_action; (void)mods;
+    if (strcmp(mime, "application/x-wps-font") || !on_font) return 0;
+    char spec[128];
+    snprintf(spec, sizeof spec, "%.*s", (int)strcspn(data, "\r\n"), data);
+    if (!ui_font_valid(spec)) return 0;
+    on_font(spec);
+    return UI_DND_COPY;
+}
+
+static const ui_surface_ops wc_ops = { .draw = wc_draw, .pointer = wc_pointer, .resized = wc_resized, .close = wc_close,
+                                       .drag_motion = wc_drag_motion, .drop = wc_drop };
 
 void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folder)(const char *path))
 {
@@ -909,6 +937,13 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
 }
 
 void warpcenter_damage(void) { damage(); }
+
+void warpcenter_set_font(ui_font f)
+{
+    wc_font = f;
+    wc_bold = f == UI_FONT_REGULAR ? UI_FONT_BOLD : f;   /* (one of the palette's: as it is) */
+    damage();
+}
 
 bool warpcenter_is_open(void) { return wc.s != NULL; }
 
@@ -952,6 +987,7 @@ void warpcenter_setting(const char *key, const char *val)
     else if (!strcmp(key, "clock")) wc.clock_mode = !strcmp(val, "12 hours") ? 1 : !strcmp(val, "off") ? 2 : 0;
     else if (!strcmp(key, "seconds")) wc.seconds = on;
     else if (!strcmp(key, "date")) wc.date = on;
+    else if (!strcmp(key, "font")) warpcenter_set_font(ui_font_named(val));
     else return;
     if (wc.pop && !part_shown(wc.pop_kind)) pop_free();
     wc.clock[0] = 0;

@@ -27,6 +27,9 @@ method wpQueryIconLock(object child) -> bool
 # positions of all icons.
 method wpSetIconTitles(int choice) -> bool
 method wpSetLockAll(bool on) -> bool
+# Its icons' title font (the Font Palette's, dropped on its window):
+# "10.Sans", "" the System's for folders.
+method wpSetIconFont(string font) -> bool
 # Lists the folder's contents; streaming and paging arrive in M4.
 method wpPopulate() -> pending async
 # The Background page (v0.3-design 3): a picture (a path), how it is shown

@@ -109,6 +109,7 @@
 #include "WPProgram.h"
 #include "WPSystem.h"
 #include "WPSetup.h"
+#include "WPFontPalette.h"
 #include "WPFolder.h"
 #include "WPTrashCan.h"
 #include "WPDrive.h"
@@ -1766,6 +1767,10 @@ static void do_open(struct req *r, wpo_object *o)
         reply_view(r, wpo_is_a(o, WPLaunchPadClass) ? "launchpad" : "warpcenter");
         wpo_unref(orig);
         return;
+    } else if (wpo_is_a(o, WPFontPaletteClass)) {
+        reply_view(r, "fontpalette");
+        wpo_unref(orig);
+        return;
     } else if (wpo_is_a(o, WPMessagesClass)) {
         reply_view(r, "messages");
         wpo_unref(orig);
@@ -3192,11 +3197,12 @@ static void first_start_done(void *arg)
  * <class> = object ID). */
 static const char *const setup_classes[][2] = {
     { "WPSystem", "System" }, { "WPSound", "Sound" }, { "WPMouse", "Mouse" }, { "WPSchemePalette", "Scheme Palette" },
+    { "WPFontPalette", "Font Palette" },   /* (0.3) */
     /* (0.2: in the System folder itself, v0.2-design 9 and 10) */
     { "WPLaunchPad", "LaunchPad" }, { "WPWarpCenter", "WarpCenter" }, { "WPMessages", "Messages" },
 };
-#define NSETUP 7
-#define SETUP_IN_SYSTEM 4   /* setup_classes from this one on */
+#define NSETUP 8
+#define SETUP_IN_SYSTEM 5   /* setup_classes from this one on */
 
 /* WPS's own folders in the user's data ($XDG_DATA_HOME/wps/<name>). */
 static void data_dir(const char *name, char *out, size_t n)

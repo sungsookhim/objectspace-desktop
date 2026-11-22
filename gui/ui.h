@@ -69,7 +69,8 @@ void ui_set_color(cairo_t *cr, ui_color c);
 
 /* ------------------------------------------------------------------ text */
 
-typedef enum { UI_FONT_REGULAR, UI_FONT_BOLD } ui_font;
+typedef int ui_font;
+enum { UI_FONT_REGULAR, UI_FONT_BOLD };   /* the interface font; others by name: */
 
 void ui_text_init(void);
 /* The interface font: a fontconfig family and a size in pixels (GNOME's,
@@ -81,6 +82,16 @@ double ui_text_width(ui_font f, const char *s);
  * runs are cached, so redrawing the same strings costs little. */
 double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const char *s, double max_w);
 double ui_text_ascent(void);    /* for centring text in a row */
+/* A font by OS/2's Font Palette name, "12.Helvetica" (points, family,
+ * then " Bold", " Italic"); "" or one that cannot be loaded: the
+ * interface font. Loaded once; kept across interface-font changes. */
+ui_font ui_font_named(const char *spec);
+void ui_menu_set_font(ui_font f);          /* all menus */
+void ui_frame_set_title_font(ui_font f);   /* all title bars WPS draws */
+bool ui_font_valid(const char *spec);
+double ui_font_ascent(ui_font f);
+double ui_font_px(ui_font f);
+double ui_font_line_h(ui_font f);   /* a line of it */
 double ui_text_caret_x(ui_font f, const char *s, size_t at);   /* x before byte `at` */
 size_t ui_text_hit(ui_font f, const char *s, double x);        /* byte nearest to x */
 
@@ -518,8 +529,12 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
  * its icon, in a cell as tall as it needs (OS/2's; v0.3-design 5); off:
  * two lines, the whole title over the neighbours when selected. */
 void ui_container_set_whole_titles(ui_container *c, bool on);
-/* The height of an icon's cell with its whole title (at least UI_CELL_H). */
+/* The height of an icon's cell with its whole title (at least UI_CELL_H),
+ * in the interface font or another. */
 double ui_icon_cell_height(const char *title);
+double ui_icon_cell_height_font(ui_font font, const char *title);
+/* The items' titles in this font (a folder's, from the Font Palette). */
+void ui_container_set_font(ui_container *c, ui_font f);
 void ui_container_free(ui_container *c);
 void ui_container_layout(ui_container *c, ui_rect r);
 /* Details view: the title of the second column ("Name"), e.g. "Folder"; a

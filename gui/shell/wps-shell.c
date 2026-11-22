@@ -37,6 +37,7 @@
 #include "icons.h"
 #include "filepick.h"
 #include "apppick.h"
+#include "fontpal.h"
 #include "session.h"
 #include "iconpick.h"
 #include "launchpad.h"
@@ -111,6 +112,8 @@ struct folder {
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
     bool lock_all;           /* ... Lock positions of all icons */
+    char icon_font[128];     /* its own icon font (the Font Palette's), "" the System's */
+    ui_font font;            /* the one its titles are drawn in */
     cairo_surface_t *bg_img;     /* the picture, decoded */
     /* its details view (v0.3-design 4): the sort (choice 0 none, 1 name,
      * 2 type, 3 size, 4 last write; -1 not read yet) and columns */
@@ -147,6 +150,8 @@ static struct folder *folder_by_id(long id)
 static void *as_arg(struct folder *f) { return (void *)(intptr_t)f->id; }
 static bool show_hidden = true;   /* the System object's Show hidden files (v0.3-design 6) */
 static bool show_ext = true;      /* ... Show file extensions in titles (the owner's, 0.3 step 8) */
+static char folders_font[128];    /* ... Fonts: folders' icon titles ("" the interface font) */
+static char titles_font[128];     /* ... title bars' */
 
 /* The length of a data file's name without its extension ("a.tar.gz":
  * "a"), or 0 if it has none to hide. */
@@ -264,6 +269,11 @@ static void bg_apply(struct folder *f)
 static void reload(struct folder *f);
 static void ignore_reply(void *arg, const cv *reply);
 static const char *lay_name(void *ctx, size_t i);
+static void folder_font(struct folder *f);
+static bool is_tree(struct folder *f);
+static void font_apply(const char *what, const char *spec);
+static void font_dropped_wc(const char *spec);
+static const char *setup_addr(const char *cls);
 
 /* A heading clicked: sorted by it (again: the other way), for the folder. */
 static void head_clicked(void *ctx, int col)
@@ -315,6 +325,7 @@ static void got_bg(void *arg, const cv *reply)
             else if (!strcmp(key, "sort_desc") && v->k == CV_BOOL) f->sort_desc = v->b;
             else if (!strcmp(key, "icon_titles") && v->k == CV_INT) whole = v->i == 0;
             else if (!strcmp(key, "lock_all") && v->k == CV_BOOL) lock_all = v->b;
+            else if (!strcmp(key, "icon_font") && v->k == CV_TEXT) snprintf(f->icon_font, sizeof f->icon_font, "%s", v->s);
             else if (!strncmp(key, "col_", 4) && v->k == CV_BOOL && v->b) {
                 cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
                       : !strcmp(key, "col_date") ? 8u : 0u;
@@ -324,6 +335,7 @@ static void got_bg(void *arg, const cv *reply)
         }
     }
     bg_apply(f);
+    folder_font(f);
     layout_lock_all(f->lay, lock_all);
     f->lock_all = lock_all;
     if (whole != f->whole_titles) {   /* the Icon view page's Titles */
@@ -343,6 +355,22 @@ static void got_bg(void *arg, const cv *reply)
 }
 
 static void bg_read(struct folder *f) { svc_settings(f->path, got_bg, as_arg(f)); }
+
+/* Its titles' font: its own, else the System's for folders (the Font
+ * Palette's), else the interface font; rows as tall as they now need. */
+static void folder_font(struct folder *f)
+{
+    ui_font ft = ui_font_named(f->icon_font[0] ? f->icon_font : folders_font);
+    if (ft == f->font) return;
+    f->font = ft;
+    ui_container_set_font(f->cont, ft);
+    if (is_tree(f)) return;
+    for (size_t p = 0; p < f->m.npages; p++)
+        for (size_t k = 0; f->m.pages[p] && k < PAGE; k++) f->m.pages[p]->rows[k].cellh = 0;
+    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+    ui_container_changed(f->cont, 0, SIZE_MAX);
+    ui_container_layout_changed(f->cont);
+}
 
 static void got_bg_sub(void *arg, const cv *reply)
 {
@@ -448,7 +476,7 @@ static void *page_arg(struct folder *f, bool shadow)
 
 static void request_more(struct folder *f, bool shadow);
 static bool setup_event(const cv *ev);
-#define NSETUP 8
+#define NSETUP 10
 static char setup_ids[NSETUP][64];   /* the settings objects (see below) */
 static char setup_cls[NSETUP][32];   /* their classes */
 static void rename_new_now(struct folder *f);
@@ -1445,7 +1473,7 @@ static double lay_h(void *ctx, size_t i)
     if (!f->whole_titles) return UI_CELL_H;
     struct row *r = row_at(f, i);
     if (!r || !r->name) return UI_CELL_H;
-    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height(row_shown(r));
+    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height_font(f->font, row_shown(r));
     return r->cellh;
 }
 
@@ -2816,6 +2844,8 @@ static uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *c
 {
     struct folder *f = ui_surface_data(s);
     *mime = NULL;
+    for (size_t i = 0; i < n; i++)
+        if (!strcmp(mimes[i], MIME_FONT)) { *mime = MIME_FONT; return UI_DND_COPY; }   /* a font: the folder's, or the title bars' */
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_WPS)) *mime = MIME_WPS;
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_URIS)) *mime = MIME_URIS;
     if (!*mime) return 0;
@@ -3085,6 +3115,20 @@ static uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, co
     (void)len;
     struct folder *f = ui_surface_data(s);
     ui_container_set_drop_target(f->cont, SIZE_MAX);
+    if (!strcmp(mime, MIME_FONT)) {
+        /* the Font Palette's (v0.3-design 10): onto a title bar, every
+         * title bar's; with Shift, every folder's; else this folder's */
+        char spec[128];
+        snprintf(spec, sizeof spec, "%.*s", (int)strcspn(data, "\r\n"), data);
+        if (!ui_font_valid(spec)) return 0;
+        if (!f->desktop && ui_frame_hit(s, x, y) == UI_HIT_TITLE) font_apply("titles", spec);
+        else if (mods & UI_MOD_SHIFT) font_apply("folders", spec);
+        else {
+            cv v = { .k = CV_TEXT, .s = spec, .len = strlen(spec) };
+            svc_settings_set(f->path, "icon_font", &v, -1, ignore_reply, NULL);   /* (back through its settings) */
+        }
+        return UI_DND_COPY;
+    }
     char dest[PATH_MAX];
     size_t item;
     char prog[PATH_MAX];
@@ -4396,6 +4440,54 @@ static void win_frame(ui_surface *s, double now)
             char p[PATH_MAX];
             snprintf(p, sizeof p, "%s/summary.txt.odt", f->path);   /* (as with hidden extensions elsewhere: its type stays) */
             fprintf(stderr, "selftest: ext: renamed \"summary.txt\": summary.txt.odt %d\n", stat(p, &sst) == 0);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "fonts")) {
+        /* The Font Palette (0.3 step 9): a font dropped on this folder
+         * (its titles in it, kept), with Shift (every folder's), on its
+         * title bar; Edit font... <D> has a.txt and a long-named file. */
+        static double t0;
+        static int step;
+        if (!t0) { if (!f->m.complete || !setup_addr("WPSystem")[0]) return; t0 = now; }
+        double t = now - t0;
+        if (step == 0) {
+            fontpal_open();
+            fprintf(stderr, "selftest: fonts: palette open %d, %zu samples, first %s\n", fontpal_is_open(), fontpal_count(),
+                    fontpal_sample(0));
+            const char *d = "14.Serif\n";
+            win_drop(s, 300, 300, MIME_FONT, d, strlen(d), UI_DND_COPY, 0, 0);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            const char *shot = getenv("WPS_SHELL_SHOT");
+            if (shot) fontpal_snapshot(shot);
+            fprintf(stderr, "selftest: fonts: dropped on the folder: its font %s, %.0f px, a tall title's cell %.0f\n", f->icon_font,
+                    ui_font_px(f->font), layout_item_h(f->lay, 0) > layout_item_h(f->lay, 1) ? layout_item_h(f->lay, 0) : layout_item_h(f->lay, 1));
+            const char *d = "9.Sans Bold";
+            win_drop(s, 300, 300, MIME_FONT, d, strlen(d), UI_DND_COPY, 0, UI_MOD_SHIFT);
+            const char *d2 = "11.Serif Italic";
+            win_drop(s, 200, 12, MIME_FONT, d2, strlen(d2), UI_DND_COPY, 0, 0);   /* the title bar */
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            fprintf(stderr, "selftest: fonts: with Shift: every folder's %s; its own still %s; on the title bar: title bars' %s\n",
+                    folders_font, f->icon_font, titles_font);
+            fontpal_edit(0);
+            fprintf(stderr, "selftest: fonts: Edit font: open %d, %zu families\n", fontpal_edit_is_open(), fontpal_families());
+            fontpal_edit_choose("Serif", 16, true, false);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1500) {
+            fprintf(stderr, "selftest: fonts: the first sample now %s (kept: %s)\n", fontpal_sample(0), setup_addr("WPFontPalette")[0] ? "yes" : "no");
+            f->icon_font[0] = 0;
+            bg_read(f);   /* read back from its settings */
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 1500) {
+            fprintf(stderr, "selftest: fonts: read back: %s\n", f->icon_font);
             ui_app_quit(app);
             step++;
         }
@@ -6259,6 +6351,33 @@ static void apply_scheme(void);
 static void got_setup(void *arg, const cv *reply);
 static void user_dir(const char *key, const char *fallback, char *out, size_t n);
 static void launchpad_open_folder(const char *path);
+/* A settings object's address, by class ("" if not known yet). */
+static const char *setup_addr(const char *cls)
+{
+    for (size_t i = 0; i < NSETUP; i++) if (!strcmp(setup_cls[i], cls)) return setup_ids[i];
+    return "";
+}
+
+static void setup_set(const char *cls, const char *key, const char *val)
+{
+    const char *a = setup_addr(cls);
+    if (!*a) return;
+    cv v = { .k = CV_TEXT, .s = (char *)val, .len = strlen(val) };
+    svc_settings_set(a, key, &v, -1, ignore_reply, NULL);   /* (applied when the change comes back) */
+}
+
+/* The Font Palette's choices (fontpal.h), kept in the settings objects. */
+static void font_apply(const char *what, const char *spec)
+{
+    if (!strcmp(what, "samples")) setup_set("WPFontPalette", "fonts", spec);
+    else if (!strcmp(what, "warpcenter")) setup_set("WPWarpCenter", "font", spec);
+    else if (!strcmp(what, "menus")) setup_set("WPSystem", "font_menus", spec);
+    else if (!strcmp(what, "titles")) setup_set("WPSystem", "font_titles", spec);
+    else if (!strcmp(what, "folders")) setup_set("WPSystem", "font_folders", spec);
+}
+
+static void font_dropped_wc(const char *spec) { font_apply("warpcenter", spec); }
+
 static void got_setup_sub(void *arg, const cv *reply)
 {
     (void)arg;
@@ -6289,6 +6408,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else warpcenter_setting(key, val);
         }
         else if (!strcmp(cls, "WPMessages")) messages_setting(key, val);
+        else if (!strcmp(cls, "WPFontPalette") && !strcmp(key, "fonts")) fontpal_set_samples(val);
         else if (!strcmp(cls, "WPSystem")) {
             if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */
                 char kv[160];   /* the compositor's frames too (WPS session) */
@@ -6298,6 +6418,19 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
+            else if (!strcmp(key, "font_folders")) {   /* the Font Palette's */
+                snprintf(folders_font, sizeof folders_font, "%s", val);
+                for (struct folder *x = folders; x; x = x->next) if (!x->closing) folder_font(x);
+            } else if (!strcmp(key, "font_menus")) {
+                ui_menu_set_font(ui_font_named(val));
+            } else if (!strcmp(key, "font_titles")) {
+                snprintf(titles_font, sizeof titles_font, "%s", val);
+                ui_frame_set_title_font(ui_font_named(val));
+                char kv[200];   /* the compositor's frames too */
+                snprintf(kv, sizeof kv, "title_font=%s", val);
+                winlist_ext("frame", kv);
+                for (struct folder *x = folders; x; x = x->next) if (!x->closing) ui_frame_damage(x->win);
+            }
             else if (!strcmp(key, "show_ext") && show_ext != !strcmp(val, "1")) {
                 show_ext = !strcmp(val, "1");   /* every title again, and the rows' heights */
                 for (struct folder *x = folders; x; x = x->next) {
@@ -6404,6 +6537,7 @@ static bool open_view(const char *v)
     if (!strcmp(v, "messages")) messages_open();
     else if (!strcmp(v, "minimized-windows")) winlist_open(true);   /* the Minimized Window Viewer */
     else if (!strcmp(v, "launchpad")) show_launchpad();
+    else if (!strcmp(v, "fontpalette")) fontpal_open();
     else if (!strcmp(v, "warpcenter")) show_warpcenter();
     else if (!strcmp(v, "restore-defaults")) restore_defaults_ask();
     else return false;
@@ -6936,6 +7070,8 @@ int main(int argc, char **argv)
     iconpick_init(app, launchpad_open_folder);
     filepick_init(app);
     apppick_init(app);
+    fontpal_init(app, font_apply);
+    warpcenter_on_font(font_dropped_wc);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

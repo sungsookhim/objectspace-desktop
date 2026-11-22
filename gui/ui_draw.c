@@ -6,7 +6,9 @@
 #include FT_FREETYPE_H
 #include <harfbuzz/hb-ft.h>
 #include <harfbuzz/hb.h>
+#include <math.h>
 #include <stdio.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -159,27 +161,42 @@ void ui_bevel(cairo_t *cr, ui_rect r, bool raised)
 /* ------------------------------------------------------------------- text */
 
 static FT_Library ft;
-static struct face {
+
+/* Font slots: 0 and 1 the interface font (regular, bold: GNOME's, or the
+ * scheme's), then fonts by name ("12.Helvetica Bold", OS/2's Font Palette
+ * names), loaded once each. */
+#define MAX_FONTS 32
+struct face {
     FT_Face ft;              /* Cairo's: it sets its own sizes on it */
-    FT_Face shaping;         /* HarfBuzz's, fixed at the scheme's size */
+    FT_Face shaping;         /* HarfBuzz's, fixed at the slot's size */
     hb_font_t *hb;
     cairo_font_face_t *cf;
-    double ellipsis_w;
-} faces[2];
-static double ascent;
+};
+static struct slot {
+    char spec[160];          /* "" for the interface font's */
+    char family[128];
+    bool bold, italic;
+    double pt;               /* 0: the interface font's size */
+    double px;
+    struct face f;
+    double ascent, descent, ellipsis_w;
+    bool loaded;
+} slots[MAX_FONTS];
+static int nslots = 2;
 
-/* Fallback fonts: for characters the interface font does not have (CJK,
- * and others), the font fontconfig picks for each one, loaded once. */
-#define MAX_FALLBACK 24
+/* Fallback fonts: for characters a slot's font does not have (CJK, and
+ * others), the font fontconfig picks for each one, loaded once per size. */
+#define MAX_FALLBACK 48
 static struct fallback {
     struct face f;
     char file[512];
     int index;
     bool bold;
+    double px;
 } fb[MAX_FALLBACK];
 static int nfb;
 #define CP_SLOTS 4096
-static struct { uint32_t key; short face; } cp_cache[CP_SLOTS];   /* key: cp << 1 | bold, +1 (0: empty) */
+static struct { uint32_t key; short face; } cp_cache[CP_SLOTS];   /* key: cp << 5 | slot, +1 (0: empty) */
 
 static FT_Face load_face(const char *pattern, double px)
 {
@@ -209,7 +226,7 @@ struct run {
     int font;
     unsigned n;
     unsigned *glyphs;
-    struct face **face; /* the font of each glyph (the interface font's, or a fallback) */
+    struct face **face; /* the font of each glyph (the slot's, or a fallback) */
     unsigned *clusters; /* byte offset in the string where each glyph starts */
     double *x;          /* pen position of each glyph, then the total width */
     uint64_t used;
@@ -258,21 +275,30 @@ static bool load_pair(struct face *fc, const char *file, int index, double px)
     return true;
 }
 
-/* The font for the character at s[at]: the interface font when it has
- * it (or for marks and spaces, which go with what is around them), else a
- * fallback that has it, else the interface font (a box). */
+static struct slot *slot_of(ui_font font) { return font >= 0 && font < nslots && slots[font].loaded ? &slots[font] : &slots[0]; }
+
+static void slot_pattern(const struct slot *sl, char *out, size_t n)
+{
+    snprintf(out, n, "%s%s%s", sl->family, sl->bold ? ":bold" : "", sl->italic ? ":italic" : "");
+}
+
+/* The font for the character at s[at]: the slot's font when it has it (or
+ * for marks and spaces, which go with what is around them), else a
+ * fallback that has it, else the slot's (a box). */
 static struct face *face_for(ui_font font, const char *s, size_t at, size_t len)
 {
     (void)len;
-    struct face *main = &faces[font];
+    struct slot *sl = slot_of(font);
+    struct face *main = &sl->f;
     uint32_t cp = utf8_cp(s + at);
     if (cp < 0x300 || FT_Get_Char_Index(main->shaping, cp)) return main;
-    uint32_t key = (cp << 1 | (font == UI_FONT_BOLD)) + 1;
+    uint32_t key = (cp << 5 | (uint32_t)(sl - slots)) + 1;
     size_t slot = (key * 2654435761u) % CP_SLOTS;
     if (cp_cache[slot].key == key) return cp_cache[slot].face < 0 ? main : &fb[cp_cache[slot].face].f;
     short found = -1;
-    FcPattern *p = FcNameParse((const FcChar8 *)family);
-    if (font == UI_FONT_BOLD) FcPatternAddInteger(p, FC_WEIGHT, FC_WEIGHT_BOLD);
+    char pat[300];
+    slot_pattern(sl, pat, sizeof pat);
+    FcPattern *p = FcNameParse((const FcChar8 *)pat);
     FcCharSet *cs = FcCharSetCreate();
     FcCharSetAddChar(cs, cp);
     FcPatternAddCharSet(p, FC_CHARSET, cs);
@@ -287,11 +313,13 @@ static struct face *face_for(ui_font font, const char *s, size_t at, size_t len)
         FcPatternGetCharSet(m, FC_CHARSET, 0, &has) == FcResultMatch && FcCharSetHasChar(has, cp)) {
         FcPatternGetInteger(m, FC_INDEX, 0, &index);
         for (int i = 0; i < nfb && found < 0; i++)
-            if (!strcmp(fb[i].file, (const char *)file) && fb[i].index == index && fb[i].bold == (font == UI_FONT_BOLD)) found = (short)i;
-        if (found < 0 && nfb < MAX_FALLBACK && load_pair(&fb[nfb].f, (const char *)file, index, ui_scheme_now.font_px)) {
+            if (!strcmp(fb[i].file, (const char *)file) && fb[i].index == index && fb[i].bold == sl->bold && fb[i].px == sl->px)
+                found = (short)i;
+        if (found < 0 && nfb < MAX_FALLBACK && load_pair(&fb[nfb].f, (const char *)file, index, sl->px)) {
             snprintf(fb[nfb].file, sizeof fb[nfb].file, "%s", (const char *)file);
             fb[nfb].index = index;
-            fb[nfb].bold = font == UI_FONT_BOLD;
+            fb[nfb].bold = sl->bold;
+            fb[nfb].px = sl->px;
             found = (short)nfb++;
         }
     }
@@ -367,18 +395,44 @@ static struct run *shape(ui_font font, const char *s)
     return r;
 }
 
-static void load_faces(void);
+static bool load_slot(int i);
 
 void ui_text_init(void)
 {
     snprintf(family, sizeof family, "sans-serif");
     FT_Init_FreeType(&ft);
-    load_faces();
+    slots[1].bold = true;
+    if (!load_slot(0) || !load_slot(1)) { fprintf(stderr, "wps-ui: no font for %s\n", family); exit(1); }
 }
 
 /* The interface font (GNOME's, G3): a family and a size in pixels. All
- * text is shaped again. */
+ * text is shaped again, every slot loaded again. */
 const char *ui_text_family(void) { return family; }
+
+static void free_face(struct face *f)
+{
+    if (f->hb) hb_font_destroy(f->hb);
+    if (f->cf) cairo_font_face_destroy(f->cf);   /* (f->ft belongs to the Cairo face: freed with it) */
+    if (f->shaping) FT_Done_Face(f->shaping);
+    memset(f, 0, sizeof *f);
+}
+
+static void reload_all(void)
+{
+    for (size_t i = 0; i < CACHE_SLOTS; i++) {
+        free(cache[i].s); free(cache[i].glyphs); free(cache[i].face); free(cache[i].clusters); free(cache[i].x);
+        memset(&cache[i], 0, sizeof cache[i]);
+    }
+    for (int i = 0; i < nfb; i++) free_face(&fb[i].f);
+    memset(fb, 0, sizeof fb);
+    nfb = 0;
+    memset(cp_cache, 0, sizeof cp_cache);
+    for (int i = 0; i < nslots; i++) {
+        free_face(&slots[i].f);
+        slots[i].loaded = false;
+        load_slot(i);
+    }
+}
 
 void ui_text_set_font(const char *fam, double px)
 {
@@ -386,56 +440,110 @@ void ui_text_set_font(const char *fam, double px)
     if (!strcmp(fam, family) && px == ui_scheme_now.font_px) return;
     snprintf(family, sizeof family, "%s", fam);
     ui_scheme_now.font_px = opts.font_px = px;
-    for (int i = 0; i < 2; i++) {
-        if (faces[i].hb) hb_font_destroy(faces[i].hb);
-        if (faces[i].cf) cairo_font_face_destroy(faces[i].cf);
-        if (faces[i].shaping) FT_Done_Face(faces[i].shaping);
-        /* faces[i].ft belongs to the Cairo face now: freed with it */
-        memset(&faces[i], 0, sizeof faces[i]);
-    }
-    for (size_t i = 0; i < CACHE_SLOTS; i++) {
-        free(cache[i].s); free(cache[i].glyphs); free(cache[i].face); free(cache[i].clusters); free(cache[i].x);
-        memset(&cache[i], 0, sizeof cache[i]);
-    }
-    for (int i = 0; i < nfb; i++) {
-        hb_font_destroy(fb[i].f.hb);
-        cairo_font_face_destroy(fb[i].f.cf);
-        FT_Done_Face(fb[i].f.shaping);
-    }
-    memset(fb, 0, sizeof fb);
-    nfb = 0;
-    memset(cp_cache, 0, sizeof cp_cache);
-    load_faces();
+    reload_all();
 }
 
-static void load_faces(void)
+/* A slot's faces: the interface font's (slots 0, 1: the family now, at the
+ * scheme's size) or its own. */
+static bool load_slot(int i)
 {
-    char pat[2][300];
-    snprintf(pat[0], sizeof pat[0], "%s", family);
-    snprintf(pat[1], sizeof pat[1], "%s:bold", family);
-    for (int i = 0; i < 2; i++) {
-        /* Two faces of the same font: Cairo changes its face's size to the
-         * device size when it draws (2x on a 2x screen), and HarfBuzz would
-         * follow that, shaping some strings at one size and some at the
-         * other. Text positions must not depend on which drew last. */
-        FT_Face f = load_face(pat[i], ui_scheme_now.font_px), sh = load_face(pat[i], ui_scheme_now.font_px);
-        if ((!f || !sh) && strcmp(family, "sans-serif")) {   /* not installed: back to the default */
-            snprintf(family, sizeof family, "sans-serif");
-            load_faces();
-            return;
-        }
-        if (!f || !sh) { fprintf(stderr, "wps-ui: no font for %s\n", pat[i]); exit(1); }
-        faces[i].ft = f;
-        faces[i].shaping = sh;
-        faces[i].hb = hb_ft_font_create_referenced(sh);
-        hb_ft_font_set_load_flags(faces[i].hb, FT_LOAD_NO_HINTING);
-        faces[i].cf = cairo_ft_font_face_create_for_ft_face(f, FT_LOAD_NO_HINTING);
+    struct slot *sl = &slots[i];
+    if (i < 2) {
+        snprintf(sl->family, sizeof sl->family, "%s", family);
+        sl->px = ui_scheme_now.font_px;
+    } else {
+        sl->px = round(sl->pt * 96.0 / 72.0);
+        if (sl->px < 6) sl->px = 6;
+        if (sl->px > 96) sl->px = 96;
     }
-    ascent = faces[0].shaping->size->metrics.ascender / 64.0;
-    for (int i = 0; i < 2; i++) faces[i].ellipsis_w = shape((ui_font)i, "\xe2\x80\xa6")->x[1];
+    char pat[300];
+    slot_pattern(sl, pat, sizeof pat);
+    /* Two faces of the same font: Cairo changes its face's size to the
+     * device size when it draws (2x on a 2x screen), and HarfBuzz would
+     * follow that, shaping some strings at one size and some at the other.
+     * Text positions must not depend on which drew last. */
+    FT_Face f = load_face(pat, sl->px), sh = load_face(pat, sl->px);
+    if ((!f || !sh) && i < 2 && strcmp(family, "sans-serif")) {   /* not installed: back to the default */
+        if (f) FT_Done_Face(f);
+        if (sh) FT_Done_Face(sh);
+        snprintf(family, sizeof family, "sans-serif");
+        return load_slot(i);
+    }
+    if (!f || !sh) {
+        if (f) FT_Done_Face(f);
+        if (sh) FT_Done_Face(sh);
+        return false;
+    }
+    sl->f.ft = f;
+    sl->f.shaping = sh;
+    sl->f.hb = hb_ft_font_create_referenced(sh);
+    hb_ft_font_set_load_flags(sl->f.hb, FT_LOAD_NO_HINTING);
+    sl->f.cf = cairo_ft_font_face_create_for_ft_face(f, FT_LOAD_NO_HINTING);
+    sl->ascent = sh->size->metrics.ascender / 64.0;
+    sl->descent = -sh->size->metrics.descender / 64.0;
+    sl->loaded = true;
+    sl->ellipsis_w = shape((ui_font)i, "\xe2\x80\xa6")->x[1];
+    return true;
 }
 
-double ui_text_ascent(void) { return ascent; }
+/* "12.Helvetica Bold Italic": size in points, family, styles. */
+static bool parse_spec(const char *spec, double *pt, char *fam, size_t fn, bool *bold, bool *italic)
+{
+    char *end;
+    long v = strtol(spec, &end, 10);   /* (not strtod: "8.Sans" would be 8.0, the dot taken) */
+    if (end == spec || *end != '.' || v < 4 || v > 72) return false;
+    char f[160];
+    snprintf(f, sizeof f, "%s", end + 1);
+    *bold = *italic = false;
+    for (;;) {
+        size_t l = strlen(f);
+        if (l > 5 && !strcasecmp(f + l - 5, " bold")) { *bold = true; f[l - 5] = 0; continue; }
+        if (l > 7 && !strcasecmp(f + l - 7, " italic")) { *italic = true; f[l - 7] = 0; continue; }
+        break;
+    }
+    if (!f[0]) return false;
+    *pt = (double)v;
+    snprintf(fam, fn, "%s", f);
+    return true;
+}
+
+ui_font ui_font_named(const char *spec)
+{
+    if (!spec || !*spec) return UI_FONT_REGULAR;
+    for (int i = 2; i < nslots; i++) if (!strcmp(slots[i].spec, spec)) return slots[i].loaded ? i : UI_FONT_REGULAR;
+    double pt;
+    char fam[128];
+    bool bold, italic;
+    if (!parse_spec(spec, &pt, fam, sizeof fam, &bold, &italic) || nslots >= MAX_FONTS) return UI_FONT_REGULAR;
+    struct slot *sl = &slots[nslots];
+    memset(sl, 0, sizeof *sl);
+    snprintf(sl->spec, sizeof sl->spec, "%s", spec);
+    snprintf(sl->family, sizeof sl->family, "%s", fam);
+    sl->pt = pt;
+    sl->bold = bold;
+    sl->italic = italic;
+    int i = nslots++;
+    return load_slot(i) ? i : UI_FONT_REGULAR;   /* (a failed one stays, not loaded: asked again, the interface font) */
+}
+
+bool ui_font_valid(const char *spec)
+{
+    double pt;
+    char fam[128];
+    bool b, it;
+    return spec && parse_spec(spec, &pt, fam, sizeof fam, &b, &it);
+}
+
+double ui_font_ascent(ui_font f) { return slot_of(f)->ascent; }
+double ui_font_px(ui_font f) { return slot_of(f)->px; }
+double ui_font_line_h(ui_font f)
+{
+    struct slot *sl = slot_of(f);
+    double h = ceil(sl->ascent + sl->descent);
+    return h > sl->px ? h : ceil(sl->px * 1.2);
+}
+
+double ui_text_ascent(void) { return slots[0].ascent; }
 
 double ui_text_width(ui_font f, const char *s)
 {
@@ -445,11 +553,12 @@ double ui_text_width(ui_font f, const char *s)
 
 double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const char *s, double max_w)
 {
+    struct slot *sl = slot_of(f);
     struct run *r = shape(f, s);
     unsigned n = r->n;
     bool cut = false;
     if (max_w > 0 && r->x[n] > max_w) {
-        double room = max_w - faces[f].ellipsis_w;
+        double room = max_w - sl->ellipsis_w;
         while (n > 0 && r->x[n] > room) n--;
         cut = true;
     }
@@ -459,12 +568,11 @@ double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const cha
         g[i].x = x + r->x[i];
         g[i].y = baseline;
     }
-    cairo_set_font_size(cr, ui_scheme_now.font_px);
     for (unsigned i = 0; i < n;) {   /* a group of glyphs per font */
         unsigned j = i + 1;
         while (j < n && r->face[j] == r->face[i]) j++;
         cairo_set_font_face(cr, r->face[i]->cf);
-        cairo_set_font_size(cr, ui_scheme_now.font_px);
+        cairo_set_font_size(cr, sl->px);
         cairo_show_glyphs(cr, g + i, (int)(j - i));
         i = j;
     }
@@ -474,7 +582,7 @@ double ui_text_draw(cairo_t *cr, ui_font f, double x, double baseline, const cha
         struct run *e = shape(f, "\xe2\x80\xa6");
         cairo_glyph_t eg = { e->glyphs[0], x + w, baseline };
         cairo_set_font_face(cr, e->face[0]->cf);
-        cairo_set_font_size(cr, ui_scheme_now.font_px);
+        cairo_set_font_size(cr, sl->px);
         cairo_show_glyphs(cr, &eg, 1);
         w += e->x[1];
     }

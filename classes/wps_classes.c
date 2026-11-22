@@ -15,6 +15,7 @@
 #include "WPSound.h"
 #include "WPMouse.h"
 #include "WPSchemePalette.h"
+#include "WPFontPalette.h"
 #include "WPLaunchPad.h"
 #include "WPWarpCenter.h"
 #include "WPMessages.h"
@@ -47,7 +48,7 @@ wpo_status wps_classes_register(void)
     wpo_status (*const regs[])(void) = {
         WPObject_register, WPFileSystem_register, WPDataFile_register, WPFolder_register,
         WPAbstract_register, WPProgram_register, WPShadow_register,
-        WPSetup_register, WPSystem_register, WPSound_register, WPMouse_register, WPSchemePalette_register,
+        WPSetup_register, WPSystem_register, WPSound_register, WPMouse_register, WPSchemePalette_register, WPFontPalette_register,
         WPLaunchPad_register, WPWarpCenter_register, WPMessages_register,
         WPMinWinViewer_register, WPRestoreDesktop_register, WPTrashCan_register, WPComputer_register, WPDrives_register, WPDrive_register, WPProgramsFolder_register,
     };
