@@ -25,6 +25,8 @@ cairo_surface_t *icons_get(const char *png);
 /* Make an icon from the image at `src`; done(ctx, path of the PNG) on the
  * UI thread, or done(ctx, NULL) when it cannot be read. */
 void icons_import(const char *src, void (*done)(void *ctx, const char *png), void *ctx);
+/* Why the last import failed (for its notebook's status line). */
+const char *icons_import_error(void);
 
 /* A PNG to show `src` (any image) at about `size` pixels: true with its
  * path in out when there is one now (a PNG itself, or made before);

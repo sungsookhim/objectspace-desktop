@@ -1544,7 +1544,11 @@ static void icon_made(void *ctx, const char *png)
     struct icon_req *r = ctx;
     struct props *p = props_by_id(r->props);
     if (p && p->nb) {
-        if (!png) ui_notebook_set_status(p->nb, "That image cannot be read: the icon is as it was");
+        if (!png) {
+            char m[300];
+            snprintf(m, sizeof m, "No icon made of it: %s. The icon is as it was.", icons_import_error());
+            ui_notebook_set_status(p->nb, m);
+        }
         else {
             cv val = { .k = CV_TEXT, .s = (char *)png, .len = strlen(png) };
             svc_settings_set(p->target, r->key, &val, p->changes, props_applied, (void *)(intptr_t)p->id);

@@ -25,6 +25,7 @@ extern char **environ;
 #define CACHE 256
 
 static ui_app *app;
+static char import_error[200];
 static struct { char *path; cairo_surface_t *s; uint64_t used; } cache[CACHE];
 static uint64_t tick;
 
@@ -95,7 +96,12 @@ static void finished(void *arg, int fd, short rev)
     bool ok = WIFEXITED(st) && !WEXITSTATUS(st) && stat(j->tmp, &sb) == 0 && sb.st_size > 0 && rename(j->tmp, j->out) == 0;
     if (!ok) {
         unlink(j->tmp);
-        if (!j->quiet) fprintf(stderr, "wps-shell: cannot make an icon of that image\n");
+        if (!j->quiet) {
+            if (WIFEXITED(st) && WEXITSTATUS(st))
+                snprintf(import_error, sizeof import_error, "glycin-thumbnailer could not read it (exit %d; see the log)", WEXITSTATUS(st));
+            else snprintf(import_error, sizeof import_error, "glycin-thumbnailer made nothing (see the log)");
+            fprintf(stderr, "wps-shell: cannot make an icon of that image: %s\n", import_error);
+        }
     }
     j->done(j->ctx, ok ? j->out : NULL);
     free(j);
@@ -103,8 +109,44 @@ static void finished(void *arg, int fd, short rev)
 
 static void convert(struct job *j, const char *src, int size);
 
+const char *icons_import_error(void) { return import_error[0] ? import_error : "it cannot be read"; }
+
+/* A PNG: made by cairo itself, scaled down to SIZE (no glycin needed). */
+static bool import_png(const char *src, const char *out)
+{
+    cairo_surface_t *in = cairo_image_surface_create_from_png(src);
+    if (cairo_surface_status(in) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(in); return false; }
+    int w = cairo_image_surface_get_width(in), h = cairo_image_surface_get_height(in);
+    double sc = w > SIZE || h > SIZE ? (double)SIZE / (w > h ? w : h) : 1;
+    int ow = (int)(w * sc + 0.5), oh = (int)(h * sc + 0.5);
+    cairo_surface_t *o = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ow > 0 ? ow : 1, oh > 0 ? oh : 1);
+    cairo_t *cr = cairo_create(o);
+    cairo_scale(cr, sc, sc);
+    cairo_set_source_surface(cr, in, 0, 0);
+    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BEST);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    char tmp[PATH_MAX + 8];
+    snprintf(tmp, sizeof tmp, "%s.tmp", out);
+    bool ok = cairo_surface_write_to_png(o, tmp) == CAIRO_STATUS_SUCCESS && rename(tmp, out) == 0;
+    if (!ok) unlink(tmp);
+    cairo_surface_destroy(o);
+    cairo_surface_destroy(in);
+    return ok;
+}
+
+struct posted { void (*done)(void *ctx, const char *png); void *ctx; char out[PATH_MAX]; bool ok; };
+
+static void post_done(void *arg)
+{
+    struct posted *d = arg;
+    d->done(d->ctx, d->ok ? d->out : NULL);
+    free(d);
+}
+
 void icons_import(const char *src, void (*done)(void *ctx, const char *png), void *ctx)
 {
+    import_error[0] = 0;
     struct job *j = calloc(1, sizeof *j);
     j->done = done;
     j->ctx = ctx;
@@ -120,6 +162,15 @@ void icons_import(const char *src, void (*done)(void *ctx, const char *png), voi
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     snprintf(j->out, sizeof j->out, "%s/%s-%lld%03ld.png", dir, stem, (long long)ts.tv_sec, ts.tv_nsec / 1000000);
+    size_t l = strlen(src);
+    if (l > 4 && !strcasecmp(src + l - 4, ".png") && import_png(src, j->out)) {   /* (later, as glycin's would be) */
+        struct posted *d = calloc(1, sizeof *d);
+        *d = (struct posted){ done, ctx, "", true };
+        snprintf(d->out, sizeof d->out, "%s", j->out);
+        free(j);
+        ui_app_post(app, post_done, d);
+        return;
+    }
     convert(j, src, SIZE);
 }
 
@@ -144,11 +195,13 @@ static void convert(struct job *j, const char *src, int size)
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    if (j->quiet) posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);   /* (previews: no noise) */
     int e = posix_spawnp(&j->pid, argv[0], &fa, NULL, argv, environ);
     posix_spawn_file_actions_destroy(&fa);
     j->fd = e ? -1 : (int)syscall(SYS_pidfd_open, j->pid, 0);
     if (e || j->fd < 0) {
         if (!e) waitpid(j->pid, NULL, 0);
+        snprintf(import_error, sizeof import_error, "glycin-thumbnailer is not installed");
         fprintf(stderr, "wps-shell: glycin-thumbnailer is needed to make icons\n");
         j->done(j->ctx, NULL);
         free(j);
