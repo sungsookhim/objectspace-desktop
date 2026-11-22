@@ -277,6 +277,14 @@ A to do, after 0.2 (with network file systems below).
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
 3. **0.4 Look of other programs and Work Areas:** the theming pieces above, and frames for GTK 4 programs.
+   - **Icons in several sizes** (the owner's spec, 2026-11-21; analysed and agreed for 0.4):
+     - **A package per icon:** `NAME.wpsicon`, a zip holding any of `16.png`, `32.png`, `64.png`, `96.png`, `128.png`, `256.png` and `icon.svg` (the names give the sizes; no manifest). 256 is the master when there is no SVG. A single picture still works (a package of one); `.ico` and `.icns` are unpacked into theirs. `wpsctl icon pack DIR OUT.wpsicon`; Choose... takes packages.
+     - **Choosing a size**, in device pixels (a 16 px menu icon at scale 2 wants 32): the exact size; else the SVG; else the nearest larger, scaled down; else the nearest smaller, scaled up. (The SVG comes before scaling a larger picture down: a 256 shrunk to 22 blurs.)
+     - **SVG drawn by librsvg** in the process (a new build dependency, on every GNOME system), sharp at any size.
+     - **WPS's own icons** (computer, drives, trash, programs) become packages made from SVG masters.
+     - **The open icon** (OS/2's animation icon; the owner's): a second icon, shown while the object is open (a folder with a window, a program running). Empty for most objects (the normal one shows, with the in-use emphasis as now); folders and some programs set it. The Icon page gets a second icon field, "Open".
+     - **Later:** icons travelling with their files (OS/2 kept them in extended attributes; here a file holds a path).
+     - **Size: M–L.**
    - **Work Area folders** (OS/2's; added 2026-11-21; moved from 0.3 by the owner; designed in [v0.3-design.md](v0.3-design.md) section 12). A folder set as a work area treats the programs opened from it as one group, and also restores them at login (programs restarted in their folder). Opening, minimizing and closing the folder do the same to the group's windows.
      - **Builds on:** wpsd's tracking of which programs were started from which object (the in-use emphasis), the compositor's per-program window control (step 6), and open windows restored at login (0.2).
      - **New:** linking a program's process to its windows (the compositor), the folder's setting in its notebook, and the group's state kept at logout.
