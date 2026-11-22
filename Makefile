@@ -24,6 +24,7 @@ BINDIR     ?= $(PREFIX)/bin
 LIBEXECDIR ?= $(PREFIX)/libexec/wps
 LIBDIR     ?= $(PREFIX)/lib64
 DATADIR    ?= $(PREFIX)/share
+MANDIR     ?= $(DATADIR)/man
 SYSCONFDIR ?= /etc
 USERUNITDIR   ?= $(PREFIX)/lib/systemd/user
 SYSTEMUNITDIR ?= $(PREFIX)/lib/systemd/system
@@ -342,6 +343,10 @@ install: $(INSTALLED)
 	install -m 644 $(EXT)/metadata.json $(EXT)/extension.js $(DESTDIR)$(EXTDIR)/
 	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/
 	glib-compile-schemas $(DESTDIR)$(EXTDIR)/schemas
+	install -d $(DESTDIR)$(MANDIR)/man1
+	for m in data/man/*.1; do sed -e 's|@VERSION@|$(WPS_VERSION)|' \
+	    -e "s|@DATE@|$$(date -u -d @$${SOURCE_DATE_EPOCH:-$$(git log -1 --format=%ct 2>/dev/null || date +%s)} +%Y-%m-%d)|" \
+	    $$m > $(DESTDIR)$(MANDIR)/man1/$$(basename $$m); done
 
 # make install into a scratch root, then a headless session from it
 install-check: $(INSTALLED)
@@ -353,6 +358,7 @@ uninstall:
 	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
 	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons
+	rm -f $(addprefix $(DESTDIR)$(MANDIR)/man1/,wpsctl.1 wps-shell.1 wps-session.1)
 	-rmdir $(DESTDIR)$(DATADIR)/wps 2>/dev/null
 	-rmdir $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins $(DESTDIR)$(LIBDIR)/wps 2>/dev/null
 
