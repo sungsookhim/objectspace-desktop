@@ -3722,10 +3722,14 @@ static void win_key(ui_surface *s, const ui_key_event *e)
      * the search field, this folder only (v0.3-design 6) */
     if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_f || e->sym == XKB_KEY_F)) {
         if ((e->mods & UI_MOD_SHIFT) || f->desktop || is_tree(f)) findwin_open(f->path, NULL);
+        else if (f->find_on) find_hide(f);   /* (again: the row goes, as Escape) */
         else find_show(f);
         return;
     }
     if (f->find_on && f->find_focus && find_key(f, e)) return;
+    /* Escape with the row up but the keyboard on the objects (a click came
+     * back into the window): the row goes too, unless a title is edited */
+    if (f->find_on && e->sym == XKB_KEY_Escape && !ui_container_renaming(f->cont)) { find_hide(f); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_1) { set_view(f, UI_VIEW_ICON); return; }
     /* In the order the View menu lists them (OS/2's): icon, tree, details. */
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
@@ -3940,6 +3944,16 @@ static void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 2 && t > 1500 && f->m.complete) {
             fprintf(stderr, "selftest: search: Escape: field shown %d, %zu objects\n", f->find_on, f->m.total);
+            ui_key_event cf = { .sym = XKB_KEY_f, .mods = UI_MOD_CTRL };
+            win_key(s, &cf);
+            int shown = f->find_on;
+            win_key(s, &cf);
+            fprintf(stderr, "selftest: search: Ctrl+F twice: shown %d, then %d\n", shown, f->find_on);
+            win_key(s, &cf);
+            find_focus(f, false);   /* the keyboard on the objects (a click back into the window) */
+            ui_key_event esc = { .sym = XKB_KEY_Escape };
+            win_key(s, &esc);
+            fprintf(stderr, "selftest: search: Escape, the field not focused: shown %d\n", f->find_on);
             show_hidden = false;
             reload(f);
             step++;
