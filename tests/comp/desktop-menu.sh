@@ -38,10 +38,23 @@ cat > "$S/three" <<EOS
 4.5 quit
 EOS
 env -u WPS_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/three" "'$PWD/build/tests/ssd-client' Framed 3060a0" > "$S/three.txt" 2>&1
+# Properties asked for again, its notebook behind a folder window: it
+# comes to the front (Properties at y 460 of a menu opened at 150,400).
+cat > "$S/four" <<EOS
+2.5 click 150 400 right
+3.2 click 200 460
+4.2 dclick 54 30
+6 click 150 400 right
+6.7 click 200 460
+7.7 windows
+8 quit
+EOS
+env -u WPS_SESSION DESKENV="$ENV" SECS=11 tests/comp/run.sh "$S/four" true > "$S/four.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # a dialog's title bar (the active window's colour) at the screen's middle
 titlebar() { python3 -c "from PIL import Image; r,g,b = Image.open('$1').convert('RGB').getpixel((500, 225)); exit(0 if b > 100 and r < 60 else 1)"; }
+check "Properties again: its open notebook comes to the front" "grep \"window '\" '$S/four.txt' | grep -q \"Properties' .* active\""
 check "the menu is above other windows" "python3 -c \"from PIL import Image; r,g,b = Image.open('$S/over.png').convert('RGB').getpixel((500, 300)); exit(0 if abs(r - g) < 8 and abs(g - b) < 8 and r > 150 else 1)\""
 check "System setup opens the System Setup folder (WPS_SETUP_DIR: setup)" "grep -q \"window 'setup - \" '$T1/comp.log'"
 check "Shut down... asks (its dialog shown)" "titlebar '$S/shutdown.png'"

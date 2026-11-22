@@ -1634,10 +1634,14 @@ static void got_settings(void *arg, const cv *reply)
 
 /* Open an object's notebook, or leave the open one (Wayland lets no program
  * raise its own window on its own). */
+/* Its settings notebook; one already open comes to the front (false). */
 static bool open_properties(const char *target)
 {
     for (struct props *p = props_open; p; p = p->next)
-        if (!strcmp(p->target, target)) return false;
+        if (!strcmp(p->target, target)) {
+            if (p->nb) ui_window_activate(ui_notebook_surface(p->nb));
+            return false;
+        }
     struct props *p = calloc(1, sizeof *p);
     p->id = next_props_id++;
     snprintf(p->target, sizeof p->target, "%s", target);
@@ -1696,10 +1700,7 @@ static void menu_chosen(void *arg, int64_t id)
             /* a shadow's are its original's (OS/2): renaming there renames it */
             struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
             if (rw && rw->shadow && rw->target && *rw->target) snprintf(t, sizeof t, "%s", rw->target);
-            if (!open_properties(t)) {
-                snprintf(f->error, sizeof f->error, "Its settings notebook is already open");
-                damage_status(f);
-            }
+            open_properties(t);   /* (or the open one to the front) */
             break;
         }
         case WPS_MI_OPEN_WITH:
