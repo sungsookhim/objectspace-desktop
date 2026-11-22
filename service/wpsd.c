@@ -4022,6 +4022,7 @@ int main(int argc, char **argv)
     wps_on_changed = on_object_changed;
     wps_on_fs_event = on_fs_event;
     wps_on_job = on_job;
+    if (!wps_trash_home_ready()) log_msg("the home trash cannot be made: %s", strerror(errno));
     wps_tracker_init(loop, &env, db);
     wpo_defer(loop, "built-in templates", builtin_templates_work, builtin_templates_done, NULL);
     wps_tracker_stats ts;

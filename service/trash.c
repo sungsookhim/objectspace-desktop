@@ -172,6 +172,13 @@ void wps_trash_home(char *out, size_t n)
     else snprintf(out, n, "%s/.local/share/Trash", home ? home : "");
 }
 
+bool wps_trash_home_ready(void)
+{
+    char t[PATH_MAX];
+    wps_trash_home(t, sizeof t);
+    return ready(t);
+}
+
 bool wps_is_trash_files_dir(const char *folder)
 {
     size_t l = strlen(folder);

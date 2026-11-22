@@ -3610,6 +3610,60 @@ static void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
     const char *st = getenv("WPS_SHELL_SELFTEST");
+    if (st && !strcmp(st, "trashlive") && getenv("WPS_SELFTEST_TRASH")) {
+        /* The Trash Can's window follows deletes and restores of several
+         * objects at once (a.txt b.txt c.txt in <D>) */
+        static double t0;
+        static int step;
+        static long dw = -1;
+        char tp[PATH_MAX];
+        snprintf(tp, sizeof tp, "%s/files", getenv("WPS_SELFTEST_TRASH"));
+        struct folder *tw = NULL, *d = dw >= 0 ? folder_by_id(dw) : NULL;
+        for (struct folder *x = folders; x; x = x->next)
+            if (!x->closing && !strcmp(x->path, tp)) tw = x;
+        if (f == tw) return;   /* (driven from <D>'s window) */
+        if (!t0) { if (!f->m.complete) return; t0 = now; dw = f->id; d = f; }
+        if (f != d) return;
+        double t = now - t0;
+        char rows[300] = "";
+        for (size_t i = 0; tw && i < tw->m.total && strlen(rows) < 250; i++)
+            snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s%s", i ? " " : "",
+                     model_name(&tw->m, i) ? model_name(&tw->m, i) : "?");
+        if (step == 0) {
+            mkdir(tp, 0700);
+            open_folder(tp, UI_VIEW_ICON);
+            step++;
+        } else if (step == 1 && t > 1500) {
+            ui_container_select_none(d->cont);
+            size_t at = SIZE_MAX;
+            for (size_t i = 0; i < d->m.total; i++)
+                if (model_name(&d->m, i) && strstr("a.txt b.txt c.txt", model_name(&d->m, i))) { ui_container_select(d->cont, i); at = i; }
+            last_dialog = NULL;
+            if (at != SIZE_MAX) delete_request(d, at, false);
+            ui_key_event ret = { .sym = XKB_KEY_Return };
+            if (last_dialog) ui_surface_send_key(ui_dialog_surface(last_dialog), &ret);
+            last_dialog = NULL;
+            step++;
+        } else if (step == 2 && t > 4000) {
+            fprintf(stderr, "selftest: trashlive: after deleting three: the Trash Can shows %zu: %s\n", tw ? tw->m.total : 0, rows);
+            if (tw && tw->m.total) {
+                ui_container_select_none(tw->cont);
+                for (size_t i = 0; i < tw->m.total; i++) ui_container_select(tw->cont, i);
+                restore_items(tw, 0);
+            }
+            step++;
+        } else if (step == 3 && t > 7000) {
+            fprintf(stderr, "selftest: trashlive: after restoring them: the Trash Can shows %zu: %s\n", tw ? tw->m.total : 0, rows);
+            DIR *dd = opendir(tp);
+            int left = 0;
+            for (struct dirent *e; dd && (e = readdir(dd));) left += e->d_name[0] != '.';
+            if (dd) closedir(dd);
+            fprintf(stderr, "selftest: trashlive: in the trash folder itself: %d\n", left);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
     if (st && !strcmp(st, "fields")) {
         /* A notebook's file and colour fields (0.3): a colour typed (a bad
          * one put back), Browse... into <D>/pics (pictures only), one

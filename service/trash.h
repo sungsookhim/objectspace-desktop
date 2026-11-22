@@ -30,6 +30,9 @@ void wps_trash_forget_info(const char *path);
  * gone, "name (2)" if taken). 0, or a negative errno value. */
 #include <stdbool.h>
 void wps_trash_home(char *out, size_t n);
+/* The home trash's files/ and info/ made (at wpsd's start): a Trash Can
+ * window opened before the first delete follows a folder that is there. */
+bool wps_trash_home_ready(void);
 bool wps_is_trash_files_dir(const char *folder);
 int wps_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn);
 int wps_trash_restore(const char *item, char *out, size_t n);
