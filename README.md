@@ -96,3 +96,9 @@ getfattr -d -m user.wps ~/notes.txt           # the title travels with the file
 build/wps-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 tree, Ctrl+3 details)
 build/wpsctl shutdown
 ```
+
+## Authorship and license
+
+WPS for Linux is designed and built by Sungsoo Khim. Its code was written with the assistance of Claude (Anthropic's AI model) through Claude Code; the design, decisions and testing are the author's.
+
+Released under the MIT License: see [LICENSE](LICENSE).
