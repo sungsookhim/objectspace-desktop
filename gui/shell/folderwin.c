@@ -741,9 +741,7 @@ void got_page(void *arg, const cv *reply)
     if (!details || m->complete != was_complete) layout_follow(f, false);
     if (m->heights_dirty) {   /* (central objects' titles come with their details) */
         m->heights_dirty = false;
-        /* (the free layout: a title's width is its cell's too; My System's
-         * title, with the host name, came after the first flow and ran
-         * over the next icon) */
+        /* (the free layout: a title's width is its cell's too) */
         if ((f->whole_titles || f->free_layout == 1) && !is_tree(f)) {
             layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
             if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
