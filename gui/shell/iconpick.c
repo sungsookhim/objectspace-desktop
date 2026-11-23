@@ -629,3 +629,5 @@ bool iconpick_search(const char *t)
 bool iconpick_source(bool library) { if (!pk.s) return false; set_source(library); return true; }
 bool iconpick_choose(size_t i) { if (!pk.s || i >= pk.nrows) return false; pick(i); return true; }
 bool iconpick_snapshot(const char *png) { return pk.s && ui_surface_snapshot(pk.s, png); }
+ui_surface *iconpick_surface(void) { return pk.s; }
+bool iconpick_scroll(double fraction) { if (!pk.s) return false; ui_container_scroll_to_fraction(pk.cont, fraction); return true; }

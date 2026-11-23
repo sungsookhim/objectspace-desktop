@@ -27,5 +27,7 @@ bool iconpick_search(const char *text);
 bool iconpick_source(bool library);
 bool iconpick_choose(size_t i);
 bool iconpick_snapshot(const char *png);
+ui_surface *iconpick_surface(void);        /* (self-tests) */
+bool iconpick_scroll(double fraction);     /* as the scroll bar's thumb dragged there */
 
 #endif

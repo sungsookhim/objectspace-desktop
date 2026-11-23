@@ -49,3 +49,5 @@ a11y	a11y	-	-	stable
 typeahead	comp	-	touch b1.txt b2.txt b3.txt cat.txt catalog.txt x.txt	stable
 find	comp	-	echo a > notes.txt; echo b > A.TXT; echo c > a.txt; mkdir adir	stable
 winlist	gnomerun	SELFTEST=winlist	-	stable
+pickscroll	comp	-	-	stable
+folderscroll	comp	-	for i in $(seq 1 400); do echo x > "file $i.txt"; done	stable

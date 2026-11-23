@@ -1845,6 +1845,78 @@ void win_frame(ui_surface *s, double now)
         #undef LROWS
         return;
     }
+    if (st && !strcmp(st, "folderscroll")) {
+        /* A folder's icon view dragged down in small steps (as the
+         * picker's: the same container), checked against a fresh redraw. */
+        static double t0, tv;
+        static int step;
+        static double at;
+        static size_t checks, bad;
+        if (f != folders || f->closing || !f->m.complete) return;
+        if (!t0) { t0 = now; tv = now; return; }
+        if (step == 0 && now - t0 > 800) {
+            fprintf(stderr, "selftest: folderscroll: %s\n", f->m.total > 300 ? "many objects" : "few objects");
+            step++; tv = now;
+        } else if (step == 1) {
+            if (now - tv < 60) {
+                int moves = getenv("PICK_MOVES") ? atoi(getenv("PICK_MOVES")) : 1;
+                double stepf = getenv("PICK_STEP") ? atof(getenv("PICK_STEP")) : 0.002;
+                for (int k = 0; k < moves; k++) { at += stepf; ui_container_scroll_to_fraction(f->cont, at); }
+                return;
+            }
+            size_t d = ui_surface_verify(f->win, bad ? NULL : getenv("WPS_VERIFY_PNG"));
+            if (d == SIZE_MAX && now - tv < 600) return;
+            if (d != SIZE_MAX) { checks++; if (d > 200) bad++; }
+            tv = now;
+            if (at >= 0.5) {
+                fprintf(stderr, "selftest: folderscroll: %s pauses checked, %zu with leftovers\n", checks >= 20 ? "20 or more" : "too few", bad);
+                step++;
+            }
+        } else if (step == 2) { ui_app_quit(app); step++; }
+        return;
+    }
+    if (st && !strcmp(st, "pickscroll")) {
+        /* The picker's list dragged down by its thumb (several moves a
+         * frame, previews arriving meanwhile): what is shown checked
+         * against a fresh redraw after each pause (the owner's: leftovers
+         * while dragging). */
+        static double t0, tv;
+        static int step;
+        static double at;
+        static size_t worst, checks, bad;
+        if (f != folders || f->closing || !f->m.complete) return;
+        ui_surface_damage_all(f->win);
+        if (!t0) { t0 = now; return; }
+        double t = now - t0;
+        if (step == 0 && t > 300) { iconpick_open("test", NULL, 0, "icon"); step++; t0 = now; }
+        else if (step == 1 && (iconpick_ready() || t > 10000)) {
+            fprintf(stderr, "selftest: pickscroll: %s\n", iconpick_count() > 100 ? "many icons" : "few icons");
+            step++; t0 = now; tv = now;
+        } else if (step == 2) {
+            ui_surface *ps = iconpick_surface();
+            if (!ps) { step = 9; return; }
+            if (now - tv < 60) {   /* a drag: three moves in this frame */
+                int moves = getenv("PICK_MOVES") ? atoi(getenv("PICK_MOVES")) : 3;
+                double stepf = getenv("PICK_STEP") ? atof(getenv("PICK_STEP")) : 0.0015;
+                for (int k = 0; k < moves; k++) { at += stepf; iconpick_scroll(at); }
+                return;
+            }
+            char vp[PATH_MAX];
+            snprintf(vp, sizeof vp, "%s-%zu", getenv("WPS_VERIFY_PNG") ? getenv("WPS_VERIFY_PNG") : "", bad);
+            size_t d = ui_surface_verify(ps, getenv("PICK_DEBUG") && bad < 6 ? vp : bad ? NULL : getenv("WPS_VERIFY_PNG"));   /* (PICK_DEBUG: the first six saved) */
+            if (d == SIZE_MAX && now - tv < 600) return;   /* still being drawn */
+            if (d && d != SIZE_MAX && getenv("PICK_DEBUG")) fprintf(stderr, "selftest: pickscroll-debug: at %.4f: %zu differ\n", at, d);
+            /* (a few pixels: a title's anti-aliasing where two strips meet) */
+            if (d != SIZE_MAX) { checks++; if (d > 200) bad++; if (d > worst) worst = d; }
+            tv = now;
+            if (at >= 0.3) {
+                fprintf(stderr, "selftest: pickscroll: %s pauses checked, %zu with leftovers\n", checks >= 20 ? "20 or more" : "too few", bad);
+                if (getenv("PICK_DEBUG")) fprintf(stderr, "selftest: pickscroll-debug: %zu checked, worst %zu pixels\n", checks, worst);
+                step = 9;
+            }
+        } else if (step == 9) { ui_app_quit(app); step++; }
+        return;
+    }
     if (st && !strcmp(st, "iconlib")) {
         /* The picker's icon library (WPS_ICON_LIBRARY), chosen as a user
          * does: by the button, then back to the themes and again. */

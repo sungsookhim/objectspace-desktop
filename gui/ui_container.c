@@ -1063,7 +1063,9 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
         r1 = 0;   /* nothing for the grid loop below */
     }
     size_t shown[1024], nshown = 0;
-    if (c->view == UI_VIEW_ICON && r0 <= r1) r0 -= LABEL_MAX * LABEL_H / lh + 1;   /* titles from rows above */
+    /* titles from rows above (whole rows: a fraction would stop the loop
+     * a row short, leaving the strip's last row undrawn) */
+    if (c->view == UI_VIEW_ICON && r0 <= r1) r0 = floor(r0 - LABEL_MAX * LABEL_H / lh - 1);
     for (double row = r0 < 0 ? 0 : r0; row <= r1; row++) {
         for (size_t col = 0; col < kcols; col++) {
             size_t i = (size_t)row * kcols + col;
