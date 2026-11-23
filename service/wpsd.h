@@ -82,6 +82,9 @@ struct client {
     size_t inlen, incap;
     unsigned char *out;
     size_t outlen, outoff;
+    /* its desktop session, from its last open (for actions: wpsd_actions.c) */
+    char display[108], x11[24], envs[8][300];
+    size_t nenvs;
 };
 struct drive_req { struct client *c; int64_t id; bool open; char uuid[80], action[16], *pass; };
 
@@ -372,6 +375,9 @@ bool apply_setup(wpo_object *o, const char *setup, char *err, size_t en);
  * "" for none, else the sound. Caller frees. */
 char *fire_event(wpo_object *o, const char *path, const char *event, const char *display, const char *x11,
                  const char *const *envs, size_t nenvs);
+/* ... in the session client c last opened something in (NULL: none). */
+char *fire_event_for(struct client *c, wpo_object *o, const char *path, const char *event);
+void client_note_session(struct client *c, const char *display, const char *x11, const char *const *envs, size_t nenvs);
 char *scheme_titles(void);   /* wpsd_setup.c */
 void props_broadcast(const char *scope);   /* wpsd_props.c: defaults_changed */
 bool is_schemes_path(const char *folder);

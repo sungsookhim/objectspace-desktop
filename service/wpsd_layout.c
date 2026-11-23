@@ -382,6 +382,8 @@ void do_rename(struct req *r, wpo_object *o)
     wpo_defer(loop, "rename", rename_work, rename_done, j);
 }
 
+static void tmpl_flushed(void *arg) { wpo_defer(loop, "from template", tmpl_work, tmpl_done, arg); }
+
 void do_from_template(struct req *r, wpo_object *o)
 {
     const char *folder = cv_text(&r->msg, "folder"), *title = cv_text(&r->msg, "title");
@@ -417,7 +419,7 @@ void do_from_template(struct req *r, wpo_object *o)
     snprintf(j->folder, sizeof j->folder, "%s", folder);
     snprintf(j->title, sizeof j->title, "%s", title && *title ? title : t ? t : "New");
     free(t);
-    wpo_defer(loop, "from template", tmpl_work, tmpl_done, j);
+    wps_objects_flush(tmpl_flushed, j);   /* the template's latest settings saved first: the copy has them */
 }
 
 static void create_work(void *arg)
@@ -470,7 +472,7 @@ static void create_done(void *arg)
             if (r->title[0] && !wpo_is_a(o, WPFileSystemClass)) WPObject_wpSetTitle(o, r->title);
             if (r->command[0] && wpo_is_a(o, WPProgramClass)) WPProgram_wpSetCommand(o, r->command);
             if (r->central && wps_on_central_change) wps_on_central_change(r->folder, r->path + 5, 'c');
-            char *sound = fire_event(o, wps_object_path(o), "object.create", NULL, NULL, NULL, 0);   /* its actions (When made) */
+            char *sound = fire_event_for(r->c, o, wps_object_path(o), "object.create");   /* its actions (When made) */
             struct req fake = { .c = r->c, .id = r->id };
             reply_ok_object_sound(&fake, o, NULL, sound);
             free(sound);

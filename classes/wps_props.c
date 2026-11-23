@@ -193,6 +193,15 @@ static bool actions_ok(const char *v)
         bool ok = (l == 4 && !strncmp(p, "none", 4)) || (l > 6 && !strncmp(p, "sound:", 6)) ||
                   (l > 4 && !strncmp(p, "run:", 4)) || (l > 5 && !strncmp(p, "call:", 5)) || (l > 4 && !strncmp(p, "set:", 4));
         if (!ok) return false;
+        if (!strncmp(p, "set:", 4)) {   /* key=value, each of them (";" between) */
+            for (const char *q = p + 4; q < p + l;) {
+                const char *e2 = memchr(q, ';', (size_t)(p + l - q));
+                const char *end = e2 ? e2 : p + l, *eq = memchr(q, '=', (size_t)(end - q));
+                while (q < end && *q == ' ') q++;
+                if (q < end && (!eq || eq == q)) return false;
+                q = e2 ? e2 + 1 : end;
+            }
+        }
         p = e ? e + 1 : NULL;
     }
     return true;

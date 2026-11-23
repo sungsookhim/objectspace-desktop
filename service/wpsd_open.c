@@ -320,6 +320,7 @@ void do_open(struct req *r, wpo_object *o)
         for (const char *p = e->s; ok && *p; p++) ok = (unsigned char)*p >= 0x20 && *p != 0x7f;
         if (ok) envs[nenv++] = e->s;
     }
+    client_note_session(r->c, disp, x11, envs, nenv);   /* (its next actions' session) */
     pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs, nenv);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     /* its actions on opening (object-properties-design.md 2.4); the sound
@@ -472,7 +473,7 @@ void tmpl_done(void *arg)
         else {
             /* Titled by its name, like any file (see create_done). */
             if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);
-            char *sound = fire_event(o, wps_object_path(o), "object.create", NULL, NULL, NULL, 0);   /* its actions (When made) */
+            char *sound = fire_event_for(j->c, o, wps_object_path(o), "object.create");   /* its actions (When made) */
             struct req fake = { .c = j->c, .id = j->id };
             reply_ok_object_sound(&fake, o, NULL, sound);
             free(sound);

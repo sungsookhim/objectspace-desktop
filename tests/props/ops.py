@@ -193,5 +193,16 @@ for _ in range(50):
 check("... ran with its path before it went", os.path.exists(mark) and open(mark).read().strip() == DESK + "/old.txt",
       open(mark).read() if os.path.exists(mark) else r)
 
+# a set: action is checked when typed; one that fails is told in Messages
+r = c.request(op="set", target=prog, setup="on:object.open=set:bg_color #336699")
+check("set: without key=value is refused", not r.get("ok"), r)
+before = len((c.request(op="msg_list").get("result") or {}).get("messages") or [])
+c.request(op="set", target=prog, setup="on:object.open=call:wpNoSuchMethod 1")
+c.request(op="open", target=prog)
+msgs = (c.request(op="msg_list").get("result") or {}).get("messages") or []
+check("an action that fails: a message says which and why", len(msgs) == before + 1 and "wpNoSuchMethod" in msgs[0].get("body", "")
+      and msgs[0].get("app") == "WPS", msgs[:1])
+c.request(op="reset", target=prog, names="on:object.open")
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

@@ -50,7 +50,7 @@ static void keep_selection(int64_t sid, const char *folder, const char *const *n
     for (size_t i = 0; i < n; i++) k->names[k->n++] = strdup(names[i]);
 }
 
-static void fire_selection(int64_t sid, const char *event)
+static void fire_selection(struct client *c, int64_t sid, const char *event)
 {
     for (size_t s = 0; s < SEL_KEPT; s++) {
         if (kept[s].sid != sid || !kept[s].n) continue;
@@ -61,7 +61,7 @@ static void fire_selection(int64_t sid, const char *event)
             wps_load(path, false, &ld);
             wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);   /* (borrowed) */
             wps_loaded_free(&ld);
-            if (o) free(fire_event(o, path, event, NULL, NULL, NULL, 0));   /* (the job has its own sound) */
+            if (o) free(fire_event_for(c, o, path, event));   /* (the job has its own sound) */
         }
         return;
     }
@@ -115,7 +115,7 @@ bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
         /* trash: into the trash of each item's filesystem; delete: for good */
         int64_t sel = -1;
         char err[128] = "";
-        if (cv_int(msg, "selection", &sel)) fire_selection(sel, !strcmp(op, "trash") ? "object.trash" : "object.delete");
+        if (cv_int(msg, "selection", &sel)) fire_selection(c, sel, !strcmp(op, "trash") ? "object.trash" : "object.delete");
         int64_t jid = sel >= 0 ? wps_job_start(op, sel, "", err, sizeof err) : -1;
         if (jid < 0) reply_error(c, id, "bad request", err[0] ? err : "trash/delete needs a selection");
         else reply_int(c, id, jid);

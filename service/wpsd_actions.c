@@ -12,6 +12,22 @@
 #define _GNU_SOURCE
 #include "wpsd.h"
 
+/* An action that could not be done: told in Messages (and the log). */
+static void problem(const char *event, const char *path, const char *action, const char *why)
+{
+    char body[PATH_MAX + 512];
+    snprintf(body, sizeof body, "%s (%s): %s\n%s", path && *path ? path : "an object", event, action, why);
+    log_msg("action: %s", body);
+    cv items[8] = {
+        { .k = CV_TEXT, .s = "app", .len = 3 }, { .k = CV_TEXT, .s = "WPS", .len = 3 },
+        { .k = CV_TEXT, .s = "summary", .len = 7 }, { .k = CV_TEXT, .s = "An action was not done", .len = 22 },
+        { .k = CV_TEXT, .s = "body", .len = 4 }, { .k = CV_TEXT, .s = body, .len = strlen(body) },
+        { .k = CV_TEXT, .s = "urgency", .len = 7 }, { .k = CV_INT, .i = 1 },
+    };
+    cv m = { .k = CV_MAP, .items = items, .n = 4, .nitems = 8 };
+    messages_broadcast(wps_messages_add(&m));
+}
+
 static void run_command(wpo_object *o, const char *path, const char *event, const char *cmd, const char *display,
                         const char *x11, const char *const *envs, size_t nenvs)
 {
@@ -37,11 +53,14 @@ static void run_command(wpo_object *o, const char *path, const char *event, cons
         else snprintf(cwd, sizeof cwd, "%s", home ? home : "/");
     }
     char *argv[] = { "/bin/sh", "-c", (char *)cmd, NULL };
-    if (wps_launch(argv, NULL, cwd, display, x11, env, n) < 0)
-        log_msg("%s on %s: run:%s: %s", event, path ? path : o->cls->name, cmd, strerror(errno));
+    if (wps_launch(argv, NULL, cwd, display, x11, env, n) < 0) {
+        char a[600];
+        snprintf(a, sizeof a, "run:%s", cmd);
+        problem(event, path, a, strerror(errno));
+    }
 }
 
-static void call_method(wpo_object *o, const char *event, const char *spec)
+static void call_method(wpo_object *o, const char *path, const char *event, const char *spec)
 {
     char buf[1024], *args[8];
     snprintf(buf, sizeof buf, "%s", spec);
@@ -49,7 +68,9 @@ static void call_method(wpo_object *o, const char *event, const char *spec)
     char *method = strtok(buf, " ");
     for (char *a; n < 8 && (a = strtok(NULL, " "));) args[n++] = a;
     const wpo_method_def *m = method ? wpo_method_info(o->cls, method) : NULL;
-    if (!m || strlen(m->sig) != n + 3) { log_msg("%s: call:%s: no such method, or not %zu arguments", event, spec, n); return; }
+    char a0[600];
+    snprintf(a0, sizeof a0, "call:%s", spec);
+    if (!m || strlen(m->sig) != n + 3) { problem(event, path, a0, "no such method, or another number of arguments"); return; }
     wpo_value a[8], r = wpo_v_void();
     for (size_t i = 0; i < n; i++) {
         char t = m->sig[2 + i];
@@ -57,9 +78,27 @@ static void call_method(wpo_object *o, const char *event, const char *spec)
                t == 'i' ? wpo_v_int(strtoll(args[i], NULL, 10)) :
                t == 'd' ? wpo_v_double(strtod(args[i], NULL)) : wpo_v_string(args[i]);
     }
-    if (wpo_send(o, method, a, n, &r) != WPO_OK) log_msg("%s: call:%s: refused", event, spec);
+    if (wpo_send(o, method, a, n, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) problem(event, path, a0, "refused");
     for (size_t i = 0; i < n; i++) wpo_value_clear(&a[i]);
     wpo_value_clear(&r);
+}
+
+/* A client's desktop session (its display and settings, from its last
+ * open): for the actions of what it does next (trash, delete, create). */
+void client_note_session(struct client *c, const char *display, const char *x11, const char *const *envs, size_t nenvs)
+{
+    snprintf(c->display, sizeof c->display, "%s", display ? display : "");
+    snprintf(c->x11, sizeof c->x11, "%s", x11 ? x11 : "");
+    c->nenvs = 0;
+    for (size_t i = 0; i < nenvs && c->nenvs < 8; i++) snprintf(c->envs[c->nenvs++], sizeof c->envs[0], "%s", envs[i]);
+}
+
+char *fire_event_for(struct client *c, wpo_object *o, const char *path, const char *event)
+{
+    const char *e[8];
+    size_t n = 0;
+    for (size_t i = 0; c && i < c->nenvs; i++) e[n++] = c->envs[i];
+    return fire_event(o, path, event, c && c->display[0] ? c->display : NULL, c && c->x11[0] ? c->x11 : NULL, e, n);
 }
 
 char *fire_event(wpo_object *o, const char *path, const char *event, const char *display, const char *x11,
@@ -78,10 +117,10 @@ char *fire_event(wpo_object *o, const char *path, const char *event, const char 
         if (!strcmp(a, "none")) { free(sound); sound = strdup(""); }
         else if (!strncmp(a, "sound:", 6)) { free(sound); sound = strdup(a + 6); }
         else if (!strncmp(a, "run:", 4)) run_command(o, path, event, a + 4, display, x11, envs, nenvs);
-        else if (!strncmp(a, "call:", 5)) call_method(o, event, a + 5);
+        else if (!strncmp(a, "call:", 5)) call_method(o, path, event, a + 5);
         else if (!strncmp(a, "set:", 4)) {
             char err[256];
-            if (!apply_setup(o, a + 4, err, sizeof err)) log_msg("%s: set:%s: %s", event, a + 4, err);
+            if (!apply_setup(o, a + 4, err, sizeof err)) problem(event, path, a, err);
         }
     }
     free(v);
