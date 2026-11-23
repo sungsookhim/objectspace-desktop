@@ -122,4 +122,33 @@ time.sleep(2.5)
 it = items(PROGS + "/Internet")
 check("the user's entry wins (same desktop file ID)", len(it) == 1 and it[0].get("target_path", "").startswith(MINE), it)
 
+# an executable's Program page (0.4 step 6): shown for programs only;
+# open follows it (its working directory; text mode in a terminal, kept
+# open after it ends with Close window on exit off)
+tool = T + "/desk/tool.sh"
+with open(tool, "w") as f:
+    f.write("#!/bin/sh\npwd > \"%s/ran.txt\"\n" % T)
+os.chmod(tool, 0o755)
+with open(T + "/desk/notes.txt", "w") as f:
+    f.write("x")
+def pages(t):
+    return [p["title"] for p in c.request(op="settings", target=t).get("result", [])]
+check("an executable has a Program page", "Program" in pages(tool), pages(tool))
+check("a text file has none", "Program" not in pages(T + "/desk/notes.txt"), pages(T + "/desk/notes.txt"))
+r = c.request(op="settings_set", target=tool, values={"prog_cwd": T + "/share", "prog_type": 1})
+check("its page's settings taken", r.get("ok"), r)
+r = c.request(op="open", target=tool)
+deadline = time.time() + 5
+while time.time() < deadline and not os.path.exists(T + "/ran.txt"):
+    time.sleep(0.1)
+ran = open(T + "/ran.txt").read().strip() if os.path.exists(T + "/ran.txt") else None
+check("opened: in its page's working directory", r.get("ok") and ran == T + "/share", (r, ran))
+c.request(op="settings_set", target=tool, values={"prog_type": 2, "prog_close": False})
+r = c.request(op="open", target=tool)
+deadline = time.time() + 5
+while time.time() < deadline and not os.path.exists(T + "/term.txt"):
+    time.sleep(0.1)
+term = open(T + "/term.txt").read() if os.path.exists(T + "/term.txt") else ""
+check("text mode: in a terminal, kept open after it ends", r.get("ok") and tool in term and "Press Enter" in term, (r, term))
+
 sys.exit(1 if fails else 0)

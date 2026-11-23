@@ -208,14 +208,33 @@ void do_open(struct req *r, wpo_object *o)
             for (size_t k = 0; k < nfiles && na < 60; k++) argv[na++] = (char *)files[k];   /* dropped on it */
             argv[na] = NULL;
             what = path;
-            if (wps_program_needs_terminal(path) && !wps_terminal_wrap(argv, na, 64)) {
-                reply_error(r->c, r->id, "failed", "a text-mode program, and no terminal program was found (set WPS_TERMINAL)");
+            /* its Program page: in a window or a terminal (automatic: as
+             * the file says), the terminal kept or not, where it runs */
+            char *pt = WPObject_wpQueryProperty(o, "prog_type"), *pc = WPObject_wpQueryProperty(o, "prog_close"),
+                 *pw = WPObject_wpQueryProperty(o, "prog_cwd");
+            bool term = pt && !strncmp(pt, "text", 4) ? true : pt && !strcmp(pt, "window") ? false : wps_program_needs_terminal(path);
+            bool keep = pc && (!strcmp(pc, "0") || !strcmp(pc, "false"));
+            free(pt);
+            free(pc);
+            if (term && keep) na = wps_hold_wrap(argv, na, 64);
+            if (term && !wps_terminal_wrap(argv, na, 64)) {
+                free(pw);
+                reply_error(r->c, r->id, "failed", "a text-mode program, and no terminal program was found (System: Programs page)");
                 wpo_unref(orig);
                 return;
             }
             snprintf(cwd, sizeof cwd, "%s", path);
             *strrchr(cwd, '/') = 0;
             if (!cwd[0]) strcpy(cwd, "/");
+            if (pw && *pw) {   /* (its own: if it is a folder; else its own folder, as without one) */
+                const char *home = getenv("HOME");
+                char want[PATH_MAX];
+                if (pw[0] == '~') snprintf(want, sizeof want, "%s%s", home ? home : "", pw + 1);
+                else snprintf(want, sizeof want, "%s", pw);
+                struct stat ws;
+                if (stat(want, &ws) == 0 && S_ISDIR(ws.st_mode)) snprintf(cwd, sizeof cwd, "%s", want);
+            }
+            free(pw);
         } else if (cv_text(&r->msg, "app") || cv_get(&r->msg, "app_index")) {
             /* Open With: the program chosen (by its ID, or its place in the
              * Open cascade), made the type's default if asked */

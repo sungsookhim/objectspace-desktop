@@ -7,6 +7,7 @@
 #include <strings.h>
 
 #include "wps_classes.h"
+#include "wps_startup_hook.h"
 
 char *WPDataFile__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {
@@ -76,4 +77,14 @@ char *WPDataFile__wpclsQueryTitle(wpo_object *self)
 {
     (void)self;
     return wps_strdup("Data File");
+}
+
+/* ---- an executable's Program page (WPDataFile.wpi) */
+
+bool (*wps_is_program)(const char *path);
+
+bool WPDataFile__wpQueryIsProgram(wpo_object *self)
+{
+    const char *path = WPFileSystem_data(self)->path;
+    return path && wps_is_program && wps_is_program(path);
 }

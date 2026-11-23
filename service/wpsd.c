@@ -793,6 +793,7 @@ int main(int argc, char **argv)
     wps_drive_query = drive_query;
     wps_startup_query = startup_query;
     wps_is_desktop = is_desktop;
+    wps_is_program = wps_is_program_file;
     wps_startup_set = startup_set;
     {
         char comp[PATH_MAX], drv[PATH_MAX + 8];

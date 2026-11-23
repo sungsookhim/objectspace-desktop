@@ -3,6 +3,12 @@ class WPDataFile : WPFileSystem
 version 1.0
 override wpModifyPopupMenu
 method wpQueryMimeType() -> string
+method wpQueryIsProgram() -> bool
+# An executable's Program page (as program objects have; 0.4 step 6):
+# where it runs, in a window or a terminal, the terminal kept after it ends.
+property prog_cwd : text page Program label "Working directory (empty: its own folder)" show wpQueryIsProgram
+property prog_type : choice "automatic,window,text mode (in a terminal)" = automatic page Program label "Program type" show wpQueryIsProgram
+property prog_close : checkbox = 1 page Program label "Close window on exit (text mode)" show wpQueryIsProgram
 classoverride wpclsQueryTitle
 # The program its type opens with: mimeapps.list's default, shared with
 # GNOME (object-properties-design.md 2.6); for all files of its type through

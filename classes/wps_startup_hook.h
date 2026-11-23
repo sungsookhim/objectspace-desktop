@@ -17,4 +17,8 @@ extern bool (*wps_startup_set)(wpo_object *o, bool on);
  * the service fills it. NULL: none known. */
 extern bool (*wps_is_desktop)(const char *path);
 
+/* A data file that is a program (ELF, or a script with #!): its Program
+ * page (0.4 step 6); the service fills it. NULL: none are. */
+extern bool (*wps_is_program)(const char *path);
+
 #endif
