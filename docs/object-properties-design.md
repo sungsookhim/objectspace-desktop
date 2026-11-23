@@ -308,7 +308,7 @@ The total is about the size of a version, comparable to 0.3. **Proposed:** this 
 
 Approved: go (R0 first).
 
-## 7. As built (stages R0-R3, 2026-11-22)
+## 7. As built (stages R0-R4, 2026-11-22)
 
 | Stage | Commit | What |
 |---|---|---|
@@ -318,6 +318,7 @@ Approved: go (R0 first).
 | R3a | ea4ee8a | The chain: object, type, class and the classes above, default; `class:`/`type:` targets, `reset`; folders' Show hidden files and extensions; the System's Folders and Fonts fields are all folders' |
 | R3d | ad8a06e | Notebooks: where an inherited value comes from, Default, Class... (the notebook of all objects of a class or a type) |
 | R3c | b579fdc | Schemes are objects (WPScheme, the Schemes folder); the colours fixed in the code are the scheme's; the compositor gets the schemes' definitions |
+| R4 | 2ede8ae, 5b9ad85 | Events' actions: on:object.open, .create, .trash, .delete (an Actions page); none, sound:, run:, call:, set:; through the chain; sounds.conf moved into the Sound object |
 
 **Not done yet in R3, carried on:**
 
@@ -326,3 +327,4 @@ Approved: go (R0 first).
 - The WarpCenter's and the LaunchPad's own colours, and every size (icon sets: 0.4 step 3), are still fixed in the code.
 - The compositor still has its own menus.
 - A `.wpobj`'s `Setup=` line, and setup strings given to `create`.
+- Events raised by the GUI alone (window.*, menu.*, drags and drops) play the Sound object's sounds only; objects' own actions are for the service's events (open, create, trash, delete). Plug-ins' own events wait for R6.
