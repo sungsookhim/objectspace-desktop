@@ -139,7 +139,7 @@ cs = c.request(op="settings", target="class:WPFolder")
 cf = {f["key"]: f for pg in (cs.get("result") or []) for f in pg["fields"]}
 check("class:WPFolder's notebook: its settings", cf.get("bg_color", {}).get("value") == "#123456" and cf.get("bg_color", {}).get("own") is True, cf.get("bg_color"))
 check("... no title, icon or template", not ({"title", "icon", "template", "local"} & set(cf)), sorted(cf)[:8])
-check("... titled for all of them", (cs.get("object") or {}).get("title") == "All Folder objects", cs.get("object"))
+check("... titled for all of them", (cs.get("object") or {}).get("title") == "All of class Folder", cs.get("object"))
 r = c.request(op="settings_set", target="class:WPFolder", values={"icon_titles": 1, "lock_all": True})
 check("... its notebook sets them", r.get("ok") and get(DESK + "/Plain", "icon_titles") == "two lines" and get(DESK + "/Plain", "lock_all") == "1", r)
 c.request(op="reset", target="class:WPTrashCan", names="bg_color")
@@ -212,6 +212,13 @@ c.request(op="set", target="type:text/plain", setup="on:object.open=sound:bell")
 pd = props(DESK + "/Data File")
 check("... so all text files' action is its", pd.get("on:object.open", {}).get("origin") == "type:text/plain", pd.get("on:object.open"))
 c.request(op="reset", target="type:text/plain", names="on:object.open")
+
+# the built-in Folder template makes folders: its Class... is all folders'
+tl = c.request(op="list", target=T + "/templates", offset=0, count=50, details=True).get("result") or {}
+ftpl = next(((it["name"][1:] if it["name"].startswith("\x01") else T + "/templates/" + it["name"])
+             for it in tl.get("items", []) if it.get("title") == "Folder"), None)
+so = (c.request(op="settings", target=ftpl).get("object") or {}) if ftpl else {}
+check("the Folder template says it makes folders (Class...: class:WPFolder)", so.get("makes") == "WPFolder" and so.get("makes_title") == "Folder", so)
 
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

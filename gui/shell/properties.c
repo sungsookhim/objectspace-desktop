@@ -75,6 +75,9 @@ static void note_object(struct props *p, const cv *reply)
     const char *path = o ? cv_text(o, "path") : NULL;
     if (path && *path) snprintf(p->target, sizeof p->target, "%s", path);   /* renamed */
     const char *c = o ? cv_text(o, "class") : NULL, *ct = o ? cv_text(o, "class_title") : NULL;
+    const char *mk = o ? cv_text(o, "makes") : NULL, *mt = o ? cv_text(o, "makes_title") : NULL;
+    p->makes = mk != NULL;
+    if (mk) { c = mk; ct = mt; }   /* a template: the class it makes (Folder for the Folder template) */
     if (c) snprintf(p->cls, sizeof p->cls, "%s", c);
     if (ct) snprintf(p->cls_title, sizeof p->cls_title, "%s", ct);
 }
@@ -209,14 +212,14 @@ static void class_chosen(void *arg, int64_t id)
 static void props_class(void *ctx, ui_surface *s, double x, double y, uint32_t serial)
 {
     struct props *p = ctx;
-    const char *mime = p->target[0] == '/' && strcmp(p->cls, "WPFolder") ? mime_of_file(p->target) : NULL;
+    const char *mime = p->target[0] == '/' && strcmp(p->cls, "WPFolder") && !p->makes ? mime_of_file(p->target) : NULL;
     if (mime && (!strncmp(mime, "inode/", 6) || !strchr(mime, '/'))) mime = NULL;
     snprintf(class_menu_targets[0], sizeof class_menu_targets[0], "class:%s", p->cls);
     if (!mime) { open_properties(class_menu_targets[0]); return; }
     char l0[128], l1[128], l2[128];
     snprintf(class_menu_targets[1], sizeof class_menu_targets[1], "type:%s", mime);
     snprintf(class_menu_targets[2], sizeof class_menu_targets[2], "type:%.*s/*", (int)(strchr(mime, '/') - mime), mime);
-    snprintf(l0, sizeof l0, "All objects of its class (%s)", p->cls_title[0] ? p->cls_title : p->cls);
+    snprintf(l0, sizeof l0, "All of its class (%s)", p->cls_title[0] ? p->cls_title : p->cls);
     snprintf(l1, sizeof l1, "All files of its type (%s)", mime);
     snprintf(l2, sizeof l2, "All %.*s files", (int)(strchr(mime, '/') - mime), mime);
     ui_menu_item items[3] = { { 1, l1, true, false, NULL, 0 }, { 2, l2, true, false, NULL, 0 }, { 0, l0, true, false, NULL, 0 } };

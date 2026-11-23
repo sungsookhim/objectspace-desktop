@@ -178,7 +178,19 @@ static void put_object_depth(cbuf *b, wpo_object *o, int depth)
     bool shadow = wpo_is_a(o, WPShadowClass);
     sobj *rec = wps_sobj_of(o);
     bool missing = rec && rec->declared_class[0];
-    cb_map(b, 8 + (shadow ? 2 : 0) + (missing ? 1 : 0));
+    /* a template that makes another class (Folder, Data File, Program): its
+     * Class... is that class's */
+    char *makes = NULL;
+    wpo_class *mk = NULL;
+    if (wpo_is_a(o, WPObjectClass) && wps_state_get_str(o, "WPS", "makes", &makes) && makes && *makes) mk = wpo_find_class(makes);
+    cb_map(b, 8 + (shadow ? 2 : 0) + (missing ? 1 : 0) + (mk ? 2 : 0));
+    if (mk) {
+        char *mt = WPObject_wpclsQueryTitle(mk);
+        cb_text(b, "makes"); cb_text(b, mk->name);
+        cb_text(b, "makes_title"); cb_text(b, mt && *mt ? mt : mk->name);
+        free(mt);
+    }
+    free(makes);
     cb_text(b, "path"); path ? cb_text(b, path) : cb_null(b);
     cb_text(b, "address");
     if (central) {

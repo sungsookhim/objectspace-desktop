@@ -344,7 +344,7 @@ static void reply_scope_settings(struct client *c, int64_t id, const wpo_class *
     char title[200];
     if (!strncmp(target, "class:", 6)) {
         char *ct = WPObject_wpclsQueryTitle((wpo_class *)cls);
-        snprintf(title, sizeof title, "All %s objects", ct && *ct ? ct : cls->name);
+        snprintf(title, sizeof title, "All of class %s", ct && *ct ? ct : cls->name);
         free(ct);
     } else {
         snprintf(title, sizeof title, "All %s files", target + 5);
