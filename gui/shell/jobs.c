@@ -384,6 +384,7 @@ static size_t src_items_in(void *ctx, ui_rect r, size_t *out, size_t max)
 static void src_content_size(void *ctx, double *w, double *h) { layout_size(((struct folder *)ctx)->lay, w, h); }
 
 static double src_item_h(void *ctx, size_t i) { return layout_item_h(((struct folder *)ctx)->lay, i); }
+static double src_item_w(void *ctx, size_t i) { return layout_item_w(((struct folder *)ctx)->lay, i); }
 
 const ui_container_src folder_src = { src_count, src_item, src_visible, src_activate, src_menu, src_rename, src_expand,
-                                             src_drag, src_item_pos, src_items_in, src_content_size, src_item_h };
+                                             src_drag, src_item_pos, src_items_in, src_content_size, src_item_h, src_item_w };

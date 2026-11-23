@@ -167,6 +167,14 @@ static double max_scroll(ui_container *c)
     return m > 0 ? floor(m) : 0;
 }
 
+/* Item i's cell width: its own in the free layout (OS/2's), else a cell's. */
+static double cell_w(ui_container *c, size_t i)
+{
+    if (!free_icons(c) || !c->src->item_w) return CELL_W;
+    double w = c->src->item_w(c->ctx, i);
+    return w > 8 ? w : CELL_W;
+}
+
 static double cell_h(ui_container *c, size_t i)
 {
     if (!c->whole_titles || !c->src->item_h) return CELL_H;
@@ -183,7 +191,7 @@ static ui_rect item_crect(ui_container *c, size_t i)
     if (free_icons(c)) {
         double x = 0, y = 0;
         c->src->item_pos(c->ctx, i, &x, &y);
-        return (ui_rect){ l.x + 4 + x - c->hscroll, 4 + y, CELL_W, cell_h(c, i) };
+        return (ui_rect){ l.x + 4 + x - c->hscroll, 4 + y, cell_w(c, i), cell_h(c, i) };
     }
     size_t k = cols(c), row = i / k, col = i % k;
     return (ui_rect){ l.x + 4 + (double)col * CELL_W, 4 + (double)row * CELL_H, CELL_W, CELL_H };
@@ -250,13 +258,14 @@ static size_t item_at(ui_container *c, double x, double y)
         /* The topmost (last drawn) item whose icon or label is under the point. */
         double lx = x - l.x - 4 + c->hscroll, ly = cy - 4;
         double up = c->whole_titles ? LABEL_MAX * LABEL_H : 0;   /* (a cell reaching down from above) */
-        size_t found[64], n = c->src->items_in(c->ctx, (ui_rect){ lx - CELL_W, ly - CELL_H - up, 2 * CELL_W, 2 * CELL_H + up }, found, 64);
+        double wide = fmax(CELL_W, 4.0 * iset(c)->large);   /* (the widest a free cell is) */
+        size_t found[64], n = c->src->items_in(c->ctx, (ui_rect){ lx - wide, ly - CELL_H - up, 2 * wide, 2 * CELL_H + up }, found, 64);
         size_t hit = SIZE_MAX;
         for (size_t k = 0; k < n; k++) {
             double ix, iy;
             c->src->item_pos(c->ctx, found[k], &ix, &iy);
             double ox = lx - ix, oy = ly - iy;
-            if (ox >= 8 && ox <= CELL_W - 8 && oy >= 0 && oy <= cell_h(c, found[k]) - 8 && (hit == SIZE_MAX || found[k] > hit)) hit = found[k];
+            if (ox >= 8 && ox <= cell_w(c, found[k]) - 8 && oy >= 0 && oy <= cell_h(c, found[k]) - 8 && (hit == SIZE_MAX || found[k] > hit)) hit = found[k];
         }
         return hit < c->count ? hit : SIZE_MAX;
     }
@@ -923,7 +932,7 @@ static bool label_expanded(ui_container *c, size_t i, const ui_item *it)
     if (!sel_get(c, i)) return false;
     char lines[2][256];
     bool all;
-    wrap_title(c->font, it->title, CELL_W - 8, lines, 2, &all);
+    wrap_title(c->font, it->title, cell_w(c, i) - 8, lines, 2, &all);
     return !all;
 }
 
@@ -987,9 +996,31 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
 
 double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char *title)
 {
+    return ui_icon_cell_height_w(font, set, title, set->cell_w);
+}
+
+double ui_icon_cell_width(ui_font font, const ui_icon_set *set, const char *title)
+{
+    /* as wide as its widest line, between the icon and a margin, and four icons */
+    double lo = set->large + 16, hi = 4.0 * set->large, w = 0;
+    const char *p = title ? title : "";
+    while (*p) {
+        const char *e = strchr(p, '\n');
+        size_t n = e ? (size_t)(e - p) : strlen(p);
+        char line[512];
+        snprintf(line, sizeof line, "%.*s", (int)(n < sizeof line ? n : sizeof line - 1), p);
+        w = fmax(w, ui_text_width(font, line));
+        p += n;
+        if (*p == '\n') p++;
+    }
+    return fmin(hi, fmax(lo, ceil(w) + 12));
+}
+
+double ui_icon_cell_height_w(ui_font font, const ui_icon_set *set, const char *title, double width)
+{
     char lines[LABEL_MAX][256];
     bool all;
-    int n = wrap_title(font, title ? title : "", set->cell_w - 8, lines, LABEL_MAX, &all);
+    int n = wrap_title(font, title ? title : "", width - 8, lines, LABEL_MAX, &all);
     double lh = font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(font)));
     double h = set->large + 8 + n * lh + 4 + 4;
     return h > set->cell_h ? h : set->cell_h;

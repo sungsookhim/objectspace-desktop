@@ -774,7 +774,7 @@ static void start_read(struct listing *l)
         free(d);
     } else {   /* not loaded: all folders', if its own is not stored */
         char *k = wps_defaults_get("class:WPFolder", "WPFolder", "sort_key"), *d = wps_defaults_get("class:WPFolder", "WPFolder", "sort_desc");
-        j->def_key = sort_index(k);
+        j->def_key = k ? sort_index(k) : 0;   /* (none stored: the class's default, by name) */
         j->def_desc = d && !strcmp(d, "1");
         free(k);
         free(d);

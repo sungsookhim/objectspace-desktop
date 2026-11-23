@@ -124,7 +124,8 @@ static void selftest_cells(struct folder *f, const char *when)
             double xi, yi, xj, yj, hi = layout_item_h(f->lay, i), hj = layout_item_h(f->lay, j);
             layout_pos(f->lay, i, &xi, &yi);
             layout_pos(f->lay, j, &xj, &yj);
-            if (xi < xj + UI_CELL_W && xj < xi + UI_CELL_W && yi < yj + hj && yj < yi + hi) over++;
+            double wi = layout_item_w(f->lay, i), wj = layout_item_w(f->lay, j);
+            if (xi < xj + wj && xj < xi + wi && yi < yj + hj && yj < yi + hi) over++;
         }
     /* the second row: below the first row's tallest title */
     double top1 = 1e9, tall = 0, row2 = 1e9;

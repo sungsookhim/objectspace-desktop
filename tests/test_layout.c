@@ -178,6 +178,92 @@ TEST(spots_kept_while_names_are_not_known)
     layout_free(l);
 }
 
+/* The free layout (0.4 step 4): items as wide as their titles, packed to
+ * the width, rows as tall as their tallest. */
+static const double *widths, *fheights;
+static const char **fnames;
+static size_t fname_index(const char *n) { size_t i = 0; while (strcmp(fnames[i], n)) i++; return i; }
+static double w_at(void *ctx, size_t i) { (void)ctx; return widths[fname_index(names[i])]; }
+static double h_at(void *ctx, size_t i) { (void)ctx; return fheights[fname_index(names[i])]; }
+
+static icon_layout *free_layout(double width)
+{
+    icon_layout *l = layout_new(100, 80);
+    layout_set_free(l, true);
+    layout_set_width_fn(l, w_at, NULL);
+    layout_set_height_fn(l, h_at, NULL);
+    layout_set_width(l, width);
+    layout_set_cols(l, 3);
+    return l;
+}
+
+TEST(free_packing_by_width)
+{
+    static const char *all[] = { "a", "b", "c", "d", "e" };
+    static const double w[] = { 50, 150, 80, 200, 60 }, h[] = { 80, 120, 80, 80, 80 };
+    fnames = all; widths = w; fheights = h;
+    const char *a[] = { "a", "b", "c", "d" };
+    names = a;
+    icon_layout *l = free_layout(300);
+    layout_update(l, 4, name_at, NULL, true, NULL);
+    double x, y;
+    layout_pos(l, 1, &x, &y);
+    CHECK(x == 50 && y == 0);                    /* b after a */
+    layout_pos(l, 2, &x, &y);
+    CHECK(x == 200 && y == 0);                   /* c: 280 of 300 */
+    layout_pos(l, 3, &x, &y);
+    CHECK(x == 0 && y == 120);                   /* d wraps; the row as tall as b */
+    CHECK(layout_item_w(l, 3) == 200);
+    CHECK(found(l, 260, 10, 1, 1, 2) && !found(l, 260, 10, 1, 1, 1));
+    double cw, ch;
+    layout_size(l, &cw, &ch);
+    CHECK(cw == 280 && ch == 200);
+    /* one more, added: after d, nothing before it moves */
+    const char *b[] = { "a", "b", "c", "d", "e" };
+    names = b;
+    layout_update(l, 5, name_at, NULL, false, NULL);
+    layout_pos(l, 4, &x, &y);
+    CHECK(x == 200 && y == 120);
+    layout_pos(l, 2, &x, &y);
+    CHECK(x == 200 && y == 0);
+    /* b gone: its spot keeps its width (c, d, e stay in their places) */
+    const char *c[] = { "a", "c", "d", "e" };
+    names = c;
+    layout_update(l, 4, name_at, NULL, true, NULL);
+    layout_pos(l, 1, &x, &y);
+    CHECK(x == 200 && y == 0);
+    layout_pos(l, 3, &x, &y);
+    CHECK(x == 200 && y == 80);                  /* (the row as tall as what is left in it) */
+    /* Arrange: packed again, without the gap */
+    layout_reset(l, 3);
+    layout_update(l, 4, name_at, NULL, true, NULL);
+    layout_pos(l, 1, &x, &y);
+    CHECK(x == 50 && y == 0);                    /* c after a */
+    layout_pos(l, 2, &x, &y);
+    CHECK(x == 0 && y == 80);                    /* d: 130 + 200 > 300 */
+    layout_free(l);
+}
+
+TEST(free_flows_around_placed_icons)
+{
+    static const char *all[] = { "p", "a", "b" };
+    static const double w[] = { 100, 120, 120 }, h[] = { 80, 80, 80 };
+    fnames = all; widths = w; fheights = h;
+    const char *a[] = { "p", "a", "b" };
+    names = a;
+    icon_layout *l = free_layout(300);
+    layout_place(l, "p", 0, 0);
+    layout_update(l, 3, name_at, NULL, true, NULL);
+    double x, y;
+    layout_pos(l, 1, &x, &y);
+    CHECK(x == 100 && y == 0);                   /* a: past p */
+    layout_pos(l, 2, &x, &y);
+    CHECK(x == 0 && y == 80);                    /* b: 220 + 120 > 300 */
+    layout_pos(l, 0, &x, &y);
+    CHECK(x == 0 && y == 0);                     /* p stays */
+    layout_free(l);
+}
+
 int main(void)
 {
     RUN(spots_kept_while_names_are_not_known);
@@ -186,5 +272,7 @@ int main(void)
     RUN(a_million_names);
     RUN(rows_as_tall_as_their_tallest_title);
     RUN(locked_icons_stay_when_arranged);
+    RUN(free_packing_by_width);
+    RUN(free_flows_around_placed_icons);
     return CHECK_SUMMARY();
 }

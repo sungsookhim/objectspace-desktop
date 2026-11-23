@@ -242,6 +242,17 @@ const char *lay_name(void *ctx, size_t i) { return model_name(&((struct folder *
 
 /* Item i's cell height: with its whole title (OS/2's layout), measured
  * once per title. */
+/* Its cell measured once per title: its width in the free layout (as its
+ * title needs), its height with the whole title at that width. */
+static void measure(struct folder *f, struct row *r)
+{
+    if (r->cellh > 0) return;
+    const ui_icon_set *set = folder_icons(f);
+    const char *t = row_shown(f, r);
+    r->cellw = (float)(f->free_layout == 1 ? ui_icon_cell_width(f->font, set, t) : set->cell_w);
+    r->cellh = (float)ui_icon_cell_height_w(f->font, set, t, r->cellw);
+}
+
 double lay_h(void *ctx, size_t i)
 {
     struct folder *f = ctx;
@@ -249,13 +260,25 @@ double lay_h(void *ctx, size_t i)
     if (!f->whole_titles) return set->cell_h;
     struct row *r = row_at(f, i);
     if (!r || !r->name) return set->cell_h;
-    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height_set(f->font, set, row_shown(f, r));
+    measure(f, r);
     return r->cellh;
+}
+
+double lay_w(void *ctx, size_t i)
+{
+    struct folder *f = ctx;
+    const ui_icon_set *set = folder_icons(f);
+    struct row *r = row_at(f, i);
+    if (f->free_layout != 1 || !r || !r->name) return set->cell_w;
+    measure(f, r);
+    return r->cellw;
 }
 
 int cols_now(struct folder *f)
 {
-    int k = (int)(ui_container_list_width(f->cont) / folder_icons(f)->cell_w);
+    double w = ui_container_list_width(f->cont);
+    layout_set_width(f->lay, w);   /* (the free layout's width, taken with the columns) */
+    int k = (int)(w / folder_icons(f)->cell_w);
     return k < 1 ? 1 : k;
 }
 
@@ -354,6 +377,7 @@ static size_t *name_order(struct folder *f)
 {
     size_t n = f->m.total, *o = malloc((n ? n : 1) * sizeof *o);
     for (size_t i = 0; i < n; i++) o[i] = i;
+    if (f->sort_choice > 0) return o;   /* (listed in its sort order by wpsd: that order, names read or not) */
     sort_folder = f;
     qsort(o, n, sizeof *o, cmp_index_name);
     return o;
@@ -365,7 +389,7 @@ void layout_follow(struct folder *f, bool full)
     if (!f->lay_started) { layout_set_cols(f->lay, cols_now(f)); f->lay_started = true; }
     /* A small folder with no stored positions opens arranged by name (not
      * in the order the directory happens to list), once it is all read. */
-    if (f->m.complete && !f->arranged_by_name && f->m.total <= 100000) {
+    if (f->m.complete && !f->arranged_by_name && f->m.total <= 100000 && f->sort_choice >= 0 && !is_tree(f)) {   /* (its sort known: wpsd's order, or by name) */
         f->arranged_by_name = true;
         layout_reset(f->lay, cols_now(f));
         size_t *o = name_order(f);

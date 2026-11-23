@@ -121,7 +121,7 @@ static void ef_item(void *ctx, size_t i, ui_item *out)
 static void ef_close(void);
 static void ef_ok(void);
 static void ef_activate(void *ctx, size_t i) { (void)ctx; (void)i; ef_ok(); }
-static const ui_container_src ef_src = { ef_count, ef_item, NULL, ef_activate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+static const ui_container_src ef_src = { ef_count, ef_item, NULL, ef_activate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
 struct ef_rects { ui_rect list, size_l, size, bold, italic, preview, ok, cancel; };
 static struct ef_rects ef_rects(void)

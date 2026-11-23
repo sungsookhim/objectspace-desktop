@@ -562,6 +562,8 @@ typedef struct {
     /* Whole titles (ui_container_set_whole_titles): item i's cell height
      * (ui_icon_cell_height of its title); NULL: a cell's. */
     double (*item_h)(void *ctx, size_t i);
+    /* The free layout: item i's cell width; NULL: a cell's. */
+    double (*item_w)(void *ctx, size_t i);
 } ui_container_src;
 
 /* An icon set (v0.4-design 3): the icon views' and desktop's size, the
@@ -592,6 +594,10 @@ void ui_container_set_whole_titles(ui_container *c, bool on);
 double ui_icon_cell_height(const char *title);
 double ui_icon_cell_height_font(ui_font font, const char *title);
 double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char *title);
+/* The free layout's: a cell as wide as its title needs (between the icon
+ * and a margin, and four icons), and its height at a width. */
+double ui_icon_cell_width(ui_font font, const ui_icon_set *set, const char *title);
+double ui_icon_cell_height_w(ui_font font, const ui_icon_set *set, const char *title, double width);
 /* Its icons' set (a folder's own); the System's until set. */
 void ui_container_set_icon_set(ui_container *c, const ui_icon_set *set);
 const ui_icon_set *ui_container_icon_set(ui_container *c);

@@ -308,6 +308,8 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     f->whole_titles = true;   /* (until its Icon view page says otherwise) */
     f->show_hidden = f->show_ext = true;   /* (until its properties come) */
     layout_set_height_fn(f->lay, lay_h, f);
+    layout_set_width_fn(f->lay, lay_w, f);
+    f->free_layout = -1;   /* (its Layout: the property, when it comes) */
     f->cont = ui_container_new(f->win, &folder_src, f, view);
     ui_container_set_whole_titles(f->cont, true);
     f->sort_choice = -1;

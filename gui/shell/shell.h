@@ -55,6 +55,7 @@ struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow,
              *icon_open;   /* its own open icon (shown while it is open), or NULL */
              bool open_hatch;   /* hatched while open, over the open icon too */
              float cellh;   /* its icon's cell with the whole title (0: not measured yet) */
+             float cellw;   /* ... its width in the free layout (measured with cellh) */
              char *noext;   /* its title without the extension (Show file extensions off), made when shown */ };
 struct page { int state; bool requested; struct row rows[PAGE]; };
 
@@ -110,6 +111,7 @@ struct folder {
     int bg_mode;
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
+    int free_layout;         /* the Icon view page's Layout: 1 free (OS/2's), 0 grid; -1 not read yet */
     bool show_hidden;        /* its View page (all folders' by default: class:WPFolder) */
     bool show_ext;
     bool lock_all;           /* ... Lock positions of all icons */
@@ -374,6 +376,7 @@ void open_item(struct folder *f, size_t i, ui_view view);
 void src_activate(void *ctx, size_t i);
 const char *lay_name(void *ctx, size_t i);
 double lay_h(void *ctx, size_t i);
+double lay_w(void *ctx, size_t i);
 int cols_now(struct folder *f);
 /* Its icon set (its container's). */
 const ui_icon_set *folder_icons(struct folder *f);

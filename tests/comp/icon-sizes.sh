@@ -13,7 +13,7 @@ cat > "$S/script" <<EOS
 4.5 shot $S/default.png
 7.5 shot $S/large.png
 10.5 shot $S/small.png
-11 dclick 50 22
+11 dclick 37 24
 13 move 1200 700
 13.5 shot $S/open.png
 14 quit
@@ -44,7 +44,7 @@ a, b = (Image.open(p).convert('RGB') for p in ('$1', '$2'))
 k = a.width / 1280
 box = tuple(int(v * k) for v in ($3,))
 exit(0 if ImageChops.difference(a.crop(box), b.crop(box)).getbbox() is None else 1)"; }
-wd=$(size "$S/default.png" 112 64); wl=$(size "$S/large.png" 144 96); ws=$(size "$S/small.png" 100 32)
+wd=$(size "$S/default.png" 80 64); wl=$(size "$S/large.png" 112 96); ws=$(size "$S/small.png" 56 32)   # (its cell at least: the free layout's)
 echo "sizes: small $ws, default $wd, large $wl"
 check "the System's Icon size: all folders' (Large, then Small)" "grep -q '\"ok\":true' '$T/set1.log' && grep -q '\"ok\":true' '$T/set2.log'"
 check "... a folder reads it as its own set's (inherited)" "grep -q '\"name\":\"icon_set\",\"value\":\"Small\"' '$T/props.log'"
@@ -58,6 +58,6 @@ bg = im.getpixel((int(600 * k), int(400 * k)))
 xs = [x for x in range(int(900 * k), im.width) for y in range(int(500 * k), im.height) if sum(abs(a - b) for a, b in zip(im.getpixel((x, y)), bg)) > 60]
 print(1 if xs else 0)")
 check "Large: the Trash Can's corner kept on the desktop" "[ $tx = 1 ]"
-check "open: Projects' icon changes while its window is open" "! same '$S/small.png' '$S/open.png' 30,6,70,40"
+check "open: Projects' icon changes while its window is open" "! same '$S/small.png' '$S/open.png' 18,6,58,42"
 echo "$fails failed ($S, logs: $T)"
 [ $fails = 0 ]

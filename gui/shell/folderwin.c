@@ -205,7 +205,7 @@ static void got_bg(void *arg, const cv *reply)
     unsigned cols = 0;
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
-    int icon_size = -1;
+    int icon_size = -1, free_l = -1;
     for (size_t i = 0; i < res->n; i++) {
         const cv *pr = &res->items[i];
         const char *key = cv_text(pr, "name"), *v = cv_text(pr, "value"), *ch = cv_text(pr, "choices");
@@ -226,6 +226,7 @@ static void got_bg(void *arg, const cv *reply)
             ui_container_changed(f->cont, 0, SIZE_MAX);
         }
         else if (!strcmp(key, "icon_set")) icon_size = (int)ui_icon_size_named(v);
+        else if (!strcmp(key, "icon_layout")) free_l = strcmp(v, "grid") != 0;
         else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
         else if (!strcmp(key, "show_ext")) f->show_ext = on;
@@ -243,6 +244,18 @@ static void got_bg(void *arg, const cv *reply)
         ui_icon_set set = ui_icon_set_of((ui_icon_size)icon_size), was = *folder_icons(f);
         ui_container_set_icon_set(f->cont, &set);
         if (memcmp(&set, &was, sizeof set)) folder_icons_changed(f);   /* (the one it had: nothing to do) */
+    }
+    if (free_l >= 0 && free_l != f->free_layout) {   /* its Layout: free (OS/2's) or the grid */
+        int was = f->free_layout;
+        f->free_layout = free_l;
+        layout_set_free(f->lay, free_l == 1);
+        for (size_t p = 0; p < f->m.npages; p++)
+            for (size_t k = 0; f->m.pages[p] && k < PAGE; k++) f->m.pages[p]->rows[k].cellh = 0;
+        if (was >= 0 && !is_tree(f) && f->m.complete) arrange(f);   /* changed: arranged anew in it */
+        else {
+            layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+            if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+        }
     }
     bg_apply(f);
     folder_font(f);
@@ -263,6 +276,7 @@ static void got_bg(void *arg, const cv *reply)
     /* the sort changed (here, or in another window or the notebook): the
      * service lists it in the new order */
     if (was_choice >= 0 && (was_choice != f->sort_choice || was_desc != f->sort_desc)) reload(f);
+    else if (was_choice < 0 && f->sort_choice >= 0 && f->m.complete && !is_tree(f)) layout_follow(f, true);   /* (the first arrangement waited for it) */
     else if (was_hidden != f->show_hidden) { if (is_tree(f)) tree_start(f); else reload(f); }   /* listed again */
     if (was_ext != f->show_ext && !is_tree(f)) {   /* every title again, and the rows' heights */
         for (size_t p = 0; p < f->m.npages; p++)

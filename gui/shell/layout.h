@@ -8,12 +8,21 @@
 typedef struct icon_layout icon_layout;
 typedef const char *(*layout_name_fn)(void *ctx, size_t i);   /* NULL if not known yet */
 typedef double (*layout_height_fn)(void *ctx, size_t i);      /* item i's cell height */
+typedef double (*layout_width_fn)(void *ctx, size_t i);       /* item i's cell width (free layout) */
 
 icon_layout *layout_new(double cell_w, double cell_h);
 void layout_free(icon_layout *l);
 /* Items' heights (whole titles: rows as tall as their tallest); without
  * one, every item is as tall as a cell. */
 void layout_set_height_fn(icon_layout *l, layout_height_fn fn, void *ctx);
+/* The free layout (OS/2's): items as wide as the width function says,
+ * packed into rows to the width given (layout_set_width, taken when the
+ * columns are: Arrange, a new cell); off: the grid. A change takes a full
+ * update (and, to look as it should, an Arrange). */
+void layout_set_free(icon_layout *l, bool on);
+bool layout_is_free(icon_layout *l);
+void layout_set_width_fn(icon_layout *l, layout_width_fn fn, void *ctx);
+void layout_set_width(icon_layout *l, double w);
 /* Arrange: forget spots and stored positions, but locked ones; a new grid width. */
 void layout_reset(icon_layout *l, int cols);
 /* The grid width, while nothing has been laid out yet. */
@@ -39,6 +48,7 @@ void layout_on_new_spot(icon_layout *l, void (*fn)(void *ctx, const char *name),
 void layout_update(icon_layout *l, size_t n, layout_name_fn name_at, void *ctx, bool full, const size_t *order);
 void layout_pos(icon_layout *l, size_t i, double *x, double *y);
 double layout_item_h(icon_layout *l, size_t i);
+double layout_item_w(icon_layout *l, size_t i);
 size_t layout_items_in(icon_layout *l, double x, double y, double w, double h, size_t *out, size_t max);
 void layout_size(icon_layout *l, double *w, double *h);
 
