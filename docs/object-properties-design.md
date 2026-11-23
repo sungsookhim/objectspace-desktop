@@ -310,7 +310,7 @@ The total is about the size of a version, comparable to 0.3. **Proposed:** this 
 
 Approved: go (R0 first).
 
-## 7. As built (stages R0-R5, 2026-11-22)
+## 7. As built (stages R0-R6, 2026-11-22)
 
 | Stage | Commit | What |
 |---|---|---|
@@ -322,6 +322,7 @@ Approved: go (R0 first).
 | R3c | b579fdc | Schemes are objects (WPScheme, the Schemes folder); the colours fixed in the code are the scheme's; the compositor gets the schemes' definitions |
 | R4 | 2ede8ae, 5b9ad85 | Events' actions: on:object.open, .create, .trash, .delete (an Actions page); none, sound:, run:, call:, set:; through the chain; sounds.conf moved into the Sound object |
 | R5 | 9651cc2 | Backings: a data file's Opens with in mimeapps.list (per type through Class...), a program's types in its desktop entry; one gsettings reader in the desktop |
+| R6 | 33d5069 | Plug-ins declare properties, events and file types (proxies carry them); their pages, setters and menu choices routed to the host; the SDK (wps-devel, wpsctl plugin new, sdk/sample) |
 
 **Not done yet in R3, carried on:**
 
@@ -330,4 +331,5 @@ Approved: go (R0 first).
 - The WarpCenter's and the LaunchPad's own colours, and every size (icon sets: 0.4 step 3), are still fixed in the code.
 - The compositor still has its own menus.
 - A `.wpobj`'s `Setup=` line, and setup strings given to `create`.
+- A plug-in property's own get, set, show or options methods (run in its host) are left out in wpsd: its properties are kept by WPS; its code reads and changes them in the object's state. Calls between objects in a host, one host for several packages, and GUI plug-ins (custom drawn controls) are still to come.
 - Events raised by the GUI alone (window.*, menu.*, drags and drops) play the Sound object's sounds only; objects' own actions are for the service's events (open, create, trash, delete). Plug-ins' own events wait for R6.
