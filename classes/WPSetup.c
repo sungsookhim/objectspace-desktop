@@ -46,6 +46,40 @@ bool WPSetup__wpSetSetting(wpo_object *self, const char *key, const char *value)
     return wps_prop_set(self, key, value);
 }
 
+/* ---- the System object's Folders and Fonts fields: all folders' settings
+ * (class:WPFolder; object-properties-design.md 2.2). A value the System
+ * object kept itself (0.3) moves there the first time it is read. */
+
+static char *folders_get(wpo_object *self, const char *mine, const char *prop, const char *def)
+{
+    char *v = wps_scope_get ? wps_scope_get("class:WPFolder", "WPFolder", prop) : NULL;
+    if (v) return v;
+    char *old = NULL;
+    if (wps_state_get_str(self, "WPSetup", mine, &old) && old) {
+        if (wps_scope_set && wps_scope_set("class:WPFolder", "WPFolder", prop, old)) {
+            wps_state_remove(self, "WPSetup", mine);
+            WPObject_wpSaveDeferred(self);
+        }
+        return old;
+    }
+    free(old);
+    return wps_strdup(def);
+}
+
+static bool folders_set(wpo_object *self, const char *prop, const char *v)
+{
+    if (!wps_scope_set || !wps_scope_set("class:WPFolder", "WPFolder", prop, v)) return false;
+    WPObject_wpObjectChanged(self);   /* (its notebook) */
+    return true;
+}
+
+char *WPSystem__wpQueryFoldersHidden(wpo_object *self) { return folders_get(self, "show_hidden", "show_hidden", "1"); }
+bool WPSystem__wpSetFoldersHidden(wpo_object *self, const char *on) { return folders_set(self, "show_hidden", on); }
+char *WPSystem__wpQueryFoldersExt(wpo_object *self) { return folders_get(self, "show_ext", "show_ext", "1"); }
+bool WPSystem__wpSetFoldersExt(wpo_object *self, const char *on) { return folders_set(self, "show_ext", on); }
+char *WPSystem__wpQueryFoldersFont(wpo_object *self) { return folders_get(self, "font_folders", "icon_font", ""); }
+bool WPSystem__wpSetFoldersFont(wpo_object *self, const char *font) { return folders_set(self, "icon_font", font); }
+
 /* Settings objects open as their notebook; they are not copied or made. */
 char *WPSetup__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {

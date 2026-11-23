@@ -59,7 +59,7 @@ void src_item(void *ctx, size_t i, ui_item *out)
     out->detailed = pg->state == P_DETAILED;
     out->kind = r->kind;
     out->name = r->name;
-    out->title = row_shown(r);
+    out->title = row_shown(f, r);
     out->size = r->size;
     out->mtime = r->mtime;
     out->shadow = r->shadow;
@@ -216,7 +216,7 @@ double lay_h(void *ctx, size_t i)
     if (!f->whole_titles) return UI_CELL_H;
     struct row *r = row_at(f, i);
     if (!r || !r->name) return UI_CELL_H;
-    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height_font(f->font, row_shown(r));
+    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height_font(f->font, row_shown(f, r));
     return r->cellh;
 }
 
@@ -443,7 +443,7 @@ void sort_icons(struct folder *f, int key)
             all = false;
             if (pg->requested) continue;
             pg->requested = true;
-            svc_list_v(f->path, f->filter, show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, false));
+            svc_list_v(f->path, f->filter, f->show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, false));
         }
         if (!all || !f->m.complete) {
             f->sort_pending = key + 1;

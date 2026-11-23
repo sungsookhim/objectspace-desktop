@@ -360,6 +360,8 @@ extern char known_desktop[PATH_MAX];
 /* ---- functions */
 
 void do_props(struct req *r, wpo_object *o);   /* wpsd_props.c */
+void props_init(void);
+bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char *target);
 
 void log_msg(const char *fmt, ...);
 void client_unref(struct client *c);

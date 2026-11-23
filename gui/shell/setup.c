@@ -149,9 +149,10 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
-            else if (!strcmp(key, "font_folders")) {   /* the Font Palette's */
-                snprintf(folders_font, sizeof folders_font, "%s", val);
-                for (struct folder *x = folders; x; x = x->next) if (!x->closing) folder_font(x);
+            /* (font_folders, show_ext, show_hidden: all folders' - each window
+             * reads its own, resolved; defaults_changed) */
+            else if (!strcmp(key, "font_folders")) {
+                snprintf(folders_font, sizeof folders_font, "%s", val);   /* (shown by the self-tests) */
             } else if (!strcmp(key, "font_menus")) {
                 ui_menu_set_font(ui_font_named(val));
             } else if (!strcmp(key, "font_titles")) {
@@ -161,22 +162,6 @@ static void apply_setup_object(const char *cls, const cv *settings)
                 snprintf(kv, sizeof kv, "title_font=%s", val);
                 winlist_ext("frame", kv);
                 for (struct folder *x = folders; x; x = x->next) if (!x->closing) ui_frame_damage(x->win);
-            }
-            else if (!strcmp(key, "show_ext") && show_ext != !strcmp(val, "1")) {
-                show_ext = !strcmp(val, "1");   /* every title again, and the rows' heights */
-                for (struct folder *x = folders; x; x = x->next) {
-                    if (x->closing || is_tree(x)) continue;
-                    for (size_t p = 0; p < x->m.npages; p++)
-                        for (size_t k = 0; x->m.pages[p] && k < PAGE; k++) x->m.pages[p]->rows[k].cellh = 0;
-                    layout_update(x->lay, x->m.total, lay_name, x, true, NULL);
-                    ui_container_changed(x->cont, 0, SIZE_MAX);
-                    if (ui_container_view(x->cont) == UI_VIEW_ICON) ui_container_layout_changed(x->cont);
-                }
-            }
-            else if (!strcmp(key, "show_hidden") && show_hidden != !strcmp(val, "1")) {
-                show_hidden = !strcmp(val, "1");   /* every window lists again */
-                for (struct folder *x = folders; x; x = x->next)
-                    if (!x->closing) { if (is_tree(x)) tree_start(x); else reload(x); }
             }
         }
     }

@@ -113,7 +113,7 @@ static void tree_load(struct folder *f, struct tnode *n, size_t offset)
     t->n = n;
     t->offset = offset;
     n->loading = true;
-    svc_list_v(n->path, "", show_hidden, offset, 4096, false, got_kids, t);
+    svc_list_v(n->path, "", f->show_hidden, offset, 4096, false, got_kids, t);
 }
 
 static void got_tree_sub(void *arg, const cv *reply)

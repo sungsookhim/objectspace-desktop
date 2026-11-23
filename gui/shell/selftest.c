@@ -212,7 +212,7 @@ void win_frame(ui_surface *s, double now)
         double t = now - t0;
         char out[300] = "";
         if (step == 0) {
-            show_ext = false;
+            f->show_ext = false;
             for (size_t i = 0; i < f->m.total; i++) {
                 ui_item it;
                 src_item(f, i, &it);
@@ -566,14 +566,14 @@ void win_frame(ui_surface *s, double now)
             ui_key_event esc = { .sym = XKB_KEY_Escape };
             win_key(s, &esc);
             fprintf(stderr, "selftest: search: Escape, the field not focused: shown %d\n", f->find_on);
-            show_hidden = false;
-            reload(f);
+            cv off = { .k = CV_BOOL, .b = false };   /* its View page's Show hidden files: listed again */
+            svc_settings_set(f->path, "show_hidden", &off, -1, ignore_reply, NULL);
             step++;
             t0 = now;
         } else if (step == 3 && t > 1500 && f->m.complete) {
             fprintf(stderr, "selftest: search: hidden files off: %zu: %s\n", f->m.total, names);
-            show_hidden = true;
-            reload(f);
+            cv on = { .k = CV_BOOL, .b = true };
+            svc_settings_set(f->path, "show_hidden", &on, -1, ignore_reply, NULL);
             step++;
             t0 = now;
         } else if (step == 4 && t > 1500 && f->m.complete) {

@@ -108,6 +108,8 @@ struct folder {
     int bg_mode;
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
+    bool show_hidden;        /* its View page (all folders' by default: class:WPFolder) */
+    bool show_ext;
     bool lock_all;           /* ... Lock positions of all icons */
     char icon_font[128];     /* its own icon font (the Font Palette's), "" the System's */
     char title_font[128];    /* its title bar's, "" all title bars' */
@@ -291,8 +293,6 @@ extern struct folder *folders;
 extern long next_folder_id;
 extern double opt_bench;
 extern ui_view opt_view;
-extern bool show_hidden;
-extern bool show_ext;
 extern char folders_font[128];
 extern char titles_font[128];
 extern char setup_ids[NSETUP][64];
@@ -319,7 +319,7 @@ extern size_t ev_len;
 double status_h(void);
 struct folder *folder_by_id(long id);
 void *as_arg(struct folder *f);
-const char *row_shown(struct row *r);
+const char *row_shown(struct folder *f, struct row *r);
 struct folder *from_arg(void *arg);
 void head_clicked(void *ctx, int col);
 void cols_resized(void *ctx, const double *w);

@@ -82,16 +82,13 @@ static char *call_get(wpo_object *self, const wpo_property_def *p)
 
 /* ------------------------------------------------------------------ values */
 
-char *wps_prop_get(wpo_object *self, const char *name)
+char *(*wps_prop_inherit)(wpo_object *self, const wpo_property_def *p, const char *store, char *origin, size_t on);
+char *(*wps_scope_get)(const char *scope, const char *store, const char *prop);
+bool (*wps_scope_set)(const char *scope, const char *store, const char *prop, const char *value);
+
+/* Its own value, if the object has one (kept in its state). */
+static char *own_value(wpo_object *self, const wpo_property_def *p, const char *st)
 {
-    const wpo_class *decl;
-    const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
-    if (!p) return NULL;
-    if (p->get) {
-        char *v = call_get(self, p);
-        if (v) return v;
-    }
-    const char *st = store_of(p, decl);
     if (is_int_type(p) && !(p->flags & WPO_P_TEXT)) {
         int64_t v;
         if (wps_state_get_int(self, st, p->name, &v)) {
@@ -107,13 +104,56 @@ char *wps_prop_get(wpo_object *self, const char *name)
         if (wps_state_get_str(self, st, p->name, &v) && v) return v;
         free(v);
     }
+    return NULL;
+}
+
+char *wps_prop_get_origin(wpo_object *self, const char *name, char *origin, size_t on)
+{
+    const wpo_class *decl;
+    const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
+    if (!p) return NULL;
+    if (origin && on) snprintf(origin, on, "object");
+    if (p->get) {   /* the object's own, always (its title, its command) */
+        char *v = call_get(self, p);
+        if (v) return v;
+    }
+    const char *st = store_of(p, decl);
+    char *v = own_value(self, p, st);
+    if (v) return v;
+    /* the chain (object-properties-design.md 2.2): its type, its class and
+     * the classes above it, ... (the service's) */
+    if (wps_prop_inherit && (v = wps_prop_inherit(self, p, st, origin, on))) return v;
+    if (origin && on) snprintf(origin, on, "default");
     return wps_strdup(p->def ? p->def : "");
+}
+
+char *wps_prop_get(wpo_object *self, const char *name)
+{
+    return wps_prop_get_origin(self, name, NULL, 0);
+}
+
+bool wps_prop_reset(wpo_object *self, const char *name)
+{
+    const wpo_class *decl;
+    const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
+    if (!p || p->get || (p->flags & WPO_P_READONLY)) return false;
+    wps_state_remove(self, store_of(p, decl), p->name);
+    WPObject_wpSaveDeferred(self);
+    WPObject_wpObjectChanged(self);
+    return true;
+}
+
+const char *wps_prop_store(const wpo_class *cls, const char *name)
+{
+    const wpo_class *decl;
+    const wpo_property_def *p = wpo_find_property(cls, name, &decl);
+    return p ? store_of(p, decl) : NULL;
 }
 
 /* The text a value is given as, made canonical for its type; NULL if it is
  * not one (a choice: the option's text or number; a checkbox: 1/0,
  * true/false, yes/no, on/off). */
-static char *canonical(const wpo_property_def *p, const char *v)
+char *wps_prop_canonical(const wpo_property_def *p, const char *v)
 {
     if (!v || strchr(v, '\n') || strchr(v, '\t')) return NULL;
     if (!strcmp(p->type, "checkbox")) {
@@ -147,7 +187,7 @@ bool wps_prop_set(wpo_object *self, const char *name, const char *value)
     const wpo_class *decl;
     const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
     if (!p || (p->flags & WPO_P_READONLY) || !strcmp(p->type, "info")) return false;
-    char *v = canonical(p, value);
+    char *v = wps_prop_canonical(p, value);
     if (!v) return false;
     bool ok;
     if (p->set) {

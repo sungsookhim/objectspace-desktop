@@ -499,7 +499,7 @@ void prepare_done(void *arg)    /* loop */
     else if (!strcmp(r->op, "rename")) do_rename(r, o);
     else if (!strcmp(r->op, "layout")) do_layout(r, o);
     else if (!strcmp(r->op, "arrange")) do_arrange(r, o);
-    else if (!strcmp(r->op, "get") || !strcmp(r->op, "set") || !strcmp(r->op, "props")) do_props(r, o);
+    else if (!strcmp(r->op, "get") || !strcmp(r->op, "set") || !strcmp(r->op, "props") || !strcmp(r->op, "reset")) do_props(r, o);
     else if (do_call(r, o)) return;   /* the reply comes from the plug-in */
     req_free(r);
 }
@@ -571,6 +571,7 @@ int main(int argc, char **argv)
     wpo_loop_set_watchdog(loop, 50.0, on_watchdog, NULL);
     const char *delay = getenv("WPS_SAVE_DELAY_MS");
     wps_objects_init(&env, db, loop, delay ? atoi(delay) : 2000);
+    props_init();   /* the chain's class and type settings (wpsd_props.c) */
 
     const char *sp = getenv("WPS_SOCKET");
     if (sp && *sp) snprintf(sock_path, sizeof sock_path, "%s", sp);

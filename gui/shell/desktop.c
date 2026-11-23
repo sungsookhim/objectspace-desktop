@@ -305,6 +305,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     }
     f->lay = layout_new(UI_CELL_W, UI_CELL_H);
     f->whole_titles = true;   /* (until its Icon view page says otherwise) */
+    f->show_hidden = f->show_ext = true;   /* (until its properties come) */
     layout_set_height_fn(f->lay, lay_h, f);
     f->cont = ui_container_new(f->win, &folder_src, f, view);
     ui_container_set_whole_titles(f->cont, true);

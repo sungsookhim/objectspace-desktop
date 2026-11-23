@@ -34,12 +34,10 @@ struct folder *folder_by_id(long id)
 
 void *as_arg(struct folder *f) { return (void *)(intptr_t)f->id; }
 
-bool show_hidden = true;   /* the System object's Show hidden files (v0.3-design 6) */
 
-bool show_ext = true;      /* ... Show file extensions in titles (the owner's, 0.3 step 8) */
 
-char folders_font[128];    /* ... Fonts: folders' icon titles ("" the interface font) */
 
+char folders_font[128];   /* the System's Folders font: all folders' (shown by the self-tests only) */
 char titles_font[128];     /* ... title bars' */
 
 /* The length of a data file's name without its extension ("a.tar.gz":
@@ -55,11 +53,11 @@ static size_t name_sans_ext(const char *n)
 
 /* What an item's icon is titled: its title (a file's is its name), and
  * with Show file extensions off a data file's name without the extension. */
-const char *row_shown(struct row *r)
+const char *row_shown(struct folder *f, struct row *r)
 {
     if (!r->name) return "";
     const char *t = r->title ? r->title : r->name[0] == '\x01' ? "" : r->name;   /* a central object: its title comes with details */
-    if (show_ext || r->kind != UI_KIND_FILE || r->shadow || r->link || r->name[0] == '\x01' || (r->title && strcmp(r->title, r->name)))
+    if (f->show_ext || r->kind != UI_KIND_FILE || r->shadow || r->link || r->name[0] == '\x01' || (r->title && strcmp(r->title, r->name)))
         return t;
     size_t nl = strlen(r->name);
     if (nl > 8 && !strcmp(r->name + nl - 8, ".desktop")) return t;
@@ -177,6 +175,22 @@ void cols_resized(void *ctx, const double *w)
     svc_settings_set(f->path, "col_widths", &v, -1, ignore_reply, NULL);
 }
 
+/* A choice's option number in its list ("a,b,c"), or -1. */
+static int option_number(const char *choices, const char *v)
+{
+    int i = 0;
+    for (const char *p = choices; p && *p && v; i++) {
+        const char *e = strchr(p, ',');
+        size_t l = e ? (size_t)(e - p) : strlen(p);
+        if (strlen(v) == l && !strncmp(p, v, l)) return i;
+        p = e ? e + 1 : NULL;
+    }
+    return -1;
+}
+
+/* Its properties, resolved by the service (its own, else all folders',
+ * else the default; object-properties-design.md 2.2): its background,
+ * sort, icon view, columns, fonts and what it shows. */
 static void got_bg(void *arg, const cv *reply)
 {
     struct folder *f = from_arg(arg);
@@ -185,35 +199,37 @@ static void got_bg(void *arg, const cv *reply)
     f->bg_image[0] = f->bg_color[0] = 0;
     f->bg_mode = 2;
     f->bg_gnome = true;
+    f->icon_font[0] = f->title_font[0] = 0;
     int was_choice = f->sort_choice;
-    bool was_desc = f->sort_desc;
+    bool was_desc = f->sort_desc, was_hidden = f->show_hidden, was_ext = f->show_ext;
     unsigned cols = 0;
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
     for (size_t i = 0; i < res->n; i++) {
-        const cv *fs = cv_get(&res->items[i], "fields");
-        for (size_t k = 0; fs && fs->k == CV_ARRAY && k < fs->n; k++) {
-            const cv *fd = &fs->items[k], *v = cv_get(fd, "value");
-            const char *key = cv_text(fd, "key");
-            if (!key || !v) continue;
-            if (!strcmp(key, "bg_image") && v->k == CV_TEXT) snprintf(f->bg_image, sizeof f->bg_image, "%s", v->s);
-            else if (!strcmp(key, "bg_color") && v->k == CV_TEXT) snprintf(f->bg_color, sizeof f->bg_color, "%s", v->s);
-            else if (!strcmp(key, "bg_mode") && v->k == CV_INT) f->bg_mode = (int)v->i;
-            else if (!strcmp(key, "bg_gnome") && v->k == CV_BOOL) f->bg_gnome = v->b;
-            else if (!strcmp(key, "sort_key") && v->k == CV_INT) f->sort_choice = (int)v->i;
-            else if (!strcmp(key, "sort_desc") && v->k == CV_BOOL) f->sort_desc = v->b;
-            else if (!strcmp(key, "icon_titles") && v->k == CV_INT) whole = v->i == 0;
-            else if (!strcmp(key, "lock_all") && v->k == CV_BOOL) lock_all = v->b;
-            else if (!strcmp(key, "icon_font") && v->k == CV_TEXT) snprintf(f->icon_font, sizeof f->icon_font, "%s", v->s);
-            else if (!strcmp(key, "title_font") && v->k == CV_TEXT) snprintf(f->title_font, sizeof f->title_font, "%s", v->s);
-            else if (!strncmp(key, "col_", 4) && v->k == CV_BOOL && v->b) {
-                cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
-                      : !strcmp(key, "col_date") ? 8u : 0u;
-            } else if (!strcmp(key, "col_widths") && v->k == CV_TEXT) {
-                sscanf(v->s, "%lf,%lf,%lf,%lf,%lf", &w[1], &w[2], &w[3], &w[4], &w[5]);
-            }
+        const cv *pr = &res->items[i];
+        const char *key = cv_text(pr, "name"), *v = cv_text(pr, "value"), *ch = cv_text(pr, "choices");
+        if (!key || !v) continue;
+        bool on = !strcmp(v, "1");
+        if (!strcmp(key, "bg_image")) snprintf(f->bg_image, sizeof f->bg_image, "%s", v);
+        else if (!strcmp(key, "bg_color")) snprintf(f->bg_color, sizeof f->bg_color, "%s", v);
+        else if (!strcmp(key, "bg_mode")) f->bg_mode = option_number(ch, v);
+        else if (!strcmp(key, "bg_gnome")) f->bg_gnome = on;
+        else if (!strcmp(key, "sort_key")) f->sort_choice = option_number(ch, v);
+        else if (!strcmp(key, "sort_desc")) f->sort_desc = on;
+        else if (!strcmp(key, "icon_titles")) whole = option_number(ch, v) == 0;
+        else if (!strcmp(key, "lock_all")) lock_all = on;
+        else if (!strcmp(key, "icon_font")) snprintf(f->icon_font, sizeof f->icon_font, "%s", v);
+        else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
+        else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
+        else if (!strcmp(key, "show_ext")) f->show_ext = on;
+        else if (!strncmp(key, "col_", 4) && on) {
+            cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
+                  : !strcmp(key, "col_date") ? 8u : 0u;
+        } else if (!strcmp(key, "col_widths")) {
+            sscanf(v, "%lf,%lf,%lf,%lf,%lf", &w[1], &w[2], &w[3], &w[4], &w[5]);
         }
     }
+    if (f->bg_mode < 0) f->bg_mode = 2;
     bg_apply(f);
     folder_font(f);
     ui_window_set_title_font(f->win, f->title_font[0] != 0, ui_font_named(f->title_font));   /* its own, as on OS/2 */
@@ -233,15 +249,23 @@ static void got_bg(void *arg, const cv *reply)
     /* the sort changed (here, or in another window or the notebook): the
      * service lists it in the new order */
     if (was_choice >= 0 && (was_choice != f->sort_choice || was_desc != f->sort_desc)) reload(f);
+    else if (was_hidden != f->show_hidden) { if (is_tree(f)) tree_start(f); else reload(f); }   /* listed again */
+    if (was_ext != f->show_ext && !is_tree(f)) {   /* every title again, and the rows' heights */
+        for (size_t p = 0; p < f->m.npages; p++)
+            for (size_t k = 0; f->m.pages[p] && k < PAGE; k++) f->m.pages[p]->rows[k].cellh = 0;
+        layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+        ui_container_changed(f->cont, 0, SIZE_MAX);
+        if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+    }
 }
 
-void bg_read(struct folder *f) { svc_settings(f->path, got_bg, as_arg(f)); }
+void bg_read(struct folder *f) { svc_props(f->path, got_bg, as_arg(f)); }
 
-/* Its titles' font: its own, else the System's for folders (the Font
- * Palette's), else the interface font; rows as tall as they now need. */
+/* Its titles' font: its own or all folders' (the service's), else the
+ * interface font; rows as tall as they now need. */
 void folder_font(struct folder *f)
 {
-    ui_font ft = ui_font_named(f->icon_font[0] ? f->icon_font : folders_font);
+    ui_font ft = ui_font_named(f->icon_font);
     if (ft == f->font) return;
     f->font = ft;
     ui_container_set_font(f->cont, ft);
@@ -672,7 +696,7 @@ void got_page(void *arg, const cv *reply)
         for (size_t p = p0; p <= p1 && p * PAGE < m->total; p++) {
             m->pending++;
             page_at(m, p)->requested = true;
-            svc_list_v(f->path, f->filter, show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, true));
+            svc_list_v(f->path, f->filter, f->show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, true));
         }
         if (!m->pending) swap(f);
         return;
@@ -699,7 +723,7 @@ void request_more(struct folder *f, bool shadow)
     struct model *m = shadow ? f->sh : &f->m;
     if (!m || m->growing || m->complete) return;
     m->growing = true;
-    svc_list_v(f->path, f->filter, show_hidden, m->total, m->total ? 4096 : 128, false, got_page, page_arg(f, shadow));
+    svc_list_v(f->path, f->filter, f->show_hidden, m->total, m->total ? 4096 : 128, false, got_page, page_arg(f, shadow));
 }
 
 /* Details (size, date, title) for the pages on screen. */
@@ -712,7 +736,7 @@ void fetch_visible(struct folder *f, size_t first, size_t last)
         struct page *pg = page_at(&f->m, p);
         if (pg->state == P_DETAILED || pg->requested) continue;
         pg->requested = true;
-        svc_list_v(f->path, f->filter, show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, false));
+        svc_list_v(f->path, f->filter, f->show_hidden, p * PAGE, PAGE, true, got_page, page_arg(f, false));
     }
 }
 
@@ -823,6 +847,10 @@ void on_event(void *arg, const cv *ev)
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     if (!strcmp(name, "trash_changed")) { trash_changed(); return; }
     if (!strcmp(name, "drives_changed")) { drives_changed_event(); return; }
+    if (!strcmp(name, "defaults_changed")) {   /* all folders', all of a type's: every window reads its own again */
+        for (struct folder *f = folders; f; f = f->next) if (!f->closing) bg_read(f);
+        return;
+    }
     for (struct folder *f = folders; f; f = f->next) {
         if (f->bg_sub && f->bg_sub == sub) {   /* the folder object itself: its Background */
             if (!f->closing && !strcmp(name, "object_changed")) bg_read(f);

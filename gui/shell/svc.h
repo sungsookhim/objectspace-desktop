@@ -68,6 +68,9 @@ void svc_place(const char *folder, const char *const *targets, const int64_t *x,
 void svc_place_lock(const char *folder, const char *target, int64_t x, int64_t y, bool lock, svc_fn fn, void *arg);
 /* One setting; `value` is CV_TEXT, CV_INT or CV_BOOL. expect: the object's
  * change counter as last seen (a change elsewhere since is a conflict). */
+/* Its declared properties, resolved (object-properties-design.md 2.2):
+ * [{name, value (text), type, choices, origin}, ...]. */
+void svc_props(const char *target, svc_fn fn, void *arg);
 void svc_settings_set(const char *target, const char *key, const cv *value, int64_t expect, svc_fn fn, void *arg);
 
 /* Events: {event, sub, ...}, delivered to `fn` on the UI thread. The reply

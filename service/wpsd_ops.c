@@ -470,6 +470,8 @@ static bool op_resolve(struct client *c, int64_t id, const char *op, cv *msg)
 {
     const char *target = cv_text(msg, "target");
     if (!target) { reply_error(c, id, "bad request", "missing target"); return false; }
+    /* a class's or a type's settings (class:NAME, type:MIME): no object */
+    if (!strncmp(target, "class:", 6) || !strncmp(target, "type:", 5)) return do_scope(c, id, op, msg, target);
     struct req *r = calloc(1, sizeof *r);
     r->c = c; c->refs++;
     r->id = id;
@@ -530,6 +532,7 @@ static const struct op_def ops[] = {
     { "get", op_resolve },
     { "set", op_resolve },
     { "props", op_resolve },
+    { "reset", op_resolve },
     { "open", op_resolve },
     { "from_template", op_resolve },
     { "rename", op_resolve },

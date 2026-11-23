@@ -563,7 +563,7 @@ void src_rename(void *ctx, size_t i, const char *name)
     /* its extension hidden (Show file extensions off): kept, unless typed
      * again ("x.txt" typed for x.odt is x.txt.odt: its type stays) */
     char full[NAME_MAX + 64];
-    if (rw && rw->noext && row_shown(rw) == rw->noext) {
+    if (rw && rw->noext && row_shown(f, rw) == rw->noext) {
         const char *ext = rw->name + strlen(rw->noext);
         size_t nl = strlen(name), el = strlen(ext);
         if (nl < el || strcasecmp(name + nl - el, ext)) {

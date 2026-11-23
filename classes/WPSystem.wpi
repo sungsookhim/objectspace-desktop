@@ -12,9 +12,16 @@ property title_layout : choice "normal,mirrored,compact" = "normal" page "Window
 property confirm_delete : checkbox = "1" page "Confirmations" label "Confirm on delete" store WPSetup text
 property confirm_folder_delete : checkbox = "1" page "Confirmations" label "Confirm on folder delete" store WPSetup text
 property restore_windows : checkbox = "1" page "Login" label "Restore open windows at login" store WPSetup text
-property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" store WPSetup text
-property show_ext : checkbox = "1" page "Folders" label "Show file extensions in titles" store WPSetup text
-property font_folders : text = "" page "Fonts" label "Folders' icon titles (e.g. 10.Sans; empty: the interface font)" store WPSetup text
+# (all folders' settings: class:WPFolder's, object-properties-design.md 2.2)
+method wpQueryFoldersHidden() -> string
+method wpSetFoldersHidden(string on) -> bool
+method wpQueryFoldersExt() -> string
+method wpSetFoldersExt(string on) -> bool
+method wpQueryFoldersFont() -> string
+method wpSetFoldersFont(string font) -> bool
+property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" get wpQueryFoldersHidden set wpSetFoldersHidden
+property show_ext : checkbox = "1" page "Folders" label "Show file extensions in titles" get wpQueryFoldersExt set wpSetFoldersExt
+property font_folders : text = "" page "Fonts" label "Folders' icon titles (e.g. 10.Sans; empty: the interface font)" get wpQueryFoldersFont set wpSetFoldersFont
 property font_menus : text = "" page "Fonts" label "Menus" store WPSetup text
 property font_titles : text = "" page "Fonts" label "Title bars" store WPSetup text
 property terminal : choice "automatic,xdg-terminal-exec,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" = "automatic" page "Programs" label "Terminal for text-mode programs" store WPSetup text
