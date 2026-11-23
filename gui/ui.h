@@ -417,6 +417,11 @@ void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused);
 ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k);
 ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect r);
 
+/* The clipboard (the system's: every program's). Text copied (offered to
+ * them all), and the last text there is (NULL: none yet). */
+void ui_clipboard_set(const char *text);
+const char *ui_clipboard_text(void);
+
 /* -------------------------------------------------------------- notebooks */
 
 /* Settings notebooks, as in Warp 4 (ui_notebook.c). Built from pages of

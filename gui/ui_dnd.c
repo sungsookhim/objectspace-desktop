@@ -370,11 +370,105 @@ static void d_drop(void *x, struct wl_data_device *dd)
     ui_app_watch_fd(a, p[0], POLLIN, incoming_read, in);
 }
 
+/* ---- the clipboard (Wayland's selection). A new selection with text is
+ * read at once, in the background, and kept: a paste (Ctrl+V, Shift+Insert)
+ * takes it as it is (the selection comes when a window of ours gets the
+ * keyboard, before any key). Copying offers ours to every program. */
+
+static char *clip_text;            /* the selection's text, read */
+static struct offer *clip_offer;   /* the selection now (NULL: none, or ours) */
+static struct wl_data_source *clip_source;
+static char *clip_source_text;
+static ui_app *clip_app;
+
+struct clip_read { char *buf; size_t len, cap; struct offer *f; };
+
+static void clip_read_ready(void *arg, int fd, short rev)
+{
+    struct clip_read *r = arg;
+    char b[4096];
+    ssize_t n = (rev & POLLIN) ? read(fd, b, sizeof b) : 0;
+    if (n > 0 && r->len + (size_t)n < 1 << 20) {   /* (at most 1 MB of text) */
+        if (r->len + (size_t)n + 1 > r->cap) {
+            r->cap = (r->len + (size_t)n + 1) * 2;
+            r->buf = realloc(r->buf, r->cap);
+        }
+        memcpy(r->buf + r->len, b, (size_t)n);
+        r->len += (size_t)n;
+        return;
+    }
+    if (n < 0 && errno == EAGAIN) return;
+    ui_app_unwatch_fd(clip_app, fd);
+    close(fd);
+    if (r->f == clip_offer && r->buf) {   /* still the selection: kept */
+        r->buf[r->len] = 0;
+        free(clip_text);
+        clip_text = r->buf;
+        r->buf = NULL;
+    }
+    free(r->buf);
+    free(r);
+}
+
 static void d_selection(void *x, struct wl_data_device *dd, struct wl_data_offer *o)
 {
-    (void)x; (void)dd;
-    if (o) offer_free(wl_data_offer_get_user_data(o));   /* the clipboard: later */
+    (void)dd;
+    ui_app *a = x;
+    offer_free(clip_offer);
+    clip_offer = o ? wl_data_offer_get_user_data(o) : NULL;
+    if (!clip_offer || clip_source) return;   /* (none, or ours: clip_text is it already) */
+    static const char *const want[] = { "text/plain;charset=utf-8", "text/plain;charset=UTF-8", "UTF8_STRING", "text/plain", "TEXT", "STRING" };
+    const char *mime = NULL;
+    for (size_t w = 0; w < sizeof want / sizeof *want && !mime; w++)
+        for (size_t i = 0; i < clip_offer->n && !mime; i++)
+            if (!strcmp(clip_offer->mimes[i], want[w])) mime = want[w];
+    if (!mime) return;
+    int p[2];
+    if (pipe2(p, O_CLOEXEC) != 0) return;
+    wl_data_offer_receive(clip_offer->o, mime, p[1]);
+    close(p[1]);
+    fcntl(p[0], F_SETFL, O_NONBLOCK);
+    struct clip_read *r = calloc(1, sizeof *r);
+    r->f = clip_offer;
+    clip_app = a;
+    ui_app_watch_fd(a, p[0], POLLIN, clip_read_ready, r);
+    wl_display_flush(a->dpy);
 }
+
+static void c_send(void *x, struct wl_data_source *s, const char *mime, int32_t fd)
+{
+    (void)x; (void)s; (void)mime;
+    if (clip_source_text && clip_app) ui_app_write_async(clip_app, fd, clip_source_text, strlen(clip_source_text));
+    else close(fd);
+}
+
+static void c_cancelled(void *x, struct wl_data_source *s)
+{
+    (void)x;
+    if (s == clip_source) clip_source = NULL;   /* another program's selection now */
+    wl_data_source_destroy(s);
+}
+
+static const struct wl_data_source_listener clip_listener = { s_target, c_send, c_cancelled, NULL, NULL, NULL };
+
+void ui_clipboard_set(const char *text)
+{
+    ui_app *a = clip_app;
+    free(clip_text);
+    clip_text = strdup(text ? text : "");
+    if (!a || !a->ddm || !a->ddev) return;
+    if (clip_source) wl_data_source_destroy(clip_source);
+    free(clip_source_text);
+    clip_source_text = strdup(clip_text);
+    clip_source = wl_data_device_manager_create_data_source(a->ddm);
+    static const char *const offers[] = { "text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "TEXT", "STRING" };
+    for (size_t i = 0; i < sizeof offers / sizeof *offers; i++) wl_data_source_offer(clip_source, offers[i]);
+    wl_data_source_add_listener(clip_source, &clip_listener, NULL);
+    wl_data_device_set_selection(a->ddev, clip_source, a->last_serial);
+    wl_display_flush(a->dpy);
+}
+
+const char *ui_clipboard_text(void) { return clip_text; }
 
 static const struct wl_data_device_listener device_listener = { d_data_offer, d_enter, d_leave, d_motion, d_drop, d_selection };
 
@@ -383,6 +477,7 @@ void ui_dnd_init(ui_app *a)
     if (!a->ddm || !a->seat) return;
     a->ddev = wl_data_device_manager_get_data_device(a->ddm, a->seat);
     wl_data_device_add_listener(a->ddev, &device_listener, a);
+    clip_app = a;
 }
 
 void ui_dnd_renegotiate(ui_app *a) { negotiate(a, a->drag_serial); }

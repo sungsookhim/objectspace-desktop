@@ -23,7 +23,7 @@ struct ui_entry {
 
 void (*ui_entry_free_hook)(ui_entry *e);
 
-static char *clipboard;      /* within this program until the data device (DnD step) */
+static char *clipboard;      /* ours (also offered to every program: ui_clipboard_set) */
 
 static void reserve(ui_entry *e, size_t n)
 {
@@ -148,12 +148,26 @@ static void insert(ui_entry *e, const char *t)
     free(clean);
 }
 
+/* Where there is no data device (the compositor's lock screen, the unit
+ * tests): our own clipboard only. ui_dnd.c's replace these. */
+__attribute__((weak)) void ui_clipboard_set(const char *text) { (void)text; }
+__attribute__((weak)) const char *ui_clipboard_text(void) { return NULL; }
+
 static void copy_selection(ui_entry *e)
 {
     size_t a = sel_lo(e), b = sel_hi(e);
     if (a == b) return;
     free(clipboard);
     clipboard = strndup(e->s + a, b - a);
+    ui_clipboard_set(clipboard);   /* every program's clipboard too */
+}
+
+/* What a paste puts in: the system's clipboard (another program's copy, or
+ * ours), else ours. */
+static const char *paste_text(void)
+{
+    const char *t = ui_clipboard_text();
+    return t ? t : clipboard;
 }
 
 ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k)
@@ -192,13 +206,13 @@ ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k)
                 delete_range(e, sel_lo(e), sel_hi(e));
                 return UI_ENTRY_CHANGED;
             case XKB_KEY_v: case XKB_KEY_V:
-                if (clipboard) { insert(e, clipboard); return UI_ENTRY_CHANGED; }
+                if (paste_text()) { insert(e, paste_text()); return UI_ENTRY_CHANGED; }
                 return UI_ENTRY_NONE;
             default: return UI_ENTRY_NONE;
             }
         }
         if (shift && k->sym == XKB_KEY_Insert) {   /* Shift+Insert pastes, as in OS/2 */
-            if (clipboard) { insert(e, clipboard); return UI_ENTRY_CHANGED; }
+            if (paste_text()) { insert(e, paste_text()); return UI_ENTRY_CHANGED; }
             return UI_ENTRY_NONE;
         }
         if ((unsigned char)k->utf8[0] >= 0x20 && k->utf8[0] != 0x7f && !(k->mods & UI_MOD_ALT)) {
