@@ -272,6 +272,29 @@ void svc_apps(svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+/* An open waits for its activation token (the click's: the program's
+ * window comes to the front), then goes. */
+struct open_wait { struct out *o; int64_t id; svc_fn fn; void *arg; };
+
+static ui_app *the_app(void) { return app; }   /* (open_req's "app" is a program's ID) */
+
+static void open_go(void *ctx, const char *token)
+{
+    struct open_wait *w = ctx;
+    /* the request's last field: its environment entries, the token's two at the end */
+    cbuf *b = &w->o->b;
+    const char *keys[] = { "XDG_ACTIVATION_TOKEN=", "DESKTOP_STARTUP_ID=" };
+    char e[2][320];
+    size_t ne = 0;
+    if (token && *token && strlen(token) < 280)
+        for (int k = 0; k < 2; k++) snprintf(e[ne++], sizeof e[0], "%s%s", keys[k], token);
+    cb_text(b, "token_env");
+    cb_array(b, ne);
+    for (size_t i = 0; i < ne; i++) cb_text(b, e[i]);
+    send_req(w->o, w->id, w->fn, w->arg);
+    free(w);
+}
+
 static void open_req(const char *target, bool confirm, const char *const *files, size_t nfiles, const char *app, int app_index,
                      bool always, svc_fn fn, void *arg)
 {
@@ -293,7 +316,7 @@ static void open_req(const char *target, bool confirm, const char *const *files,
         const char *v = getenv(keys[i]);
         if (v && *v) snprintf(envs[ne++], sizeof envs[0], "%s=%s", keys[i], v);
     }
-    struct out *o = begin("open", 2 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0) + (nfiles ? 1 : 0) + (app ? 1 : 0)
+    struct out *o = begin("open", 3 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0) + (nfiles ? 1 : 0) + (app ? 1 : 0)
                                       + (app_index >= 0 ? 1 : 0) + (always ? 1 : 0), &id);
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
@@ -312,7 +335,9 @@ static void open_req(const char *target, bool confirm, const char *const *files,
     if (app) { cb_text(&o->b, "app"); cb_text(&o->b, app); }   /* Open With */
     if (app_index >= 0) { cb_text(&o->b, "app_index"); cb_int(&o->b, app_index); }
     if (always) { cb_text(&o->b, "always"); cb_bool(&o->b, true); }
-    send_req(o, id, fn, arg);
+    struct open_wait *w = malloc(sizeof *w);
+    *w = (struct open_wait){ o, id, fn, arg };
+    ui_activation_token(the_app(), open_go, w);   /* (token_env, the last field; at once without one) */
 }
 
 void svc_open(const char *target, bool confirm, svc_fn fn, void *arg) { svc_open_files(target, confirm, NULL, 0, fn, arg); }

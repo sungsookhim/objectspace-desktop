@@ -239,6 +239,9 @@ bool ui_window_active(ui_surface *s);
 /* Bring a window forward, in answer to the user's latest click or key
  * (Wayland lets a program do so only then: xdg-activation). */
 void ui_window_activate(ui_surface *s);
+/* An xdg-activation token for a program this one starts (its window then
+ * comes to the front); fn gets it, or NULL (none to be had). */
+void ui_activation_token(ui_app *a, void (*fn)(void *ctx, const char *token), void *ctx);
 
 /* A popup at (x, y) of `parent`, `w` x `h`, grabbing input. */
 ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,

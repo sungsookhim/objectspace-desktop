@@ -330,19 +330,34 @@ void do_open(struct req *r, wpo_object *o)
     }
     /* and the asking session's input-method and desktop settings: these
      * names only, short printable values */
-    const char *envs[8];
-    size_t nenv = 0;
+    const char *envs[8], *toks[2];
+    size_t nenv = 0, ntok = 0;
     const cv *ev = cv_get(&r->msg, "env");
-    static const char *const allowed[] = { "GTK_IM_MODULE=", "QT_IM_MODULE=", "XMODIFIERS=", "XDG_CURRENT_DESKTOP=", "XDG_SESSION_TYPE=" };
-    for (size_t i = 0; ev && ev->k == CV_ARRAY && i < ev->n && nenv < 8; i++) {
+    /* (and its activation token, 0.4 step 6: the click's, so the program's
+     * window comes to the front - Wayland's, and X11's startup ID) */
+    static const char *const allowed[] = { "GTK_IM_MODULE=", "QT_IM_MODULE=", "XMODIFIERS=", "XDG_CURRENT_DESKTOP=", "XDG_SESSION_TYPE=",
+                                           "XDG_ACTIVATION_TOKEN=", "DESKTOP_STARTUP_ID=" };
+    for (size_t i = 0; ev && ev->k == CV_ARRAY && i < ev->n && nenv + ntok < 8; i++) {
         const cv *e = &ev->items[i];
         if (e->k != CV_TEXT || strlen(e->s) > 280) continue;
+        size_t k = 0;
         bool ok = false;
-        for (size_t k = 0; k < 5 && !ok; k++) ok = !strncmp(e->s, allowed[k], strlen(allowed[k]));
+        for (; k < 7 && !ok; k++) ok = !strncmp(e->s, allowed[k], strlen(allowed[k]));
         for (const char *p = e->s; ok && *p; p++) ok = (unsigned char)*p >= 0x20 && *p != 0x7f;
-        if (ok) envs[nenv++] = e->s;
+        if (!ok) continue;
+        if (k > 5 && ntok < 2) toks[ntok++] = e->s;   /* (k: one past the match) */
+        else if (k <= 5) envs[nenv++] = e->s;
     }
-    client_note_session(r->c, disp, x11, envs, nenv);   /* (its next actions' session) */
+    const cv *te = cv_get(&r->msg, "token_env");   /* (the GUI's, sent apart) */
+    for (size_t i = 0; te && te->k == CV_ARRAY && i < te->n && ntok < 2; i++) {
+        const cv *e = &te->items[i];
+        bool ok = e->k == CV_TEXT && strlen(e->s) <= 280 &&
+                  (!strncmp(e->s, allowed[5], strlen(allowed[5])) || !strncmp(e->s, allowed[6], strlen(allowed[6])));
+        for (const char *p = ok ? e->s : ""; ok && *p; p++) ok = (unsigned char)*p > 0x20 && *p != 0x7f;
+        if (ok) toks[ntok++] = e->s;
+    }
+    client_note_session(r->c, disp, x11, envs, nenv);   /* (its next actions' session; a token is for this once) */
+    for (size_t i = 0; i < ntok && nenv < 8; i++) envs[nenv++] = toks[i];
     pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs, nenv);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     /* its actions on opening (object-properties-design.md 2.4); the sound

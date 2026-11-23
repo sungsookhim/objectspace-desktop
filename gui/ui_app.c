@@ -1036,6 +1036,35 @@ static void token_done(void *data, struct xdg_activation_token_v1 *t, const char
 }
 static const struct xdg_activation_token_v1_listener token_listener = { token_done };
 
+/* A token for something this program starts (its window then comes to the
+ * front): asked with the last input's serial and the focused surface;
+ * fn gets it, or NULL at once with no xdg-activation. */
+struct tok_req { ui_app *app; void (*fn)(void *ctx, const char *token); void *ctx; };
+
+static void got_token(void *data, struct xdg_activation_token_v1 *t, const char *token)
+{
+    struct tok_req *x = data;
+    x->fn(x->ctx, token);
+    xdg_activation_token_v1_destroy(t);
+    free(x);
+}
+static const struct xdg_activation_token_v1_listener got_token_listener = { got_token };
+
+void ui_activation_token(ui_app *a, void (*fn)(void *ctx, const char *token), void *ctx)
+{
+    if (!a->activation) { fn(ctx, NULL); return; }
+    struct tok_req *x = calloc(1, sizeof *x);
+    x->app = a;
+    x->fn = fn;
+    x->ctx = ctx;
+    struct xdg_activation_token_v1 *t = xdg_activation_v1_get_activation_token(a->activation);
+    xdg_activation_token_v1_add_listener(t, &got_token_listener, x);
+    if (a->last_serial) xdg_activation_token_v1_set_serial(t, a->last_serial, a->seat);
+    ui_surface *from = a->key_focus ? a->key_focus : a->ptr_focus;
+    if (from) xdg_activation_token_v1_set_surface(t, from->wl);
+    xdg_activation_token_v1_commit(t);
+}
+
 void ui_window_activate(ui_surface *s)
 {
     ui_app *a = s->app;

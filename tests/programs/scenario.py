@@ -151,4 +151,16 @@ while time.time() < deadline and not os.path.exists(T + "/term.txt"):
 term = open(T + "/term.txt").read() if os.path.exists(T + "/term.txt") else ""
 check("text mode: in a terminal, kept open after it ends", r.get("ok") and tool in term and "Press Enter" in term, (r, term))
 
+# the click's activation token (0.4 step 6): the program has it, as
+# XDG_ACTIVATION_TOKEN and DESKTOP_STARTUP_ID (its window to the front)
+with open(tool, "w") as f:
+    f.write("#!/bin/sh\necho \"$XDG_ACTIVATION_TOKEN $DESKTOP_STARTUP_ID\" > \"%s/tok.txt\"\n" % T)
+c.request(op="settings_set", target=tool, values={"prog_type": 1})
+r = c.request(op="open", target=tool, token_env=["XDG_ACTIVATION_TOKEN=tok-123", "DESKTOP_STARTUP_ID=tok-123", "PATH=/evil"])
+deadline = time.time() + 5
+while time.time() < deadline and not os.path.exists(T + "/tok.txt"):
+    time.sleep(0.1)
+tok = open(T + "/tok.txt").read().strip() if os.path.exists(T + "/tok.txt") else None
+check("the activation token in its environment (both names)", r.get("ok") and tok == "tok-123 tok-123", (r, tok))
+
 sys.exit(1 if fails else 0)
