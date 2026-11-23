@@ -280,6 +280,20 @@ static bool op_msg_add(struct client *c, int64_t id, const char *op, cv *msg)
     return false;
 }
 
+/* say: {text, stay?} - shown on the desktop (its status line) */
+static bool op_say(struct client *c, int64_t id, const char *op, cv *msg)
+{
+    (void)op;
+    const char *t = cv_text(msg, "text");
+    if (!t || !*t) { reply_error(c, id, "bad request", "missing text"); return false; }
+    const cv *st = cv_get(msg, "stay");
+    char one[512];
+    snprintf(one, sizeof one, "%.*s", (int)strcspn(t, "\n"), t);   /* (one line) */
+    say_broadcast(one, st && st->k == CV_BOOL && st->b);
+    reply_int(c, id, 0);
+    return false;
+}
+
 /* msg_list */
 static bool op_msg_list(struct client *c, int64_t id, const char *op, cv *msg)
 {
@@ -523,6 +537,7 @@ static const struct op_def ops[] = {
     { "startup_add", op_startup_add },
     { "msg_add", op_msg_add },
     { "msg_list", op_msg_list },
+    { "say", op_say },
     { "msg_set", op_msg_set },
     { "msg_delete", op_msg_set },
     { "msg_closed", op_msg_set },

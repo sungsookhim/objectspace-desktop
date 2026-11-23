@@ -773,7 +773,7 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
     /* Paths, grouped by the folder they come from (a job per folder). */
     char *copy = strdup(data), *save = NULL;
     struct xfer *groups[64];
-    size_t ng = 0, total = 0;
+    size_t ng = 0, total = 0, ntpl = 0;
     for (char *line = strtok_r(copy, "\r\n", &save); line; line = strtok_r(NULL, "\r\n", &save)) {
         if (!*line || *line == '#') continue;
         bool tpl = false;
@@ -799,6 +799,7 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
             l->place = at.place;
             svc_from_template(p, dest, NULL, made_new, l);
             free(p);
+            ntpl++;   /* (made, not moved: not in the job's count) */
             continue;
         }
         if (shadow || !strncmp(p, "vobj:", 5)) {
@@ -843,8 +844,10 @@ static void do_drop(struct folder *f, const char *dest, const char *mime, const 
     free(copy);
     for (size_t k = 0; k < ng; k++) svc_select(groups[k]->from, (const char *const *)groups[k]->names, groups[k]->n, got_sel, groups[k]);
     char m[300];
-    snprintf(m, sizeof m, "%s %zu object%s...", shadow ? "Making shadows of" : !strcmp(kind, "copy") ? "Copying" : "Moving",
-             total, total == 1 ? "" : "s");
+    total -= ntpl;
+    if (!total) snprintf(m, sizeof m, "Making %zu new object%s...", ntpl, ntpl == 1 ? "" : "s");   /* (templates only) */
+    else snprintf(m, sizeof m, "%s %zu object%s...", shadow ? "Making shadows of" : !strcmp(kind, "copy") ? "Copying" : "Moving",
+                  total, total == 1 ? "" : "s");
     set_status(f->id, m);
 }
 

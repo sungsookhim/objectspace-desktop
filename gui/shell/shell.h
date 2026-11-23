@@ -477,6 +477,7 @@ void folder_window_save(struct folder *f);
  * clicked; desktop_say: a message of its own there (sticky: until clicked). */
 void desktop_status(struct folder *f);
 void desktop_say(const char *text, bool sticky);
+void desktop_messages_enable(bool on);   /* the Messages object's setting */
 /* Icons placed (by 0.2, for two-line titles) over each other: Arrange
  * offered once in the status line (nothing moves unasked). */
 void arrange_offer_check(struct folder *f);

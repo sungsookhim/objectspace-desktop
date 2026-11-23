@@ -2,6 +2,8 @@
 #define _GNU_SOURCE
 #include "shell.h"
 
+#include <ctype.h>
+
 /* Where the field is: a row under the title bar, a row over the status
  * line, or a box floating over the list's lower right (clear of its
  * scroll bars). */
@@ -215,11 +217,33 @@ static void desk_msg_show(struct folder *f, bool sticky)
     desk_msg_damage(f);
 }
 
+/* The Messages object's "Show WPS's messages on the desktop" (on unless
+ * turned off): its own messages; a script's (wpsctl say) show anyway. */
+static bool desk_msgs_on = true;
+
+void desktop_messages_enable(bool on) { desk_msgs_on = on; }
+
+/* Work under way ("Moving 2 of 5", "Emptying the trash..."): a folder's
+ * status line shows it, the desktop only the outcome. */
+static bool msg_is_progress(const char *t)
+{
+    size_t n = strlen(t);
+    if (n >= 3 && !strcmp(t + n - 3, "...")) return true;
+    for (const char *p = strstr(t, " of "); p; p = strstr(p + 1, " of "))
+        if (p > t && isdigit((unsigned char)p[-1]) && isdigit((unsigned char)p[4])) return true;
+    return false;
+}
+
 /* (the status line redrawn: the box only for a message it has not shown;
  * set_status shows one again) */
 void desktop_status(struct folder *f)
 {
     if (!strcmp(f->error, f->msg_last)) { if (!f->msg_hidden) desk_msg_damage(f); return; }
+    if (!desk_msgs_on || msg_is_progress(f->error)) {   /* (not shown: the box as it was, or gone) */
+        snprintf(f->msg_last, sizeof f->msg_last, "%s", f->error);
+        if (!f->offer_arrange && !f->msg_hidden) { f->msg_hidden = true; desk_msg_damage(f); }
+        return;
+    }
     desk_msg_show(f, msg_is_error(f->error));
 }
 

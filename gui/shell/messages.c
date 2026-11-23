@@ -14,6 +14,7 @@
 #include "notify.h"
 
 void desktop_say(const char *text, bool sticky);   /* (the desktop's status line: window.c) */
+void desktop_messages_enable(bool on);
 #include "svc.h"
 #include "warpcenter.h"
 
@@ -33,6 +34,7 @@ static ui_app *app;
 static struct msg *msgs;          /* newest first */
 static size_t nmsgs;
 static size_t unread;
+static bool desktop_line = true;   /* the setting: WPS's messages on the desktop */
 static bool listing, list_again;
 
 static struct {
@@ -106,7 +108,7 @@ static void got_list(void *arg, const cv *reply)
         int64_t top = seen;
         for (size_t i = 0; i < nmsgs; i++) {
             if (msgs[i].id > top) top = msgs[i].id;
-            if (seen < 0 || msgs[i].id <= seen || strcmp(msgs[i].app, "WPS") || msgs[i].closed) continue;
+            if (seen < 0 || msgs[i].id <= seen || strcmp(msgs[i].app, "WPS") || msgs[i].closed || !desktop_line) continue;
             char t[1400];
             snprintf(t, sizeof t, "%s: %.*s", msgs[i].summary, (int)strcspn(msgs[i].body, "\n"), msgs[i].body);
             desktop_say(t, false);
@@ -147,6 +149,7 @@ void messages_setting(const char *key, const char *val)
 {
     if (!strcmp(key, "dnd")) notify_set_dnd(!strcmp(val, "1"));
     else if (!strcmp(key, "popup_seconds")) notify_set_seconds(atoi(val));
+    else if (!strcmp(key, "desktop_line")) desktop_messages_enable(desktop_line = strcmp(val, "0") != 0);
 }
 
 size_t messages_unread(void) { return unread; }

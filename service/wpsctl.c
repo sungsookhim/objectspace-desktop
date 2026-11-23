@@ -67,6 +67,7 @@ static int usage(void)
             "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
             "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n"
             "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n"
+            "       wpsctl say [--stay] TEXT   (a message at the bottom of the desktop; --stay: until clicked)\n"
             "       wpsctl vmove vobj:ID FOLDER [copy]\n"
             "       wpsctl restore-defaults [DESKTOP]\n"
             "       wpsctl icon pack INPUT... OUT.wpsicon | icon list PACKAGE | icon render PACKAGE SIZE OUT.png\n"
@@ -342,6 +343,14 @@ int main(int argc, char **argv)
         cb_text(&b, "target"); cb_text(&b, argv[2]);
         cb_text(&b, "folder"); cb_text(&b, argv[3]);
         cb_text(&b, "copy"); cb_bool(&b, argc == 5 && !strcmp(argv[4], "copy"));
+    } else if (!strcmp(op, "say")) {   /* a message on the desktop (scripts, timers) */
+        bool stay = argc == 4 && !strcmp(argv[2], "--stay");
+        if (argc != 3 && !stay) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "text"); cb_text(&b, argv[argc - 1]);
+        cb_text(&b, "stay"); cb_bool(&b, stay);
     } else if (!strcmp(op, "layout") || !strcmp(op, "arrange")) {
         if (argc != 3) return usage();
         cb_map(&b, 3);

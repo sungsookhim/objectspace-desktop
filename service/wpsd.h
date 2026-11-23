@@ -416,6 +416,7 @@ void scanned(void *arg, const char *report);
 void subs_drop_client(struct client *c);
 void event_head(cbuf *b, const char *name, int64_t sub, size_t extra);
 void messages_broadcast(int64_t added);
+void say_broadcast(const char *text, bool stay);   /* wpsctl say: a message on the desktop */
 void terminal_from_system(wpo_object *o);
 void on_object_changed(wpo_object *o);
 void on_layout_changed(const char *folder);

@@ -84,6 +84,24 @@ void messages_broadcast(int64_t added)
     }
 }
 
+/* A message for the desktop's status line (wpsctl say, a script's or a
+ * timer's): every client once; the desktop shows it. */
+void say_broadcast(const char *text, bool stay)
+{
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead) continue;
+        bool sent = false;
+        for (struct sub *y = subs; y != x && !sent; y = y->next) sent = y->c == x->c;
+        if (sent) continue;
+        cbuf b;
+        event_head(&b, "say", x->id, 2);
+        cb_text(&b, "text"); cb_text(&b, text);
+        cb_text(&b, "stay"); cb_bool(&b, stay);
+        send_frame(x->c, &b);
+        cb_free(&b);
+    }
+}
+
 static void collect_shadow(const char *vol, const char *id, void *user)
 {
     (void)vol;

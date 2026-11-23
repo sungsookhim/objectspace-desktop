@@ -7,3 +7,4 @@ classoverride wpclsQueryTitle
 # Its settings (stored as text in the WPSetup state, as before).
 property dnd : checkbox = "0" page "Messages" label "Do not disturb (messages are kept, not shown)" store WPSetup text
 property popup_seconds : text = "6" page "Messages" label "Pop-ups stay (seconds)" store WPSetup text
+property desktop_line : checkbox = "1" page "Messages" label "Show WPS's messages at the bottom of the desktop (Moved to the trash, errors)" store WPSetup text
