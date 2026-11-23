@@ -58,7 +58,7 @@ void menu_chosen(void *arg, int64_t id)
         char t[PATH_MAX];
         target_of(f, m->item, t, sizeof t);
         switch (id) {
-        case WPS_MI_OPEN: open_item(f, m->item, UI_VIEW_ICON); break;
+        case WPS_MI_OPEN: open_item(f, m->item, VIEW_LAST); break;
         case WPS_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
         case WPS_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
         case WPS_MI_PROPERTIES: {
@@ -89,7 +89,7 @@ void menu_chosen(void *arg, int64_t id)
             char *sl = strrchr(parent, '/');
             if (sl == parent) sl[1] = 0;
             else if (sl) *sl = 0;
-            if (strcmp(parent, f->path)) open_folder(parent, UI_VIEW_ICON);
+            if (strcmp(parent, f->path)) open_folder(parent, VIEW_LAST);
             break;
         }
         case WPS_MI_DELETE: delete_request(f, m->item, false); break;
@@ -108,7 +108,7 @@ void menu_chosen(void *arg, int64_t id)
         case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
         case WPS_MI_WINDOW_LIST: winlist_open(false); break;
         case WPS_MI_LOCKUP: session_lock("desktop"); break;
-        case WPS_MI_SYSTEM_SETUP: if (setup_folder[0]) open_folder(setup_folder, UI_VIEW_ICON); break;
+        case WPS_MI_SYSTEM_SETUP: if (setup_folder[0]) open_folder(setup_folder, VIEW_LAST); break;
         case WPS_MI_SHUTDOWN: session_ask_end(app, "desktop"); break;
         case WPS_MI_MINIMIZED: winlist_open(true); break;
         default:
@@ -257,7 +257,7 @@ static void startup_opened(void *arg, const cv *reply)
     (void)arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) return;
-    if (cv_text(res, "folder")) open_folder(cv_text(res, "folder"), UI_VIEW_ICON);
+    if (cv_text(res, "folder")) open_folder(cv_text(res, "folder"), VIEW_LAST);
     else svc_reply_view(reply);
 }
 

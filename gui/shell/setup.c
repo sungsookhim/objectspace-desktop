@@ -399,9 +399,8 @@ void toolkit_action(const char *name, ui_surface *s, ui_rect at)
     events_raise(name, f ? f->path : "", !strncmp(name, "window.", 7) ? "folder" : "", at);
 }
 
-struct folder *open_folder(const char *path, ui_view view) { return open_window(path, view, false); }
 
-void launchpad_open_folder(const char *path) { open_folder(path, UI_VIEW_ICON); }
+void launchpad_open_folder(const char *path) { open_folder(path, VIEW_LAST); }
 
 void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip) { (void)ctx; wallpaper_draw(cr, clip); }
 

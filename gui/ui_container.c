@@ -60,6 +60,9 @@ struct ui_container {
     int trough_down;          /* paging while held: -1 up, +1 down, 0 none */
     double trough_y;          /* the pointer, while paging: the thumb stops there */
     int rep_fd;               /* held arrow or trough: the repeat, -1 none yet */
+    ui_rect over;             /* a box over the list, in window coordinates (w 0: none) */
+    ui_layer_draw_fn over_draw;
+    void *over_ctx;
     int emph;                 /* a pop-up menu's: 1 for emph_i (and the selection
                                * with it), 2 for the folder itself, 0 none */
     size_t emph_i;
@@ -340,6 +343,14 @@ static void sel_set(ui_container *c, size_t i, bool on)
     else { c->sel[i / 8] &= (uint8_t)~(1u << (i % 8)); c->nsel--; }
 }
 
+/* The box over the list (a floating search field): where it is in content
+ * coordinates, with the list scrolled to `scroll`. */
+static ui_rect over_crect(ui_container *c, double scroll)
+{
+    ui_rect l = list_rect(c);
+    return (ui_rect){ c->over.x, c->over.y - l.y + scroll, c->over.w, c->over.h };
+}
+
 static void damage_item(ui_container *c, size_t i)
 {
     ui_rect r = item_crect(c, i);
@@ -377,9 +388,14 @@ static void scroll_to(ui_container *c, double y)
     y = floor(y < 0 ? 0 : y > m ? m : y);
     double d = y - c->scroll;
     if (d == 0) return;
+    double was = c->scroll;
     c->scroll = y;
     if (c->layer) ui_layer_set_offset(c->layer, y);
     else ui_surface_scroll(c->s, list_rect(c), d);
+    if (c->over.w > 0) {   /* (it stays put: drawn again where it is, and where it was moved with the rest) */
+        damage_content(c, over_crect(c, y));
+        damage_content(c, over_crect(c, was));
+    }
     damage_sb(c);
     report_visible(c);
 }
@@ -401,6 +417,7 @@ static void hscroll_to(ui_container *c, double x)
 
 void ui_container_scroll_by(ui_container *c, double dy) { scroll_to(c, c->scroll + dy); }
 void ui_container_scroll_to_fraction(ui_container *c, double f) { scroll_to(c, f * max_scroll(c)); }
+double ui_container_scroll_y(ui_container *c) { return c->scroll; }
 
 static void ensure_visible(ui_container *c, size_t i)
 {
@@ -1264,6 +1281,16 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
             cairo_stroke(cr);
         }
     }
+    if (c->over.w > 0 && c->over_draw) {
+        ui_rect o = over_crect(c, c->scroll);
+        if (ui_rect_meets(o, clip)) {
+            cairo_save(cr);
+            ui_rect l = list_rect(c);
+            cairo_translate(cr, 0, c->scroll - l.y);   /* (it draws in window coordinates) */
+            c->over_draw(c->over_ctx, cr, c->over);
+            cairo_restore(cr);
+        }
+    }
     if (c->emph == 2) {
         ui_rect w = window_crect(c);
         emph_rect(cr, (ui_rect){ w.x + 2, w.y + 2, w.w - 4, w.h - 4 });
@@ -1849,6 +1876,20 @@ static void set_emph(ui_container *c, int mode, size_t i)
     c->emph = mode;
     c->emph_i = i;
     damage_list(c);
+}
+
+void ui_container_set_overlay(ui_container *c, ui_rect r, ui_layer_draw_fn draw, void *ctx)
+{
+    if (c->over.w > 0) damage_content(c, over_crect(c, c->scroll));
+    c->over = draw ? r : (ui_rect){ 0, 0, 0, 0 };
+    c->over_draw = draw;
+    c->over_ctx = ctx;
+    if (c->over.w > 0) damage_content(c, over_crect(c, c->scroll));
+}
+
+void ui_container_overlay_damage(ui_container *c)
+{
+    if (c->over.w > 0) damage_content(c, over_crect(c, c->scroll));
 }
 
 void ui_container_menu_closed(void)

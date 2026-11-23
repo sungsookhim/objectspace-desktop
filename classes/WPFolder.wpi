@@ -57,6 +57,7 @@ property sort_desc : checkbox page View label Descending set wpSetSortDesc
 property local : checkbox page View label "Keep objects as files here" get wpQueryLocalObjects set wpSetLocalObjects
 property show_hidden : checkbox = 1 page View label "Show hidden files (names starting with a dot)"
 property show_ext : checkbox = 1 page View label "Show file extensions in titles"
+property search_place : choice "top,bottom,floating" = top page View label "Search field (Ctrl+F)"
 # Its icons' layout (0.4 step 4): OS/2's free one (cells as wide as their
 # titles, packed in rows) or 0.3's grid.
 property icon_layout : choice "free,grid" = free page "Icon view" label Layout
@@ -74,6 +75,10 @@ property col_type : checkbox = 1 page "Details view" label Type
 property col_size : checkbox = 1 page "Details view" label Size
 property col_date : checkbox = 1 page "Details view" label "Last write"
 property col_widths : hidden page "Details view" label Widths set wpSetColWidths
+property win_view : hidden = icon page View label "Last view"
+property win_icon : hidden page View label "Icon view window"
+property win_details : hidden page View label "Details view window"
+property win_tree : hidden page View label "Tree view window"
 property bg_gnome : checkbox = 1 page Background label "GNOME's background" show wpQueryIsDesktop set wpSetBgGnome
 property bg_image : file image page Background label Image set wpSetBgImage
 property bg_mode : choice "centred,tiled,scaled to fill,scaled to fit,stretched" = "scaled to fill" index page Background label Shown set wpSetBgMode

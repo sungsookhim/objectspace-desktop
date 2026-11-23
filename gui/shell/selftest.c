@@ -605,7 +605,7 @@ void win_frame(ui_surface *s, double now)
                      model_name(&tw->m, i) ? model_name(&tw->m, i) : "?");
         if (step == 0) {
             mkdir(tp, 0700);
-            open_folder(tp, UI_VIEW_ICON);
+            open_window(tp, UI_VIEW_ICON, false);
             step++;
         } else if (step == 1 && t > 1500) {
             ui_container_select_none(d->cont);
@@ -1601,7 +1601,7 @@ void win_frame(ui_surface *s, double now)
             ui_key_event esc = { .sym = XKB_KEY_Escape };
             if (ui_container_rename_item(f->cont) != SIZE_MAX) ui_surface_send_key(s, &esc);
             snprintf(p, sizeof p, "%s/Folder", f->path);
-            nw = open_folder(p, UI_VIEW_ICON);
+            nw = open_window(p, UI_VIEW_ICON, false);
             step++;
             t0 = now;
         } else if (step == 2 && t > 1500 && nw && nw->m.complete) {

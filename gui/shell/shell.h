@@ -99,6 +99,8 @@ struct folder {
     ui_view pending_view;          /* how to open a folder the service names */
     icon_layout *lay;        /* icon view: where each icon is */
     bool lay_started;        /* its grid width is set */
+    double want_scroll;      /* where it was scrolled when last closed (0: the top) */
+    double open_w, open_h;   /* its size when opened (kept for a maximized one) */
     bool arranged_by_name;   /* the first, unstored arrangement was done */
     int sort_pending;        /* a Sort waiting for every row's details: its key + 1 */
     char **spot_new;         /* new objects whose spots are to be stored (store_spots) */
@@ -133,6 +135,7 @@ struct folder {
     ui_entry *find_entry;
     char filter[128];
     bool find_x_down;
+    int find_place;          /* its View page's Search field: 0 top, 1 bottom, 2 floating */
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
     unsigned bench_seed;
@@ -457,7 +460,13 @@ void gnome_set_wps(const char *cls, const char *key, const char *value);
 void gnome_font(void);
 bool setup_event(const cv *ev);
 void toolkit_action(const char *name, ui_surface *s, ui_rect at);
+/* A folder opened as it was last closed (its place, size, scroll; with
+ * VIEW_LAST its view too); the window comes once its properties are read
+ * (NULL then; the window if it was open already). open_window: at once. */
+#define VIEW_LAST ((ui_view)-1)
 struct folder *open_folder(const char *path, ui_view view);
+void folder_window_save(struct folder *f);
+void folder_scroll_restore(struct folder *f);
 void launchpad_open_folder(const char *path);
 void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip);
 void desk_wallpaper_changed(void *ctx);

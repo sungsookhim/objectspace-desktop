@@ -2,10 +2,24 @@
 #define _GNU_SOURCE
 #include "shell.h"
 
+/* Where the field is: a row under the title bar, a row over the status
+ * line, or a box floating over the list's lower right (clear of its
+ * scroll bars). */
 static ui_rect find_row(struct folder *f)
 {
     ui_rect c = ui_frame_client(f->win);
+    if (f->find_place == 1) return (ui_rect){ c.x, c.y + c.h - STATUS_H - FIND_H, c.w, FIND_H };
+    if (f->find_place == 2) {
+        double w = fmin(c.w - 40, 420);
+        return (ui_rect){ floor(c.x + c.w - 24 - w), floor(c.y + c.h - STATUS_H - 24 - FIND_H), floor(w), FIND_H };
+    }
     return (ui_rect){ c.x, c.y, c.w, FIND_H };
+}
+
+static void find_damage(struct folder *f)
+{
+    if (f->find_place == 2) ui_container_overlay_damage(f->cont);
+    else ui_surface_damage(f->win, find_row(f));
 }
 
 static ui_rect find_entry_rect(struct folder *f) { ui_rect r = find_row(f); return (ui_rect){ r.x + 68, r.y + 4, r.w - 68 - 44, FIND_H - 9 }; }
@@ -17,7 +31,8 @@ static void find_draw(struct folder *f, cairo_t *cr)
     const ui_scheme *k = &ui_scheme_now;
     ui_rect r = find_row(f);
     ui_fill(cr, r, k->face);
-    ui_fill(cr, (ui_rect){ r.x, r.y + r.h - 1, r.w, 1 }, k->shadow);
+    if (f->find_place == 2) ui_bevel(cr, r, true);   /* (a box of its own) */
+    else ui_fill(cr, (ui_rect){ r.x, f->find_place == 1 ? r.y : r.y + r.h - 1, r.w, 1 }, k->shadow);
     /* a magnifier, and "Find:" */
     ui_set_color(cr, k->text);
     cairo_set_line_width(cr, 2);
@@ -45,12 +60,14 @@ static void find_draw(struct folder *f, cairo_t *cr)
     cairo_stroke(cr);
 }
 
+static void find_over_draw(void *ctx, cairo_t *cr, ui_rect r) { (void)r; find_draw(ctx, cr); }
+
 void find_focus(struct folder *f, bool on)
 {
     f->find_focus = on;
     ui_container_set_focused(f->cont, !on);
     ui_text_input_focus(f->win, on ? f->find_entry : NULL, find_entry_rect(f));
-    ui_surface_damage(f->win, find_row(f));
+    find_damage(f);
 }
 
 /* The filter as typed: the window's own listing, read again. */
@@ -98,7 +115,7 @@ static bool find_key(struct folder *f, const ui_key_event *e)
     }
     ui_entry_result r = ui_entry_key(f->find_entry, e);
     if (r == UI_ENTRY_CHANGED) find_apply(f);   /* as typed */
-    if (r != UI_ENTRY_NONE) ui_surface_damage(f->win, find_row(f));
+    if (r != UI_ENTRY_NONE) find_damage(f);
     return true;
 }
 
@@ -109,19 +126,19 @@ static bool find_pointer(struct folder *f, const ui_pointer_event *e)
     ui_rect er = find_entry_rect(f), x = find_x_rect(f), row = find_row(f);
     if (e->kind == UI_RELEASE && f->find_x_down) {
         f->find_x_down = false;
-        ui_surface_damage(f->win, row);
+        find_damage(f);
         if (ui_rect_has(x, e->x, e->y)) find_hide(f);
         return true;
     }
     if (f->find_focus && (e->kind == UI_MOTION || e->kind == UI_RELEASE)) {
-        if (ui_entry_pointer(f->find_entry, e, er) != UI_ENTRY_NONE) ui_surface_damage(f->win, row);
+        if (ui_entry_pointer(f->find_entry, e, er) != UI_ENTRY_NONE) find_damage(f);
     }
     if (e->kind != UI_PRESS) return false;
-    if (ui_rect_has(x, e->x, e->y)) { f->find_x_down = true; ui_surface_damage(f->win, row); return true; }
+    if (ui_rect_has(x, e->x, e->y)) { f->find_x_down = true; find_damage(f); return true; }
     if (ui_rect_has(er, e->x, e->y)) {
         if (!f->find_focus) find_focus(f, true);
         ui_entry_pointer(f->find_entry, e, er);
-        ui_surface_damage(f->win, row);
+        find_damage(f);
         return true;
     }
     if (ui_rect_has(row, e->x, e->y)) return true;
@@ -143,7 +160,7 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
     if (f->desktop) return;   /* no status line */
-    if (f->find_on) find_draw(f, cr);
+    if (f->find_on && f->find_place != 2) find_draw(f, cr);   /* (floating: over the list, with it) */
     ui_rect c = ui_frame_client(s);
     ui_rect st = { c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
     if (!ui_rect_meets(clip, st)) return;
@@ -169,8 +186,11 @@ void layout(struct folder *f)
 {
     ui_rect c = ui_frame_client(f->win);
     if (!f->desktop) c.h -= STATUS_H;
-    if (f->find_on) { c.y += FIND_H; c.h -= FIND_H; }
+    if (f->find_on && f->find_place == 0) { c.y += FIND_H; c.h -= FIND_H; }
+    if (f->find_on && f->find_place == 1) c.h -= FIND_H;
     ui_container_layout(f->cont, c);
+    bool over = f->find_on && f->find_place == 2;
+    ui_container_set_overlay(f->cont, over ? find_row(f) : (ui_rect){ 0, 0, 0, 0 }, over ? find_over_draw : NULL, f);
 }
 
 void win_resized(ui_surface *s, double w, double h)
@@ -284,6 +304,7 @@ void win_close(ui_surface *s)
 {
     struct folder *f = ui_surface_data(s);
     if (f->closing || f->desktop) return;   /* the desktop stays */
+    folder_window_save(f);   /* (before closing: its title finds it in the window list) */
     f->closing = true;
     if (f->bench_secs > 0) report(f);
     ui_app_post(app, close_later, as_arg(f));

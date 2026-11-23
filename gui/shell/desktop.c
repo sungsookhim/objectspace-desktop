@@ -246,7 +246,7 @@ void windows_at_login(void)
             int v = atoi(fl[2]);
             next_w = atof(fl[3]);
             next_h = atof(fl[4]);
-            struct folder *nf = open_folder(fl[1], v == 1 ? UI_VIEW_DETAILS : v == 2 ? UI_VIEW_TREE : UI_VIEW_ICON);
+            struct folder *nf = open_window(fl[1], v == 1 ? UI_VIEW_DETAILS : v == 2 ? UI_VIEW_TREE : UI_VIEW_ICON, false);
             /* (asked once it has its title; it shows only after a round trip) */
             if (nf) place_next("org.wps.shell", ui_window_title(nf->win), atoi(fl[5]), atoi(fl[6]));
             if (nf && atoi(fl[7])) ui_window_set_maximized(nf->win);
@@ -260,6 +260,101 @@ void windows_at_login(void)
     }
     if (f) fclose(f);
     start_recording();   /* (also with restoring off: turned on again, it has the list) */
+}
+
+/* ---- folder windows as they were last closed (0.4 step 5)
+ *
+ * Each view's window is kept on the folder (per user: wpsd's properties,
+ * with no field): win_icon, win_details, win_tree as "x,y,w,h,maximized,
+ * scroll" (x -1: not known, as inside GNOME), and win_view, the view it
+ * was last closed in (what a plain Open opens). In the WPS session the
+ * compositor puts it back in its place ("place"); GNOME places it itself. */
+static const char *const view_keys[3] = { "icon", "details", "tree" };
+
+static struct folder *open_in(const char *path, ui_view view)
+{
+    for (struct folder *o = folders; o; o = o->next)
+        if (!o->closing && !o->desktop && !strcmp(o->path, path) && (view == VIEW_LAST || ui_container_view(o->cont) == view)) return o;
+    return NULL;
+}
+
+struct win_req { struct win_req *next; char path[PATH_MAX]; ui_view view; };
+static struct win_req *win_reqs;
+
+static void got_win(void *arg, const cv *reply)
+{
+    struct win_req *r = arg;
+    for (struct win_req **pp = &win_reqs; *pp; pp = &(*pp)->next)
+        if (*pp == r) { *pp = r->next; break; }
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    char geo[3][128] = { "", "", "" }, last[16] = "";
+    for (size_t i = 0; res && res->k == CV_ARRAY && i < res->n; i++) {
+        const char *k = cv_text(&res->items[i], "name"), *v = cv_text(&res->items[i], "value");
+        if (!k || !v) continue;
+        if (!strcmp(k, "win_view")) snprintf(last, sizeof last, "%s", v);
+        for (int j = 0; j < 3; j++)
+            if (!strncmp(k, "win_", 4) && !strcmp(k + 4, view_keys[j])) snprintf(geo[j], sizeof geo[j], "%s", v);
+    }
+    ui_view v = r->view;
+    if (v == VIEW_LAST) v = !strcmp(last, "details") ? UI_VIEW_DETAILS : !strcmp(last, "tree") ? UI_VIEW_TREE : UI_VIEW_ICON;
+    struct folder *f = open_in(r->path, v);
+    if (f) { ui_window_activate(f->win); free(r); return; }   /* (opened meanwhile) */
+    int x = -1, y = -1, mx = 0;
+    double w = 0, h = 0, sc = 0;
+    bool have = sscanf(geo[v], "%d,%d,%lf,%lf,%d,%lf", &x, &y, &w, &h, &mx, &sc) >= 4 && w >= 100 && h >= 80;
+    if (have) { next_w = w; next_h = h; }
+    f = open_window(r->path, v, false);
+    if (f && have) {
+        place_next("org.wps.shell", ui_window_title(f->win), x, y);
+        if (mx) ui_window_set_maximized(f->win);
+        f->want_scroll = v == UI_VIEW_TREE ? 0 : sc;
+    }
+    free(r);
+}
+
+struct folder *open_folder(const char *path, ui_view view)
+{
+    char real[PATH_MAX];
+    const char *want = realpath(path, real) ? real : path;
+    struct folder *o = open_in(want, view);
+    if (o) { ui_window_activate(o->win); return o; }   /* open already: switch to it, as OS/2 did */
+    for (struct win_req *r = win_reqs; r; r = r->next)
+        if (!strcmp(r->path, want) && r->view == view) return NULL;   /* (asked already: a second click) */
+    struct win_req *r = calloc(1, sizeof *r);
+    snprintf(r->path, sizeof r->path, "%s", want);
+    r->view = view;
+    r->next = win_reqs;
+    win_reqs = r;
+    svc_props(want, got_win, r);
+    return NULL;
+}
+
+/* Closing: where it is, how big, how far scrolled, for the next Open. */
+void folder_window_save(struct folder *f)
+{
+    if (f->desktop || !f->win || !plain(f->path)) return;
+    ui_view v = ui_container_view(f->cont);
+    int x = -1, y = -1;
+    bool mx = false;
+    if (!winlist_where("org.wps.shell", ui_window_title(f->win), &x, &y, &mx)) x = y = -1;
+    mx = mx || ui_window_maximized(f->win);
+    double w = ui_surface_width(f->win), h = ui_surface_height(f->win);
+    if (mx && f->open_w > 0) { w = f->open_w; h = f->open_h; }   /* (its size when not maximized) */
+    char key[16], val[128];
+    snprintf(key, sizeof key, "win_%s", view_keys[v]);
+    snprintf(val, sizeof val, "%d,%d,%.0f,%.0f,%d,%.0f", x, y, w, h, mx, v == UI_VIEW_TREE ? 0.0 : ui_container_scroll_y(f->cont));
+    cv a = { .k = CV_TEXT, .s = val, .len = strlen(val) }, b = { .k = CV_TEXT, .s = (char *)view_keys[v], .len = strlen(view_keys[v]) };
+    svc_settings_set(f->path, key, &a, -1, ignore_reply, NULL);
+    svc_settings_set(f->path, "win_view", &b, -1, ignore_reply, NULL);
+}
+
+/* Scrolled back to where it was, once its contents are there (again as
+ * they grow: its stored positions come after its names). */
+void folder_scroll_restore(struct folder *f)
+{
+    if (f->want_scroll <= 0 || !f->cont) return;
+    ui_container_scroll_by(f->cont, f->want_scroll - ui_container_scroll_y(f->cont));
+    if (ui_container_scroll_y(f->cont) >= f->want_scroll - 1) f->want_scroll = 0;
 }
 
 struct folder *open_desktop(const char *path)
@@ -291,6 +386,8 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     if (sz) sscanf(sz, "%lfx%lf", &w, &h);
     if (next_w > 0 && next_h > 0 && !desktop) { w = next_w; h = next_h; }   /* (reopened at login: its size) */
     next_w = next_h = 0;
+    f->open_w = w;
+    f->open_h = h;
     f->desktop = desktop;
     if (desktop) findwin_set_desktop(path);   /* Find's saved results go there */
     if (desktop) {

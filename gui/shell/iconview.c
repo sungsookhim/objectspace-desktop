@@ -234,7 +234,7 @@ void open_item(struct folder *f, size_t i, ui_view view)
     }
 }
 
-void src_activate(void *ctx, size_t i) { open_item(ctx, i, UI_VIEW_ICON); }
+void src_activate(void *ctx, size_t i) { open_item(ctx, i, VIEW_LAST); }
 
 /* ---------------------------------------------------------- icon layout */
 
@@ -401,6 +401,7 @@ void layout_follow(struct folder *f, bool full)
         layout_update(f->lay, f->m.total, lay_name, f, full, NULL);
     }
     if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+    if (f->m.complete) folder_scroll_restore(f);
 }
 
 /* New objects' spots, stored a moment after they came (see layout_follow). */
@@ -521,6 +522,7 @@ void got_layout(void *arg, const cv *reply)
     free(ly);
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
     if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+    folder_scroll_restore(f);   /* (its stored positions: as tall as it was) */
 }
 
 void placed_reply(void *arg, const cv *reply)

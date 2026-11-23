@@ -622,6 +622,12 @@ void ui_container_changed(ui_container *c, size_t first, size_t last);
 void ui_container_count_changed(ui_container *c);
 void ui_container_scroll_by(ui_container *c, double dy);
 void ui_container_scroll_to_fraction(ui_container *c, double f);
+double ui_container_scroll_y(ui_container *c);   /* how far down (logical pixels) */
+/* A box over the list that stays put as it scrolls (a floating search
+ * field): `r` in window coordinates, drawn by `draw` in them (draw NULL:
+ * none); damaged again with ui_container_overlay_damage. */
+void ui_container_set_overlay(ui_container *c, ui_rect r, ui_layer_draw_fn draw, void *ctx);
+void ui_container_overlay_damage(ui_container *c);
 size_t ui_container_selected_count(ui_container *c);
 bool ui_container_is_selected(ui_container *c, size_t i);
 void ui_container_select_none(ui_container *c);

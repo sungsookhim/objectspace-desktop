@@ -205,7 +205,7 @@ static void got_bg(void *arg, const cv *reply)
     unsigned cols = 0;
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
-    int icon_size = -1, free_l = -1;
+    int icon_size = -1, free_l = -1, find_place = 0;
     for (size_t i = 0; i < res->n; i++) {
         const cv *pr = &res->items[i];
         const char *key = cv_text(pr, "name"), *v = cv_text(pr, "value"), *ch = cv_text(pr, "choices");
@@ -230,6 +230,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
         else if (!strcmp(key, "show_ext")) f->show_ext = on;
+        else if (!strcmp(key, "search_place")) find_place = option_number(ch, v) < 0 ? 0 : option_number(ch, v);
         else if (!strncmp(key, "col_", 4) && on) {
             cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
                   : !strcmp(key, "col_date") ? 8u : 0u;
@@ -256,6 +257,10 @@ static void got_bg(void *arg, const cv *reply)
             layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
             if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
         }
+    }
+    if (find_place != f->find_place) {   /* its search field elsewhere (shown now: moved at once) */
+        f->find_place = find_place;
+        if (f->find_on) { layout(f); ui_surface_damage_all(f->win); }
     }
     bg_apply(f);
     folder_font(f);

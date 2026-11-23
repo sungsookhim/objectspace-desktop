@@ -117,7 +117,7 @@ int main(int argc, char **argv)
         if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);
     }
     for (int k = i; k < argc; k++) {
-        struct folder *f = open_folder(argv[k], opt_view);
+        struct folder *f = open_window(argv[k], opt_view, false);
         if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);   /* every window ticks */
         if (k == i && opt_bench > 0) {
             f->bench_secs = opt_bench;
