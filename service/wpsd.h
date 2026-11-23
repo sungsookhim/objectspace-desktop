@@ -98,7 +98,8 @@ struct req {
     char target[PATH_MAX];
     wps_loaded tgt;
     wps_loaded shadow_target;    /* a shadow's target, when the target is a shadow */
-    char *remote_text;           /* a plug-in's answer, for menus */
+    char *remote_text;           /* a plug-in's answer, for menus (and its settings pages) */
+    bool remote_done, remote_ok; /* a plug-in handled it (menu_select, a setter) */
     int nobj;
     char objpath[MAX_ARGS][PATH_MAX];
     wps_loaded *objs;
@@ -428,7 +429,9 @@ typedef void (*origin_fn)(void *ctx, const char *key, bool *own, char *from, siz
 void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin_fn of, void *ctx);
 char *call_text(wpo_object *o, const char *method, const char *arg);
 char *settings_text(wpo_object *o);
-const char *apply_settings(wpo_object *o, const cv *values);
+const char *apply_settings(wpo_object *o, const cv *values, const char *pages_text);
+char *settings_text_with(wpo_object *o, char *t);
+bool settings_setter_of(wpo_object *o, const char *pages_text, const char *key, char *out, size_t n);
 void reply_value_cbor(struct client *c, int64_t id, cbuf *val);
 void reply_int(struct client *c, int64_t id, int64_t v);
 bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg);

@@ -149,6 +149,9 @@ typedef struct {
     /* ABI 2: declared properties and events */
     const wpo_property_def *props; size_t nprops;
     const char *const *events; size_t nevents;
+    /* file types whose data files are objects of this class ("image/png";
+     * a whole kind as "image/" followed by a star; a plug-in's WPImageFile: object-properties-design.md 2.7) */
+    const char *const *types; size_t ntypes;
 } wpo_class_def;
 
 struct wpo_name_ent;
@@ -176,6 +179,8 @@ struct wpo_class {
     size_t nprops;
     const char *const *events;       /* ... and its events */
     size_t nevents;
+    const char *const *types;        /* the file types it is the class of */
+    size_t ntypes;
 };
 
 /* The two built-in classes. WPORoot is the root of all object classes and

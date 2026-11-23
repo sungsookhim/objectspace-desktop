@@ -177,9 +177,12 @@ static wpo_object *home_folder_of(wpo_object *o, char *fpath, size_t n)
 
 /* Its pages, and on the General page Lock position (v0.3-design 5: kept
  * by the folder it sits in, with its position). */
-char *settings_text(wpo_object *o)
+char *settings_text(wpo_object *o) { return settings_text_with(o, call_text(o, "wpAddSettingsPages", "")); }
+
+/* The same from pages already made (a plug-in's, from its host); takes t. */
+char *settings_text_with(wpo_object *o, char *t)
 {
-    char *t = call_text(o, "wpAddSettingsPages", ""), fpath[PATH_MAX];
+    char fpath[PATH_MAX];
     wpo_object *f = home_folder_of(o, fpath, sizeof fpath);
     char *g = strstr(t, "page\tGeneral\n");
     if (!f || !g || (g != t && g[-1] != '\n')) return t;
@@ -197,10 +200,24 @@ char *settings_text(wpo_object *o)
     return r;
 }
 
-/* settings_set: apply {key: value} through each field's setter. */
-const char *apply_settings(wpo_object *o, const cv *values)
+/* A key's setter in these pages (or the object's own), into out; false if none. */
+bool settings_setter_of(wpo_object *o, const char *pages_text, const char *key, char *out, size_t n)
 {
-    char *text = settings_text(o);
+    char *text = pages_text ? settings_text_with(o, strdup(pages_text)) : settings_text(o);
+    char pages[16][64];
+    int page_of[64];
+    struct field fields[64];
+    size_t np, nf = parse_settings(text, pages, page_of, fields, 64, &np);
+    free(text);
+    for (size_t i = 0; i < nf; i++)
+        if (!strcmp(fields[i].key, key)) { snprintf(out, n, "%s", fields[i].setter); return true; }
+    return false;
+}
+
+/* settings_set: apply {key: value} through each field's setter. */
+const char *apply_settings(wpo_object *o, const cv *values, const char *pages_text)
+{
+    char *text = pages_text ? settings_text_with(o, strdup(pages_text)) : settings_text(o);
     char pages[16][64];
     int page_of[64];
     struct field fields[64];

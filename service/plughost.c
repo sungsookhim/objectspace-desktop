@@ -12,7 +12,8 @@
  *
  * Protocol (SOCK_SEQPACKET, one CBOR map per message):
  *   host -> wpsd   {hello:true, classes:[{name, parent, methods:[{name,sig}],
- *                  overrides:[name]}], replaces:[{original, replacement}],
+ *                  overrides:[name], props:[{name, type, ..., flags}],
+ *                  events:[name], types:[mime]}], replaces:[{original, replacement}],
  *                  sandbox:{network, filesystem}, error?}
  *   wpsd -> host   {call:N, class, method, args:[...], object:{path, id,
  *                  props:{Class:{key:value}}}}
@@ -123,9 +124,32 @@ static void hello(const char *error)
         if (c->is_meta) continue;
         size_t novr = 0;
         for (uint32_t s = 0; s < c->mbase; s++) novr += c->mtab[s] != c->parent->mtab[s];
-        cb_map(&b, 4);
+        cb_map(&b, 8);
         cb_text(&b, "name"); cb_text(&b, c->name);
+        char *title = WPObject_wpclsQueryTitle(c);   /* (its class method: run here, said once) */
+        cb_text(&b, "title"); cb_text(&b, title ? title : c->name);
+        free(title);
         cb_text(&b, "parent"); cb_text(&b, c->parent->name);
+        /* its properties, events and file types (object-properties-design.md 2.7) */
+        cb_text(&b, "props");
+        cb_array(&b, c->nprops);
+        for (size_t k = 0; k < c->nprops; k++) {
+            const wpo_property_def *p = &c->props[k];
+            const char *f[12][2] = { { "name", p->name }, { "type", p->type }, { "def", p->def }, { "page", p->page },
+                                     { "label", p->label }, { "choices", p->choices }, { "get", p->get }, { "set", p->set },
+                                     { "show", p->show }, { "store", p->store }, { "options", p->options }, { "backing", p->backing } };
+            size_t nf = 1;
+            for (int i = 0; i < 12; i++) nf += f[i][1] != NULL;
+            cb_map(&b, nf);
+            for (int i = 0; i < 12; i++) if (f[i][1]) { cb_text(&b, f[i][0]); cb_text(&b, f[i][1]); }
+            cb_text(&b, "flags"); cb_int(&b, p->flags);
+        }
+        cb_text(&b, "events");
+        cb_array(&b, c->nevents);
+        for (size_t k = 0; k < c->nevents; k++) cb_text(&b, c->events[k]);
+        cb_text(&b, "types");
+        cb_array(&b, c->ntypes);
+        for (size_t k = 0; k < c->ntypes; k++) cb_text(&b, c->types[k]);
         cb_text(&b, "methods");
         cb_array(&b, c->nmethods);
         for (uint32_t s = c->mbase; s < c->nslots; s++) {

@@ -19,6 +19,7 @@ A .wpi file describes one class:
     property icon_font : text = "" page "Icon view" label "Icon font" set wpSetIconFont
     property sort_key : choice "none,name,type" = none page View index
     event open, close                   # events its objects raise
+    types image/png, image/*            # data files of these types are its objects
 
 A property (object-properties-design.md 2.1): NAME : TYPE, then any of
     = DEFAULT        its default, as text ("" if none; a choice: the option)
@@ -106,7 +107,7 @@ class Cls:
         self.includes, self.data, self.cdata = [], [], []
         self.methods, self.cmethods = [], []
         self.overrides, self.coverrides = [], []
-        self.props, self.events = [], []
+        self.props, self.events, self.types = [], [], []
         self.builtin = False
 
 
@@ -221,6 +222,8 @@ def parse(path):
             c.coverrides.append(s.split()[1])
         elif s.startswith("event "):
             c.events += [e.strip() for e in s[len("event "):].split(",") if e.strip()]
+        elif s.startswith("types "):
+            c.types += [e.strip() for e in s[len("types "):].split(",") if e.strip()]
         else:
             raise WpiError(f"{where}: cannot parse '{s}'")
     if c is None or c.major is None:
@@ -378,6 +381,11 @@ def gen_reg(w, c):
         o.extend([f"static const char *const {n}_events[] = {{ " + ", ".join(cstr(e) for e in c.events) + " };", ""])
         et, en = f"{n}_events", str(len(c.events))
 
+    tt, tn = "NULL", "0"
+    if c.types:
+        o.extend([f"static const char *const {n}_types[] = {{ " + ", ".join(cstr(e) for e in c.types) + " };", ""])
+        tt, tn = f"{n}_types", str(len(c.types))
+
     mt, mn = table("methods", c.methods)
     cmt, cmn = table("cmethods", c.cmethods)
     ot, on = otable("overrides", c.overrides)
@@ -398,6 +406,7 @@ def gen_reg(w, c):
           f"        .cdata_size = {f'sizeof(M_{n}Data)' if c.cdata else '0'},",
           f"        .props = {pt}, .nprops = {pn},",
           f"        .events = {et}, .nevents = {en},",
+          f"        .types = {tt}, .ntypes = {tn},",
           "    };",
           f"    wpo_status st = wpo_register_class(&def, &{n}Class);",
           f"    if (st == WPO_OK) M_{n}Class = {n}Class->hdr.cls;",

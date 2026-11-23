@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #include "objects.h"
+#include "wps_magic.h"
+#include "wps_classes.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -474,6 +476,35 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
 
 /* ------------------------------------------------- objects (loop thread) */
 
+/* A data file's class for its type: a class (a plug-in's) that declares the
+ * type (object-properties-design.md 2.7), the exact type before a whole kind
+ * ("image/png" before "image/" and a star); none: WPDataFile. */
+static wpo_class *class_for_type(const char *path)
+{
+    size_t n = wpo_class_count();
+    bool any = false;
+    for (size_t i = 0; i < n && !any; i++) any = wpo_class_at(i)->ntypes > 0 && !wpo_class_at(i)->is_meta;
+    if (!any) return WPDataFileClass;   /* (no file read: no class wants a type) */
+    const char *base = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
+    const char *mime = wps_mime_for_name(base);
+    if (!mime) mime = wps_mime_sniff(path);
+    if (!mime) return WPDataFileClass;
+    const char *sl = strchr(mime, '/');
+    wpo_class *kind = NULL;
+    for (size_t i = 0; i < n; i++) {
+        wpo_class *c = wpo_class_at(i);
+        if (c->is_meta || !c->ntypes || !wpo_subclass_of(c, WPDataFileClass)) continue;
+        for (size_t t = 0; t < c->ntypes; t++) {
+            const char *ty = c->types[t];
+            if (!strcmp(ty, mime)) return wpo_resolve_class(c);
+            size_t tl = strlen(ty);
+            if (!kind && sl && tl >= 2 && ty[tl - 1] == '*' && ty[tl - 2] == '/' && (size_t)(sl - mime) == tl - 2 && !strncmp(ty, mime, tl - 2))
+                kind = c;
+        }
+    }
+    return kind ? wpo_resolve_class(kind) : WPDataFileClass;
+}
+
 static wpo_class *class_for(const wps_loaded *ld)
 {
     mode_t m = ld->st.st_mode;
@@ -490,7 +521,7 @@ static wpo_class *class_for(const wps_loaded *ld)
         wpo_class *c = wpo_find_class(ld->obj_class);
         return c && !c->is_meta && wpo_subclass_of(c, WPAbstractClass) ? c : WPAbstractClass;
     }
-    if (S_ISREG(m)) return WPDataFileClass;
+    if (S_ISREG(m)) return class_for_type(ld->path);
     return WPFileSystemClass;   /* user-made symlinks and special files */
 }
 

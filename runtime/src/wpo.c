@@ -287,6 +287,8 @@ wpo_status wpo_register_class(const wpo_class_def *def, wpo_class **out)
     cls->nprops = def->nprops;
     cls->events = def->events;
     cls->nevents = def->nevents;
+    cls->types = def->types;
+    cls->ntypes = def->ntypes;
     if ((st = registry_add(meta)) || (st = registry_add(cls))) return st;
     if (out) *out = cls;
     return WPO_OK;

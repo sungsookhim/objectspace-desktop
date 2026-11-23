@@ -7,7 +7,10 @@ cd "$(dirname "$0")/../.."
 R=$(mktemp -d)
 trap 'rm -rf "$R"' EXIT
 make -s install DESTDIR="$R" PREFIX=/usr >/dev/null
-got=$(cd "$R" && find . -type f | LC_ALL=C sort)
+# (the generated sets - icon themes, the SDK's headers and files - are
+# checked by what must be in them, below; the rest is listed exactly)
+got=$(cd "$R" && find . -type f | grep -v -e '^./usr/share/wps/icon-themes/' -e '^./usr/include/wps/' -e '^./usr/share/wps/sdk/' \
+      -e '^./usr/share/man/' | LC_ALL=C sort)
 want='./etc/pam.d/wps-lock
 ./usr/bin/wpsctl
 ./usr/bin/wps-session
@@ -40,6 +43,17 @@ want='./etc/pam.d/wps-lock
 want=$(echo "$want" | LC_ALL=C sort)
 [ "$got" = "$want" ] || { echo "FAIL: installed files differ:"; diff <(echo "$want") <(echo "$got") || true; exit 1; }
 echo "ok   the installed files"
+for t in wps-flat wps-outline classic; do
+    [ -f "$R/usr/share/wps/icon-themes/$t/theme.ini" ] && ls "$R/usr/share/wps/icon-themes/$t/"*.wpsicon >/dev/null 2>&1 ||
+        { echo "FAIL: icon theme $t"; exit 1; }
+done
+echo "ok   the icon themes (wps-flat, wps-outline, classic)"
+for f in include/wps/wpo.h include/wps/wps_classes.h include/wps/WPObject.h include/wps/WPDataFile.h \
+         share/wps/sdk/wpoc.py share/wps/sdk/README.md share/wps/sdk/classes/WPObject.wpi share/wps/sdk/sample/Makefile; do
+    [ -f "$R/usr/$f" ] || { echo "FAIL: the SDK: $f"; exit 1; }
+done
+echo "ok   the plug-in SDK (headers, interfaces, wpoc, sample)"
+ls "$R/usr/share/man/man1/"wpsctl.1* >/dev/null 2>&1 || { echo "FAIL: man pages"; exit 1; }
 grep -q "^LIBEXEC=\${WPS_LIBEXEC:-/usr/libexec/wps}" "$R/usr/bin/wps-session" || { echo "FAIL: wps-session's paths"; exit 1; }
 grep -q "^ExecStart=/usr/libexec/wps/wpsd$" "$R/usr/lib/systemd/user/wpsd.service" || { echo "FAIL: wpsd.service"; exit 1; }
 echo "ok   paths in wps-session and wpsd.service"

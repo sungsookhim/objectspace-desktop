@@ -24,6 +24,7 @@ BINDIR     ?= $(PREFIX)/bin
 LIBEXECDIR ?= $(PREFIX)/libexec/wps
 LIBDIR     ?= $(PREFIX)/lib64
 DATADIR    ?= $(PREFIX)/share
+INCLUDEDIR ?= $(PREFIX)/include
 MANDIR     ?= $(DATADIR)/man
 SYSCONFDIR ?= /etc
 USERUNITDIR   ?= $(PREFIX)/lib/systemd/user
@@ -134,13 +135,20 @@ $(TV)/m5future/future.so: tests/plugins/TestFolder.c tests/plugins/TestFolder.wp
 	    -o $@ tests/plugins/TestFolder.c $(B)/gen-future/out/TestFolder.reg.c
 
 PLUGINS := $(M5PLUG) $(TV)/plugins/tchild_v10.so $(TV)/plugins/tchild_v12.so $(TV)/plugins/tchild_v20.so \
-           $(TV)/plugins/myfolder.so
+           $(TV)/plugins/myfolder.so $(TV)/sample/wpimagefile.so
 plugins: $(PLUGINS)
 
 $(TV)/plugins/tchild_%.so: tests/plugins/TChild.c $(B)/gen-%/.stamp
 	@mkdir -p $(TV)/plugins
 	$(CC) $(CFLAGS) $(SAN) -fPIC -shared -Iruntime/include -Iservice -I$(B)/gen-$*/plugin -I$(B)/gen-$* \
 	    -o $@ tests/plugins/TChild.c $(B)/gen-$*/plugin/TChild.reg.c
+
+# The SDK's sample plug-in (sdk/sample), as its users build it.
+$(TV)/sample/wpimagefile.so: sdk/sample/WPImageFile.c sdk/sample/WPImageFile.wpi $(GEN)/.stamp
+	@mkdir -p $(TV)/sample $(B)/gen-sample
+	$(PYTHON) tools/wpoc.py -I classes -o $(B)/gen-sample sdk/sample/WPImageFile.wpi
+	$(CC) $(CFLAGS) $(SAN) -fPIC -shared $(INC) -I$(B)/gen-sample \
+	    -o $@ sdk/sample/WPImageFile.c $(B)/gen-sample/WPImageFile.reg.c
 
 $(TV)/plugins/myfolder.so: tests/plugins/MyFolder.c tests/plugins/MyFolder.wpi $(GEN)/.stamp
 	@mkdir -p $(TV)/plugins $(B)/gen-myfolder
@@ -167,6 +175,8 @@ test: unit-test
 	tests/firststart/run.sh
 	tests/openwith/run.sh
 	tests/props/run.sh $(B)/props/last
+	tests/plugins/run.sh
+	tests/plugins/sdk.sh
 
 # Everything that must stay true: the unit tests (with ASan/UBSan when
 # installed), the core building as strict C11 with only the C library, and
@@ -371,7 +381,7 @@ INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-sh
 EXT := gnome-extension/wps@wps-linux
 EXTDIR = $(DATADIR)/gnome-shell/extensions/wps@wps-linux
 subst = sed -e 's|@BINDIR@|$(BINDIR)|g' -e 's|@LIBEXECDIR@|$(LIBEXECDIR)|g'
-install: $(INSTALLED) icons
+install: $(INSTALLED) icons install-sdk
 	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins
 	install -m 755 $(B)/wpsctl $(B)/wps-shell $(DESTDIR)$(BINDIR)/
 	install -m 755 $(B)/wpsd $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-compositor $(DESTDIR)$(LIBEXECDIR)/
@@ -394,6 +404,18 @@ install: $(INSTALLED) icons
 	    -e "s|@DATE@|$$(date -u -d @$${SOURCE_DATE_EPOCH:-$$(git log -1 --format=%ct 2>/dev/null || date +%s)} +%Y-%m-%d)|" \
 	    $$m > $(DESTDIR)$(MANDIR)/man1/$$(basename $$m); done
 
+# The plug-in SDK (the wps-devel package; sdk/README.md): the headers a
+# plug-in includes, the built-in classes' interfaces, wpoc and the sample.
+install-sdk: $(GEN)/.stamp
+	install -d $(DESTDIR)$(INCLUDEDIR)/wps $(DESTDIR)$(DATADIR)/wps/sdk/classes $(DESTDIR)$(DATADIR)/wps/sdk/sample
+	install -m 644 runtime/include/wpo.h classes/wps_classes.h classes/wps_state.h classes/wps_props.h \
+	    service/attrs.h $(GEN)/*.h $(DESTDIR)$(INCLUDEDIR)/wps/
+	install -m 644 classes/*.wpi $(DESTDIR)$(DATADIR)/wps/sdk/classes/
+	install -m 755 tools/wpoc.py $(DESTDIR)$(DATADIR)/wps/sdk/
+	install -m 644 sdk/README.md $(DESTDIR)$(DATADIR)/wps/sdk/
+	install -m 644 sdk/sample/WPImageFile.wpi sdk/sample/WPImageFile.c sdk/sample/Makefile $(DESTDIR)$(DATADIR)/wps/sdk/sample/
+.PHONY: install-sdk
+
 # make install into a scratch root, then a headless session from it
 install-check: $(INSTALLED)
 	tests/install/check.sh
@@ -404,6 +426,7 @@ uninstall:
 	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
 	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons $(DESTDIR)$(DATADIR)/wps/icon-themes
+	rm -rf $(DESTDIR)$(DATADIR)/wps/sdk $(DESTDIR)$(INCLUDEDIR)/wps
 	rm -f $(addprefix $(DESTDIR)$(MANDIR)/man1/,wpsctl.1 wps-shell.1 wps-session.1)
 	-rmdir $(DESTDIR)$(DATADIR)/wps 2>/dev/null
 	-rmdir $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins $(DESTDIR)$(LIBDIR)/wps 2>/dev/null

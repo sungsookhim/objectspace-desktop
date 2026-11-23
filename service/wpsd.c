@@ -437,12 +437,14 @@ static void do_menus(struct req *r, wpo_object *o)
     if (!strcmp(r->op, "menu_select")) {
         wpo_value a, ret;
         a = wpo_v_int(cv_int(&r->msg, "item", &v) ? v : -1);
-        bool ok = wpo_send(o, "wpMenuItemSelected", &a, 1, &ret) == WPO_OK && ret.type == 'b' && ret.u.b;
-        wpo_value_clear(&ret);
+        bool ok = r->remote_done ? r->remote_ok   /* (its plug-in's host handled it) */
+                                 : wpo_send(o, "wpMenuItemSelected", &a, 1, &ret) == WPO_OK && ret.type == 'b' && ret.u.b;
+        if (!r->remote_done) wpo_value_clear(&ret);
         if (!ok) { reply_error(r->c, r->id, "failed", "the item was not handled"); return; }
     } else if (!strcmp(r->op, "settings_set")) {
         if (cv_int(&r->msg, "expect", &v) && (uint64_t)v != WPObject_data(o)->changes) err = "conflict";
-        else err = apply_settings(o, cv_get(&r->msg, "values"));
+        else if (!r->remote_done) err = apply_settings(o, cv_get(&r->msg, "values"), r->remote_text);
+        else if (!r->remote_ok) err = "the setter refused the value";
         if (err) {
             reply_error(r->c, r->id, !strcmp(err, "conflict") ? "conflict" : "bad request", err);
             return;
@@ -460,7 +462,7 @@ static void do_menus(struct req *r, wpo_object *o)
         put_menu(&b, t, "");
         free(t);
     } else {
-        char *t = settings_text(o);
+        char *t = r->remote_text ? settings_text_with(o, strdup(r->remote_text)) : settings_text(o);
         char shown[PATH_MAX];   /* what its Icon page shows without its own */
         const char *p = wpo_is_a(o, WPFileSystemClass) ? WPFileSystem_data(o)->path : NULL;
         wps_listing_shown_icon(p, wpo_is_a(o, WPFolderClass), wpo_is_a(o, WPProgramClass), shown, sizeof shown);
@@ -482,6 +484,72 @@ static void menu_remote_done(void *arg, const cv *result)
     wpo_unref(x->o);
     free(x);
     req_free(r);
+}
+
+/* ---- a plug-in's methods, run in its host (object-properties-design.md
+ * 2.7): a remote call, then what follows (cont: true if it keeps r - it
+ * started another step). Missed deadlines: NULL, the parent's behaviour. */
+struct rstep { struct req *r; wpo_object *o; bool (*cont)(struct req *r, wpo_object *o, const cv *result); };
+
+static void rstep_done(void *arg, const cv *result)
+{
+    struct rstep *x = arg;
+    bool keep = !x->r->c->dead && x->cont(x->r, x->o, result);
+    wpo_unref(x->o);
+    if (!keep) req_free(x->r);
+    free(x);
+}
+
+static void remote_step(struct req *r, wpo_object *o, const char *method, cv *args,
+                        bool (*cont)(struct req *r, wpo_object *o, const cv *result))
+{
+    struct rstep *x = calloc(1, sizeof *x);
+    x->r = r;
+    x->o = wpo_ref(o);
+    x->cont = cont;
+    wps_plugin_call(o, wps_object_path(o), method, args, 2000, rstep_done, x);
+}
+
+static bool pages_got(struct req *r, wpo_object *o, const cv *result);
+
+/* settings_set: the field's setter a plug-in's method? Its host sets it. */
+static bool setter_got(struct req *r, wpo_object *o, const cv *result)
+{
+    r->remote_done = true;
+    r->remote_ok = result && (result->k != CV_BOOL || result->b);
+    do_menus(r, o);
+    return false;
+}
+
+/* Started its plug-in's setter (true), or nothing done (false: set here). */
+static bool settings_set_remote(struct req *r, wpo_object *o)
+{
+    const cv *values = cv_get(&r->msg, "values");
+    char setter[128];
+    if (values && values->k == CV_MAP && values->n == 1 && values->items[0].k == CV_TEXT &&
+        settings_setter_of(o, r->remote_text, values->items[0].s, setter, sizeof setter) && setter[0] != '@' &&
+        wps_plugin_routes(o, setter)) {
+        cv args = { .k = CV_ARRAY, .n = 1, .nitems = 1, .items = (cv *)&values->items[1] };
+        remote_step(r, o, setter, &args, setter_got);
+        return true;
+    }
+    return false;
+}
+
+static bool pages_got(struct req *r, wpo_object *o, const cv *result)
+{
+    if (result && result->k == CV_TEXT) r->remote_text = strdup(result->s);
+    if (!strcmp(r->op, "settings_set") && settings_set_remote(r, o)) return true;
+    do_menus(r, o);
+    return false;
+}
+
+static bool selected_got(struct req *r, wpo_object *o, const cv *result)
+{
+    r->remote_done = true;
+    r->remote_ok = result && result->k == CV_BOOL && result->b;
+    do_menus(r, o);
+    return false;
 }
 
 void prepare_done(void *arg)    /* loop */
@@ -510,6 +578,19 @@ void prepare_done(void *arg)    /* loop */
         cv empty = { .k = CV_TEXT, .s = "", .len = 0 };
         args.items = &empty;
         wps_plugin_call(o, wps_object_path(o), "wpModifyPopupMenu", &args, 2000, menu_remote_done, x);
+        return;
+    }
+    else if ((!strcmp(r->op, "settings") || !strcmp(r->op, "settings_set")) && wps_plugin_routes(o, "wpAddSettingsPages")) {
+        cv empty = { .k = CV_TEXT, .s = "", .len = 0 }, args = { .k = CV_ARRAY, .n = 1, .nitems = 1, .items = &empty };
+        remote_step(r, o, "wpAddSettingsPages", &args, pages_got);   /* its plug-in's pages */
+        return;
+    }
+    else if (!strcmp(r->op, "settings_set") && settings_set_remote(r, o)) return;
+    else if (!strcmp(r->op, "menu_select") && wps_plugin_routes(o, "wpMenuItemSelected")) {
+        int64_t item = -1;
+        cv_int(&r->msg, "item", &item);
+        cv it = { .k = CV_INT, .i = item }, args = { .k = CV_ARRAY, .n = 1, .nitems = 1, .items = &it };
+        remote_step(r, o, "wpMenuItemSelected", &args, selected_got);   /* its plug-in handles the item */
         return;
     }
     else if (!strcmp(r->op, "menu") || !strcmp(r->op, "settings") || !strcmp(r->op, "settings_set") ||

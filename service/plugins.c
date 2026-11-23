@@ -80,6 +80,20 @@ static wpo_status apply_unavailable(wpo_fn fn, wpo_object *self, const wpo_value
 
 static void impl_unavailable(void) {}
 
+/* A proxy class's title (its plug-in's wpclsQueryTitle, said in its hello). */
+static struct { char *cls, *title; } *titles;
+static size_t ntitles;
+
+static char *proxy_cls_title(wpo_object *self)
+{
+    const wpo_class *k = (const wpo_class *)self;
+    for (size_t i = 0; i < ntitles; i++)
+        if (!strcmp(titles[i].cls, k->name)) return strdup(titles[i].title);
+    return strdup(k->name);
+}
+
+static const wpo_override_def proxy_coverrides[] = { { "wpclsQueryTitle", (wpo_fn)proxy_cls_title } };
+
 bool wps_plugins_is_host(pid_t pid)
 {
     for (int h = 0; h < nhosts; h++)
@@ -127,7 +141,34 @@ static void register_proxy(struct host *h, const cv *c)
         defs[i].apply = apply_unavailable;
         defs[i].impl = (wpo_fn)impl_unavailable;
     }
+    /* its properties, events and file types: the proxy declares them, so
+     * pages, get, set, props, the chain and actions work in wpsd (a
+     * property's value kept by WPS; methods named for it run nowhere here:
+     * left out) */
+    const cv *ps = cv_get(c, "props"), *es = cv_get(c, "events"), *ts = cv_get(c, "types");
+    size_t np = ps && ps->k == CV_ARRAY ? ps->n : 0, ne = es && es->k == CV_ARRAY ? es->n : 0, nt = ts && ts->k == CV_ARRAY ? ts->n : 0;
+    wpo_property_def *props = calloc(np + 1, sizeof *props);
+    for (size_t i = 0; i < np; i++) {
+        const cv *q = &ps->items[i];
+        #define DUP(f) (cv_text(q, #f) ? strdup(cv_text(q, #f)) : NULL)
+        props[i] = (wpo_property_def){ DUP(name), DUP(type), DUP(def), DUP(page), DUP(label), DUP(choices), NULL, NULL, NULL,
+                                       DUP(store), NULL, DUP(backing), 0 };
+        #undef DUP
+        int64_t fl = 0;
+        cv_int(q, "flags", &fl);
+        props[i].flags = (uint32_t)fl;
+        if (!props[i].name || !props[i].type) { props[i].name = props[i].type = NULL; }
+    }
+    const char **events = calloc(ne + 1, sizeof *events), **types = calloc(nt + 1, sizeof *types);
+    for (size_t i = 0; i < ne; i++) events[i] = strdup(es->items[i].k == CV_TEXT ? es->items[i].s : "");
+    for (size_t i = 0; i < nt; i++) types[i] = strdup(ts->items[i].k == CV_TEXT ? ts->items[i].s : "");
     wpo_class_def *def = calloc(1, sizeof *def);
+    def->props = props;
+    def->nprops = np;
+    def->events = events;
+    def->nevents = ne;
+    def->types = types;
+    def->ntypes = nt;
     def->name = strdup(name);
     def->parent = pc->name;
     def->major = 1;
@@ -135,6 +176,14 @@ static void register_proxy(struct host *h, const cv *c)
     def->parent_minor = pc->minor;
     def->methods = defs;
     def->nmethods = nm;
+    const char *title = cv_text(c, "title");
+    if (title) {
+        titles = realloc(titles, (ntitles + 1) * sizeof *titles);
+        titles[ntitles].cls = strdup(name);
+        titles[ntitles++].title = strdup(title);
+        def->coverrides = proxy_coverrides;
+        def->ncoverrides = 1;
+    }
     defs_kept = realloc(defs_kept, (ndefs_kept + 1) * sizeof *defs_kept);
     defs_kept[ndefs_kept++] = def;
     wpo_class *out;
@@ -488,6 +537,16 @@ void wps_plugins_free_defs(void)
             free((char *)d->methods[m].sig);
         }
         free((void *)d->methods);
+        for (size_t k = 0; k < d->nprops; k++) {
+            const wpo_property_def *p = &d->props[k];
+            free((char *)p->name); free((char *)p->type); free((char *)p->def); free((char *)p->page);
+            free((char *)p->label); free((char *)p->choices); free((char *)p->store); free((char *)p->backing);
+        }
+        free((void *)d->props);
+        for (size_t k = 0; k < d->nevents; k++) free((char *)d->events[k]);
+        free((void *)d->events);
+        for (size_t k = 0; k < d->ntypes; k++) free((char *)d->types[k]);
+        free((void *)d->types);
         free((char *)d->name);
         free(d);
     }
