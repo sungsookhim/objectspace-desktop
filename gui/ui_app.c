@@ -597,6 +597,7 @@ void ui_set_cursor(ui_app *a, const char *name)
     }
     if (a->cursor_name && !strcmp(a->cursor_name, name)) return;
     struct wl_cursor *c = a->cursor_theme ? wl_cursor_theme_get_cursor(a->cursor_theme, name) : NULL;
+    if (!c && a->cursor_theme && !strcmp(name, "col-resize")) c = wl_cursor_theme_get_cursor(a->cursor_theme, "sb_h_double_arrow");   /* (older themes' name) */
     if (!c && a->cursor_theme) c = wl_cursor_theme_get_cursor(a->cursor_theme, "left_ptr");
     if (!c) return;
     struct wl_cursor_image *img = c->images[0];

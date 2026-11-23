@@ -1,7 +1,8 @@
 #!/bin/sh
 # The details view, headless (v0.3-plan step 4): a heading clicked sorts
 # the folder (again: reversed; folders first), the order coming from wpsd's
-# listing; a column's edge dragged keeps its width; a column turned off.
+# listing; over a column's edge the pointer is the resize one (0.4 step 5);
+# a column's edge dragged keeps its width; a column turned off.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-details-XXXX")
@@ -13,6 +14,8 @@ cat > "$S/script" <<EOS
 4.5 click 760 133
 6 click 760 133
 7.5 click 400 133
+8.2 move 506 133
+8.6 move 450 300
 9 down 506 133
 9.3 move 545 133
 9.6 move 566 133
@@ -37,6 +40,9 @@ check "Title clicked: by name" "[ \"\$(line 3)\" = 'm z a.png b.txt c.md' ]"
 check "the Title column's width kept (dragged wider)" "python3 -c \"
 import json; f = {x['key']: x.get('value') for p in json.load(open('$T/settings.log'))['result'] for x in p['fields']}
 w = [float(v) for v in f['col_widths'].split(',')]; exit(0 if w[0] > 200 else 1)\""
+# (the compositor logs the shapes asked for by their hot spots: the
+# resize arrow's in its middle, 12,12; the arrow's at its tip)
+check "over an edge: the resize pointer; off it: the arrow again" "grep 'client cursor' '$S/out.txt' | grep -A1 -m1 'hotspot 12,12' | tail -1 | grep -qv 'hotspot 12,12'"
 check "Type turned off" "grep -q '\"key\":\"col_type\"[^}]*\"value\":false' '$T/settings.log'"
 check "the sort kept: name (choice 1), ascending" "grep -q '\"key\":\"sort_key\"[^}]*\"value\":1' '$T/settings.log' && grep -q '\"key\":\"sort_desc\"[^}]*\"value\":false' '$T/settings.log'"
 echo "$fails failed (screenshot: $S/end.png, logs: $T)"

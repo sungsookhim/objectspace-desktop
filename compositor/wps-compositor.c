@@ -1062,8 +1062,11 @@ static void on_request_cursor(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_seat_pointer_request_set_cursor_event *e = data;
-    if (server.seat->pointer_state.focused_client == e->seat_client)
+    if (server.seat->pointer_state.focused_client == e->seat_client) {
         wlr_cursor_set_surface(server.cursor, e->surface, e->hotspot_x, e->hotspot_y);
+        /* (a script's tests: which shape a program asked for, by its hot spot) */
+        if (server.script_kb) fprintf(stderr, "wps-compositor: client cursor: hotspot %d,%d\n", e->hotspot_x, e->hotspot_y);
+    }
 }
 
 /* A program starts dragging: only from a button it holds down (the

@@ -1435,6 +1435,16 @@ static void band_update(ui_container *c)
     damage_list(c);
 }
 
+/* The column whose right edge is at x (the headings' sizing grip), or -1. */
+static int col_edge_at(ui_container *c, double px)
+{
+    double x[7];
+    columns(c, x);
+    for (int i = 1; i < 5; i++)
+        if (x[i + 1] - x[i] > 4 && fabs(px - (x[i + 1] - 4)) <= 4) return i;
+    return -1;
+}
+
 bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
 {
     ui_rect sb = sb_rect(c), l = list_rect(c);
@@ -1450,7 +1460,16 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
             end_rename(c, true);   /* a click elsewhere applies it, as in OS/2 */
         }
     }
-    /* the details view's headings: a click sorts, an edge dragged sizes */
+    /* the details view's headings: a click sorts, an edge dragged sizes;
+     * over an edge, the pointer says so */
+    if (e->kind == UI_MOTION && c->col_drag < 0) {
+        int edge = c->view == UI_VIEW_DETAILS && ui_rect_has(head_rect(c), e->x, e->y) ? col_edge_at(c, e->x) : -1;
+        const char *want = edge >= 0 ? "col-resize" : NULL;
+        if (want != c->s->client_cursor) {
+            c->s->client_cursor = want;
+            ui_set_cursor(c->s->app, want ? want : "default");
+        }
+    }
     if (c->view == UI_VIEW_DETAILS && (c->col_drag >= 0 || c->head_down >= 0 || ui_rect_has(head_rect(c), e->x, e->y))) {
         double x[7];
         columns(c, x);
@@ -1468,7 +1487,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
         if (e->kind == UI_PRESS && e->button == ui_mouse_button(UI_ACT_SELECT)) {
             for (int i = 1; i <= 5; i++) {
                 if (x[i + 1] - x[i] <= 4) continue;
-                if (fabs(e->x - (x[i + 1] - 4)) <= 4 && i < 5) {   /* its right edge */
+                if (col_edge_at(c, e->x) == i) {   /* its right edge */
                     c->col_drag = i;
                     c->col_drag_x0 = e->x;
                     c->col_drag_w0 = x[i + 1] - x[i];

@@ -27,6 +27,7 @@ struct ui_buffer {
 
 struct ui_surface {
     ui_app *app;
+    const char *client_cursor;   /* the pointer's shape over the client area (NULL: the default) */
     ui_surface *next;
     const ui_surface_ops *ops;
     void *data;

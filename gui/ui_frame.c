@@ -116,7 +116,7 @@ bool ui_frame_pointer(ui_surface *s, const ui_pointer_event *e)
             }
             s->hover = h;
         }
-        ui_set_cursor(s->app, h == UI_HIT_BORDER ? edge_cursor(edges_at(s, e->x, e->y)) : "default");
+        ui_set_cursor(s->app, h == UI_HIT_BORDER ? edge_cursor(edges_at(s, e->x, e->y)) : h == UI_HIT_CLIENT && s->client_cursor ? s->client_cursor : "default");
         return h != UI_HIT_CLIENT;
     }
     if (e->kind == UI_PRESS && e->button == ui_mouse_button(UI_ACT_SELECT)) {
