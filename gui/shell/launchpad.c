@@ -468,7 +468,7 @@ static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         }
         ui_item it = { .loaded = true, .detailed = true, .kind = d->items[i].kind, .shadow = d->items[i].shadow,
                        .link = d->items[i].link };
-        it.image = icons_get(d->items[i].icon);
+        it.image = icons_item(NULL, d->items[i].icon, d->items[i].kind, d->items[i].target[0] ? d->items[i].target : d->items[i].name);
         ui_draw_item_icon(cr, &it, r.x + 3, r.y + 3, 24);
         ui_set_color(cr, (ssize_t)i == d->hot ? k->menu_hilite_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, r.x + 32, r.y + (DRAWER_ROW + ui_text_ascent()) / 2 - 1, d->items[i].title,
@@ -611,6 +611,9 @@ void launchpad_glyph(cairo_t *cr, int i, ui_rect r) { draw_glyph(cr, (size_t)i, 
 
 static void draw_glyph(cairo_t *cr, size_t i, ui_rect r)
 {
+    /* the theme's (0.4 step 2); drawn here if it has none */
+    static const char *const themed[NSYS] = { "sys-lockup", "sys-find", "sys-shutdown", "sys-windows" };
+    if (i < NSYS && icons_draw_theme(cr, NULL, themed[i], r, fmin(r.w, r.h) * 0.12)) return;
     double cx = r.x + r.w / 2, cy = r.y + r.h / 2;
     cairo_save(cr);
     cairo_set_line_width(cr, 2);
@@ -731,7 +734,7 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_item it = { .loaded = true, .detailed = true, .kind = lp.items[i].kind, .shadow = lp.items[i].shadow,
                        .link = lp.items[i].link };
         double d = down ? 1 : 0, ip = ICON_PX;
-        it.image = icons_get(lp.items[i].icon);
+        it.image = icons_item(NULL, lp.items[i].icon, lp.items[i].kind, lp.items[i].target[0] ? lp.items[i].target : lp.items[i].name);
         /* the icon: centred, above the title (horizontal), or left of it (vertical) */
         double ix = lp.vertical && lp.text ? r.x + 5 : r.x + (r.w - ip) / 2;
         double iy = lp.text && !lp.vertical ? r.y + 4 : r.y + (r.h - ip) / 2;

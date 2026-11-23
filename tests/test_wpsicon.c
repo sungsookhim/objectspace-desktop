@@ -106,6 +106,32 @@ TEST(refused)
     wpsicon_free(w);
 }
 
+TEST(svg)
+{
+    /* a package of one SVG: drawn at any size asked, exactly (librsvg) */
+    char svg[512], out[512];
+    snprintf(svg, sizeof svg, "%s/square.svg", dir);
+    FILE *f = fopen(svg, "w");
+    fputs("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'>"
+          "<rect width='10' height='10' fill='#ff0000'/></svg>", f);
+    fclose(f);
+    snprintf(out, sizeof out, "%s/svg.wpsicon", dir);
+    const char *inputs[1] = { svg };
+    char err[256];
+    CHECK(wpsicon_pack(inputs, 1, out, err, sizeof err) == 0);
+    wpsicon *w = wpsicon_open(out);
+    CHECK(w && wpsicon_has_svg(w));
+    int how = 0;
+    cairo_surface_t *s = w ? wpsicon_render(w, 48, &how) : NULL;
+    CHECK(s && how == WPSICON_SVG && cairo_image_surface_get_width(s) == 48);
+    CHECK(s && px_at(s, 24, 24) == 0xffff0000u);   /* opaque red, drawn */
+    if (s) cairo_surface_destroy(s);
+    s = w ? wpsicon_render(w, 64, &how) : NULL;   /* a standard size made from it at packing: exact */
+    CHECK(s && how == WPSICON_EXACT);
+    if (s) cairo_surface_destroy(s);
+    wpsicon_free(w);
+}
+
 int main(void)
 {
     snprintf(dir, sizeof dir, "/tmp/wps-test-wpsicon-%d", (int)getpid());
@@ -113,5 +139,6 @@ int main(void)
     RUN(pack_adds_the_standard_sizes);
     RUN(a_folder_and_other_sizes);
     RUN(refused);
+    RUN(svg);
     return CHECK_SUMMARY();
 }

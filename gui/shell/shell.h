@@ -112,6 +112,7 @@ struct folder {
     bool show_ext;
     bool lock_all;           /* ... Lock positions of all icons */
     char icon_font[128];     /* its own icon font (the Font Palette's), "" the System's */
+    char icon_theme[128];    /* its icons' theme (its own, or all folders') */
     char title_font[128];    /* its title bar's, "" all title bars' */
     ui_font font;            /* the one its titles are drawn in */
     cairo_surface_t *bg_img;     /* the picture, decoded */

@@ -111,19 +111,19 @@ def wait_list(folder, cond, secs=4):
 
 it = wait_list(SYS, lambda it: "My Storages" in it)
 check("System holds My Storages", "My Storages" in it, sorted(it))
-check("My Storages has its own icon", (it.get("My Storages", {}).get("icon") or "").endswith("computer.png"), it.get("My Storages"))
+check("My Storages has its own icon", (it.get("My Storages", {}).get("icon") or "") == "theme:computer", it.get("My Storages"))
 r = c.request(op="resolve", target=SYS + "/Storages")["result"]
 check("Computer is a WPComputer", r.get("class") == "WPComputer", r.get("class"))
 r = c.request(op="resolve", target=SYS + "/Storages/Drives")["result"]
 check("Drives is a WPDrives", r.get("class") == "WPDrives", r.get("class"))
 it = wait_list(SYS + "/Storages", lambda it: "Root" in it)
 check("Computer: Drives and Root", "Drives" in it and "Root" in it, sorted(it))
-check("Root's icon: the root drive, lit", (it.get("Root", {}).get("icon") or "").endswith("drive-root.png"), it.get("Root"))
+check("Root's icon: the root drive, lit", (it.get("Root", {}).get("icon") or "") == "theme:drive-root", it.get("Root"))
 it = wait_list(SYS + "/Storages/Drives", lambda it: "STICK" in it and "1.1 GB Encrypted Volume" in it)
 check("Drives: the stick and the LUKS volume (not root)", sorted(it) == ["1.1 GB Encrypted Volume", "STICK"], sorted(it))
 stick = it.get("STICK", {})
 stick_addr = stick.get("name", "")[1:]
-check("the stick's icon: usb, not lit", (stick.get("icon") or "").endswith("drive-usb-off.png"), stick.get("icon"))
+check("the stick's icon: usb, not lit", (stick.get("icon") or "") == "theme:drive-usb-off", stick.get("icon"))
 
 m = c.request(op="menu", target=stick_addr).get("result") or []
 labels = [x.get("label") for x in m]
@@ -136,8 +136,8 @@ check("stick's Drive page: device, size, UUID", pg.get("Drive", {}).get("device"
 
 r = c.request(op="open", target=stick_addr)
 check("open the stick: mounted, its folder", (r.get("result") or {}).get("folder") == T + "/mnt/STICK", r)
-it = wait_list(SYS + "/Storages/Drives", lambda it: (it.get("STICK", {}).get("icon") or "").endswith("drive-usb.png"))
-check("mounted: its icon lit", (it.get("STICK", {}).get("icon") or "").endswith("drive-usb.png"), it.get("STICK", {}).get("icon"))
+it = wait_list(SYS + "/Storages/Drives", lambda it: (it.get("STICK", {}).get("icon") or "") == "theme:drive-usb")
+check("mounted: its icon lit", (it.get("STICK", {}).get("icon") or "") == "theme:drive-usb", it.get("STICK", {}).get("icon"))
 m = c.request(op="menu", target=stick_addr).get("result") or []
 check("mounted: Unmount in its menu", "Unmount" in [x.get("label") for x in m])
 r = c.request(op="drive", target=stick_addr, action="unmount")

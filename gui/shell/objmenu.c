@@ -199,7 +199,7 @@ bool objmenu_icon(void *arg, int64_t id, void *item)
     it->kind = c->folder ? UI_KIND_FOLDER : (ui_kind)c->kind;
     it->shadow = c->shadow;
     it->link = c->link;
-    it->image = c->icon[0] ? icons_get(c->icon) : NULL;
+    it->image = icons_item(NULL, c->icon, it->kind, c->addr);   /* (its own, or the desktop's theme's) */
     return true;
 }
 

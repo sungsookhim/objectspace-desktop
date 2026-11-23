@@ -742,6 +742,14 @@ int main(int argc, char **argv)
         char sys[PATH_MAX];
         system_dir(sys, sizeof sys);
         wps_listing_folder_icon(sys, "computer.png");   /* (the owner's: as OS/2's System showed one) */
+        /* (0.4 step 2: the theme has these too) */
+        wps_listing_folder_icon(drv, "drives.png");
+        const char *home = getenv("HOME");
+        if (home && *home) wps_listing_folder_icon(home, "home.png");
+        if (wps_templates_dir()[0]) wps_listing_folder_icon(wps_templates_dir(), "templates.png");
+        char st[PATH_MAX];
+        wps_startup_dir(st, sizeof st);
+        if (st[0]) wps_listing_folder_icon(st, "startup.png");
     }
     wps_udisks_init(loop, drives_changed);
     {

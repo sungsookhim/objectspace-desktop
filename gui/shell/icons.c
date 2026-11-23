@@ -2,6 +2,11 @@
 #define _GNU_SOURCE
 #include "icons.h"
 
+#include <math.h>
+#include "wpsicon.h"
+#include "wps_themes.h"
+#include "mime.h"
+
 #include <errno.h>
 #include <stdbool.h>
 #include <strings.h>
@@ -163,6 +168,29 @@ void icons_import(const char *src, void (*done)(void *ctx, const char *png), voi
     clock_gettime(CLOCK_REALTIME, &ts);
     snprintf(j->out, sizeof j->out, "%s/%s-%lld%03ld.png", dir, stem, (long long)ts.tv_sec, ts.tv_nsec / 1000000);
     size_t l = strlen(src);
+    if (l > 8 && !strcasecmp(src + l - 8, ".wpsicon")) {
+        /* an icon package (0.4): kept as it is, all its sizes (and SVG) */
+        wpsicon *w = wpsicon_open(src);
+        bool ok = w != NULL;
+        wpsicon_free(w);
+        snprintf(j->out + strlen(j->out) - 4, 9, ".wpsicon");
+        if (ok) {
+            FILE *in = fopen(src, "rb"), *o = fopen(j->out, "wb");
+            char buf[65536];
+            size_t k;
+            ok = in && o;
+            while (ok && (k = fread(buf, 1, sizeof buf, in)) > 0) ok = fwrite(buf, 1, k, o) == k;
+            if (in) fclose(in);
+            if (o && fclose(o) != 0) ok = false;
+        }
+        if (!ok) snprintf(import_error, sizeof import_error, "not an icon package that can be read");
+        struct posted *d = calloc(1, sizeof *d);
+        *d = (struct posted){ done, ctx, "", ok };
+        snprintf(d->out, sizeof d->out, "%s", ok ? j->out : "");
+        free(j);
+        ui_app_post(app, post_done, d);
+        return;
+    }
     if (l > 4 && !strcasecmp(src + l - 4, ".png") && import_png(src, j->out)) {   /* (later, as glycin's would be) */
         struct posted *d = calloc(1, sizeof *d);
         *d = (struct posted){ done, ctx, "", true };
@@ -220,6 +248,7 @@ static uint64_t fnv(const char *s, uint64_t h)
 
 bool icons_preview(const char *src, int size, char *out, size_t n, void (*done)(void *ctx, const char *png), void *ctx)
 {
+    if (icons_object_png(src, size, out, n)) return true;   /* a package (0.4): drawn at once */
     size_t l = strlen(src);
     if (l > 4 && !strcasecmp(src + l - 4, ".png")) { snprintf(out, n, "%s", src); return true; }
     struct stat st;
@@ -243,4 +272,167 @@ bool icons_preview(const char *src, int size, char *out, size_t n, void (*done)(
     snprintf(j->out, sizeof j->out, "%s", out);
     convert(j, src, size);
     return false;
+}
+
+/* ---------------------------------------------------- icon themes (0.4) */
+
+static char default_theme[128] = "WPS (flat)";
+static struct { char *key; cairo_surface_t *s; unsigned long used; } tcache[256];
+static unsigned long ttick;
+
+void icons_set_default_theme(const char *theme)
+{
+    if (theme && *theme) snprintf(default_theme, sizeof default_theme, "%s", theme);
+}
+
+const char *icons_default_theme(void) { return default_theme; }
+
+/* a package's path in a theme (by name or id), or "" */
+static bool package_in(const char *theme, const char *name, char *out, size_t n)
+{
+    char dir[PATH_MAX];
+    if (!wps_icon_theme_dir(theme, dir, sizeof dir)) return false;
+    snprintf(out, n, "%s/%s.wpsicon", dir, name);
+    return access(out, R_OK) == 0;
+}
+
+static cairo_surface_t *package_at(const char *path, int px)
+{
+    char key[PATH_MAX + 32];
+    snprintf(key, sizeof key, "%s@%d", path, px);
+    size_t victim = 0;
+    for (size_t i = 0; i < sizeof tcache / sizeof *tcache; i++) {
+        if (tcache[i].key && !strcmp(tcache[i].key, key)) { tcache[i].used = ++ttick; return tcache[i].s; }
+        if (!tcache[i].key) { victim = i; break; }
+        if (tcache[i].used < tcache[victim].used) victim = i;
+    }
+    wpsicon *w = wpsicon_open(path);
+    cairo_surface_t *s = w ? wpsicon_render(w, px, NULL) : NULL;   /* (drawn once per size: cached) */
+    wpsicon_free(w);
+    free(tcache[victim].key);
+    if (tcache[victim].s) cairo_surface_destroy(tcache[victim].s);
+    tcache[victim].key = strdup(key);
+    tcache[victim].s = s;
+    tcache[victim].used = ++ttick;
+    return s;
+}
+
+cairo_surface_t *icons_theme(const char *theme, const char *name, int px)
+{
+    char p[PATH_MAX + 64];
+    if (!name || !*name) return NULL;
+    if (package_in(theme && *theme ? theme : default_theme, name, p, sizeof p) || package_in("wps-flat", name, p, sizeof p))
+        return package_at(p, px);
+    return NULL;
+}
+
+cairo_surface_t *icons_object(const char *theme, const char *icon)
+{
+    if (!icon || !*icon) return NULL;
+    if (!strncmp(icon, "theme:", 6)) return icons_theme(theme, icon + 6, 64);   /* (64: sharp at 32, and at scale 2) */
+    size_t l = strlen(icon);
+    if (l > 8 && !strcmp(icon + l - 8, ".wpsicon")) return package_at(icon, 64);   /* its own, a package */
+    return icons_get(icon);
+}
+
+const char *icons_name_for_type(const char *m)
+{
+    if (!m || !*m) return "file-data";
+    static const struct { const char *prefix, *icon; } map[] = {
+        { "image/", "file-image" }, { "audio/", "file-audio" }, { "video/", "file-video" }, { "font/", "file-font" },
+        { "application/x-font", "file-font" }, { "application/vnd.ms-fontobject", "file-font" },
+        { "text/x-shellscript", "file-script" }, { "application/x-shellscript", "file-script" },
+        { "application/x-perl", "file-script" }, { "text/x-python", "file-code" }, { "text/x-", "file-code" },
+        { "application/javascript", "file-code" }, { "application/json", "file-code" }, { "application/xml", "file-code" },
+        { "text/csv", "file-spreadsheet" }, { "text/", "file-text" },
+        { "application/pdf", "file-document" }, { "application/msword", "file-document" }, { "application/rtf", "file-document" },
+        { "application/vnd.oasis.opendocument.text", "file-document" },
+        { "application/vnd.openxmlformats-officedocument.wordprocessingml", "file-document" },
+        { "application/vnd.oasis.opendocument.spreadsheet", "file-spreadsheet" }, { "application/vnd.ms-excel", "file-spreadsheet" },
+        { "application/vnd.openxmlformats-officedocument.spreadsheetml", "file-spreadsheet" },
+        { "application/vnd.oasis.opendocument.presentation", "file-presentation" }, { "application/vnd.ms-powerpoint", "file-presentation" },
+        { "application/vnd.openxmlformats-officedocument.presentationml", "file-presentation" },
+        { "application/x-iso9660-image", "file-disc-image" }, { "application/x-cd-image", "file-disc-image" },
+        { "application/x-raw-disk-image", "file-disc-image" },
+        { "application/x-rpm", "file-package" }, { "application/vnd.debian.binary-package", "file-package" },
+        { "application/vnd.flatpak", "file-package" }, { "application/vnd.appimage", "file-package" },
+        { "application/zip", "file-archive" }, { "application/x-tar", "file-archive" }, { "application/gzip", "file-archive" },
+        { "application/x-compressed-tar", "file-archive" }, { "application/x-7z", "file-archive" },
+        { "application/vnd.rar", "file-archive" }, { "application/x-rar", "file-archive" }, { "application/x-xz", "file-archive" },
+        { "application/x-bzip", "file-archive" }, { "application/zstd", "file-archive" },
+    };
+    for (size_t i = 0; i < sizeof map / sizeof *map; i++)
+        if (!strncmp(m, map[i].prefix, strlen(map[i].prefix))) return map[i].icon;
+    return "file-data";
+}
+
+bool icons_theme_png(const char *theme, const char *name, int px, char *out, size_t n)
+{
+    cairo_surface_t *s = icons_theme(theme, name, px);
+    if (!s) return false;
+    const char *cache = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
+    char dir[PATH_MAX];
+    if (cache && *cache) snprintf(dir, sizeof dir, "%s/wps", cache);
+    else snprintf(dir, sizeof dir, "%s/.cache/wps", home ? home : "/tmp");
+    mkdir(dir, 0700);
+    strncat(dir, "/theme-icons", sizeof dir - strlen(dir) - 1);
+    mkdir(dir, 0700);
+    char safe[128];
+    snprintf(safe, sizeof safe, "%s", theme && *theme ? theme : default_theme);
+    for (char *c = safe; *c; c++) if (*c == '/' || *c == ' ' || *c == '(' || *c == ')') *c = '_';
+    snprintf(out, n, "%s/%s-%s-%d.png", dir, safe, name, px);
+    if (access(out, R_OK) == 0) return true;
+    return cairo_surface_write_to_png(s, out) == CAIRO_STATUS_SUCCESS;
+}
+
+bool icons_draw_theme(cairo_t *cr, const char *theme, const char *name, ui_rect r, double pad)
+{
+    double side = fmin(r.w, r.h) - 2 * pad;
+    if (side < 4) return false;
+    double dx = side, dy = 0;
+    cairo_user_to_device_distance(cr, &dx, &dy);   /* its pixels on the screen: drawn at that size, sharp */
+    int px = (int)(fabs(dx) + 0.5);
+    cairo_surface_t *s = px > 0 ? icons_theme(theme, name, px) : NULL;
+    if (!s) return false;
+    cairo_save(cr);
+    cairo_translate(cr, r.x + (r.w - side) / 2, r.y + (r.h - side) / 2);
+    cairo_scale(cr, side / px, side / px);
+    cairo_set_source_surface(cr, s, 0, 0);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    return true;
+}
+
+cairo_surface_t *icons_item(const char *theme, const char *icon, ui_kind kind, const char *name)
+{
+    cairo_surface_t *s = icons_object(theme, icon);
+    if (s) return s;
+    const char *nm = kind == UI_KIND_FOLDER ? "folder" : kind == UI_KIND_PROGRAM ? "program" : NULL;
+    if (!nm && kind == UI_KIND_FILE) {
+        const char *sl = name ? strrchr(name, '/') : NULL;
+        nm = icons_name_for_type(name ? mime_of_name(sl ? sl + 1 : name) : NULL);
+    }
+    return nm ? icons_theme(theme, nm, 64) : NULL;
+}
+
+bool icons_object_png(const char *icon, int px, char *out, size_t n)
+{
+    if (!icon) return false;
+    if (!strncmp(icon, "theme:", 6)) return icons_theme_png(NULL, icon + 6, px, out, n);
+    size_t l = strlen(icon);
+    if (l < 9 || strcmp(icon + l - 8, ".wpsicon")) return false;
+    cairo_surface_t *s = package_at(icon, px);
+    if (!s) return false;
+    const char *cache = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
+    char dir[PATH_MAX];
+    if (cache && *cache) snprintf(dir, sizeof dir, "%s/wps", cache);
+    else snprintf(dir, sizeof dir, "%s/.cache/wps", home ? home : "/tmp");
+    mkdir(dir, 0700);
+    strncat(dir, "/theme-icons", sizeof dir - strlen(dir) - 1);
+    mkdir(dir, 0700);
+    unsigned long h = 5381;   /* (by its path: an imported package's name is new each time) */
+    for (const char *c = icon; *c; c++) h = h * 33 + (unsigned char)*c;
+    snprintf(out, n, "%s/pkg-%lx-%d.png", dir, h, px);
+    if (access(out, R_OK) == 0) return true;
+    return cairo_surface_write_to_png(s, out) == CAIRO_STATUS_SUCCESS;
 }

@@ -41,11 +41,20 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
                       : !strcmp(type, "info") ? UI_FIELD_INFO : !strcmp(type, "file") ? UI_FIELD_FILE
                       : !strcmp(type, "color") ? UI_FIELD_COLOR : UI_FIELD_CHOICE;
             if (v && v->k == CV_TEXT) d->value.text = (char *)v->s;
+            static char shown_png[4][PATH_MAX];   /* (an icon field shows PNGs: a package or a theme's as one) */
+            static int nshown;
+            if (d->kind == UI_FIELD_ICON && d->value.text && icons_object_png(d->value.text, 128, shown_png[nshown % 4], sizeof shown_png[0]))
+                d->value.text = shown_png[nshown++ % 4];
             else if (v && v->k == CV_INT) d->value.number = v->i;
             else if (v && v->k == CV_BOOL) d->value.checked = v->b;
             if (ch && ch->k == CV_ARRAY) {
                 const char **c = calloc(ch->n ? ch->n : 1, sizeof *c);
                 for (size_t j = 0; j < ch->n; j++) c[j] = ch->items[j].k == CV_TEXT ? ch->items[j].s : "";
+                static char themed[4][PATH_MAX];   /* (an icon shown from a theme: its PNG) */
+                static int nthemed;
+                if (d->kind == UI_FIELD_ICON && ch->n && !strncmp(c[0], "theme:", 6) &&
+                    icons_theme_png(NULL, c[0] + 6, 128, themed[nthemed % 4], sizeof themed[0]))
+                    c[0] = themed[nthemed++ % 4];
                 d->choices = c;
                 d->nchoices = ch->n;
             }

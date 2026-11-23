@@ -3,6 +3,8 @@
 #define _GNU_SOURCE
 #include "wpsicon.h"
 
+#include <librsvg/rsvg.h>
+
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
@@ -222,13 +224,34 @@ static cairo_surface_t *scale(cairo_surface_t *src, int from, int px, cairo_filt
     return d;
 }
 
-/* The rules over a set of pictures. */
-static cairo_surface_t *render_from(const struct pic *pics, size_t n, bool svg, int px, int *how)
+/* The SVG drawn at px x px (librsvg), or NULL. */
+static cairo_surface_t *render_svg(const unsigned char *svg, size_t len, int px)
 {
-    if (!n || px < 1) return NULL;
+    GError *err = NULL;
+    RsvgHandle *h = rsvg_handle_new_from_data(svg, len, &err);
+    if (!h) { if (err) g_error_free(err); return NULL; }
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, px, px);
+    cairo_t *cr = cairo_create(s);
+    RsvgRectangle vp = { 0, 0, px, px };
+    bool ok = rsvg_handle_render_document(h, cr, &vp, &err);
+    cairo_destroy(cr);
+    g_object_unref(h);
+    if (err) g_error_free(err);
+    if (!ok) { cairo_surface_destroy(s); return NULL; }
+    return s;
+}
+
+/* The rules over a set of pictures (and the SVG, if there is one). */
+static cairo_surface_t *render_from(const struct pic *pics, size_t n, const unsigned char *svg, size_t svglen, int px, int *how)
+{
+    if ((!n && !svg) || px < 1) return NULL;
     for (size_t i = 0; i < n; i++)
         if (pics[i].size == px) { if (how) *how = WPSICON_EXACT; return decode(&pics[i]); }
-    (void)svg;   /* 2: the SVG, drawn by librsvg (0.4): not yet */
+    if (svg && svglen < (8u << 20)) {   /* 2: the SVG at this size (a size limit: a huge one is not drawn) */
+        cairo_surface_t *s = render_svg(svg, svglen, px);
+        if (s) { if (how) *how = WPSICON_SVG; return s; }
+    }
+    if (!n) return NULL;
     for (size_t i = 0; i < n; i++)
         if (pics[i].size > px && pics[i].size % px == 0) {
             cairo_surface_t *s = decode(&pics[i]);
@@ -258,7 +281,7 @@ static cairo_surface_t *render_from(const struct pic *pics, size_t n, bool svg, 
 
 cairo_surface_t *wpsicon_render(wpsicon *w, int px, int *how)
 {
-    return render_from(w->pics, w->n, w->svg != NULL, px, how);
+    return render_from(w->pics, w->n, w->svg, w->svglen, px, how);
 }
 
 /* ----------------------------------------------------------- packing */
@@ -366,7 +389,7 @@ int wpsicon_pack(const char *const *inputs, size_t n, const char *out, char *err
         }
         if (d) closedir(d);
     }
-    if (!bad && !w->n) { snprintf(err, errn, "no pictures (PNG files) given"); bad = true; }
+    if (!bad && !w->n && !w->svg) { snprintf(err, errn, "no pictures (PNG or SVG files) given"); bad = true; }
     if (bad) { wpsicon_free(w); return -1; }
     /* the standard sizes missing: from the pictures given, by the rules */
     struct pic given[MAX_PICS];
@@ -378,7 +401,7 @@ int wpsicon_pack(const char *const *inputs, size_t n, const char *out, char *err
         for (size_t i = 0; i < w->n; i++) have |= w->pics[i].size == sz;
         if (have) continue;
         int how = 0;
-        cairo_surface_t *s = render_from(given, ng, false, sz, &how);
+        cairo_surface_t *s = render_from(given, ng, w->svg, w->svglen, sz, &how);
         struct wbuf png = { 0 };
         if (!s || cairo_surface_write_to_png_stream(s, write_mem, &png) != CAIRO_STATUS_SUCCESS || png.oom) {
             snprintf(err, errn, "the %d px picture could not be made", sz);

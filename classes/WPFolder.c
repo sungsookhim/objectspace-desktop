@@ -1,4 +1,5 @@
 #include "WPFolder.h"
+#include "wps_themes.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -269,4 +270,11 @@ bool WPFolder__wpSetLocalObjects(wpo_object *self, bool on)
     WPObject_wpSaveDeferred(self);
     WPObject_wpObjectChanged(self);
     return true;
+}
+
+char *WPFolder__wpQueryIconThemes(wpo_object *self)
+{
+    (void)self;
+    char *t = wps_icon_theme_names();
+    return t && *t ? t : (free(t), wps_strdup("WPS (flat)"));
 }

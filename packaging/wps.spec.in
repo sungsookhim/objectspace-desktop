@@ -42,6 +42,8 @@ BuildRequires:  pkgconfig(sndfile)
 # the icon themes (make icons: tools/icons, and wpsctl icon pack)
 BuildRequires:  python3-pillow
 BuildRequires:  pkgconfig(zlib)
+# icon themes' SVGs (0.4 step 2)
+BuildRequires:  pkgconfig(librsvg-2.0)
 
 # The session: X11 programs, drives, settings shared with GNOME, icons
 # made from SVGs, file types and the icon theme; input methods when installed.

@@ -219,6 +219,11 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "icon_titles")) whole = option_number(ch, v) == 0;
         else if (!strcmp(key, "lock_all")) lock_all = on;
         else if (!strcmp(key, "icon_font")) snprintf(f->icon_font, sizeof f->icon_font, "%s", v);
+        else if (!strcmp(key, "icon_theme") && strcmp(f->icon_theme, v)) {   /* every icon again */
+            snprintf(f->icon_theme, sizeof f->icon_theme, "%s", v);
+            if (f->desktop) icons_set_default_theme(v);   /* (menus, the LaunchPad, the WarpCenter) */
+            ui_container_changed(f->cont, 0, SIZE_MAX);
+        }
         else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
         else if (!strcmp(key, "show_ext")) f->show_ext = on;

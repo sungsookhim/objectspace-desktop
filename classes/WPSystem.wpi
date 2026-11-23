@@ -17,6 +17,10 @@ method wpQueryFoldersHidden() -> string
 method wpSetFoldersHidden(string on) -> bool
 method wpQueryFoldersExt() -> string
 method wpSetFoldersExt(string on) -> bool
+method wpQueryFoldersTheme() -> string
+method wpSetFoldersTheme(string theme) -> bool
+method wpQueryIconThemes() -> string
+property icon_theme : choice = "WPS (flat)" page "Icons" label "Icon theme" get wpQueryFoldersTheme set wpSetFoldersTheme options wpQueryIconThemes
 method wpQueryFoldersFont() -> string
 method wpSetFoldersFont(string font) -> bool
 property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" get wpQueryFoldersHidden set wpSetFoldersHidden

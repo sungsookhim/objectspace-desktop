@@ -194,6 +194,10 @@ bool wps_trash_full(const char *files)
 
 void wps_default_icon(const char *name, char *out, size_t n)
 {
+    /* the theme's icon of that name (0.4 step 2): "theme:computer" for
+     * "computer.png"; the window draws it in its folder's theme */
+    size_t nl = strlen(name);
+    if (nl > 4 && !strcmp(name + nl - 4, ".png")) { snprintf(out, n, "theme:%.*s", (int)(nl - 4), name); return; }
     snprintf(out, n, "%s/%s", WPS_ICONDIR, name);
     if (access(out, R_OK) == 0) return;
     /* not installed: the tree's (build/wpsd -> data/icons) */
@@ -237,7 +241,7 @@ static void drive_icon(const wps_loaded *ld, char *out, size_t n)
 }
 
 /* WPS's special folders' own icons (Computer, ...), by path. */
-static struct { char path[PATH_MAX]; char png[64]; } special[8];
+static struct { char path[PATH_MAX]; char png[64]; } special[16];
 static int nspecial;
 static pthread_mutex_t special_mu = PTHREAD_MUTEX_INITIALIZER;
 
@@ -246,8 +250,8 @@ void wps_listing_folder_icon(const char *path, const char *png)
     pthread_mutex_lock(&special_mu);
     int i = 0;
     while (i < nspecial && strcmp(special[i].path, path)) i++;
-    if (i == nspecial && nspecial < 8) nspecial++;
-    if (i < 8) {
+    if (i == nspecial && nspecial < 16) nspecial++;
+    if (i < 16) {
         snprintf(special[i].path, sizeof special[i].path, "%s", path);
         snprintf(special[i].png, sizeof special[i].png, "%s", png);
     }

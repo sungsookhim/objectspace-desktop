@@ -66,7 +66,7 @@ void src_item(void *ctx, size_t i, ui_item *out)
     out->in_use = r->in_use;
     out->link = r->link;
     out->is_template = r->tpl;
-    out->image = icons_get(r->icon);   /* its own icon, if it has one */
+    out->image = icons_object(f->icon_theme, r->icon);   /* its own icon, or WPS's (a theme's) */
     if (!out->image && r->kind == UI_KIND_PROGRAM) {
         /* a program (or its shadow): its desktop entry's icon */
         char p[PATH_MAX];
@@ -75,6 +75,8 @@ void src_item(void *ctx, size_t i, ui_item *out)
         size_t l = strlen(p);
         if (l > 8 && !strcmp(p + l - 8, ".desktop")) out->image = appicon_for(p);
     }
+    if (!out->image)   /* its kind's, from the folder's theme (a data file's by its type) */
+        out->image = icons_item(f->icon_theme, NULL, r->kind, (r->shadow || r->link) && r->target ? r->target : r->name);
     if (r->kind == UI_KIND_FOLDER) {
         /* The folder, or a shadow of it, looks open while its window is (OS/2). */
         char p[PATH_MAX];

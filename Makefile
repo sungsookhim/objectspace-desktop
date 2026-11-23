@@ -114,7 +114,7 @@ $(B)/wps-watchd: service/watchd.c service/cbor.c service/cbor.h
 # (with the icon packages' code: `wpsctl icon` works on files, roadmap 0.4)
 $(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h gui/shell/wpsicon.c gui/shell/wpsicon.h
 	@mkdir -p $(B)
-	$(CC) $(CFLAGS) $(SAN) -Iservice -Igui/shell $$(pkg-config --cflags cairo zlib) -o $@ service/wpsctl.c service/cbor.c gui/shell/wpsicon.c $(LDFLAGS) $$(pkg-config --libs cairo zlib)
+	$(CC) $(CFLAGS) $(SAN) -Iservice -Igui/shell $$(pkg-config --cflags cairo zlib librsvg-2.0) -o $@ service/wpsctl.c service/cbor.c gui/shell/wpsicon.c $(LDFLAGS) $$(pkg-config --libs cairo zlib librsvg-2.0)
 
 # M5: a plug-in for wps-plughost, and one built against a newer WPFolder
 # (1.1) than the one installed, which must be refused.
@@ -270,15 +270,15 @@ g0: $(G0)/folderview $(G0)/soundlat
 # The GUI: libwpsui (gui/ui_*.c) and wps-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
 UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_ibus.c gui/ui_a11y.c
-SHELLSRC := gui/shell/wps-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/session.c gui/shell/warpcenter.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c classes/wps_magic.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
+SHELLSRC := gui/shell/wps-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/session.c gui/shell/warpcenter.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/wpsicon.c classes/wps_magic.c classes/wps_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon libsystemd
 UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
 UIFLAGS = -Igui -Igui/shell -Iservice -Iclasses -I$(G0) $(shell pkg-config --cflags $(UIPKG))
 UILIBS  = $(shell pkg-config --libs $(UIPKG)) -lpthread -lm
 # Sounds: PipeWire, and libsndfile when installed (Ogg, FLAC; else WAV only).
 SNDFILE := $(shell pkg-config --exists sndfile 2>/dev/null && echo sndfile)
-SHFLAGS = $(shell pkg-config --cflags libpipewire-0.3 $(SNDFILE)) $(if $(SNDFILE),-DHAVE_SNDFILE)
-SHLIBS  = $(shell pkg-config --libs libpipewire-0.3 $(SNDFILE)) -lsystemd
+SHFLAGS = $(shell pkg-config --cflags libpipewire-0.3 $(SNDFILE) librsvg-2.0 zlib) $(if $(SNDFILE),-DHAVE_SNDFILE)
+SHLIBS  = $(shell pkg-config --libs libpipewire-0.3 $(SNDFILE) librsvg-2.0 zlib) -lsystemd
 
 $(B)/wps-shell: $(UIDEPS)
 	$(CC) $(G0FLAGS) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(LDFLAGS) $(UILIBS) $(SHLIBS)
@@ -331,7 +331,7 @@ $(TV)/test_layout: tests/test_layout.c gui/shell/layout.c gui/shell/layout.h
 
 $(TV)/test_wpsicon: tests/test_wpsicon.c gui/shell/wpsicon.c gui/shell/wpsicon.h
 	@mkdir -p $(TV)
-	$(CC) $(G0FLAGS) $(SAN) -Igui/shell -Itests $$(pkg-config --cflags cairo zlib) -o $@ tests/test_wpsicon.c gui/shell/wpsicon.c $$(pkg-config --libs cairo zlib)
+	$(CC) $(G0FLAGS) $(SAN) -Igui/shell -Itests $$(pkg-config --cflags cairo zlib librsvg-2.0) -o $@ tests/test_wpsicon.c gui/shell/wpsicon.c $$(pkg-config --libs cairo zlib librsvg-2.0)
 
 # Icon themes (roadmap 0.4): WPS's isometric set as packages, a theme per
 # variant (tools/icons/make_theme.py, with Pillow: wps-flat, the default,
@@ -358,7 +358,7 @@ gui-test: gui
 	$(TV)/test_wpsicon
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard desktop-menu details icons launchpad notify pointer restore schemes search session sounds tray
+COMP_TESTS := background clipboard desktop-menu details icons launchpad notify pointer restore schemes search session sounds themes tray
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \

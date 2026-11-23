@@ -259,7 +259,7 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             cairo_translate(cr, r.x + r.w / 2 + d, r.y + r.h / 2 + d);
             double sc = fmin(r.w, r.h) / 30;
             cairo_scale(cr, sc, sc);
-            if (p == P_LOGOFF) glyph_logoff(cr);
+            if (p == P_LOGOFF) { if (!icons_draw_theme(cr, NULL, "sys-logoff", (ui_rect){ -15, -15, 30, 30 }, 3.6)) glyph_logoff(cr); }
             else launchpad_glyph(cr, p == P_LOCK ? 0 : p == P_FIND ? 1 : 2, (ui_rect){ -15, -15, 30, 30 });
             cairo_restore(cr);
         } else if (p == P_KEYBOARD) {

@@ -16,6 +16,7 @@
 #include "wps_classes.h"
 #include "wps_state.h"
 #include "wps_props.h"
+#include "wps_themes.h"
 
 /* Each subclass declares its settings as properties in its .wpi (kept as
  * text in the WPSetup state; object-properties-design.md 2.1): its pages
@@ -77,6 +78,15 @@ char *WPSystem__wpQueryFoldersHidden(wpo_object *self) { return folders_get(self
 bool WPSystem__wpSetFoldersHidden(wpo_object *self, const char *on) { return folders_set(self, "show_hidden", on); }
 char *WPSystem__wpQueryFoldersExt(wpo_object *self) { return folders_get(self, "show_ext", "show_ext", "1"); }
 bool WPSystem__wpSetFoldersExt(wpo_object *self, const char *on) { return folders_set(self, "show_ext", on); }
+char *WPSystem__wpQueryFoldersTheme(wpo_object *self) { return folders_get(self, "icon_theme", "icon_theme", "WPS (flat)"); }
+bool WPSystem__wpSetFoldersTheme(wpo_object *self, const char *theme) { return folders_set(self, "icon_theme", theme); }
+char *WPSystem__wpQueryIconThemes(wpo_object *self)
+{
+    (void)self;
+    char *t = wps_icon_theme_names();
+    return t && *t ? t : (free(t), wps_strdup("WPS (flat)"));
+}
+
 char *WPSystem__wpQueryFoldersFont(wpo_object *self) { return folders_get(self, "font_folders", "icon_font", ""); }
 bool WPSystem__wpSetFoldersFont(wpo_object *self, const char *font) { return folders_set(self, "icon_font", font); }
 

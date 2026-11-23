@@ -65,13 +65,9 @@ static void load(void)
 }
 
 
-const char *mime_of_file(const char *path)
+const char *mime_of_name(const char *name)
 {
     load();
-    struct stat st;
-    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) return "inode/directory";
-    const char *name = strrchr(path, '/');
-    name = name ? name + 1 : path;
     const char *best = NULL;
     size_t bestlen = 0, ln = strlen(name);
     int bestw = -1;
@@ -80,6 +76,15 @@ const char *mime_of_file(const char *path)
         if (lg > ln || strcasecmp(name + ln - lg, globs[i].suffix) != 0) continue;
         if (lg > bestlen || (lg == bestlen && globs[i].weight > bestw)) { best = globs[i].type; bestlen = lg; bestw = globs[i].weight; }
     }
+    return best;
+}
+
+const char *mime_of_file(const char *path)
+{
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) return "inode/directory";
+    const char *name = strrchr(path, '/');
+    const char *best = mime_of_name(name ? name + 1 : path);
     if (best) return best;
     const char *sniffed = wps_mime_sniff(path);   /* as the service does (classes/wps_magic.c) */
     return sniffed ? sniffed : "application/octet-stream";

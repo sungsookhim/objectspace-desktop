@@ -89,7 +89,7 @@ static bool image_ext(const char *n, bool any)
 {
     const char *d = strrchr(n, '.');
     if (!d) return false;
-    if (!strcasecmp(d, ".png") || !strcasecmp(d, ".svg")) return true;
+    if (!strcasecmp(d, ".png") || !strcasecmp(d, ".svg") || !strcasecmp(d, ".wpsicon")) return true;
     if (!any) return false;
     static const char *const more[] = { ".jpg", ".jpeg", ".ico", ".icns", ".webp", ".gif", ".bmp", ".jxl", ".avif", ".tif", ".tiff", ".xpm" };
     for (size_t i = 0; i < sizeof more / sizeof *more; i++) if (!strcasecmp(d, more[i])) return true;
