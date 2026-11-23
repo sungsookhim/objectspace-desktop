@@ -2,6 +2,10 @@
 #define _GNU_SOURCE
 #include "icons.h"
 
+#ifndef WPS_ICONDIR
+#define WPS_ICONDIR "/usr/share/wps/icons"
+#endif
+
 #include <math.h>
 #include "wpsicon.h"
 #include "wps_themes.h"
@@ -317,12 +321,28 @@ static cairo_surface_t *package_at(const char *path, int px)
     return s;
 }
 
+/* WPS's 0.2 picture of a name (installed, or a build tree's data/icons) */
+static bool classic_png(const char *name, char *out, size_t n)
+{
+    snprintf(out, n, "%s/%s.png", WPS_ICONDIR, name);
+    if (access(out, R_OK) == 0) return true;
+    char exe[PATH_MAX];
+    ssize_t l = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (l <= 0) return false;
+    exe[l] = 0;
+    for (int up = 0; up < 2; up++) { char *s = strrchr(exe, '/'); if (s) *s = 0; }
+    snprintf(out, n, "%s/data/icons/%s.png", exe, name);
+    return access(out, R_OK) == 0;
+}
+
 cairo_surface_t *icons_theme(const char *theme, const char *name, int px)
 {
     char p[PATH_MAX + 64];
     if (!name || !*name) return NULL;
     if (package_in(theme && *theme ? theme : default_theme, name, p, sizeof p) || package_in("wps-flat", name, p, sizeof p))
         return package_at(p, px);
+    /* no theme has it (none installed: a checkout without make icons) */
+    if (classic_png(name, p, sizeof p)) return icons_get(p);
     return NULL;
 }
 

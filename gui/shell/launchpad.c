@@ -763,6 +763,7 @@ static void bar_menu_chosen(void *arg, int64_t id)
     (void)arg;
     if (id == 3) lp.open_folder(lp.dir);
     else if (id == 4) winlist_open(false);
+    else if (id == 5) launchpad_close();
 }
 
 static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t serial);
@@ -889,8 +890,10 @@ static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t se
         ui_menu_item items[] = {
             { 3, "Open LaunchPad folder", true, false, NULL, 0 },
             { 4, "Window list", true, false, NULL, 0 },
+            { -1, "-", false, false, NULL, 0 },
+            { 5, "Close", true, false, NULL, 0 },   /* (its object in System opens it again) */
         };
-        ui_menu_popup(s, items, 2, x, y, serial, bar_menu_chosen, NULL);
+        ui_menu_popup(s, items, 4, x, y, serial, bar_menu_chosen, NULL);
     }
 }
 
@@ -1127,7 +1130,20 @@ static void lp_focus(ui_surface *s, bool on)
 
 static void lp_close(ui_surface *s)
 {
-    (void)s;   /* the LaunchPad stays while the desktop runs (OS/2: it closed with the desktop) */
+    (void)s;   /* (Alt+F4 and the like: the LaunchPad stays; its menu's Close closes it) */
+}
+
+/* Closed (its menu's Close): opened again by its object in System. */
+void launchpad_close(void)
+{
+    if (!lp.s) return;
+    drawer_close();
+    tooltip_hide();
+    if (lp.sub) svc_unsubscribe(lp.sub);
+    lp.sub = 0;
+    ui_surface *s = lp.s;
+    lp.s = NULL;
+    ui_surface_destroy(s);
 }
 
 static const ui_surface_ops lp_ops = { .draw = lp_draw, .pointer = lp_pointer, .key = lp_key, .focus = lp_focus, .close = lp_close,
