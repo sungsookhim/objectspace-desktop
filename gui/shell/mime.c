@@ -1,7 +1,7 @@
 /*
  * File types for drops on programs (gui/shell): a file's type from its
- * name (shared-mime-info's glob table; no match and no zero bytes in its
- * start: text/plain; a folder: inode/directory), and whether a program
+ * name (shared-mime-info's glob table; no match: its contents, as the
+ * service has it, classes/wps_magic.c; a folder: inode/directory), and whether a program
  * opens it - the types its desktop entry lists (MimeType=), a file's type
  * counting as each type it is a kind of (subclasses: text/x-csrc is
  * text/plain; aliases followed). A program with no list takes files only
@@ -9,6 +9,7 @@
  */
 #define _GNU_SOURCE
 #include "mime.h"
+#include "wps_magic.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -63,17 +64,6 @@ static void load(void)
     load_pairs("/usr/share/mime/aliases", &aliases, &naliases);  /* "alias type" */
 }
 
-static bool looks_like_text(const char *path)
-{
-    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY | O_NONBLOCK);
-    if (fd < 0) return false;
-    struct stat st;
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) { close(fd); return false; }
-    char b[4096];
-    ssize_t n = read(fd, b, sizeof b);
-    close(fd);
-    return n >= 0 && !memchr(b, 0, (size_t)n);
-}
 
 const char *mime_of_file(const char *path)
 {
@@ -91,7 +81,8 @@ const char *mime_of_file(const char *path)
         if (lg > bestlen || (lg == bestlen && globs[i].weight > bestw)) { best = globs[i].type; bestlen = lg; bestw = globs[i].weight; }
     }
     if (best) return best;
-    return looks_like_text(path) ? "text/plain" : "application/octet-stream";
+    const char *sniffed = wps_mime_sniff(path);   /* as the service does (classes/wps_magic.c) */
+    return sniffed ? sniffed : "application/octet-stream";
 }
 
 static const char *unalias(const char *t)

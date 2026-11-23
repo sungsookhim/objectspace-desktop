@@ -1,6 +1,7 @@
 /* Programs and files WPS starts, tracked while they run (see launch.h). */
 #define _GNU_SOURCE
 #include "launch.h"
+#include "wps_magic.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -481,19 +482,6 @@ static bool default_app(const char *mime, char *desktop, size_t n)
     return false;
 }
 
-/* A file whose name says nothing: text if its start has no NUL bytes
- * (as GNOME decides, roughly). */
-static bool looks_like_text(const char *path)
-{
-    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY | O_NONBLOCK);
-    if (fd < 0) return false;
-    struct stat st;
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) { close(fd); return false; }
-    char b[4096];
-    ssize_t n = read(fd, b, sizeof b);
-    close(fd);
-    return n >= 0 && !memchr(b, 0, (size_t)n);
-}
 
 /* ------------------------------------------------------------- terminals */
 
@@ -591,7 +579,7 @@ int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max
 {
     const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
     const char *mime = wps_mime_for_name(base);
-    if (!mime && looks_like_text(file)) mime = "text/plain";
+    if (!mime) mime = wps_mime_sniff(file);   /* the name says nothing: its contents (classes/wps_magic.c) */
     char desktop[PATH_MAX], exec[4096];
     if (!mime || !default_app(mime, desktop, sizeof desktop)) return 0;
     if (!ini_get(desktop, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
@@ -686,7 +674,7 @@ static const char *file_mime(const char *file)
 {
     const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
     const char *mime = wps_mime_for_name(base);
-    if (!mime && looks_like_text(file)) mime = "text/plain";
+    if (!mime) mime = wps_mime_sniff(file);   /* the name says nothing: its contents (classes/wps_magic.c) */
     return mime;
 }
 

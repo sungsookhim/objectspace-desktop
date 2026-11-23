@@ -204,5 +204,14 @@ check("an action that fails: a message says which and why", len(msgs) == before 
       and msgs[0].get("app") == "WPS", msgs[:1])
 c.request(op="reset", target=prog, names="on:object.open")
 
+# a file whose name says nothing: its type from its contents (an empty Data File is text)
+open(DESK + "/Data File", "w").close()
+mt = (c.request(op="call", target=DESK + "/Data File", method="wpQueryMimeType").get("result"))
+check("an empty Data File (no extension) is text/plain", mt == "text/plain", mt)
+c.request(op="set", target="type:text/plain", setup="on:object.open=sound:bell")
+pd = props(DESK + "/Data File")
+check("... so all text files' action is its", pd.get("on:object.open", {}).get("origin") == "type:text/plain", pd.get("on:object.open"))
+c.request(op="reset", target="type:text/plain", names="on:object.open")
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

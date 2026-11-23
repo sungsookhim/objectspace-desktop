@@ -1,4 +1,5 @@
 #include "WPDataFile.h"
+#include "wps_magic.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +68,7 @@ char *WPDataFile__wpQueryMimeType(wpo_object *self)
     const char *p = WPFileSystem_data(self)->path;
     const char *slash = p ? strrchr(p, '/') : NULL;
     const char *t = p ? wps_mime_for_name(slash ? slash + 1 : p) : NULL;
+    if (!t && p) t = wps_mime_sniff(p);   /* the name says nothing: its contents (an empty Data File is text) */
     return wps_strdup(t ? t : "application/octet-stream");
 }
 
