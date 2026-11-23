@@ -30,6 +30,10 @@ int wps_option_index(const char *options, const char *v)
 /* A choice's options now: its class's method's, else the declared ones. */
 char *wps_prop_choices(wpo_object *self, const wpo_property_def *p)
 {
+    if (p->backing && !strcmp(p->type, "choice") && self && wps_backing_options) {
+        char *o = wps_backing_options(self, p);
+        if (o) return o;
+    }
     if (p->options && self) {
         wpo_value r = wpo_v_void();
         if (wpo_send(self, p->options, NULL, 0, &r) == WPO_OK && r.type == 's' && r.u.s) {
@@ -106,6 +110,9 @@ char *(*wps_prop_inherit)(wpo_object *self, const wpo_property_def *p, const cha
 char *(*wps_scope_get)(const char *scope, const char *store, const char *prop);
 bool (*wps_scope_set)(const char *scope, const char *store, const char *prop, const char *value);
 char *(*wps_scheme_titles)(void);
+char *(*wps_backing_get)(wpo_object *self, const wpo_property_def *p);
+bool (*wps_backing_set)(wpo_object *self, const wpo_property_def *p, const char *value);
+char *(*wps_backing_options)(wpo_object *self, const wpo_property_def *p);
 
 /* Its own value, if the object has one (kept in its state). */
 static char *own_value(wpo_object *self, const wpo_property_def *p, const char *st)
@@ -136,6 +143,10 @@ char *wps_prop_get_origin(wpo_object *self, const char *name, char *origin, size
     const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
     if (!p) return NULL;
     if (origin && on) snprintf(origin, on, "object");
+    if (p->backing) {   /* where Linux keeps it (NULL: not for this object) */
+        if (origin && on) snprintf(origin, on, "backing");
+        return wps_backing_get ? wps_backing_get(self, p) : NULL;
+    }
     if (p->get) {   /* the object's own, always (its title, its command) */
         char *v = call_get(self, p);
         if (v) return v;
@@ -159,7 +170,7 @@ bool wps_prop_reset(wpo_object *self, const char *name)
 {
     const wpo_class *decl;
     const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
-    if (!p || p->get || (p->flags & WPO_P_READONLY)) return false;
+    if (!p || p->get || p->backing || (p->flags & WPO_P_READONLY)) return false;
     wps_state_remove(self, store_of(p, decl), p->name);
     WPObject_wpSaveDeferred(self);
     WPObject_wpObjectChanged(self);
@@ -246,7 +257,10 @@ bool wps_prop_set(wpo_object *self, const char *name, const char *value)
     char *v = canonical_in(p, ch, value);
     if (!v) { free(ch); return false; }
     bool ok;
-    if (p->set) {
+    if (p->backing) {
+        ok = wps_backing_set && wps_backing_set(self, p, v);
+        if (ok) WPObject_wpObjectChanged(self);
+    } else if (p->set) {
         /* the class's setter, given the value as its argument's type */
         const wpo_method_def *m = wpo_method_info(self->cls, p->set);
         if (!m || strlen(m->sig) < 4) { free(v); free(ch); return false; }
@@ -303,6 +317,7 @@ char *wps_prop_list(wpo_object *self)
             const wpo_property_def *p = &c[k]->props[i];
             if (wpo_find_property(self->cls, p->name, NULL) != p) continue;   /* declared again below */
             char *v = wps_prop_get(self, p->name);
+            if (!v && p->backing) continue;   /* (not for this object) */
             size_t l = strlen(p->name) + strlen(v ? v : "") + 3;
             char *line = malloc(l);
             snprintf(line, l, "%s\t%s\n", p->name, v ? v : "");
@@ -333,6 +348,7 @@ static char *field_lines(wpo_object *self, const wpo_property_def *p, const char
 {
     if (!shown(self, p)) return wps_strdup("");
     char *v = wps_prop_get(self, p->name);
+    if (!v && p->backing) return wps_strdup("");   /* not kept for this object (a program with no desktop entry) */
     char *ch = wps_prop_choices(self, p);
     char shownv[32];
     const char *fv = v ? v : "";

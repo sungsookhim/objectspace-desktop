@@ -220,5 +220,21 @@ ftpl = next(((it["name"][1:] if it["name"].startswith("\x01") else T + "/templat
 so = (c.request(op="settings", target=ftpl).get("object") or {}) if ftpl else {}
 check("the Folder template says it makes folders (Class...: class:WPFolder)", so.get("makes") == "WPFolder" and so.get("makes_title") == "Folder", so)
 
+# Linux keeps some (object-properties-design.md 2.6): a type's program (mimeapps.list)
+tp = props("type:text/plain").get("open_with") or {}
+apps = [a for a in tp.get("choices", "").split(",") if a]
+check("all text files: Opens with, the type's programs to choose from", len(apps) >= 1, tp)
+if apps:
+    pick = apps[-1]
+    r = c.request(op="set", target="type:text/plain", setup="open_with=" + pick)
+    ml = T + "/xdg/config/mimeapps.list"
+    text = open(ml).read() if os.path.exists(ml) else ""
+    check("... set: mimeapps.list's default for text/plain (shared with GNOME)", r.get("ok") and "text/plain=" in text, (r, text[:200]))
+    check("... a text file says the same", get(DESK + "/notes.txt", "open_with") == pick, get(DESK + "/notes.txt", "open_with"))
+    r = c.request(op="reset", target="type:text/plain", names="open_with")
+    check("... kept by Linux: not reset by WPS", not r.get("ok"), r)
+r = c.request(op="set", target="class:WPDataFile", setup="open_with=x")
+check("a class has no one type: no Opens with", not r.get("ok"), r)
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

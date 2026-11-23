@@ -4,3 +4,7 @@ version 1.0
 override wpModifyPopupMenu
 method wpQueryMimeType() -> string
 classoverride wpclsQueryTitle
+# The program its type opens with: mimeapps.list's default, shared with
+# GNOME (object-properties-design.md 2.6); for all files of its type through
+# Class... (type:MIME).
+property open_with : choice page Association label "Opens with" backing mimeapps

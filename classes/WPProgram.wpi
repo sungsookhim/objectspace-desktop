@@ -27,3 +27,6 @@ property program_type : choice "automatic,window,text mode (in a terminal)" page
 property close_on_exit : checkbox = 1 page Program label "Close window on exit (text mode)" set wpSetCloseOnExit
 property start_at_login : checkbox page Program label "Start at login" show wpQueryInStartup get wpQueryStartAtLogin set wpSetStartAtLogin
 classoverride wpclsQueryTitle
+# A program from a desktop entry: the types it opens (its Association page;
+# the user's copy of the entry, object-properties-design.md 2.6).
+property mime_types : text page Association label "Types it opens (MIME, separated by ;)" backing desktop:MimeType

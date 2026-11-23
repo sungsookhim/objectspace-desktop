@@ -64,12 +64,16 @@ int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max
  * those of its parent types; the type in mime_out. */
 typedef struct { char id[256]; char path[4096]; char name[128]; char icon[256]; bool is_default, hidden; } wps_app;
 int wps_apps_for_file(const char *file, char *mime_out, size_t mn, wps_app *out, int max);
+/* ... for a type (all files of it). */
+int wps_apps_for_mime(const char *mime, wps_app *out, int max);
 /* Every installed application to offer (Other program...), by name. */
 int wps_apps_all(wps_app *out, int max);
 /* Arguments that open `file` with the application `id` ("x.desktop"). */
 int wps_app_argv(const char *id, const char *file, char *buf, size_t n, char **argv, int max);
 /* Always use `id` for `file`'s type: the user's mimeapps.list (GNOME's too). */
 bool wps_app_set_default(const char *file, const char *id);
+/* ... for every file of a type (mimeapps.list's default, shared with GNOME). */
+bool wps_app_set_default_mime(const char *mime, const char *id);
 
 /* A program's Association page (v0.3-design 8): the types its desktop
  * entry opens ("a;b;"), the user's copy first; set: written to the user's

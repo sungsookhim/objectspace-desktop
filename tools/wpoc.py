@@ -28,6 +28,7 @@ A property (object-properties-design.md 2.1): NAME : TYPE, then any of
     show M           a method saying whether its field is shown
     store CLASS      kept in that class's state (default: the declaring class)
     options M        a method giving a choice's options now ("a,b,c")
+    backing B        where Linux keeps it (mimeapps, desktop:KEY, gsettings:SCHEMA:KEY): the service's
     text index readonly nofield first last     flags (WPO_P_*)
 Types: text number checkbox choice file color icon info hidden. Values with
 spaces or "#" are quoted.
@@ -123,7 +124,7 @@ METHOD_RE = re.compile(r"^(method|classmethod)\s+(\w+)\s*\(([^)]*)\)\s*->\s*(\w+
 PROP_TYPES = {"text", "number", "checkbox", "choice", "file", "color", "icon", "info", "hidden"}
 PROP_FLAGS = {"text": "WPO_P_TEXT", "index": "WPO_P_INDEX", "readonly": "WPO_P_READONLY", "nofield": "WPO_P_NOFIELD",
               "first": "WPO_P_FIRST", "last": "WPO_P_LAST"}
-PROP_KEYS = {"page", "label", "get", "set", "show", "store", "options"}
+PROP_KEYS = {"page", "label", "get", "set", "show", "store", "options", "backing"}
 
 
 def parse_property(raw, where):
@@ -152,7 +153,7 @@ def parse_property(raw, where):
             i += 1
         else:
             raise WpiError(f"{where}: property {p['name']}: cannot parse '{k}'")
-    if p["type"] == "choice" and not p["choices"] and not p.get("options"):
+    if p["type"] == "choice" and not p["choices"] and not p.get("options") and not p.get("backing"):
         raise WpiError(f"{where}: property {p['name']}: a choice needs its options")
     if not re.match(r"^[A-Za-z_][\w.:-]*$", p["name"]):
         raise WpiError(f"{where}: bad property name {p['name']}")
@@ -366,10 +367,10 @@ def gen_reg(w, c):
         rows = []
         for p in c.props:
             fl = " | ".join(p["flags"]) or "0"
-            rows.append("    { %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s }," % (
+            rows.append("    { %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s }," % (
                 cstr(p["name"]), cstr(p["type"]), cstr(p["def"]), cstr(p.get("page")), cstr(p.get("label")),
                 cstr(p["choices"]), cstr(p.get("get")), cstr(p.get("set")), cstr(p.get("show")), cstr(p.get("store")),
-                cstr(p.get("options")), fl))
+                cstr(p.get("options")), cstr(p.get("backing")), fl))
         o.extend([f"static const wpo_property_def {n}_props[] = {{"] + rows + ["};", ""])
         pt, pn = f"{n}_props", str(len(c.props))
     et, en = "NULL", "0"

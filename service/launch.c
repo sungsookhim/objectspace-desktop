@@ -682,7 +682,11 @@ int wps_apps_for_file(const char *file, char *mime_out, size_t mn, wps_app *out,
 {
     const char *m0 = file_mime(file);
     if (mime_out) snprintf(mime_out, mn, "%s", m0 ? m0 : "");
-    if (!m0) return 0;
+    return m0 ? wps_apps_for_mime(m0, out, max) : 0;
+}
+
+int wps_apps_for_mime(const char *m0, wps_app *out, int max)
+{
     int n = 0;
     char desktop[PATH_MAX], id[256];
     if (default_app_id(m0, desktop, sizeof desktop, id, sizeof id) && app_read(id, desktop, &out[0], false)) {
@@ -860,6 +864,11 @@ bool wps_app_set_types(const char *desktop, const char *types)
 bool wps_app_set_default(const char *file, const char *id)
 {
     const char *mime = file_mime(file);
+    return mime && wps_app_set_default_mime(mime, id);
+}
+
+bool wps_app_set_default_mime(const char *mime, const char *id)
+{
     char path[PATH_MAX];
     if (!mime || strchr(id, '/') || strchr(id, ';') || !find_desktop(id, path, sizeof path)) return false;
     char cfg[1][PATH_MAX];

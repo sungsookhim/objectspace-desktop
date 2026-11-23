@@ -121,6 +121,8 @@ typedef struct {
     const char *show;      /* a method saying whether its field is shown, or NULL */
     const char *store;     /* the class whose state keeps it (NULL: the declaring class) */
     const char *options;   /* a method giving a choice's options now ("a,b,c"), or NULL */
+    const char *backing;   /* where Linux keeps it (mimeapps, desktop:KEY, gsettings:...), or NULL:
+                              the service reads and writes it there (object-properties-design.md 2.6) */
     uint32_t flags;        /* WPO_P_* */
 } wpo_property_def;
 

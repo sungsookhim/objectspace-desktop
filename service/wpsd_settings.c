@@ -76,6 +76,10 @@ void field_origin(void *ctx, const char *key, bool *own, char *from, size_t fn)
     from[0] = 0;
     const wpo_property_def *p = o ? wpo_find_property(o->cls, key, NULL) : NULL;
     if (!p || p->get || (p->flags & WPO_P_READONLY)) return;
+    if (p->backing) {   /* kept where Linux keeps it */
+        snprintf(from, fn, "%s", !strcmp(p->backing, "mimeapps") ? "shared with GNOME" : "its desktop entry");
+        return;
+    }
     char origin[160];
     char *v = wps_prop_get_origin(o, key, origin, sizeof origin);
     free(v);
@@ -176,19 +180,6 @@ static wpo_object *home_folder_of(wpo_object *o, char *fpath, size_t n)
 char *settings_text(wpo_object *o)
 {
     char *t = call_text(o, "wpAddSettingsPages", ""), fpath[PATH_MAX];
-    /* a program from a desktop entry: its Association page (OS/2's), the
-     * types it opens */
-    sobj *so = wps_sobj_of(o);
-    size_t sl = so ? strlen(so->path) : 0;
-    if (wpo_is_a(o, WPProgramClass) && so && !so->central && sl > 8 && !strcmp(so->path + sl - 8, ".desktop")) {
-        char types[1024] = "", line[1200];
-        wps_app_types(so->path, types, sizeof types);
-        for (char *q = types; *q; q++) if (*q == '\t') *q = ' ';
-        snprintf(line, sizeof line, "page\tAssociation\nfield\tmime_types\ttext\tTypes it opens (MIME, separated by ;)\t%s\t@assoc\n", types);
-        char *r2 = wps_concat(t, line);
-        free(t);
-        t = r2;
-    }
     wpo_object *f = home_folder_of(o, fpath, sizeof fpath);
     char *g = strstr(t, "page\tGeneral\n");
     if (!f || !g || (g != t && g[-1] != '\n')) return t;
@@ -222,12 +213,6 @@ const char *apply_settings(wpo_object *o, const cv *values)
         for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
         if (!f) { err = "no such setting"; break; }
         wpo_value a, r;
-        if (!strcmp(f->setter, "@assoc")) {
-            sobj *so = wps_sobj_of(o);
-            if (!so || val->k != CV_TEXT || !wps_app_set_types(so->path, val->s)) { err = "the types could not be stored"; break; }
-            WPObject_wpObjectChanged(o);
-            continue;
-        }
         if (!strcmp(f->setter, "@lock")) {
             char fpath[PATH_MAX];
             wpo_object *fo = home_folder_of(o, fpath, sizeof fpath);

@@ -367,6 +367,11 @@ extern char known_desktop[PATH_MAX];
 
 void do_props(struct req *r, wpo_object *o);   /* wpsd_props.c */
 void props_init(void);
+/* wpsd_backing.c: properties Linux keeps; a type's programs (mimeapps). */
+void backing_init(void);
+char *mimeapps_options(const char *mime);
+char *mimeapps_get(const char *mime);
+bool mimeapps_set(const char *mime, const char *name);
 /* A setup string ("key=value;...") applied to o, in order; false (and why
  * in err) at the first refused. */
 bool apply_setup(wpo_object *o, const char *setup, char *err, size_t en);

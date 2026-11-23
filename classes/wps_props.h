@@ -37,6 +37,11 @@ extern char *(*wps_prop_inherit)(wpo_object *self, const wpo_property_def *p, co
  * System object's Folders and Fonts fields are all folders'). */
 extern char *(*wps_scope_get)(const char *scope, const char *store, const char *prop);
 extern bool (*wps_scope_set)(const char *scope, const char *store, const char *prop, const char *value);
+/* The service's: a backed property's value where Linux keeps it (NULL: not
+ * kept for this object), setting it there, and a choice's options there. */
+extern char *(*wps_backing_get)(wpo_object *self, const wpo_property_def *p);
+extern bool (*wps_backing_set)(wpo_object *self, const wpo_property_def *p, const char *value);
+extern char *(*wps_backing_options)(wpo_object *self, const wpo_property_def *p);
 /* The service's: the schemes' titles ("Classic,Dark,High contrast,..."), or NULL. */
 extern char *(*wps_scheme_titles)(void);
 

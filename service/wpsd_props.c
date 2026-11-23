@@ -89,6 +89,7 @@ void props_init(void)
     wps_scope_get = wps_defaults_get;
     wps_scope_set = scope_set_hook;
     wps_scheme_titles = scheme_titles;
+    backing_init();
 }
 
 /* A class's or a type's settings changed: every client (once) reads what it
@@ -257,9 +258,20 @@ static void reply_text(struct client *c, int64_t id, const char *v)
     cb_free(&b);
 }
 
+/* A backed property for a scope: mimeapps for one type (not a kind like
+ * image/\*, nor a class: no one type). */
+static bool scope_backed(const wpo_property_def *p, const char *target)
+{
+    return p->backing && !strcmp(p->backing, "mimeapps") && !strncmp(target, "type:", 5) && !strstr(target, "/*");
+}
+
 /* its value: the scope's own, else the scopes above it, else the default */
 static char *scope_value(const wpo_class *cls, const char *target, const wpo_property_def *p, const char *store, char *origin, size_t on)
 {
+    if (p->backing) {   /* where Linux keeps it */
+        snprintf(origin, on, "backing");
+        return scope_backed(p, target) ? mimeapps_get(target + 5) : strdup("");
+    }
     char sc[MAX_SCOPES][160];
     const char *mime = !strncmp(target, "type:", 5) ? target + 5 : NULL;
     size_t n = scopes_for(cls, mime, p, sc);
@@ -278,6 +290,36 @@ static bool shared_prop(const wpo_property_def *p)
     return !p->get && !(p->flags & (WPO_P_READONLY | WPO_P_NOFIELD)) && strcmp(p->type, "info");
 }
 
+/* What a scope offers: its shared settings, a backed one only where it applies. */
+static bool scope_has(const wpo_property_def *p, const char *target)
+{
+    return p && shared_prop(p) && (!p->backing || scope_backed(p, target));
+}
+
+/* A choice's options for a scope (a type's programs: mimeapps). Caller frees. */
+static char *scope_choices(const wpo_property_def *p, const char *target)
+{
+    if (scope_backed(p, target)) return mimeapps_options(target + 5);
+    return p->choices ? strdup(p->choices) : NULL;
+}
+
+static char *scope_canonical(const wpo_property_def *p, const char *target, const char *v)
+{
+    wpo_property_def q = *p;
+    char *ch = scope_choices(p, target);
+    q.choices = ch;
+    char *r = wps_prop_canonical(&q, v);
+    free(ch);
+    return r;
+}
+
+/* Stores (value NULL: removes) a scope's value: in Linux's place for a backed one. 0 or -1. */
+static int scope_store(const wpo_class *cls, const char *target, const wpo_property_def *p, const char *value)
+{
+    if (p->backing) return value && scope_backed(p, target) && mimeapps_set(target + 5, value) ? 0 : -1;
+    return wps_defaults_set(target, wps_prop_store(cls, p->name), p->name, value);
+}
+
 static void scope_origin(void *ctx, const char *key, bool *own, char *from, size_t fn)
 {
     struct scope_ctx *x = ctx;
@@ -288,6 +330,7 @@ static void scope_origin(void *ctx, const char *key, bool *own, char *from, size
     char origin[160];
     free(scope_value(x->cls, x->target, p, wps_prop_store(x->cls, key), origin, sizeof origin));
     if (!strcmp(origin, x->target)) { *own = true; return; }
+    if (!strcmp(origin, "backing")) { snprintf(from, fn, "shared with GNOME"); return; }
     if (!strncmp(origin, "class:", 6)) {
         wpo_class *c = wpo_find_class(origin + 6);
         char *t = c ? WPObject_wpclsQueryTitle(c) : NULL;
@@ -312,20 +355,22 @@ static char *scope_pages(const wpo_class *cls, const char *target)
             const wpo_property_def *d = &chain[j]->props[i];
             if (chain[j]->parent && wpo_find_property(chain[j]->parent, d->name, NULL)) continue;   /* where first declared */
             const wpo_property_def *p = wpo_find_property(cls, d->name, NULL);
-            if (!shared_prop(p)) continue;
+            if (!scope_has(p, target)) continue;
             if (((p->flags & WPO_P_FIRST) ? 0 : (p->flags & WPO_P_LAST) ? 2 : 1) != pass) continue;
             char *v = scope_value(cls, target, p, wps_prop_store(cls, p->name), origin, sizeof origin);
+            char *ch = scope_choices(p, target);
             char shown[32];
             const char *fv = v ? v : "";
-            if (!strcmp(p->type, "choice")) { snprintf(shown, sizeof shown, "%d", wps_option_index(p->choices, fv)); fv = shown; }
+            if (!strcmp(p->type, "choice")) { snprintf(shown, sizeof shown, "%d", wps_option_index(ch, fv)); fv = shown; }
             const char *pg = p->page ? p->page : "General";
-            size_t l = strlen(pg) + strlen(p->name) + strlen(p->label ? p->label : "") + strlen(fv) + strlen(p->choices ? p->choices : "") + 64;
+            size_t l = strlen(pg) + strlen(p->name) + strlen(p->label ? p->label : "") + strlen(fv) + strlen(ch ? ch : "") + 64;
             char *line = malloc(l);
             size_t o = 0;
             if (!page || strcmp(page, pg)) o += (size_t)snprintf(line, l, "page\t%s\n", pg);
             page = pg;
             snprintf(line + o, l - o, "field\t%s\t%s\t%s\t%s\t@prop%s%s\n", p->name, p->type, p->label ? p->label : p->name, fv,
-                     p->choices ? "\t" : "", p->choices ? p->choices : "");
+                     ch ? "\t" : "", ch ? ch : "");
+            free(ch);
             char *r = malloc(strlen(out) + strlen(line) + 1);
             strcpy(r, out);
             strcat(r, line);
@@ -384,14 +429,14 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
         for (size_t k = 0; values && values->k == CV_MAP && k < values->n; k++) {
             const cv *key = &values->items[2 * k], *val = &values->items[2 * k + 1];
             const wpo_property_def *p = key->k == CV_TEXT ? wpo_find_property(cls, key->s, NULL) : NULL;
-            if (!p || !shared_prop(p)) { reply_error(c, id, "bad request", "no such setting"); return false; }
+            if (!scope_has(p, target)) { reply_error(c, id, "bad request", "no such setting"); return false; }
             char num[32];
             const char *txt = val->k == CV_TEXT ? val->s : NULL;
             if (val->k == CV_INT) { snprintf(num, sizeof num, "%lld", (long long)val->i); txt = num; }
             else if (val->k == CV_BOOL) txt = val->b ? "1" : "0";
-            char *cvv = txt ? wps_prop_canonical(p, txt) : NULL;
+            char *cvv = txt ? scope_canonical(p, target, txt) : NULL;
             if (!cvv) { reply_error(c, id, "bad request", "the setter refused the value"); return false; }
-            int e = wps_defaults_set(target, wps_prop_store(cls, p->name), p->name, cvv);
+            int e = scope_store(cls, target, p, cvv);
             free(cvv);
             if (e) { reply_error(c, id, "failed", "the setting was not stored"); return false; }
         }
@@ -402,7 +447,7 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
     if (!strcmp(op, "get")) {
         const char *name = cv_text(msg, "name");
         const wpo_property_def *p = name ? wpo_find_property(cls, name, NULL) : NULL;
-        if (!p || p->get) { reply_error(c, id, "not found", "no such property for all objects of it"); return false; }
+        if (!p || p->get || (p->backing && !scope_backed(p, target))) { reply_error(c, id, "not found", "no such property for all objects of it"); return false; }
         char *v = scope_value(cls, target, p, wps_prop_store(cls, name), origin, sizeof origin);
         reply_text(c, id, v);
         free(v);
@@ -425,18 +470,18 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
                 if (!*k) continue;
             }
             const wpo_property_def *p = wpo_find_property(cls, k, NULL);
-            if (!p || p->get || (p->flags & WPO_P_READONLY) || !strcmp(p->type, "info")) {
+            if (!p || p->get || (p->flags & WPO_P_READONLY) || !strcmp(p->type, "info") || (p->backing && (!scope_backed(p, target) || !strcmp(op, "reset")))) {
                 snprintf(m, sizeof m, "%s: not a setting for all objects of it", k);
                 reply_error(c, id, "bad request", m);
                 return false;
             }
-            char *cv = !strcmp(op, "set") ? wps_prop_canonical(p, v) : NULL;
+            char *cv = !strcmp(op, "set") ? scope_canonical(p, target, v) : NULL;
             if (!strcmp(op, "set") && !cv) {
                 snprintf(m, sizeof m, "%s: the value was refused", k);
                 reply_error(c, id, "bad request", m);
                 return false;
             }
-            int e = wps_defaults_set(target, wps_prop_store(cls, k), k, cv);
+            int e = scope_store(cls, target, p, cv);
             free(cv);
             if (e) { reply_error(c, id, "failed", "the setting was not stored"); return false; }
         }
@@ -452,7 +497,7 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
         for (size_t j = nc; j-- > 0;)
             for (size_t i = 0; i < chain[j]->nprops; i++) {
                 const wpo_property_def *p = &chain[j]->props[i];
-                count += wpo_find_property(cls, p->name, NULL) == p && !p->get && strcmp(p->type, "info");
+                count += wpo_find_property(cls, p->name, NULL) == p && !p->get && strcmp(p->type, "info") && (!p->backing || scope_backed(p, target));
             }
         cbuf b;
         cb_init(&b);
@@ -464,9 +509,13 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
         for (size_t j = nc; j-- > 0;)
             for (size_t i = 0; i < chain[j]->nprops; i++) {
                 const wpo_property_def *p = &chain[j]->props[i];
-                if (wpo_find_property(cls, p->name, NULL) != p || p->get || !strcmp(p->type, "info")) continue;
+                if (wpo_find_property(cls, p->name, NULL) != p || p->get || !strcmp(p->type, "info") || (p->backing && !scope_backed(p, target))) continue;
                 char *v = scope_value(cls, target, p, wps_prop_store(cls, p->name), origin, sizeof origin);
-                put_prop_value(&b, p, v, !strcmp(origin, target) ? "object" : origin);
+                wpo_property_def q = *p;
+                char *ch = scope_choices(p, target);
+                q.choices = ch;
+                put_prop_value(&b, &q, v, !strcmp(origin, target) ? "object" : origin);
+                free(ch);
                 free(v);
             }
         send_frame(c, &b);
