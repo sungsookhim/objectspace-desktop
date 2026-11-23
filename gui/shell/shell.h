@@ -313,6 +313,9 @@ extern struct jobtrack *jobs;
 extern ui_dialog *last_dialog;
 extern struct another *another_now;
 extern bool confirm_delete, confirm_folder_delete;
+extern bool hatch_open_all;   /* the System's: every open icon hatched behind too */
+/* Whether target's Properties notebook is open (its icon hatched). */
+bool props_is_open(const char *target);
 extern const ui_container_src folder_src;
 extern const ui_surface_ops win_ops;
 extern double next_w, next_h;

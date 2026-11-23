@@ -79,17 +79,26 @@ void src_item(void *ctx, size_t i, ui_item *out)
         for (struct folder *o = folders; o && !out->in_use; o = o->next)
             out->in_use = !o->closing && !strcmp(o->path, p);
     }
-    if (out->in_use) {
+    bool opened = out->in_use;   /* (a window, a program: its open icon) */
+    if (!out->in_use) {
+        /* its notebook open: hatched too, as OS/2 shows it (its base icon) */
+        char a[PATH_MAX];
+        if (r->name[0] == '\x01') snprintf(a, sizeof a, "%s", r->name + 1);
+        else snprintf(a, sizeof a, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
+        out->in_use = props_is_open(a) || ((r->shadow || r->link) && r->target && props_is_open(r->target));
+    }
+    if (opened) {
         /* open: its open icon (its own, else the theme's NAME-open for its
-         * icon, a folder's folder-open), drawn without the in-use hatching;
-         * none: the normal icon, hatched */
+         * icon, a folder's folder-open), drawn without the in-use hatching
+         * unless it (or the System, for all) asks for it behind; none: the
+         * normal icon, hatched */
         char on[160] = "";
         if (r->icon_open) out->image = icons_object(f->icon_theme, r->icon_open, px);
         else if (r->icon && !strncmp(r->icon, "theme:", 6)) snprintf(on, sizeof on, "%s-open", r->icon);
         else if (!r->icon && r->kind == UI_KIND_FOLDER) snprintf(on, sizeof on, "theme:folder-open");
         if (!out->image && on[0]) out->image = icons_object(f->icon_theme, on, px);
         out->open_icon = out->image != NULL;
-        out->hatch_over = r->open_hatch;   /* (hatched over it too, if it asks) */
+        out->hatch_open = r->open_hatch || hatch_open_all;
     }
     if (!out->image) out->image = icons_object(f->icon_theme, r->icon, px);   /* its own icon, or WPS's (a theme's) */
     if (!out->image && r->kind == UI_KIND_PROGRAM) {

@@ -676,8 +676,7 @@ static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double
         item_icon(cr, &in, x + sz * 0.2, y + sz * 0.25, sz * 0.6);
         return;
     }
-    if (it->in_use && !it->open_icon) in_use(cr, x, y, sz);
-    bool over = it->in_use && it->open_icon && it->hatch_over;
+    if (it->in_use && (!it->open_icon || it->hatch_open)) in_use(cr, x, y, sz);
     if (it->image && cairo_surface_status(it->image) == CAIRO_STATUS_SUCCESS) {
         double iw = cairo_image_surface_get_width(it->image), ih = cairo_image_surface_get_height(it->image);
         double k = sz / (iw > ih ? iw : ih);
@@ -690,7 +689,6 @@ static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double
         cairo_restore(cr);
     } else if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
     else draw_icon(cr, it->kind == UI_KIND_LINK ? UI_KIND_FILE : it->kind, x, y, sz);
-    if (over) in_use(cr, x, y, sz);   /* (over its open icon: it stands out on anything) */
     if (it->link || it->kind == UI_KIND_LINK) link_mark(cr, x, y, sz);
 }
 

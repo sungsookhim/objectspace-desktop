@@ -235,12 +235,29 @@ static void props_class(void *ctx, ui_surface *s, double x, double y, uint32_t s
     ui_menu_popup(s, items, 3, x, y, serial, class_chosen, NULL);
 }
 
+bool props_is_open(const char *target)
+{
+    for (struct props *p = props_open; p; p = p->next)
+        if (p->nb && !strcmp(p->target, target)) return true;
+    return false;
+}
+
+/* A notebook opened or closed: its object's icon hatched or not (OS/2's
+ * in-use emphasis), in every window. */
+static void props_redraw(void)
+{
+    for (struct folder *f = folders; f; f = f->next)
+        if (!f->closing && f->cont) ui_container_changed(f->cont, 0, SIZE_MAX);
+}
+
 static void props_closed(void *ctx)
 {
     struct props *p = ctx;
     for (struct props **pp = &props_open; *pp; pp = &(*pp)->next)
         if (*pp == p) { *pp = p->next; break; }
+    bool shown = p->nb != NULL;
     free(p);
+    if (shown) props_redraw();
 }
 
 static void got_settings(void *arg, const cv *reply)
@@ -265,6 +282,7 @@ static void got_settings(void *arg, const cv *reply)
         ui_notebook_set_extra(p->nb, "Class...", props_class);
     if (p->want_page && p->want_page < n) ui_notebook_show_page(p->nb, p->want_page);
     pages_free(pages, n);
+    props_redraw();
 }
 
 /* Open an object's notebook, or leave the open one (Wayland lets no program

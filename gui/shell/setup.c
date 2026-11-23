@@ -149,6 +149,11 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
+            else if (!strcmp(key, "hatch_open") && hatch_open_all != !strcmp(val, "1")) {
+                hatch_open_all = !strcmp(val, "1");   /* every open icon hatched too: every window again */
+                for (struct folder *f = folders; f; f = f->next)
+                    if (!f->closing && f->cont) ui_container_changed(f->cont, 0, SIZE_MAX);
+            }
             /* (font_folders, show_ext, show_hidden: all folders' - each window
              * reads its own, resolved; defaults_changed) */
             else if (!strcmp(key, "font_folders")) {

@@ -8,6 +8,7 @@
  * with the other settings objects); <config>/system.conf, read first, is
  * 0.1's older place for them. Deleting for good always asks. */
 bool confirm_delete = true, confirm_folder_delete = true;
+bool hatch_open_all;
 
 void load_system_conf(void)
 {
