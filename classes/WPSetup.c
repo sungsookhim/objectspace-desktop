@@ -80,6 +80,8 @@ char *WPSystem__wpQueryFoldersExt(wpo_object *self) { return folders_get(self, "
 bool WPSystem__wpSetFoldersExt(wpo_object *self, const char *on) { return folders_set(self, "show_ext", on); }
 char *WPSystem__wpQueryFoldersTheme(wpo_object *self) { return folders_get(self, "icon_theme", "icon_theme", "WPS (flat)"); }
 bool WPSystem__wpSetFoldersTheme(wpo_object *self, const char *theme) { return folders_set(self, "icon_theme", theme); }
+char *WPSystem__wpQueryFoldersIconSet(wpo_object *self) { return folders_get(self, "icon_set", "icon_set", "Default"); }
+bool WPSystem__wpSetFoldersIconSet(wpo_object *self, const char *set) { return folders_set(self, "icon_set", set); }
 char *WPSystem__wpQueryIconThemes(wpo_object *self)
 {
     (void)self;

@@ -66,7 +66,31 @@ void src_item(void *ctx, size_t i, ui_item *out)
     out->in_use = r->in_use;
     out->link = r->link;
     out->is_template = r->tpl;
-    out->image = icons_object(f->icon_theme, r->icon);   /* its own icon, or WPS's (a theme's) */
+    /* its icon at the pixels it is drawn with: the view's size in the
+     * folder's set (the details' small, a tree's middle) */
+    const ui_icon_set *set = folder_icons(f);
+    ui_view v = ui_container_view(f->cont);
+    int px = (int)((v == UI_VIEW_ICON ? set->large : v == UI_VIEW_TREE ? set->middle : set->small) * ui_surface_scale(f->win) + 0.5);
+    if (r->kind == UI_KIND_FOLDER) {
+        /* The folder, or a shadow of it, looks open while its window is (OS/2). */
+        char p[PATH_MAX];
+        if (r->shadow || r->link) snprintf(p, sizeof p, "%s", r->target ? r->target : "");
+        else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
+        for (struct folder *o = folders; o && !out->in_use; o = o->next)
+            out->in_use = !o->closing && !strcmp(o->path, p);
+    }
+    if (out->in_use) {
+        /* open: its open icon (its own, else the theme's NAME-open for its
+         * icon, a folder's folder-open), drawn without the in-use hatching;
+         * none: the normal icon, hatched */
+        char on[160] = "";
+        if (r->icon_open) out->image = icons_object(f->icon_theme, r->icon_open, px);
+        else if (r->icon && !strncmp(r->icon, "theme:", 6)) snprintf(on, sizeof on, "%s-open", r->icon);
+        else if (!r->icon && r->kind == UI_KIND_FOLDER) snprintf(on, sizeof on, "theme:folder-open");
+        if (!out->image && on[0]) out->image = icons_object(f->icon_theme, on, px);
+        out->open_icon = out->image != NULL;
+    }
+    if (!out->image) out->image = icons_object(f->icon_theme, r->icon, px);   /* its own icon, or WPS's (a theme's) */
     if (!out->image && r->kind == UI_KIND_PROGRAM) {
         /* a program (or its shadow): its desktop entry's icon */
         char p[PATH_MAX];
@@ -76,15 +100,7 @@ void src_item(void *ctx, size_t i, ui_item *out)
         if (l > 8 && !strcmp(p + l - 8, ".desktop")) out->image = appicon_for(p);
     }
     if (!out->image)   /* its kind's, from the folder's theme (a data file's by its type) */
-        out->image = icons_item(f->icon_theme, NULL, r->kind, (r->shadow || r->link) && r->target ? r->target : r->name);
-    if (r->kind == UI_KIND_FOLDER) {
-        /* The folder, or a shadow of it, looks open while its window is (OS/2). */
-        char p[PATH_MAX];
-        if (r->shadow || r->link) snprintf(p, sizeof p, "%s", r->target ? r->target : "");
-        else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
-        for (struct folder *o = folders; o && !out->in_use; o = o->next)
-            out->in_use = !o->closing && !strcmp(o->path, p);
-    }
+        out->image = icons_item(f->icon_theme, NULL, r->kind, (r->shadow || r->link) && r->target ? r->target : r->name, px);
 }
 
 void src_visible(void *ctx, size_t first, size_t last)
@@ -219,17 +235,74 @@ const char *lay_name(void *ctx, size_t i) { return model_name(&((struct folder *
 double lay_h(void *ctx, size_t i)
 {
     struct folder *f = ctx;
-    if (!f->whole_titles) return UI_CELL_H;
+    const ui_icon_set *set = folder_icons(f);
+    if (!f->whole_titles) return set->cell_h;
     struct row *r = row_at(f, i);
-    if (!r || !r->name) return UI_CELL_H;
-    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height_font(f->font, row_shown(f, r));
+    if (!r || !r->name) return set->cell_h;
+    if (r->cellh <= 0) r->cellh = (float)ui_icon_cell_height_set(f->font, set, row_shown(f, r));
     return r->cellh;
 }
 
 int cols_now(struct folder *f)
 {
-    int k = (int)(ui_container_list_width(f->cont) / UI_CELL_W);
+    int k = (int)(ui_container_list_width(f->cont) / folder_icons(f)->cell_w);
     return k < 1 ? 1 : k;
+}
+
+const ui_icon_set *folder_icons(struct folder *f) { return f->cont ? ui_container_icon_set(f->cont) : ui_icons(); }
+
+#define POS_W 100.0   /* (the Small set's cell: the stored units) */
+#define POS_H 80.0
+
+void folder_pos_stored(struct folder *f, int64_t *x, int64_t *y)
+{
+    const ui_icon_set *set = folder_icons(f);
+    *x = llround((double)*x * POS_W / set->cell_w);
+    *y = llround((double)*y * POS_H / set->cell_h);
+}
+
+void folder_place(struct folder *f, const char *dest, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg)
+{
+    const ui_icon_set *set = folder_icons(f);
+    int64_t *sx = calloc(n ? n : 1, sizeof *sx), *sy = calloc(n ? n : 1, sizeof *sy);
+    for (size_t i = 0; i < n; i++) {
+        sx[i] = llround((double)x[i] * POS_W / set->cell_w);
+        sy[i] = llround((double)y[i] * POS_H / set->cell_h);
+    }
+    svc_place(dest, targets, sx, sy, n, fn, arg);
+    free(sx);
+    free(sy);
+}
+
+void folder_place_lock(struct folder *f, const char *target, int64_t x, int64_t y, bool lock, svc_fn fn, void *arg)
+{
+    const ui_icon_set *set = folder_icons(f);
+    svc_place_lock(f->path, target, llround((double)x * POS_W / set->cell_w), llround((double)y * POS_H / set->cell_h), lock, fn, arg);
+}
+
+void folder_pos_shown(struct folder *f, int64_t *x, int64_t *y)
+{
+    const ui_icon_set *set = folder_icons(f);
+    *x = llround((double)*x * set->cell_w / POS_W);
+    *y = llround((double)*y * set->cell_h / POS_H);
+    if (f->desktop) {   /* (it does not scroll: kept on it, at a larger set too) */
+        ui_rect c = ui_frame_client(f->win);
+        if (c.w > set->cell_w && *x > c.w - set->cell_w - 8) *x = (int64_t)(c.w - set->cell_w - 8);
+        if (c.h > set->cell_h && *y > c.h - set->cell_h - 8) *y = (int64_t)(c.h - set->cell_h - 8);
+    }
+}
+
+void folder_icons_changed(struct folder *f)
+{
+    const ui_icon_set *set = folder_icons(f);
+    for (size_t p = 0; p < f->m.npages; p++)
+        for (size_t k = 0; f->m.pages[p] && k < PAGE; k++) f->m.pages[p]->rows[k].cellh = 0;
+    bool wide = ui_container_list_width(f->cont) >= set->cell_w;   /* (not laid out yet: its columns as they are) */
+    layout_set_cell(f->lay, set->cell_w, set->cell_h, wide ? cols_now(f) : layout_cols(f->lay));
+    layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
+    ui_container_changed(f->cont, 0, SIZE_MAX);
+    if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+    if (!is_tree(f)) svc_layout(f->path, got_layout, as_arg(f));   /* stored positions in the new size */
 }
 
 /* Names in name order (for Arrange). */
@@ -325,7 +398,7 @@ static void store_spots(struct folder *f)
         layout_place(f->lay, nm, (int)px, (int)py);
         k++;
     }
-    if (k) svc_place(f->path, (const char *const *)t, x, y, k, placed_reply, as_arg(f));
+    if (k) folder_place(f, f->path, (const char *const *)t, x, y, k, placed_reply, as_arg(f));
     for (size_t i = 0; i < k; i++) free(t[i]);
     free(t);
     free(x);
@@ -397,6 +470,7 @@ void got_layout(void *arg, const cv *reply)
         int64_t x = 0, y = 0;
         bool has = cv_int(&items->items[i], "x", &x);
         cv_int(&items->items[i], "y", &y);
+        folder_pos_shown(f, &x, &y);
         if (nm && has) layout_place(f->lay, nm, (int)x, (int)y);
         if (nm && lk && lk->k == CV_BOOL && lk->b) layout_lock(f->lay, nm, true);
     }
@@ -405,7 +479,7 @@ void got_layout(void *arg, const cv *reply)
         if (lname[k][0] == '\x01') snprintf(addr, sizeof addr, "%s", lname[k] + 1);
         else snprintf(addr, sizeof addr, "%s/%s", strcmp(f->path, "/") ? f->path : "", lname[k]);
         layout_place(f->lay, lname[k], (int)lx[k], (int)ly[k]);
-        svc_place_lock(f->path, addr, (int64_t)lx[k], (int64_t)ly[k], true, ignore_reply, NULL);
+        folder_place_lock(f, addr, (int64_t)lx[k], (int64_t)ly[k], true, ignore_reply, NULL);
         free(lname[k]);
     }
     free(lname);
@@ -497,7 +571,7 @@ static void arrange_by(struct folder *f, int key)
             layout_place(f->lay, nm, (int)px, (int)py);
             k++;
         }
-        svc_place(f->path, (const char *const *)t, x, y, k, placed_reply, as_arg(f));
+        folder_place(f, f->path, (const char *const *)t, x, y, k, placed_reply, as_arg(f));
         for (size_t i = 0; i < k; i++) free(t[i]);
         free(t);
         free(x);

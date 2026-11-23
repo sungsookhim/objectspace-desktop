@@ -18,9 +18,10 @@ static ui_font menu_font = UI_FONT_REGULAR;
 void ui_menu_set_font(ui_font f) { menu_font = f; }
 static double item_h(void)
 {
-    if (menu_font == UI_FONT_REGULAR) return 22;   /* (as always) */
+    double ic = ui_icons()->small + 6;   /* (room for the icon set's small icon) */
+    if (menu_font == UI_FONT_REGULAR) return fmax(22, ic);   /* (as always) */
     double h = ceil(ui_font_line_h(menu_font)) + 6;
-    return h > 22 ? h : 22;
+    return fmax(fmax(h, 22), ic);
 }
 
 struct menu_root;
@@ -77,7 +78,7 @@ void ui_menu_items_free(ui_menu_item *items, size_t n)
 
 static bool is_sep(const ui_menu_item *it) { return it->label && !strcmp(it->label, "-"); }
 
-#define ICON_W 20
+#define ICON_W (ui_icons()->small + 4.0)
 
 /* Whether any item has an icon: the labels move right for it. */
 static bool item_icon(struct menu_root *r, const ui_menu_item *it, ui_item *out)
@@ -162,7 +163,8 @@ static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         }
         ui_item ii;
         if (room && item_icon(m->root, it, &ii)) {
-            ui_draw_item_icon(cr, &ii, 20, y + 3, 16);
+            double is = ui_icons()->small;
+            ui_draw_item_icon(cr, &ii, 20, y + floor((ITEM_H - is) / 2), is);
             ui_set_color(cr, tc);
         }
         char label[256];

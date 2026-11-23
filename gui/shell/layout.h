@@ -18,6 +18,9 @@ void layout_set_height_fn(icon_layout *l, layout_height_fn fn, void *ctx);
 void layout_reset(icon_layout *l, int cols);
 /* The grid width, while nothing has been laid out yet. */
 void layout_set_cols(icon_layout *l, int cols);
+/* The icon set's cell and the columns that fit now: the spots keep their
+ * order, flowed again; placed positions are the caller's to set again. */
+void layout_set_cell(icon_layout *l, double cell_w, double cell_h, int cols);
 int layout_cols(icon_layout *l);
 void layout_place(icon_layout *l, const char *name, int x, int y);   /* a stored position */
 void layout_clear_placed(icon_layout *l);

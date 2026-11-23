@@ -144,6 +144,9 @@ static void central_details(wps_entry *e)
     t = NULL;
     if (op && wps_props_str(op, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
     free(t);
+    t = NULL;
+    if (op && wps_props_str(op, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
+    free(t);
     int64_t tv;
     if (op && wps_props_int(op, "template", &tv) && tv) e->is_template = true;
     t = NULL;
@@ -167,6 +170,9 @@ static void central_details(wps_entry *e)
             free(t);
             t = NULL;
             if (!e->icon[0] && tp && wps_props_str(tp, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+            free(t);
+            t = NULL;
+            if (!e->icon_open[0] && tp && wps_props_str(tp, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
             free(t);
             if (!e->title[0] && tg.desk_name[0]) snprintf(e->title, sizeof e->title, "%s", tg.desk_name);   /* a program: its Name */
             if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
@@ -334,6 +340,9 @@ static void detail_work(void *arg)
             t = NULL;
             if (wps_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
+            t = NULL;
+            if (wps_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
+            free(t);
             int64_t tv;
             if (wps_props_int(&ps, "template", &tv) && tv) e->is_template = true;
             wps_props_free(&ps);
@@ -384,6 +393,9 @@ static void detail_work(void *arg)
                     free(t);
                     t = NULL;   /* the target's icon, unless the shadow has its own */
                     if (!e->icon[0] && wps_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+                    free(t);
+                    t = NULL;
+                    if (!e->icon_open[0] && wps_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
                     free(t);
                     wps_props_free(&ps);
                 }

@@ -372,6 +372,8 @@ void got_sel(void *arg, const cv *reply)
     struct xfer *x = arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res || res->k != CV_INT) { set_status(x->folder, "Cannot select the dragged objects"); xfer_free(x); return; }
+    struct folder *f = folder_by_id(x->folder);
+    for (size_t i = 0; f && x->place && i < x->n; i++) folder_pos_stored(f, &x->x[i], &x->y[i]);   /* (kept in the stored units) */
     svc_job_start(x->kind, res->i, x->dest, (const char *const *)x->names, x->x, x->y, x->place ? x->n : 0, got_job, x);
 }
 
@@ -430,7 +432,7 @@ bool reposition(struct folder *f, double x, double y)
         snprintf(f->error, sizeof f->error, "%s", k ? "Locked icons stay where they are" : "The position is locked");
         damage_status(f);
     }
-    if (k) svc_place(f->path, moved, px, py, k, placed_reply, as_arg(f));
+    if (k) folder_place(f, f->path, moved, px, py, k, placed_reply, as_arg(f));
     free(moved);
     free(px);
     free(py);
@@ -735,7 +737,7 @@ void made_new(void *arg, const cv *reply)
     struct folder *f = folder_by_id(l->folder);
     if (l->place && f) {
         const char *t[1] = { addr };
-        svc_place(l->dest, t, &l->x, &l->y, 1, placed_reply, as_arg(f));
+        folder_place(f, l->dest, t, &l->x, &l->y, 1, placed_reply, as_arg(f));
         layout_place(f->lay, nm, (int)l->x, (int)l->y);   /* before the listing catches up */
     }
     free(l);
@@ -753,7 +755,7 @@ static void landed(void *arg, const cv *reply)
         set_status(l->folder, m);
     } else if (l->place && f) {
         const char *t[1] = { addr };
-        svc_place(l->dest, t, &l->x, &l->y, 1, placed_reply, as_arg(f));
+        folder_place(f, l->dest, t, &l->x, &l->y, 1, placed_reply, as_arg(f));
         char nm[NAME_MAX + 8];
         if (!strncmp(addr, "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", addr);
         else snprintf(nm, sizeof nm, "%s", strrchr(addr, '/') ? strrchr(addr, '/') + 1 : addr);

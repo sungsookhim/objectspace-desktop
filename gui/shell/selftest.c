@@ -457,7 +457,7 @@ void win_frame(ui_surface *s, double now)
         size_t b = selftest_index(f, "b.txt"), c = selftest_index(f, "c.txt");
         if (step == 0 && t > 1000) {
             size_t a = selftest_index(f, "a-rather-long-title-for-a-file-that-takes-four-lines.txt");
-            fprintf(stderr, "selftest: layout: the long title's cell %.0f (a cell %d)\n", layout_item_h(f->lay, a), UI_CELL_H);
+            fprintf(stderr, "selftest: layout: the long title's cell %.0f (a cell %.0f)\n", layout_item_h(f->lay, a), UI_CELL_H);
             selftest_cells(f, "arranged");
             layout_pos(f->lay, b, &bx, &by);
             lock_items(f, b);

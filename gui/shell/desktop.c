@@ -47,14 +47,15 @@ static bool trash_to_corner(void)
         const char *nm = model_name(&f->m, i);
         if (!rw || !nm || !rw->shadow || !rw->target || !is_trash_dir(rw->target)) continue;
         ui_rect c = ui_frame_client(f->win);
-        int64_t x = (int64_t)(c.w - UI_CELL_W - 8), y = (int64_t)(c.h - UI_CELL_H - 8);
+        const ui_icon_set *set = folder_icons(f);
+        int64_t x = (int64_t)(c.w - set->cell_w - 8), y = (int64_t)(c.h - set->cell_h - 8);
         if (x < 0 || y < 0) return false;
         char addr[PATH_MAX];
         if (nm[0] == '\x01') snprintf(addr, sizeof addr, "%s", nm + 1);
         else snprintf(addr, sizeof addr, "%s/%s", f->path, nm);
         const char *t[1] = { addr };
         layout_place(f->lay, nm, (int)x, (int)y);
-        svc_place(f->path, t, &x, &y, 1, placed_reply, as_arg(f));
+        folder_place(f, f->path, t, &x, &y, 1, placed_reply, as_arg(f));
         layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
         ui_container_layout_changed(f->cont);
         ui_surface_damage_all(f->win);
@@ -310,6 +311,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     f->cont = ui_container_new(f->win, &folder_src, f, view);
     ui_container_set_whole_titles(f->cont, true);
     f->sort_choice = -1;
+    f->icon_size = -1;   /* (its set: the System's until its properties come) */
     ui_container_set_head_fns(f->cont, head_clicked, cols_resized, as_arg(f));
     if (desktop) {
         ui_container_set_backdrop(f->cont, desk_backdrop, f);

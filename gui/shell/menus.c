@@ -358,7 +358,7 @@ void lock_items(struct folder *f, size_t i)
         layout_pos(f->lay, k, &x, &y);
         layout_place(f->lay, nm, (int)x, (int)y);
         layout_lock(f->lay, nm, on);
-        svc_place_lock(f->path, t, (int64_t)x, (int64_t)y, on, placed_reply, as_arg(f));
+        folder_place_lock(f, t, (int64_t)x, (int64_t)y, on, placed_reply, as_arg(f));
     }
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
 }

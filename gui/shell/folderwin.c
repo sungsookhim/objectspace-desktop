@@ -205,6 +205,7 @@ static void got_bg(void *arg, const cv *reply)
     unsigned cols = 0;
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
+    int icon_size = -1;
     for (size_t i = 0; i < res->n; i++) {
         const cv *pr = &res->items[i];
         const char *key = cv_text(pr, "name"), *v = cv_text(pr, "value"), *ch = cv_text(pr, "choices");
@@ -224,6 +225,7 @@ static void got_bg(void *arg, const cv *reply)
             if (f->desktop) icons_set_default_theme(v);   /* (menus, the LaunchPad, the WarpCenter) */
             ui_container_changed(f->cont, 0, SIZE_MAX);
         }
+        else if (!strcmp(key, "icon_set")) icon_size = (int)ui_icon_size_named(v);
         else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
         else if (!strcmp(key, "show_ext")) f->show_ext = on;
@@ -235,6 +237,13 @@ static void got_bg(void *arg, const cv *reply)
         }
     }
     if (f->bg_mode < 0) f->bg_mode = 2;
+    if (icon_size >= 0 && icon_size != f->icon_size) {   /* its icon set (Small, Default, Large) */
+        f->icon_size = icon_size;
+        if (f->desktop) icons_set_default_size((ui_icon_size)icon_size);   /* (menus, the LaunchPad, title bars) */
+        ui_icon_set set = ui_icon_set_of((ui_icon_size)icon_size), was = *folder_icons(f);
+        ui_container_set_icon_set(f->cont, &set);
+        if (memcmp(&set, &was, sizeof set)) folder_icons_changed(f);   /* (the one it had: nothing to do) */
+    }
     bg_apply(f);
     folder_font(f);
     ui_window_set_title_font(f->win, f->title_font[0] != 0, ui_font_named(f->title_font));   /* its own, as on OS/2 */
@@ -325,6 +334,7 @@ void model_free(struct model *m)
             free(m->pages[p]->rows[r].title);
             free(m->pages[p]->rows[r].target);
             free(m->pages[p]->rows[r].icon);
+            free(m->pages[p]->rows[r].icon_open);
             free(m->pages[p]->rows[r].noext);
         }
         free(m->pages[p]);
@@ -411,9 +421,10 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
         free(dst->title);
         free(dst->target);
         free(dst->icon);
+        free(dst->icon_open);
         free(dst->noext);
         dst->noext = NULL;
-        dst->target = dst->icon = NULL;
+        dst->target = dst->icon = dst->icon_open = NULL;
         dst->name = strdup(nm ? nm : "?");
         dst->title = ti && *ti ? strdup(ti) : NULL;
         dst->kind = kind_of(ty, nm);
@@ -429,6 +440,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             dst->tpl = tv && tv->k == CV_BOOL && tv->b;
             const char *ic = cv_text(it, "icon");     /* its own icon */
             dst->icon = ic && *ic ? strdup(ic) : NULL;
+            const char *io = cv_text(it, "icon_open");   /* its own open icon */
+            dst->icon_open = io && *io ? strdup(io) : NULL;
             const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
             if (mk) dst->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
@@ -542,7 +555,7 @@ static void model_append(struct model *m, const char *name, const char *type)
 {
     size_t i = m->total++;
     struct row *r = row_ptr(m, i);
-    free(r->name); free(r->title); free(r->target); free(r->icon);
+    free(r->name); free(r->title); free(r->target); free(r->icon); free(r->icon_open); free(r->noext);
     memset(r, 0, sizeof *r);
     r->name = strdup(name);
     r->kind = kind_of(type, name);
@@ -553,7 +566,7 @@ static void model_append(struct model *m, const char *name, const char *type)
 static void model_remove(struct model *m, size_t i)
 {
     struct row *r = row_ptr(m, i);
-    free(r->name); free(r->title); free(r->target); free(r->icon);
+    free(r->name); free(r->title); free(r->target); free(r->icon); free(r->icon_open); free(r->noext);
     for (size_t j = i; j + 1 < m->total; j++) *row_ptr(m, j) = *row_ptr(m, j + 1);   /* details move with their rows */
     memset(row_ptr(m, m->total - 1), 0, sizeof(struct row));
     m->total--;

@@ -58,6 +58,7 @@ void list_reply(void *arg, const wps_page *pg)
                     if (tpl) { cb_text(&b, "template"); cb_bool(&b, true); }
                     if (makes) { cb_text(&b, "makes"); cb_text(&b, e->makes); }   /* a built-in template */
                     if (icon) { cb_text(&b, "icon"); cb_text(&b, e->icon); }       /* its own icon (a PNG) */
+                    if (e->detailed && e->icon_open[0]) { cb_text(&b, "icon_open"); cb_text(&b, e->icon_open); }   /* its own open icon */
                 }
             }
             send_frame(r->c, &b);

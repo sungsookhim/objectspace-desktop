@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -21,9 +22,9 @@
 #define HEAD_H 20
 #define SB_W 16
 #define SBW(c) ((c)->no_scrollbars ? 0 : SB_W)
-#define CELL_W UI_CELL_W
-#define CELL_H UI_CELL_H
-#define ICON 32
+#define CELL_W (iset(c)->cell_w)
+#define CELL_H (iset(c)->cell_h)
+#define ICON (iset(c)->large)
 #define INDENT 20                /* tree view: per level */
 
 struct ui_container {
@@ -35,6 +36,8 @@ struct ui_container {
     bool bg_picture;             /* a picture behind: titles as on the desktop */
     bool whole_titles;           /* every title whole, cells as tall as they need */
     ui_font font;                /* the items' titles (the interface font unless set) */
+    bool own_set;                /* its own icon set, else the System's */
+    ui_icon_set set;
     ui_surface *s;
     const ui_container_src *src;
     void *ctx;
@@ -122,8 +125,19 @@ static double max_hscroll(ui_container *c)
 
 static ui_rect sb_rect(ui_container *c) { return (ui_rect){ c->r.x + c->r.w - SBW(c), c->r.y, SBW(c), c->r.h }; }
 
-/* (the interface font's as always; a palette font's as it needs) */
-static double row_h_of(const ui_container *c) { return c->font == UI_FONT_REGULAR ? 20 : fmax(20, ceil(ui_font_line_h(c->font)) + 4); }
+static const ui_icon_set *iset(const ui_container *c) { return c->own_set ? &c->set : ui_icons(); }
+
+/* The icon of a row: the Details view's the set's small, a tree's its
+ * middle size. */
+static double row_icon(const ui_container *c) { return c->view == UI_VIEW_TREE ? iset(c)->middle : iset(c)->small; }
+
+/* (the interface font's as always; a palette font's as it needs; at
+ * least its icon's) */
+static double row_h_of(const ui_container *c)
+{
+    double h = c->font == UI_FONT_REGULAR ? 20 : fmax(20, ceil(ui_font_line_h(c->font)) + 4);
+    return fmax(h, row_icon(c) + 4);
+}
 static double label_h_of(const ui_container *c) { return c->font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(c->font))); }
 
 static size_t cols(ui_container *c)
@@ -205,7 +219,7 @@ static ui_rect rename_crect(ui_container *c, size_t i)
     if (c->view == UI_VIEW_TREE) {
         ui_item it = { 0 };
         c->src->item(c->ctx, i, &it);
-        double x = r.x + 4 + it.depth * INDENT + INDENT + 20;
+        double x = r.x + 4 + it.depth * INDENT + INDENT + row_icon(c) + 4;
         return (ui_rect){ x - 3, r.y, fmax(120, r.x + r.w - x - 8), ROW_H };
     }
     return (ui_rect){ r.x + 2, r.y + ICON + 6, r.w - 4, ROW_H + 2 };
@@ -590,7 +604,8 @@ static void columns(ui_container *c, double *x)
     bool shown[6] = { true, true, (c->col_shown & 1) != 0, (c->col_shown & 2) != 0, (c->col_shown & 4) != 0, (c->col_shown & 8) != 0 };
     double fixed = 0;
     for (int i = 3; i <= 5; i++) if (shown[i]) { w[i] = c->col_w[i] > 0 ? c->col_w[i] : def[i]; fixed += w[i]; }
-    double left = fmax(120, l.w - 26 - fixed);
+    double ic = row_icon(c) + 10;   /* the icon's column */
+    double left = fmax(120, l.w - ic - fixed);
     if (shown[2]) {
         bool tw = c->col_w[1] > 0, nw = c->col_w[2] > 0;
         w[1] = tw ? c->col_w[1] : nw ? fmax(60, left - c->col_w[2]) : left * 0.55;
@@ -599,7 +614,7 @@ static void columns(ui_container *c, double *x)
         w[1] = c->col_w[1] > 0 ? c->col_w[1] : left;
     }
     x[0] = l.x + 4;
-    x[1] = l.x + 26;
+    x[1] = l.x + ic;
     for (int i = 1; i <= 5; i++) x[i + 1] = x[i] + (shown[i] ? w[i] : 0);
     if (!c->col_w[5] && shown[5]) x[6] = fmax(x[6], l.x + l.w);   /* (the last one to the edge) */
 }
@@ -660,7 +675,7 @@ static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double
         item_icon(cr, &in, x + sz * 0.2, y + sz * 0.25, sz * 0.6);
         return;
     }
-    if (it->in_use) in_use(cr, x, y, sz);
+    if (it->in_use && !it->open_icon) in_use(cr, x, y, sz);
     if (it->image && cairo_surface_status(it->image) == CAIRO_STATUS_SUCCESS) {
         double iw = cairo_image_surface_get_width(it->image), ih = cairo_image_surface_get_height(it->image);
         double k = sz / (iw > ih ? iw : ih);
@@ -687,8 +702,9 @@ static void draw_details_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r, 
     if (!it.loaded) {
         ui_fill(cr, (ui_rect){ x[1], r.y + 6, 140, 8 }, k->placeholder);
     } else {
-        item_icon(cr, &it, x[0], r.y + 2, 16);
-        if (it.shadow) shadow_mark(cr, x[0], r.y + 2, 16);
+        double is = row_icon(c), iy = r.y + floor((ROW_H - is) / 2);
+        item_icon(cr, &it, x[0], iy, is);
+        if (it.shadow) shadow_mark(cr, x[0], iy, is);
         ui_set_color(cr, sel ? k->selection_text : it.shadow ? k->shadow_text : k->text);
         char one[512];   /* a title's line breaks: spaces on one line */
         snprintf(one, sizeof one, "%s", it.title ? it.title : "");
@@ -785,9 +801,10 @@ static void draw_tree_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
         cairo_stroke(cr);
     }
     double ix = ex + INDENT;
-    item_icon(cr, &it, ix, r.y + 2, 16);
+    double is = row_icon(c);
+    item_icon(cr, &it, ix, r.y + floor((ROW_H - is) / 2), is);
     const char *t = it.title ? it.title : "";
-    double tx = ix + 20, tw = ui_text_width(c->font, t), maxw = r.x + r.w - tx - 4;
+    double tx = ix + is + 4, tw = ui_text_width(c->font, t), maxw = r.x + r.w - tx - 4;
     if (tw > maxw) tw = maxw;
     if (sel) ui_fill(cr, (ui_rect){ tx - 2, r.y + 1, tw + 4, ROW_H - 2 }, k->selection);
     ui_set_color(cr, sel ? k->selection_text : k->text);
@@ -967,17 +984,61 @@ static void draw_icon_cell(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     if (!label_expanded(c, i, &it)) draw_label(c, cr, i, &it, r, c->whole_titles && free_icons(c));
 }
 
-double ui_icon_cell_height_font(ui_font font, const char *title)
+double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char *title)
 {
     char lines[LABEL_MAX][256];
     bool all;
-    int n = wrap_title(font, title ? title : "", CELL_W - 8, lines, LABEL_MAX, &all);
+    int n = wrap_title(font, title ? title : "", set->cell_w - 8, lines, LABEL_MAX, &all);
     double lh = font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(font)));
-    double h = ICON + 8 + n * lh + 4 + 4;
-    return h > CELL_H ? h : CELL_H;
+    double h = set->large + 8 + n * lh + 4 + 4;
+    return h > set->cell_h ? h : set->cell_h;
 }
 
+double ui_icon_cell_height_font(ui_font font, const char *title) { return ui_icon_cell_height_set(font, ui_icons(), title); }
 double ui_icon_cell_height(const char *title) { return ui_icon_cell_height_font(UI_FONT_REGULAR, title); }
+
+void ui_container_set_icon_set(ui_container *c, const ui_icon_set *set)
+{
+    bool own = set != NULL;
+    if (own == c->own_set && (!own || !memcmp(set, &c->set, sizeof *set))) return;
+    c->own_set = own;
+    if (own) c->set = *set;
+    ui_container_layout_changed(c);
+}
+
+const ui_icon_set *ui_container_icon_set(ui_container *c) { return iset(c); }
+
+/* The sets (the owner's, v0.4-design 3); a cell holds the icon, two
+ * lines of title below and room round them. */
+ui_icon_set ui_icon_set_of(ui_icon_size which)
+{
+    static const int sz[3][3] = { { 32, 16, 16 }, { 64, 32, 16 }, { 96, 48, 24 } };
+    int w = which >= UI_ICONS_SMALL && which <= UI_ICONS_LARGE ? (int)which : UI_ICONS_DEFAULT;
+    int l = sz[w][0];
+    return (ui_icon_set){ l, sz[w][1], sz[w][2], fmax(100, l + 48), l + 48 };
+}
+
+ui_icon_size ui_icon_size_named(const char *name)
+{
+    if (name && !strcasecmp(name, "Small")) return UI_ICONS_SMALL;
+    if (name && !strcasecmp(name, "Large")) return UI_ICONS_LARGE;
+    return UI_ICONS_DEFAULT;
+}
+
+static ui_icon_set icons_now;
+static bool icons_set_once;
+
+const ui_icon_set *ui_icons(void)
+{
+    if (!icons_set_once) { icons_now = ui_icon_set_of(UI_ICONS_DEFAULT); icons_set_once = true; }
+    return &icons_now;
+}
+
+void ui_set_icons(ui_icon_size which)
+{
+    icons_now = ui_icon_set_of(which);
+    icons_set_once = true;
+}
 
 void ui_container_set_font(ui_container *c, ui_font f)
 {

@@ -62,6 +62,8 @@ property lock_all : checkbox page "Icon view" label "Lock positions of all icons
 # Its icons' theme (0.4 step 2): the installed and the user's themes.
 method wpQueryIconThemes() -> string
 property icon_theme : choice = "WPS (flat)" page "Icon view" label "Icon theme" options wpQueryIconThemes
+# Its icons' set (0.4 step 3): the sizes of its icons (v0.4-design 3).
+property icon_set : choice "Small,Default,Large" = Default page "Icon view" label "Icon size"
 property icon_font : text page "Icon view" label "Icon font (e.g. 10.Sans; empty: the System's)" set wpSetIconFont
 property title_font : text page "Icon view" label "Title bar font (empty: all title bars')" set wpSetTitleFont
 property col_name : checkbox = 1 page "Details view" label "Real name"

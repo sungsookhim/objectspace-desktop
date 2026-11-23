@@ -9,6 +9,7 @@
 #include <math.h>
 #include "wpsicon.h"
 #include "wps_themes.h"
+#include "launchpad.h"
 #include "mime.h"
 
 #include <errno.h>
@@ -291,6 +292,14 @@ void icons_set_default_theme(const char *theme)
 
 const char *icons_default_theme(void) { return default_theme; }
 
+void icons_set_default_size(ui_icon_size which)
+{
+    ui_icon_set was = *ui_icons();
+    ui_set_icons(which);
+    if (!memcmp(&was, ui_icons(), sizeof was)) return;
+    launchpad_icons_changed();
+}
+
 /* a package's path in a theme (by name or id), or "" */
 static bool package_in(const char *theme, const char *name, char *out, size_t n)
 {
@@ -346,12 +355,13 @@ cairo_surface_t *icons_theme(const char *theme, const char *name, int px)
     return NULL;
 }
 
-cairo_surface_t *icons_object(const char *theme, const char *icon)
+cairo_surface_t *icons_object(const char *theme, const char *icon, int px)
 {
     if (!icon || !*icon) return NULL;
-    if (!strncmp(icon, "theme:", 6)) return icons_theme(theme, icon + 6, 64);   /* (64: sharp at 32, and at scale 2) */
+    if (px < 8) px = 64;
+    if (!strncmp(icon, "theme:", 6)) return icons_theme(theme, icon + 6, px);
     size_t l = strlen(icon);
-    if (l > 8 && !strcmp(icon + l - 8, ".wpsicon")) return package_at(icon, 64);   /* its own, a package */
+    if (l > 8 && !strcmp(icon + l - 8, ".wpsicon")) return package_at(icon, px);   /* its own, a package */
     return icons_get(icon);
 }
 
@@ -401,16 +411,17 @@ bool icons_draw_theme(cairo_t *cr, const char *theme, const char *name, ui_rect 
     return true;
 }
 
-cairo_surface_t *icons_item(const char *theme, const char *icon, ui_kind kind, const char *name)
+cairo_surface_t *icons_item(const char *theme, const char *icon, ui_kind kind, const char *name, int px)
 {
-    cairo_surface_t *s = icons_object(theme, icon);
+    if (px < 8) px = 64;
+    cairo_surface_t *s = icons_object(theme, icon, px);
     if (s) return s;
     const char *nm = kind == UI_KIND_FOLDER ? "folder" : kind == UI_KIND_PROGRAM ? "program" : NULL;
     if (!nm && kind == UI_KIND_FILE) {
         const char *sl = name ? strrchr(name, '/') : NULL;
         nm = icons_name_for_type(name ? mime_of_name(sl ? sl + 1 : name) : NULL);
     }
-    return nm ? icons_theme(theme, nm, 64) : NULL;
+    return nm ? icons_theme(theme, nm, px) : NULL;
 }
 
 bool icons_object_png(const char *icon, int px, char *out, size_t n)

@@ -100,10 +100,13 @@ static void opened(void *arg, const cv *reply);
 
 /* Along the bar (x; y when vertical) and across it. Buttons: SYS_W and
  * BTN_W along, BTN_H across (vertical with text: wide enough for it). */
-#define SYS_W (lp.small ? 28.0 : 40.0)
-#define BTN_W (lp.small ? (lp.text && !lp.vertical ? 48.0 : 30.0) : (lp.text && !lp.vertical ? 56.0 : 42.0))
-#define BTN_H (lp.vertical && lp.text ? (lp.small ? 130.0 : 150.0) : lp.small ? (lp.text ? 40.0 : 28.0) : (lp.text ? 56.0 : 42.0))
-#define ICON_PX (lp.small ? 16.0 : 32.0)
+/* The icon: the icon set's middle size (its small with Small icons), the
+ * buttons round it (at 16 and 32 as in 0.3). */
+#define ICON_PX ((double)(lp.small ? ui_icons()->small : ui_icons()->middle))
+#define SYS_W (ICON_PX * 0.75 + 16)
+#define BTN_W (lp.text && !lp.vertical ? ICON_PX * 0.5 + 40 : ICON_PX * 0.75 + 18)
+#define BTN_H (lp.vertical && lp.text ? (lp.small ? 130.0 : 150.0) : lp.text ? ICON_PX + 24 : ICON_PX * 0.875 + 14)
+#define DEV_PX(sz) ((int)((sz) * (lp.s ? ui_surface_scale(lp.s) : 1) + 0.5))   /* (an icon's pixels) */
 
 static ui_rect at(double a, double c, double la, double lc)
 {
@@ -468,7 +471,8 @@ static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         }
         ui_item it = { .loaded = true, .detailed = true, .kind = d->items[i].kind, .shadow = d->items[i].shadow,
                        .link = d->items[i].link };
-        it.image = icons_item(NULL, d->items[i].icon, d->items[i].kind, d->items[i].target[0] ? d->items[i].target : d->items[i].name);
+        it.image = icons_item(NULL, d->items[i].icon, d->items[i].kind, d->items[i].target[0] ? d->items[i].target : d->items[i].name,
+                              (int)(24 * ui_surface_scale(d->s) + 0.5));
         ui_draw_item_icon(cr, &it, r.x + 3, r.y + 3, 24);
         ui_set_color(cr, (ssize_t)i == d->hot ? k->menu_hilite_text : k->text);
         ui_text_draw(cr, UI_FONT_REGULAR, r.x + 32, r.y + (DRAWER_ROW + ui_text_ascent()) / 2 - 1, d->items[i].title,
@@ -734,7 +738,7 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_item it = { .loaded = true, .detailed = true, .kind = lp.items[i].kind, .shadow = lp.items[i].shadow,
                        .link = lp.items[i].link };
         double d = down ? 1 : 0, ip = ICON_PX;
-        it.image = icons_item(NULL, lp.items[i].icon, lp.items[i].kind, lp.items[i].target[0] ? lp.items[i].target : lp.items[i].name);
+        it.image = icons_item(NULL, lp.items[i].icon, lp.items[i].kind, lp.items[i].target[0] ? lp.items[i].target : lp.items[i].name, DEV_PX(ip));
         /* the icon: centred, above the title (horizontal), or left of it (vertical) */
         double ix = lp.vertical && lp.text ? r.x + 5 : r.x + (r.w - ip) / 2;
         double iy = lp.text && !lp.vertical ? r.y + 4 : r.y + (r.h - ip) / 2;
@@ -1247,6 +1251,14 @@ bool launchpad_drawer(size_t i, const char *path)
 bool launchpad_snapshot(const char *png) { return lp.s && ui_surface_snapshot(lp.s, png); }
 
 bool launchpad_is_open(void) { return lp.s != NULL; }
+
+void launchpad_icons_changed(void)
+{
+    if (!lp.s) return;
+    drawer_close();
+    tooltip_hide();
+    layout();
+}
 
 void launchpad_set_props(void (*fn)(const char *addr)) { lp.open_props = fn; }
 

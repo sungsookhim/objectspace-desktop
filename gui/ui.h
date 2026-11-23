@@ -524,6 +524,7 @@ typedef struct {
     bool is_template;          /* a template: drawn on a pad of paper (OS/2) */
     bool in_use;               /* in-use emphasis (OS/2): a folder with a window open (drawn open), or a file open in a program */
     cairo_surface_t *image;    /* its own icon (an app's), drawn instead of the kind's; NULL: the kind's */
+    bool open_icon;            /* in use, and image is its open icon: drawn without the in-use emphasis */
     /* Tree view only. */
     int depth;
     bool expandable, expanded;
@@ -562,8 +563,21 @@ typedef struct {
     double (*item_h)(void *ctx, size_t i);
 } ui_container_src;
 
-#define UI_CELL_W 100            /* an icon's cell in icon view */
-#define UI_CELL_H 80             /* (room for a title on two lines) */
+/* An icon set (v0.4-design 3): the icon views' and desktop's size, the
+ * LaunchPad's and folder trees' (middle), menus', the Details view's and
+ * title bars' (small); an icon view's cell from the large size (titles
+ * below, two lines). Logical pixels: a scale of 2 asks for twice. */
+typedef struct { int large, middle, small; double cell_w, cell_h; } ui_icon_set;
+typedef enum { UI_ICONS_SMALL, UI_ICONS_DEFAULT, UI_ICONS_LARGE } ui_icon_size;
+ui_icon_set ui_icon_set_of(ui_icon_size which);
+/* "Small", "Default", "Large" (the property's choices); else Default. */
+ui_icon_size ui_icon_size_named(const char *name);
+/* The System's set (menus, title bars, the LaunchPad, every folder with
+ * none of its own); Default at first. */
+const ui_icon_set *ui_icons(void);
+void ui_set_icons(ui_icon_size which);
+#define UI_CELL_W (ui_icons()->cell_w)   /* the System's set's cell */
+#define UI_CELL_H (ui_icons()->cell_h)
 
 typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
 
@@ -576,6 +590,10 @@ void ui_container_set_whole_titles(ui_container *c, bool on);
  * in the interface font or another. */
 double ui_icon_cell_height(const char *title);
 double ui_icon_cell_height_font(ui_font font, const char *title);
+double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char *title);
+/* Its icons' set (a folder's own); the System's until set. */
+void ui_container_set_icon_set(ui_container *c, const ui_icon_set *set);
+const ui_icon_set *ui_container_icon_set(ui_container *c);
 /* The items' titles in this font (a folder's, from the Font Palette). */
 void ui_container_set_font(ui_container *c, ui_font f);
 void ui_container_free(ui_container *c);

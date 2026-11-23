@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #include "wpsd.h"
 #include "wps_props.h"
+#include "wps_themes.h"
 
 /* ---- menus and settings pages as data */
 
@@ -111,8 +112,15 @@ void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin
         for (size_t i = 0; i < nf; i++) {
             if (page_of[i] != (int)p) continue;
             struct field *x = &fields[i];
-            if (!strcmp(x->type, "icon") && !x->choices[0] && icon_shown && *icon_shown)   /* (no commas in it: one choice) */
+            if (!strcmp(x->type, "icon") && !strcmp(x->key, "icon") && !x->choices[0] && icon_shown && *icon_shown)   /* (no commas in it: one choice) */
                 snprintf(x->choices, sizeof x->choices, "%s", icon_shown);
+            else if (!strcmp(x->key, "icon_open") && !x->choices[0] && icon_shown && !strncmp(icon_shown, "theme:", 6)) {
+                /* the open icon shown without one of its own: the theme's NAME-open, if it has one */
+                char d[PATH_MAX], pk[PATH_MAX + 200];
+                if (wps_icon_theme_dir("wps-flat", d, sizeof d) &&
+                    snprintf(pk, sizeof pk, "%s/%s-open.wpsicon", d, icon_shown + 6) > 0 && access(pk, R_OK) == 0)
+                    snprintf(x->choices, sizeof x->choices, "%s-open", icon_shown);
+            }
             bool own = false;
             char from[200] = "";
             if (!strcmp(x->setter, "@prop") && of) of(ctx, x->key, &own, from, sizeof from);

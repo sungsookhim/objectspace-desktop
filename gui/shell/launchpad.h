@@ -27,6 +27,8 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
 
 /* Whether it is open; bring it forward (opening its object again). */
 bool launchpad_is_open(void);
+/* The icon set changed: the buttons' sizes again. */
+void launchpad_icons_changed(void);
 /* Closed (its menu's Close); launchpad_open opens it again. */
 void launchpad_close(void);
 void launchpad_raise(void);

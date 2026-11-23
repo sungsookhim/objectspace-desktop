@@ -51,7 +51,8 @@
 
 enum { P_NONE, P_NAMES, P_DETAILED };
 
-struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon;
+struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon,
+             *icon_open;   /* its own open icon (shown while it is open), or NULL */
              float cellh;   /* its icon's cell with the whole title (0: not measured yet) */
              char *noext;   /* its title without the extension (Show file extensions off), made when shown */ };
 struct page { int state; bool requested; struct row rows[PAGE]; };
@@ -113,6 +114,7 @@ struct folder {
     bool lock_all;           /* ... Lock positions of all icons */
     char icon_font[128];     /* its own icon font (the Font Palette's), "" the System's */
     char icon_theme[128];    /* its icons' theme (its own, or all folders') */
+    int icon_size;           /* its icon set (ui_icon_size; its own, or all folders') */
     char title_font[128];    /* its title bar's, "" all title bars' */
     ui_font font;            /* the one its titles are drawn in */
     cairo_surface_t *bg_img;     /* the picture, decoded */
@@ -369,6 +371,18 @@ void src_activate(void *ctx, size_t i);
 const char *lay_name(void *ctx, size_t i);
 double lay_h(void *ctx, size_t i);
 int cols_now(struct folder *f);
+/* Its icon set (its container's). */
+const ui_icon_set *folder_icons(struct folder *f);
+/* Icon positions are stored in the Small set's units (0.3's cell, 100 by
+ * 80) and shown in the folder's set's, so an arrangement keeps its shape
+ * when the size changes: these store positions shown in f. */
+void folder_place(struct folder *f, const char *dest, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg);
+void folder_place_lock(struct folder *f, const char *target, int64_t x, int64_t y, bool lock, svc_fn fn, void *arg);
+/* A position shown in f as stored, and back. */
+void folder_pos_stored(struct folder *f, int64_t *x, int64_t *y);
+void folder_pos_shown(struct folder *f, int64_t *x, int64_t *y);
+/* Its icon set changed (got_bg): cells, layout and positions again. */
+void folder_icons_changed(struct folder *f);
 void layout_follow(struct folder *f, bool full);
 void got_layout(void *arg, const cv *reply);
 void placed_reply(void *arg, const cv *reply);

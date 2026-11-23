@@ -38,6 +38,7 @@ typedef struct {
     bool is_template;        /* marked as one, or in the templates folder */
     char makes[64];          /* a built-in template: the class of what it makes */
     char icon[PATH_MAX];     /* its own icon (a PNG), or its shadow's target's; "": its kind's */
+    char icon_open[PATH_MAX];   /* its own open icon, or its shadow's target's; "": none */
 } wps_entry;
 
 typedef struct {

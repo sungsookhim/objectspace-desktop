@@ -209,6 +209,14 @@ void layout_reset(icon_layout *l, int cols)
     rows_reset(l);
 }
 
+void layout_set_cell(icon_layout *l, double cell_w, double cell_h, int cols)
+{
+    l->cw = cell_w;
+    l->ch = cell_h;
+    l->cols = cols < 1 ? 1 : cols;   /* (the spots in their order, flowed again) */
+    rows_reset(l);
+}
+
 void layout_set_cols(icon_layout *l, int cols)
 {
     if (l->slots.n == 0 && l->placed.n == 0) l->cols = cols < 1 ? 1 : cols;
