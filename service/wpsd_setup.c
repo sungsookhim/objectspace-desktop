@@ -20,10 +20,13 @@ static struct fs_shadow *fs_queue, **fs_tail = &fs_queue;
 
 static bool fs_busy;
 
+static void protect(const char *target);
+
 static void first_start_shadow_done(void *arg, const char *link, const char *error)
 {
     (void)arg;
     if (!link && error) log_msg("first start: a shadow was not made: %s", error);
+    if (link) protect(link);   /* (WPS's own: Prevent delete, as step 11 gives the others) */
     fs_busy = false;
     fs_next();
 }
