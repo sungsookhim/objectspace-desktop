@@ -9,7 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <poll.h>
+#include <sys/timerfd.h>
 #include <time.h>
+#include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "ui_internal.h"
@@ -54,6 +57,12 @@ struct ui_container {
     bool thumb_drag;
     double thumb_off;
     int arrow_down;           /* -1 up, +1 down, 0 none */
+    int trough_down;          /* paging while held: -1 up, +1 down, 0 none */
+    double trough_y;          /* the pointer, while paging: the thumb stops there */
+    int rep_fd;               /* held arrow or trough: the repeat, -1 none yet */
+    int emph;                 /* a pop-up menu's: 1 for emph_i (and the selection
+                               * with it), 2 for the folder itself, 0 none */
+    size_t emph_i;
     bool band;
     double bx0, by0, bx1, by1;   /* rubber band, content coordinates */
     bool b2_down;
@@ -213,6 +222,8 @@ static ui_rect window_crect(ui_container *c)
 }
 
 static void columns(ui_container *c, double *x);
+static void open_menu(ui_container *c, size_t i, double x, double y, uint32_t serial);
+static void set_emph(ui_container *c, int mode, size_t i);
 
 /* Where the rename entry sits: over the title (details: the Title column;
  * icons: the label), content coordinates. */
@@ -413,6 +424,57 @@ static void thumb(ui_container *c, double *y, double *h)
     if (*h > t.h) *h = t.h;
     double m = max_scroll(c);
     *y = t.y + (m > 0 ? (t.h - *h) * c->scroll / m : 0);
+}
+
+/* A held arrow or trough repeats, as OS/2's do: the first step on the
+ * press, more after a pause; the trough pages until the thumb reaches the
+ * pointer. A click alone moves one step. */
+static void rep_arm(ui_container *c, long first_ms, long every_ms)
+{
+    if (c->rep_fd < 0) return;
+    struct itimerspec its = { .it_value = { first_ms / 1000, (first_ms % 1000) * 1000000L },
+                              .it_interval = { every_ms / 1000, (every_ms % 1000) * 1000000L } };
+    timerfd_settime(c->rep_fd, 0, &its, NULL);
+}
+
+static void rep_stop(ui_container *c)
+{
+    c->trough_down = 0;
+    rep_arm(c, 0, 0);
+}
+
+/* One page toward the pointer; false once the thumb is under it. */
+static bool trough_step(ui_container *c)
+{
+    double ty, th;
+    thumb(c, &ty, &th);
+    if (c->trough_down < 0 && c->trough_y < ty) ui_container_scroll_by(c, -list_rect(c).h);
+    else if (c->trough_down > 0 && c->trough_y >= ty + th) ui_container_scroll_by(c, list_rect(c).h);
+    else return false;
+    return true;
+}
+
+static void on_rep(void *arg, int fd, short revents)
+{
+    (void)revents;
+    ui_container *c = arg;
+    uint64_t n;
+    if (read(fd, &n, sizeof n) != sizeof n) return;
+    if (c->arrow_down) {
+        double before = c->scroll;
+        ui_container_scroll_by(c, c->arrow_down * line_h(c));
+        if (c->scroll == before) rep_stop(c);
+    } else if (!c->trough_down || !trough_step(c)) rep_stop(c);
+}
+
+static void rep_start(ui_container *c)
+{
+    if (c->rep_fd < 0) {
+        c->rep_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+        if (c->rep_fd < 0) return;
+        ui_app_watch_fd(ui_surface_app(c->s), c->rep_fd, POLLIN, on_rep, c);
+    }
+    rep_arm(c, 400, 60);
 }
 
 /* ------------------------------------------------------------------ icons */
@@ -1128,6 +1190,22 @@ static void draw_scrollbar(ui_container *c, cairo_t *cr)
 }
 
 /* Rows, band and cursor that meet `clip`, in content coordinates. */
+/* Dotted, black and white by turns: it shows on any scheme or picture. */
+static void emph_rect(cairo_t *cr, ui_rect r)
+{
+    double x = floor(r.x) + 0.5, y = floor(r.y) + 0.5, w = floor(r.w) - 1, h = floor(r.h) - 1;
+    cairo_set_line_width(cr, 1);
+    cairo_set_source_rgb(cr, 0, 0, 0);
+    cairo_rectangle(cr, x, y, w, h);
+    cairo_stroke(cr);
+    double dash = 2;
+    cairo_set_dash(cr, &dash, 1, 0);
+    cairo_set_source_rgb(cr, 1, 1, 1);
+    cairo_rectangle(cr, x, y, w, h);
+    cairo_stroke(cr);
+    cairo_set_dash(cr, NULL, 0, 0);
+}
+
 static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
 {
     const ui_scheme *k = &ui_scheme_now;
@@ -1184,6 +1262,20 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
             cairo_set_line_width(cr, 2);
             cairo_rectangle(cr, r.x + 2, r.y + 1, r.w - 4, r.h - 2);
             cairo_stroke(cr);
+        }
+    }
+    if (c->emph == 2) {
+        ui_rect w = window_crect(c);
+        emph_rect(cr, (ui_rect){ w.x + 2, w.y + 2, w.w - 4, w.h - 4 });
+    } else if (c->emph == 1 && c->emph_i < c->count) {
+        /* the icon clicked, and the selection when it is part of it (the
+         * menu is for all of them) */
+        bool all = sel_get(c, c->emph_i);
+        for (size_t i = 0; i < c->count; i++) {
+            if (i != c->emph_i && !(all && sel_get(c, i))) continue;
+            ui_rect r = item_crect(c, i);
+            if (ui_rect_meets(r, clip)) emph_rect(cr, (ui_rect){ r.x + 1, r.y + 1, r.w - 2, r.h - 2 });
+            if (!all) break;
         }
     }
     if (c->band) {
@@ -1398,6 +1490,7 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
             if (c->src->drag) c->src->drag(c->ctx, i, c->drag_serial);
             return true;
         }
+        if (c->trough_down) { c->trough_y = e->y; return true; }
         if (c->thumb_drag) {
             double ty, th;
             thumb(c, &ty, &th);
@@ -1415,7 +1508,8 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
     }
     if (e->kind == UI_RELEASE) {
         if (e->button == ui_mouse_button(UI_ACT_DRAG)) c->drag_i = SIZE_MAX;
-        bool was = c->thumb_drag || c->band || c->arrow_down;
+        bool was = c->thumb_drag || c->band || c->arrow_down || c->trough_down;
+        if (c->arrow_down || c->trough_down) rep_stop(c);
         c->thumb_drag = false;
         if (c->arrow_down) { c->arrow_down = 0; damage_sb(c); }
         if (c->band) { c->band = false; damage_list(c); }
@@ -1424,22 +1518,26 @@ bool ui_container_pointer(ui_container *c, const ui_pointer_event *e)
             if (fabs(e->x - c->b2x) < 5 && fabs(e->y - c->b2y) < 5 && c->src->menu) {
                 size_t i = item_at(c, e->x, e->y);
                 if (i != SIZE_MAX && !sel_get(c, i)) move_cursor(c, i, 0);
-                c->src->menu(c->ctx, i, e->x, e->y, c->b2_serial);
+                open_menu(c, i, e->x, e->y, c->b2_serial);
             }
             return true;
         }
         return was;
     }
     if (e->kind != UI_PRESS || !ui_rect_has(c->r, e->x, e->y)) return false;
+    if (c->emph && !ui_menu_is_open()) set_emph(c, 0, SIZE_MAX);   /* (its menu never came) */
     if (ui_rect_has(sb, e->x, e->y)) {
         if (e->button != ui_mouse_button(UI_ACT_SELECT)) return true;
         double ty, th;
         thumb(c, &ty, &th);
-        if (e->y < sb.y + SB_W) { c->arrow_down = -1; ui_container_scroll_by(c, -line_h(c)); damage_sb(c); }
-        else if (e->y >= sb.y + sb.h - SB_W) { c->arrow_down = 1; ui_container_scroll_by(c, line_h(c)); damage_sb(c); }
-        else if (e->y < ty) ui_container_scroll_by(c, -l.h);
-        else if (e->y >= ty + th) ui_container_scroll_by(c, l.h);
-        else { c->thumb_drag = true; c->thumb_off = e->y - ty; }
+        if (e->y < sb.y + SB_W) { c->arrow_down = -1; ui_container_scroll_by(c, -line_h(c)); damage_sb(c); rep_start(c); }
+        else if (e->y >= sb.y + sb.h - SB_W) { c->arrow_down = 1; ui_container_scroll_by(c, line_h(c)); damage_sb(c); rep_start(c); }
+        else if (e->y < ty || e->y >= ty + th) {
+            c->trough_down = e->y < ty ? -1 : 1;
+            c->trough_y = e->y;
+            trough_step(c);
+            rep_start(c);
+        } else { c->thumb_drag = true; c->thumb_off = e->y - ty; }
         return true;
     }
     if (!ui_rect_has(l, e->x, e->y)) return true;
@@ -1646,7 +1744,7 @@ bool ui_container_key(ui_container *c, const ui_key_event *e)
         if (e->sym == XKB_KEY_F10 && !(e->mods & UI_MOD_SHIFT)) return false;
         if (c->src->menu) {
             ui_rect r = c->has_cursor ? item_rect(c, cur) : list_rect(c);
-            c->src->menu(c->ctx, c->has_cursor ? cur : SIZE_MAX, r.x + 20, r.y + r.h / 2, c->s->app->last_serial);
+            open_menu(c, c->has_cursor ? cur : SIZE_MAX, r.x + 20, r.y + r.h / 2, c->s->app->last_serial);
         }
         return true;
     default:
@@ -1738,6 +1836,32 @@ void ui_container_set_focused(ui_container *c, bool on)
     a11y_cursor(c);
 }
 
+/* Whose pop-up menu is open (OS/2's source emphasis): a dotted outline
+ * round the icons it is for, or inside the folder's area for the folder's
+ * own; gone when the menu closes. One menu at a time: one holder. */
+static ui_container *emph_c;
+
+static void set_emph(ui_container *c, int mode, size_t i)
+{
+    if (emph_c && emph_c != c) { emph_c->emph = 0; damage_list(emph_c); }
+    emph_c = mode ? c : NULL;
+    if (c->emph == mode && c->emph_i == i) return;
+    c->emph = mode;
+    c->emph_i = i;
+    damage_list(c);
+}
+
+void ui_container_menu_closed(void)
+{
+    if (emph_c) set_emph(emph_c, 0, SIZE_MAX);
+}
+
+static void open_menu(ui_container *c, size_t i, double x, double y, uint32_t serial)
+{
+    set_emph(c, i == SIZE_MAX ? 2 : 1, i);
+    c->src->menu(c->ctx, i, x, y, serial);
+}
+
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view)
 {
     ui_container *c = calloc(1, sizeof *c);
@@ -1748,6 +1872,7 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
     c->focused = true;
     c->vis_first = c->vis_last = SIZE_MAX;
     c->drag_i = c->drop_i = SIZE_MAX;
+    c->rep_fd = -1;
     c->col_shown = 15;
     c->sort_col = c->head_down = c->col_drag = -1;
     if (!getenv("WPS_UI_NO_LAYER")) c->layer = ui_layer_new(s, layer_draw, c);
@@ -1757,7 +1882,9 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
 void ui_container_free(ui_container *c)
 {
     if (!c) return;
+    if (emph_c == c) emph_c = NULL;
     ui_entry_free(c->rename);
+    if (c->rep_fd >= 0) { ui_app_unwatch_fd(ui_surface_app(c->s), c->rep_fd); close(c->rep_fd); }
     ui_layer_free(c->layer);
     free(c->sel);
     free(c);

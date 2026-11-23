@@ -374,6 +374,7 @@ static void finish_now(void *arg)
     struct menu_root *r = arg;
     close_now(r);
     if (active == r) active = NULL;
+    if (!active) ui_container_menu_closed();
     if (r->fn) r->fn(r->arg, r->id);
     ui_menu_items_free(r->items, r->n);
     free(r);
