@@ -359,6 +359,16 @@ static bool op_setup(struct client *c, int64_t id, const char *op, cv *msg)
 
 /* vtrash: a central object (a shadow, ...) into the Trash Can, restorable
  */
+/* A central object's actions before it goes (on:object.trash, .delete). */
+static void fire_central(struct client *c, const char *target, const char *event)
+{
+    wps_loaded ld;
+    wps_load(target, false, &ld);
+    wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);   /* (borrowed) */
+    wps_loaded_free(&ld);
+    if (o) free(fire_event_for(c, o, NULL, event));
+}
+
 static bool op_vtrash(struct client *c, int64_t id, const char *op, cv *msg)
 {
     (void)op;
@@ -372,6 +382,7 @@ static bool op_vtrash(struct client *c, int64_t id, const char *op, cv *msg)
     j->id = id;
     j->trash = true;
     snprintf(j->target, sizeof j->target, "%s", t);
+    fire_central(c, t, "object.trash");
     wps_trash_home(j->dest, sizeof j->dest);
     strncat(j->dest, "/files", sizeof j->dest - strlen(j->dest) - 1);
     wps_mkdirs(j->dest, 0700);
@@ -393,6 +404,7 @@ static bool op_vdelete(struct client *c, int64_t id, const char *op, cv *msg)
     j->id = id;
     j->del = true;
     snprintf(j->target, sizeof j->target, "%s", t);
+    fire_central(c, t, "object.delete");
     wpo_defer(loop, "delete central object", vmove_work, vmove_done, j);
     return false;
 }

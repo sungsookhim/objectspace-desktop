@@ -306,12 +306,14 @@ static char *scope_pages(const wpo_class *cls, const char *target)
     char *out = strdup("");
     const char *page = NULL;
     char origin[160];
+    for (int pass = 0; pass < 3; pass++)   /* pages marked first, the others, those marked last (Actions) */
     for (size_t j = nc; j-- > 0;)
         for (size_t i = 0; i < chain[j]->nprops; i++) {
             const wpo_property_def *d = &chain[j]->props[i];
             if (chain[j]->parent && wpo_find_property(chain[j]->parent, d->name, NULL)) continue;   /* where first declared */
             const wpo_property_def *p = wpo_find_property(cls, d->name, NULL);
             if (!shared_prop(p)) continue;
+            if (((p->flags & WPO_P_FIRST) ? 0 : (p->flags & WPO_P_LAST) ? 2 : 1) != pass) continue;
             char *v = scope_value(cls, target, p, wps_prop_store(cls, p->name), origin, sizeof origin);
             char shown[32];
             const char *fv = v ? v : "";
