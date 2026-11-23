@@ -77,7 +77,18 @@ void menu_chosen(void *arg, int64_t id)
         case WPS_MI_VIEW_DETAILS: set_view(f, UI_VIEW_DETAILS); break;
         case WPS_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
         case WPS_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
-        case WPS_MI_ARRANGE: arrange(f); break;
+        case WPS_MI_ARRANGE:
+            if (m->item == SIZE_MAX) { arrange(f); break; }   /* (the window's own menu) */
+            {   /* a folder's icon (or a shadow of one): that folder, open or not */
+                struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
+                if (rw && rw->shadow && rw->target && *rw->target) snprintf(t, sizeof t, "%s", rw->target);
+                struct folder *o = NULL;
+                for (struct folder *x = folders; x && !o; x = x->next)
+                    if (!x->closing && !x->desktop && !strcmp(x->path, t) && !is_tree(x)) o = x;
+                if (o) arrange(o);
+                else svc_arrange(t, ignore_reply, NULL);
+            }
+            break;
         case WPS_MI_SORT_NAME: case WPS_MI_SORT_TYPE: case WPS_MI_SORT_SIZE: case WPS_MI_SORT_DATE:
             sort_icons(f, (int)(id - WPS_MI_SORT_NAME));
             break;

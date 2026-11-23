@@ -104,6 +104,12 @@ if PART == "restore":
     def vobj(it):
         return it["name"][1:]
 
+    # a shadow's menu is its original's (0.4 step 6): the folder's views
+    # and Arrange for the desktop's Programs
+    r = c.request(op="menu", target=vobj(shadows_of(DESK, PROG)[0]))
+    m = {i["label"]: [x["label"] for x in i["items"]] for i in (r.get("result") or [])}
+    check("a shadow's menu: its original's (Open's views, Arrange)", "Arrange" in m and "Icon view" in m.get("Open", []), r)
+
     # Prevent delete (step 11, 0.4): WPS's own objects refuse the Trash
     # Can and delete, as the desktop's shadows of them do; a file of the
     # user's with it on too, as a trash job and as a move into the Trash Can

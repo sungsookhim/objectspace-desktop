@@ -292,6 +292,12 @@ void prepare_work(void *arg)    /* worker */
             }
         }
     }
+    /* a shadow's menu is its original's: its Open with list too */
+    if (!r->tgt.err && r->tgt.shadow_of[0] && !r->shadow_target.err && r->shadow_target.path[0] &&
+        (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select"))) {
+        free(r->open_with);
+        r->open_with = open_with_list(r->shadow_target.path);
+    }
     for (int i = 0; i < r->nobj; i++) wps_load(r->objpath[i], true, &r->objs[i]);
 }
 
@@ -459,15 +465,49 @@ static char *open_with_items(wpo_object *o, struct req *r, char *menu)
     return m;
 }
 
+/* A shadow's menu (OS/2's): its original's, then the shadow's own items
+ * the original's has not (by ID); the GUI's own items act on the shadow
+ * row as before (Delete: the shadow; Properties, Open: the original). */
+static char *shadow_menu(wpo_object *shadow, wpo_object *orig, struct req *r)
+{
+    char *t = open_with_items(orig, r, call_text(orig, "wpModifyPopupMenu", ""));
+    char *own = call_text(shadow, "wpModifyPopupMenu", "");
+    for (const char *l = own; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) {
+        const char *e = strchr(l, '\n');
+        size_t len = e ? (size_t)(e - l) : strlen(l), idl = strcspn(l, "\t\n");
+        bool have = false;
+        for (const char *m = t; m && *m && !have; m = strchr(m, '\n') ? strchr(m, '\n') + 1 : NULL)
+            have = strcspn(m, "\t\n") == idl && !strncmp(m, l, idl);
+        if (have) continue;
+        char line[600];
+        snprintf(line, sizeof line, "%s%.*s\n", t && *t && t[strlen(t) - 1] != '\n' ? "\n" : "", (int)len, l);
+        char *n = wps_concat(t, line);
+        free(t);
+        t = n;
+    }
+    free(own);
+    return t;
+}
+
+static wpo_object *shadow_orig(wpo_object *o)
+{
+    return o && wpo_is_a(o, WPShadowClass) ? WPShadow_data(o)->target : NULL;   /* (borrowed; NULL: unavailable) */
+}
+
 static void do_menus(struct req *r, wpo_object *o)
 {
     const char *err = NULL;
     int64_t v;
+    wpo_object *orig = shadow_orig(o);
     if (!strcmp(r->op, "menu_select")) {
-        wpo_value a, ret;
+        wpo_value a, ret = wpo_v_void();
         a = wpo_v_int(cv_int(&r->msg, "item", &v) ? v : -1);
-        bool ok = r->remote_done ? r->remote_ok   /* (its plug-in's host handled it) */
-                                 : wpo_send(o, "wpMenuItemSelected", &a, 1, &ret) == WPO_OK && ret.type == 'b' && ret.u.b;
+        /* (a shadow: its original's item, if the original takes it) */
+        bool ok = !r->remote_done && orig && wpo_send(orig, "wpMenuItemSelected", &a, 1, &ret) == WPO_OK && ret.type == 'b' && ret.u.b;
+        if (orig && !r->remote_done && !ok) { wpo_value_clear(&ret); ret = wpo_v_void(); }
+        if (!ok)
+            ok = r->remote_done ? r->remote_ok   /* (its plug-in's host handled it) */
+                                : wpo_send(o, "wpMenuItemSelected", &a, 1, &ret) == WPO_OK && ret.type == 'b' && ret.u.b;
         if (!r->remote_done) wpo_value_clear(&ret);
         if (!ok) { reply_error(r->c, r->id, "failed", "the item was not handled"); return; }
     } else if (!strcmp(r->op, "settings_set")) {
@@ -486,8 +526,8 @@ static void do_menus(struct req *r, wpo_object *o)
     cb_text(&b, "ok"); cb_bool(&b, true);
     cb_text(&b, "result");
     if (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select")) {
-        char *t = r->remote_text ? strdup(r->remote_text) : call_text(o, "wpModifyPopupMenu", "");
-        if (!r->remote_text) t = open_with_items(o, r, t);
+        char *t = r->remote_text ? strdup(r->remote_text) : orig ? shadow_menu(o, orig, r) : call_text(o, "wpModifyPopupMenu", "");
+        if (!r->remote_text && !orig) t = open_with_items(o, r, t);
         put_menu(&b, t, "");
         free(t);
     } else {
