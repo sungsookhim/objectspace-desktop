@@ -11,7 +11,7 @@
 
 #include "sound.h"
 
-#define MAX_SUBS 8
+#define MAX_SUBS 64   /* (GUI plug-ins and scripts later; 8 was the sound player and the self-tests) */
 
 static struct { wps_event_fn fn; void *ctx; } subs[MAX_SUBS];
 static int nsubs;
@@ -107,6 +107,53 @@ static void load(void)
         else fprintf(stderr, "wps-shell: %s: unknown setting \"%s\"\n", path, k);
     }
     if (f) fclose(f);
+}
+
+/* sounds.conf (before the Sound object): its settings as a setup string,
+ * to be moved into the Sound object once ("enabled=1;volume=70;window.open=bell"),
+ * or NULL if there is none. */
+char *events_conf_setup(void)
+{
+    char path[PATH_MAX], line[PATH_MAX + 128];
+    config_path(path, sizeof path, "sounds.conf");
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+    size_t cap = 4096, n = 0;
+    char *out = malloc(cap);
+    out[0] = 0;
+    while (fgets(line, sizeof line, f)) {
+        char *h = strchr(line, '#');
+        if (h) *h = 0;
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = 0;
+        char *k = line, *val = eq + 1;
+        while (isspace((unsigned char)*k)) k++;
+        for (char *e = k + strlen(k); e > k && isspace((unsigned char)e[-1]);) *--e = 0;
+        while (isspace((unsigned char)*val)) val++;
+        for (char *e = val + strlen(val); e > val && isspace((unsigned char)e[-1]);) *--e = 0;
+        if (strcmp(k, "volume") && strcmp(k, "enabled") && !strchr(k, '.')) continue;
+        if (!strcmp(val, "none")) val = "";
+        if (n + strlen(k) + 2 * strlen(val) + 4 >= cap) break;
+        n += (size_t)snprintf(out + n, cap - n, "%s=", k);
+        for (const char *c = val; *c; c++) {   /* (";" and "\" escaped) */
+            if (*c == ';' || *c == '\\') out[n++] = '\\';
+            out[n++] = *c;
+        }
+        out[n++] = ';';
+        out[n] = 0;
+    }
+    fclose(f);
+    return out;
+}
+
+/* ... moved: kept as sounds.conf.imported. */
+void events_conf_imported(void)
+{
+    char path[PATH_MAX], to[PATH_MAX + 16];
+    config_path(path, sizeof path, "sounds.conf");
+    snprintf(to, sizeof to, "%s.imported", path);
+    rename(path, to);
 }
 
 /* A theme sound by name (sound theme spec: <dir>/sounds/<theme>/stereo/<name>.<ext>), or a path. */

@@ -179,5 +179,19 @@ check("a folder made: its own colour set by the action", made and get(made, "bg_
       (made, get(made, "bg_color") if made else None))
 c.request(op="reset", target="class:WPFolder", names="on:object.create")
 
+# before going to the Trash Can: the object's own action (run: with its path)
+open(DESK + "/old.txt", "w").write("x")
+mark = T + "/trashed.txt"
+r = c.request(op="set", target=DESK + "/old.txt", setup="on:object.trash=run:echo \"$WPS_PATH\" > " + mark)
+check("an action when put in the Trash Can", r.get("ok"), r)
+sid = c.request(op="select", folder=DESK, items=["old.txt"]).get("result")
+r = c.request(op="trash", selection=sid)
+for _ in range(50):
+    if os.path.exists(mark) and open(mark).read().strip():
+        break
+    time.sleep(0.1)
+check("... ran with its path before it went", os.path.exists(mark) and open(mark).read().strip() == DESK + "/old.txt",
+      open(mark).read() if os.path.exists(mark) else r)
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

@@ -413,6 +413,15 @@ void svc_reset(const char *target, const char *names, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+void svc_set(const char *target, const char *setup, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("set", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "setup"); cb_text(&o->b, setup);
+    send_req(o, id, fn, arg);
+}
+
 void svc_props(const char *target, svc_fn fn, void *arg)
 {
     int64_t id;

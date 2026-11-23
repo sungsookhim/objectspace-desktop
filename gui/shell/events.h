@@ -63,4 +63,9 @@ void events_setup_set(const char *key, const char *value);
  * service: "" none) instead of the Sound object's. */
 void events_sound_once(const char *name, const char *sound);
 
+/* sounds.conf's settings as a setup string for the Sound object (NULL: no
+ * file), and the file kept aside once they are there. */
+char *events_conf_setup(void);
+void events_conf_imported(void);
+
 #endif

@@ -259,6 +259,14 @@ bool open_view(const char *v)
     return true;
 }
 
+static void sounds_imported(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *ok = reply ? cv_get(reply, "ok") : NULL;
+    if (ok && ok->k == CV_BOOL && ok->b) events_conf_imported();
+    else fprintf(stderr, "wps-shell: sounds.conf not moved into the Sound object: %s\n", reply ? cv_text(reply, "message") : "no wpsd");
+}
+
 void got_setup(void *arg, const cv *reply)
 {
     (void)arg;
@@ -293,6 +301,15 @@ void got_setup(void *arg, const cv *reply)
     }
     apply_scheme();
     gnome_wps_read();   /* GNOME follows (or, the first time, leads) */
+    /* sounds.conf (before the Sound object): moved into it, once */
+    static bool sounds_checked;
+    for (size_t i = 0; !sounds_checked && i < n; i++)
+        if (!strcmp(setup_cls[i], "WPSound")) {
+            sounds_checked = true;
+            char *conf = events_conf_setup();
+            if (conf && *conf) svc_set(setup_ids[i], conf, sounds_imported, NULL);
+            free(conf);
+        }
     for (struct folder *f = folders; f; f = f->next) if (!f->closing) ui_surface_damage_all(f->win);
     if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
     const char *folder = cv_text(res, "folder");
