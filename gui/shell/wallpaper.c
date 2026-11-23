@@ -1,6 +1,7 @@
 /* The desktop's background, as GNOME has it (wallpaper.h). */
 #define _GNU_SOURCE
 #include "wallpaper.h"
+#include "gnome.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -51,23 +52,10 @@ static int mon_fd[2] = { -1, -1 };
 
 /* --------------------------------------------------------------- settings */
 
-/* `gsettings get schema key`, unquoted, into out. */
+/* GNOME's settings: gnome.c's reader */
 static bool gsetting(const char *schema, const char *key, char *out, size_t n)
 {
-    char cmd[256];
-    snprintf(cmd, sizeof cmd, "gsettings get %s %s 2>/dev/null", schema, key);
-    FILE *p = popen(cmd, "r");
-    if (!p) return false;
-    char buf[PATH_MAX + 64] = "";
-    bool ok = fgets(buf, sizeof buf, p) != NULL;
-    pclose(p);
-    if (!ok) return false;
-    buf[strcspn(buf, "\n")] = 0;
-    char *s = buf;
-    size_t l = strlen(s);
-    if (l >= 2 && s[0] == '\'' && s[l - 1] == '\'') { s[l - 1] = 0; s++; }
-    snprintf(out, n, "%s", s);
-    return true;
+    return gnome_get(schema, key, out, n);
 }
 
 static void parse_color(const char *s, double c[3])

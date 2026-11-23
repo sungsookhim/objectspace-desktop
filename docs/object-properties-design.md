@@ -305,10 +305,12 @@ The total is about the size of a version, comparable to 0.3. **Proposed:** this 
 2. **Script actions (`run:`)** run as the user's own programs, not sandboxed.
 3. **Placement:** the first part of 0.4; 0.4's steps are rebuilt on this base after R6.
 4. **GNOME's per-file metadata:** not now.
+5. **GNOME's settings stay synced by the desktop** (R5, 2026-11-22): not moved into wpsd as 2.6 proposed. A change made either way reaching the other suffices; wpsd syncing them was too much for the gain. The desktop's three gsettings readers are one (gnome_get).
+6. **A file's type from its contents** when its name says nothing (shared-mime-info's magic), an empty file counting as text (2026-11-22).
 
 Approved: go (R0 first).
 
-## 7. As built (stages R0-R4, 2026-11-22)
+## 7. As built (stages R0-R5, 2026-11-22)
 
 | Stage | Commit | What |
 |---|---|---|
@@ -319,6 +321,7 @@ Approved: go (R0 first).
 | R3d | ad8a06e | Notebooks: where an inherited value comes from, Default, Class... (the notebook of all objects of a class or a type) |
 | R3c | b579fdc | Schemes are objects (WPScheme, the Schemes folder); the colours fixed in the code are the scheme's; the compositor gets the schemes' definitions |
 | R4 | 2ede8ae, 5b9ad85 | Events' actions: on:object.open, .create, .trash, .delete (an Actions page); none, sound:, run:, call:, set:; through the chain; sounds.conf moved into the Sound object |
+| R5 | 9651cc2 | Backings: a data file's Opens with in mimeapps.list (per type through Class...), a program's types in its desktop entry; one gsettings reader in the desktop |
 
 **Not done yet in R3, carried on:**
 

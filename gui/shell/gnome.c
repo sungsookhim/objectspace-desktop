@@ -48,22 +48,25 @@ const char *gnome_value(const char *key)
 
 static bool off(void) { return getenv("WPS_NO_GSETTINGS") != NULL; }
 
-static void gget(size_t i)
+bool gnome_get(const char *schema, const char *key, char *out, size_t n)
 {
-    char cmd[256], buf[256] = "";
-    snprintf(cmd, sizeof cmd, "gsettings get %s %s 2>/dev/null", g[i].schema, g[i].key);
+    char cmd[512], buf[4096 + 64] = "";
+    snprintf(cmd, sizeof cmd, "gsettings get %s %s 2>/dev/null", schema, key);
     FILE *p = popen(cmd, "r");
-    if (!p) return;
-    if (fgets(buf, sizeof buf, p)) {
-        buf[strcspn(buf, "\n")] = 0;
-        char *s = buf;
-        size_t l = strlen(s);
-        if (l >= 2 && s[0] == '\'' && s[l - 1] == '\'') { s[l - 1] = 0; s++; }
-        if (!strncmp(s, "uint32 ", 7)) s += 7;
-        snprintf(g[i].val, sizeof g[i].val, "%s", s);
-    }
+    if (!p) return false;
+    bool ok = fgets(buf, sizeof buf, p) != NULL;
     pclose(p);
+    if (!ok) return false;
+    buf[strcspn(buf, "\n")] = 0;
+    char *s = buf;
+    size_t l = strlen(s);
+    if (l >= 2 && s[0] == '\'' && s[l - 1] == '\'') { s[l - 1] = 0; s++; }
+    if (!strncmp(s, "uint32 ", 7)) s += 7;
+    snprintf(out, n, "%s", s);
+    return true;
 }
+
+static void gget(size_t i) { gnome_get(g[i].schema, g[i].key, g[i].val, sizeof g[i].val); }
 
 /* gsettings set, for values we make (enums, numbers, booleans). */
 static void gset(size_t i, const char *value)

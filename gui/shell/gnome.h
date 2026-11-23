@@ -35,6 +35,11 @@ void gnome_stop(void);
 void gnome_wps_value(const char *cls, const char *key, const char *value);
 void gnome_wps_read(void);
 
+/* `gsettings get SCHEMA KEY`, unquoted ("uint32 " dropped), into out; false
+ * if there is none. The one reader of GNOME's settings in wps-shell (the
+ * wallpaper's, the sound theme's, these). */
+bool gnome_get(const char *schema, const char *key, char *out, size_t n);
+
 /* For tests: GNOME's value for a key we follow ("color-scheme", ...). */
 const char *gnome_value(const char *key);
 

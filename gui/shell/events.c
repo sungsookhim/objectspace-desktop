@@ -1,6 +1,7 @@
 /* Action events and the sound scheme (events.h). */
 #define _GNU_SOURCE
 #include "events.h"
+#include "gnome.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -49,24 +50,11 @@ static void set(const char *name, const char *sound)
     nscheme++;
 }
 
-/* `gsettings get`, unquoted. */
+/* GNOME's settings: gnome.c's reader (none with WPS_NO_GSETTINGS: tests) */
 static bool gsetting(const char *schema, const char *key, char *out, size_t n)
 {
     if (getenv("WPS_NO_GSETTINGS")) return false;
-    char cmd[256];
-    snprintf(cmd, sizeof cmd, "gsettings get %s %s 2>/dev/null", schema, key);
-    FILE *p = popen(cmd, "r");
-    if (!p) return false;
-    char buf[512] = "";
-    bool ok = fgets(buf, sizeof buf, p) != NULL;
-    pclose(p);
-    if (!ok) return false;
-    buf[strcspn(buf, "\n")] = 0;
-    char *s = buf;
-    size_t l = strlen(s);
-    if (l >= 2 && s[0] == '\'' && s[l - 1] == '\'') { s[l - 1] = 0; s++; }
-    snprintf(out, n, "%s", s);
-    return true;
+    return gnome_get(schema, key, out, n);
 }
 
 static void config_path(char *out, size_t n, const char *file)
