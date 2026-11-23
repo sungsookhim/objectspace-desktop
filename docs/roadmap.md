@@ -38,7 +38,7 @@ Everything still open after 0.3, by area; the version each goes into is in **Pro
 ### Icons
 
 - **Icons in several sizes** (the owner's spec, 2026-11-21): `.wpsicon` packages, SVG through librsvg, the open (animation) icon. Detailed under 0.4.
-- **Icon size** for icon views and the desktop, a System choice: 32, 48, 64 or 96 pixels, default 64 (the owner's, 2026-11-22).
+- **Icon size** for icon views and the desktop, a System choice of two sets, as OS/2's normal and large icons: Default (64, 32, 16) and Large (96, 48, 24) for icon views, the LaunchPad and menus; independent of the display's scale (the owner's, 2026-11-22).
 - **The new icon set** (isometric, BeOS / Warp 4 style) is being drawn in another session (`tools/icons/make_iso.py`); 0.4 packages it as WPS's own icons.
 - An object's icon is a copy: a changed source image does not follow; icons no object uses stay in `wps/icons`; templates copy their icon's PNG.
 - No drop on the icon picker to add an image to the library.
@@ -270,7 +270,7 @@ A to do, after 0.2 (with network file systems below).
       - **Sizes are a starting point** (the owner's): the default icon size will be adjusted later; the themes hold 256, 128, 96, 64, 48, 40, 32 and 16, each drawn on its own.
       - **WPS's own icons become packages of the isometric set** drawn by `tools/icons/make_iso.py` (2026-11-22: BeOS / Warp 4 style; sets A System Setup objects, B special folders (closed and open), C data files, D the basic kinds, E WPS's own icons redrawn; outline and flat variants). Every size is drawn on its own from the same shapes, not scaled from the master: the five standard sizes by default (`--sizes` adds others); sizes 48 and under get the small design (a bigger identifying feature, fewer details). The generator writes `.wpsicon` packages (its per-size PNGs; no SVG needed) into `data/icons`, and the RPM installs them; the flat variant is the default, the outline one a choice (the owner's).
       - **The open icon** (OS/2's animation icon): a second icon, shown while the object is open; the Icon page's second field, "Open".
-      - **Icon size** for icon views and the desktop (System: 32, 48, 64, 96; default 64): 32, 64 and 96 are standard sizes, so exact; 48 comes from 96 (2x, rule 3) unless a package holds its own.
+      - **Icon size** for icon views and the desktop (System: Default 64/32/16, Large 96/48/24): 64, 32 and 96 are standard sizes, so exact; 16 comes from 32, 48 and 24 from 96 (rule 3) unless a package holds its own.
    2. **Folder layout and windows** (M; `layout.c`, the container, the folder's settings):
       - **OS/2's free icon layout** (cells as wide as their titles), grid or free per folder;
       - **folder windows remember** their position, size and view;
