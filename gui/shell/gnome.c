@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -120,10 +121,10 @@ static void to_wps(void)
 static void to_gnome(void)
 {
     if (!both) return;
-    if (!strcmp(w_scheme, "high contrast")) gset(G_CONTRAST, "true");
+    if (!strcasecmp(w_scheme, "high contrast")) gset(G_CONTRAST, "true");
     else if (w_scheme[0]) {
         gset(G_CONTRAST, "false");
-        bool dark = !strcmp(w_scheme, "dark");
+        bool dark = !strcasecmp(w_scheme, "dark");
         /* classic is GNOME's default, unless GNOME already says light */
         if (dark || strcmp(g[G_SCHEME].val, "prefer-light")) gset(G_SCHEME, dark ? "prefer-dark" : "default");
     }

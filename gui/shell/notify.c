@@ -242,7 +242,7 @@ static void pop_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         const struct note *n = sh[j];
         double h = note_h(n);
         ui_rect r = { 0, y, POP_W, h };
-        ui_fill(cr, r, n->urgency == 2 ? (ui_color){ 1.0, 0.93, 0.85, 1 } : k->face);
+        ui_fill(cr, r, n->urgency == 2 ? k->urgent_bg : k->face);
         ui_bevel(cr, r, true);
         cairo_surface_t *ic = appicon_named(n->icon);
         if (!ic && n->app[0]) ic = appicon_named(n->app);

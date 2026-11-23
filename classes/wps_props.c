@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "WPObject.h"
 #include "wps_classes.h"
@@ -20,10 +21,25 @@ int wps_option_index(const char *options, const char *v)
     for (const char *p = options; p && *p && v; i++) {
         const char *e = strchr(p, ',');
         size_t l = e ? (size_t)(e - p) : strlen(p);
-        if (strlen(v) == l && !strncmp(p, v, l)) return i;
+        if (strlen(v) == l && !strncasecmp(p, v, l)) return i;   /* ("classic" is "Classic") */
         p = e ? e + 1 : NULL;
     }
     return -1;
+}
+
+/* A choice's options now: its class's method's, else the declared ones. */
+char *wps_prop_choices(wpo_object *self, const wpo_property_def *p)
+{
+    if (p->options && self) {
+        wpo_value r = wpo_v_void();
+        if (wpo_send(self, p->options, NULL, 0, &r) == WPO_OK && r.type == 's' && r.u.s) {
+            char *o = wps_strdup(r.u.s);
+            wpo_value_clear(&r);
+            return o;
+        }
+        wpo_value_clear(&r);
+    }
+    return p->choices ? wps_strdup(p->choices) : NULL;
 }
 
 char *wps_option_at(const char *options, long k)
@@ -70,7 +86,11 @@ static char *call_get(wpo_object *self, const wpo_property_def *p)
     case 's': out = r.u.s ? wps_strdup(r.u.s) : wps_strdup(""); break;
     case 'b': out = wps_strdup(r.u.b ? "1" : "0"); break;
     case 'i':
-        out = !strcmp(p->type, "choice") ? wps_option_at(p->choices, (long)r.u.i) : itoa_dup(r.u.i);
+        if (!strcmp(p->type, "choice")) {
+            char *ch = wps_prop_choices(self, p);
+            out = wps_option_at(ch, (long)r.u.i);
+            free(ch);
+        } else out = itoa_dup(r.u.i);
         if (!out) out = wps_strdup("");
         break;
     case 'd': { char b[64]; snprintf(b, sizeof b, "%g", r.u.d); out = wps_strdup(b); break; }
@@ -85,6 +105,7 @@ static char *call_get(wpo_object *self, const wpo_property_def *p)
 char *(*wps_prop_inherit)(wpo_object *self, const wpo_property_def *p, const char *store, char *origin, size_t on);
 char *(*wps_scope_get)(const char *scope, const char *store, const char *prop);
 bool (*wps_scope_set)(const char *scope, const char *store, const char *prop, const char *value);
+char *(*wps_scheme_titles)(void);
 
 /* Its own value, if the object has one (kept in its state). */
 static char *own_value(wpo_object *self, const wpo_property_def *p, const char *st)
@@ -93,7 +114,9 @@ static char *own_value(wpo_object *self, const wpo_property_def *p, const char *
         int64_t v;
         if (wps_state_get_int(self, st, p->name, &v)) {
             if (!strcmp(p->type, "choice")) {
-                char *o = wps_option_at(p->choices, (long)v);
+                char *ch = wps_prop_choices(self, p);
+                char *o = wps_option_at(ch, (long)v);
+                free(ch);
                 return o ? o : wps_strdup("");
             }
             if (!strcmp(p->type, "checkbox")) return wps_strdup(v ? "1" : "0");
@@ -153,7 +176,11 @@ const char *wps_prop_store(const wpo_class *cls, const char *name)
 /* The text a value is given as, made canonical for its type; NULL if it is
  * not one (a choice: the option's text or number; a checkbox: 1/0,
  * true/false, yes/no, on/off). */
-char *wps_prop_canonical(const wpo_property_def *p, const char *v)
+static char *canonical_in(const wpo_property_def *p, const char *choices, const char *v);
+
+char *wps_prop_canonical(const wpo_property_def *p, const char *v) { return canonical_in(p, p->choices, v); }
+
+static char *canonical_in(const wpo_property_def *p, const char *choices, const char *v)
 {
     if (!v || strchr(v, '\n') || strchr(v, '\t')) return NULL;
     if (!strcmp(p->type, "checkbox")) {
@@ -162,10 +189,10 @@ char *wps_prop_canonical(const wpo_property_def *p, const char *v)
         return NULL;
     }
     if (!strcmp(p->type, "choice")) {
-        if (wps_option_index(p->choices, v) >= 0) return wps_strdup(v);
+        if (wps_option_index(choices, v) >= 0) return wps_strdup(v);   /* (as given: "dark" is "Dark") */
         char *end;
         long k = strtol(v, &end, 10);
-        return *v && !*end ? wps_option_at(p->choices, k) : NULL;
+        return *v && !*end ? wps_option_at(choices, k) : NULL;
     }
     if (!strcmp(p->type, "number")) {
         char *end;
@@ -187,17 +214,18 @@ bool wps_prop_set(wpo_object *self, const char *name, const char *value)
     const wpo_class *decl;
     const wpo_property_def *p = wpo_find_property(self->cls, name, &decl);
     if (!p || (p->flags & WPO_P_READONLY) || !strcmp(p->type, "info")) return false;
-    char *v = wps_prop_canonical(p, value);
-    if (!v) return false;
+    char *ch = wps_prop_choices(self, p);
+    char *v = canonical_in(p, ch, value);
+    if (!v) { free(ch); return false; }
     bool ok;
     if (p->set) {
         /* the class's setter, given the value as its argument's type */
         const wpo_method_def *m = wpo_method_info(self->cls, p->set);
-        if (!m || strlen(m->sig) < 4) { free(v); return false; }
+        if (!m || strlen(m->sig) < 4) { free(v); free(ch); return false; }
         wpo_value a, r = wpo_v_void();
         char t = m->sig[2];
         if (t == 'b') a = wpo_v_bool(!strcmp(v, "1"));
-        else if (t == 'i') a = wpo_v_int(!strcmp(p->type, "choice") ? wps_option_index(p->choices, v) : strtoll(v, NULL, 10));
+        else if (t == 'i') a = wpo_v_int(!strcmp(p->type, "choice") ? wps_option_index(ch, v) : strtoll(v, NULL, 10));
         else a = wpo_v_string(v);
         ok = wpo_send(self, p->set, &a, 1, &r) == WPO_OK && (r.type != 'b' || r.u.b);
         wpo_value_clear(&a);
@@ -206,7 +234,7 @@ bool wps_prop_set(wpo_object *self, const char *name, const char *value)
         const char *st = store_of(p, decl);
         if (is_int_type(p) && !(p->flags & WPO_P_TEXT))
             wps_state_put_int(self, st, p->name,
-                              !strcmp(p->type, "choice") ? wps_option_index(p->choices, v) : strtoll(v, NULL, 10));
+                              !strcmp(p->type, "choice") ? wps_option_index(ch, v) : strtoll(v, NULL, 10));
         else
             wps_state_put_str(self, st, p->name, v);
         WPObject_wpSaveDeferred(self);
@@ -214,6 +242,7 @@ bool wps_prop_set(wpo_object *self, const char *name, const char *value)
         ok = true;
     }
     free(v);
+    free(ch);
     return ok;
 }
 
@@ -276,20 +305,22 @@ static char *field_lines(wpo_object *self, const wpo_property_def *p, const char
 {
     if (!shown(self, p)) return wps_strdup("");
     char *v = wps_prop_get(self, p->name);
+    char *ch = wps_prop_choices(self, p);
     char shownv[32];
     const char *fv = v ? v : "";
-    if (!strcmp(p->type, "choice")) { snprintf(shownv, sizeof shownv, "%d", wps_option_index(p->choices, fv)); fv = shownv; }
+    if (!strcmp(p->type, "choice")) { snprintf(shownv, sizeof shownv, "%d", wps_option_index(ch, fv)); fv = shownv; }
     else if (!strcmp(p->type, "checkbox")) fv = !strcmp(fv, "1") ? "1" : "0";
     const char *pg = p->page ? p->page : "General";
     size_t l = strlen(pg) + strlen(p->name) + strlen(p->label ? p->label : "") + strlen(fv) +
-               strlen(p->choices ? p->choices : "") + 64;
+               strlen(ch ? ch : "") + 64;
     char *line = malloc(l);
     size_t o = 0;
     if (!*page || strcmp(*page, pg)) o += (size_t)snprintf(line, l, "page\t%s\n", pg);
     *page = pg;
     snprintf(line + o, l - o, "field\t%s\t%s\t%s\t%s\t@prop%s%s\n", p->name, p->type, p->label ? p->label : p->name, fv,
-             p->choices ? "\t" : "", p->choices ? p->choices : "");
+             ch ? "\t" : "", ch ? ch : "");
     free(v);
+    free(ch);
     return line;
 }
 

@@ -97,12 +97,15 @@ void winlist_line(char **f, int n)
 static void command(const char *cmd, const char *id)
 {
     if (cmd_fd < 0) return;
-    char line[128];
-    int n = snprintf(line, sizeof line, "%s\t%s\n", cmd, id);
-    /* One short line on a pipe kept open (not ui_app_write_async, which
-     * closes its pipe after one transfer); a pipe the extension does not
-     * read any more drops it rather than block. */
+    /* One line on a pipe kept open (not ui_app_write_async, which closes
+     * its pipe after one transfer); a pipe the extension does not read any
+     * more drops it rather than block. Lines can be long (a scheme's
+     * definition): written whole (a short buffer once wrote past its end). */
+    char *line = NULL;
+    int n = asprintf(&line, "%s\t%s\n", cmd, id);
+    if (n < 0) return;
     if (write(cmd_fd, line, (size_t)n) != n) fprintf(stderr, "wps-shell: the window command was not sent\n");
+    free(line);
 }
 
 bool winlist_ext(const char *cmd, const char *arg)

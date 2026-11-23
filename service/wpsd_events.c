@@ -110,6 +110,7 @@ void on_object_changed(wpo_object *o)
 {
     if (wpo_is_a(o, WPSystemClass)) terminal_from_system(o);
     if (wpo_is_a(o, WPTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
+    if (wpo_is_a(o, WPSchemeClass)) props_broadcast("schemes");   /* its colours: every window */
     sobj *rec = wps_sobj_of(o);
     const char *path = rec ? rec->path : wps_object_path(o);
     const char *id = wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "";
@@ -178,6 +179,7 @@ void on_layout_changed(const char *folder)
 /* A central object appeared in or left a folder: like a file doing so. */
 void on_central_change(const char *folder, const char *id, char kind)
 {
+    if (is_schemes_path(folder)) props_broadcast("schemes");   /* a scheme made or gone: the palette's list */
     char p[PATH_MAX + 64];
     snprintf(p, sizeof p, "%s/\x01vobj:%s", folder, id);
     wps_listing_apply(folder, kind == 'c' ? 'c' : 'd', p + strlen(folder) + 1, NULL, DT_UNKNOWN);

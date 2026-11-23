@@ -45,6 +45,7 @@
 #include "WPShadow.h"
 #include "WPProgram.h"
 #include "WPSystem.h"
+#include "WPScheme.h"
 #include "WPSetup.h"
 #include "WPFontPalette.h"
 #include "WPFolder.h"
@@ -313,6 +314,8 @@ struct setup_req {
     int64_t id;
     char folder[PATH_MAX];
     wps_loaded ld[NSETUP];
+    wps_loaded sch[32];      /* the schemes */
+    size_t nsch;
 };
 
 struct shadow_reply { struct simple *s; char link[PATH_MAX]; };
@@ -361,6 +364,10 @@ extern char known_desktop[PATH_MAX];
 
 void do_props(struct req *r, wpo_object *o);   /* wpsd_props.c */
 void props_init(void);
+char *scheme_titles(void);   /* wpsd_setup.c */
+void props_broadcast(const char *scope);   /* wpsd_props.c: defaults_changed */
+bool is_schemes_path(const char *folder);
+bool is_schemes_folder(const char *folder_id);
 bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char *target);
 
 void log_msg(const char *fmt, ...);

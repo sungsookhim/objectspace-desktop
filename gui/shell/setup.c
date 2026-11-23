@@ -278,6 +278,19 @@ void got_setup(void *arg, const cv *reply)
             n++;
         }
     }
+    /* the schemes (object-properties-design.md 2.3): each defined from its
+     * object's values, here and in the compositor (WPS session) */
+    const cv *sch = cv_get(res, "schemes");
+    for (size_t i = 0; sch && sch->k == CV_ARRAY && i < sch->n; i++) {
+        const char *t = cv_text(&sch->items[i], "title"), *v = cv_text(&sch->items[i], "values");
+        if (!t || !*t || !v) continue;
+        ui_scheme_define(t, "classic", v);
+        size_t l = strlen(t) + strlen(v) + 2;
+        char *def = malloc(l);
+        snprintf(def, l, "%s\t%s", t, v);
+        winlist_ext("scheme_def", def);
+        free(def);
+    }
     apply_scheme();
     gnome_wps_read();   /* GNOME follows (or, the first time, leads) */
     for (struct folder *f = folders; f; f = f->next) if (!f->closing) ui_surface_damage_all(f->win);
@@ -317,6 +330,7 @@ static void apply_scheme(void)
     char font[300];
     snprintf(font, sizeof font, "%g %s", ui_scheme_now.font_px, ui_text_family());
     winlist_ext("font", font);
+    wallpaper_scheme_changed();   /* the desktop's colour */
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
         layout(f);   /* border and title sizes may have changed */

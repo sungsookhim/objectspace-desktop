@@ -27,14 +27,14 @@ static void tt_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     const ui_scheme *k = &ui_scheme_now;
     double w = ceil(ui_text_width(UI_FONT_REGULAR, tt.text)) + 12, h = ceil(ui_scheme_now.font_px * 1.5) + 4;
     /* OS/2 Warp 4's: a pale yellow box with a thin border */
-    cairo_set_source_rgb(cr, 1.0, 1.0, 0.88);
+    ui_set_color(cr, k->tooltip_bg);
     cairo_rectangle(cr, 0, 0, w, h);
     cairo_fill(cr);
     ui_set_color(cr, k->shadow);
     cairo_set_line_width(cr, 1);
     cairo_rectangle(cr, 0.5, 0.5, w - 1, h - 1);
     cairo_stroke(cr);
-    cairo_set_source_rgb(cr, 0, 0, 0);
+    ui_set_color(cr, k->tooltip_text);
     ui_text_draw(cr, UI_FONT_REGULAR, 6, (h + ui_text_ascent()) / 2 - 1, tt.text, 0);
 }
 

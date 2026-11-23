@@ -370,6 +370,120 @@ void system_folder_init(void)
     }
 }
 
+/* ---- schemes (object-properties-design.md 2.3): WPScheme objects in
+ * System Setup's Schemes folder, made once (Classic, Dark, High contrast;
+ * remembered by locator "schemes:<folder ID>", class WPS, prop <title>);
+ * the user copies one to make their own. Their values are their declared
+ * properties (Classic's are the defaults; the others' written here). */
+static const struct { const char *title, *values; } builtin_schemes[] = {
+    { "Classic", "" },
+    { "Dark", "face=#3c3e42;light=#64666c;shadow=#1e1f22;dark=#0f0f11;text=#e6e6e6;disabled_text=#828282;title_active=#28468c;title_inactive=#46484c;title_text_inactive=#aaaaaa;client_bg=#242528;alt_row=#2a2b2f;selection=#28468c;cursor=#e6e6e6;menu_bg=#3c3e42;menu_text=#e6e6e6;menu_hilite=#28468c;placeholder=#37383c;shadow_text=#78b4ff" },
+    { "High contrast", "face=#000000;shadow=#ffffff;dark=#ffffff;text=#ffffff;disabled_text=#00ff00;title_active=#ffff00;title_inactive=#000000;title_text=#000000;title_text_inactive=#ffffff;client_bg=#000000;alt_row=#141414;selection=#ffff00;selection_text=#000000;cursor=#ffffff;menu_bg=#000000;menu_text=#ffffff;menu_hilite=#ffff00;menu_hilite_text=#000000;placeholder=#3c3c3c;shadow_text=#00ffff" },
+};
+static char schemes_vol[WPS_VOLID_MAX], schemes_fid[WPS_ID_LEN + 1];   /* set once, by the worker */
+
+static void schemes_work(void)
+{
+    char sd[PATH_MAX], sf[PATH_MAX + 16];
+    setup_dir(sd, sizeof sd);
+    snprintf(sf, sizeof sf, "%s/Schemes", sd);
+    if (wps_mkdirs(sf, 0700) != 0) return;
+    wps_loaded fl;
+    wps_load(sf, true, &fl);
+    if (fl.err || !fl.id[0]) { wps_loaded_free(&fl); return; }
+    wps_props known;
+    wps_props_init(&known);
+    char sloc[WPS_ID_LEN + 16];
+    snprintf(sloc, sizeof sloc, "schemes:%s", fl.id);
+    wps_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    for (size_t i = 0; i < sizeof builtin_schemes / sizeof *builtin_schemes; i++) {
+        char *id = NULL, vol[WPS_VOLID_MAX];
+        if (wps_props_str(&known, builtin_schemes[i].title, &id) && id && wps_db_vobj_vol(db, id, vol, sizeof vol)) { free(id); continue; }
+        free(id);
+        char nid[WPS_ID_LEN + 1], key[512], loc[WPS_ID_LEN + 8];
+        if (wps_central_create(fl.vol, fl.id, "WPScheme", builtin_schemes[i].title, NULL, nid)) continue;
+        snprintf(loc, sizeof loc, "vobj:%s", nid);
+        char vals[2048];
+        snprintf(vals, sizeof vals, "%s", builtin_schemes[i].values);
+        for (char *q = vals, *pair; (pair = strsep(&q, ";"));) {
+            char *eq = strchr(pair, '=');
+            if (!eq) continue;
+            *eq = 0;
+            wps_db_key(key, sizeof key, loc, "WPScheme", pair);
+            wps_db_put(db, fl.vol, key, 's', eq + 1, (uint32_t)strlen(eq + 1));
+        }
+        wps_db_key(key, sizeof key, sloc, "WPS", builtin_schemes[i].title);
+        wps_db_put(db, fl.vol, key, 's', nid, WPS_ID_LEN);
+    }
+    snprintf(schemes_vol, sizeof schemes_vol, "%s", fl.vol);
+    snprintf(schemes_fid, sizeof schemes_fid, "%s", fl.id);
+    wps_props_free(&known);
+    wps_loaded_free(&fl);
+}
+
+/* The schemes there are: central objects of the Schemes folder. */
+struct scheme_ids { char id[32][WPS_ID_LEN + 1]; size_t n; };
+
+static void collect_scheme(const char *vol, const char *id, void *user)
+{
+    (void)vol;
+    struct scheme_ids *x = user;
+    if (x->n < 32) snprintf(x->id[x->n++], WPS_ID_LEN + 1, "%s", id);
+}
+
+static void scheme_ids_of(struct scheme_ids *x)
+{
+    x->n = 0;
+    if (schemes_fid[0]) wps_central_in(schemes_vol, schemes_fid, collect_scheme, x);
+}
+
+static int by_title(const void *a, const void *b) { return strcasecmp(*(char *const *)a, *(char *const *)b); }
+
+/* The Scheme Palette's choices (loop thread): the schemes' titles, WPS's
+ * own first (Classic, Dark, High contrast), then the user's by title. */
+char *scheme_titles(void)
+{
+    struct scheme_ids x;
+    scheme_ids_of(&x);
+    char *titles[32];
+    size_t nt = 0;
+    for (size_t i = 0; i < x.n; i++) {
+        char loc[WPS_ID_LEN + 8];
+        snprintf(loc, sizeof loc, "vobj:%s", x.id[i]);
+        wps_loaded ld;
+        wps_load(loc, false, &ld);
+        wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);
+        wps_loaded_free(&ld);
+        char *t = o && wpo_is_a(o, WPSchemeClass) ? WPObject_wpQueryTitle(o) : NULL;   /* (o: borrowed) */
+        if (t && *t && !strchr(t, ',') && nt < 32) titles[nt++] = t;
+        else free(t);
+    }
+    qsort(titles, nt, sizeof *titles, by_title);
+    char *out = strdup("");
+    for (int pass = 0; pass < 2; pass++)
+        for (size_t i = 0; i < nt; i++) {
+            bool own = false;
+            for (size_t b = 0; b < sizeof builtin_schemes / sizeof *builtin_schemes; b++) own |= !strcasecmp(titles[i], builtin_schemes[b].title);
+            if (own != (pass == 0)) continue;
+            char *r = malloc(strlen(out) + strlen(titles[i]) + 2);
+            sprintf(r, "%s%s%s", out, *out ? "," : "", titles[i]);
+            free(out);
+            out = r;
+        }
+    for (size_t i = 0; i < nt; i++) free(titles[i]);
+    return out;
+}
+
+bool is_schemes_folder(const char *folder_id) { return schemes_fid[0] && folder_id && !strcmp(folder_id, schemes_fid); }
+
+bool is_schemes_path(const char *folder)
+{
+    char sd[PATH_MAX], sf[PATH_MAX + 16];
+    setup_dir(sd, sizeof sd);
+    snprintf(sf, sizeof sf, "%s/Schemes", sd);
+    return folder && !strcmp(folder, sf);
+}
+
 static void setup_objects_work(void *arg)
 {
     (void)arg;
@@ -403,6 +517,7 @@ static void setup_objects_work(void *arg)
     }
     wps_props_free(&known);
     wps_loaded_free(&fl);
+    schemes_work();
 }
 
 /* The System object, read once the settings objects are there (its
@@ -798,9 +913,36 @@ void setup_req_work(void *arg)
     }
     wps_props_free(&known);
     wps_loaded_free(&fl);
+    struct scheme_ids x;
+    scheme_ids_of(&x);
+    r->nsch = 0;
+    for (size_t i = 0; i < x.n && r->nsch < 32; i++) {
+        char loc[WPS_ID_LEN + 8];
+        snprintf(loc, sizeof loc, "vobj:%s", x.id[i]);
+        wps_load(loc, false, &r->sch[r->nsch]);
+        if (r->sch[r->nsch].err) wps_loaded_free(&r->sch[r->nsch]);
+        else r->nsch++;
+    }
+}
+
+/* A scheme's values: its declared properties, "key=value;..." */
+static char *scheme_values(wpo_object *o)
+{
+    char *out = strdup("");
+    for (size_t i = 0; i < WPSchemeClass->nprops; i++) {
+        const char *k = WPSchemeClass->props[i].name;
+        char *v = WPObject_wpQueryProperty(o, k);
+        char *r = malloc(strlen(out) + strlen(k) + strlen(v ? v : "") + 3);
+        sprintf(r, "%s%s=%s;", out, k, v ? v : "");
+        free(out);
+        free(v);
+        out = r;
+    }
+    return out;
 }
 
 void setup_req_done(void *arg)
+
 {
     struct setup_req *r = arg;
     if (!r->c->dead) {
@@ -810,8 +952,28 @@ void setup_req_done(void *arg)
         cb_text(&b, "id"); cb_int(&b, r->id);
         cb_text(&b, "ok"); cb_bool(&b, true);
         cb_text(&b, "result");
-        cb_map(&b, 2);
+        cb_map(&b, 3);
         cb_text(&b, "folder"); cb_text(&b, r->folder);
+        /* the schemes: [{title, address, values "key=value;..."}] */
+        wpo_object *so[32] = { 0 };
+        size_t nso = 0;
+        for (size_t i = 0; i < r->nsch; i++) {
+            wpo_object *o = wps_object_from_loaded(&r->sch[i]);
+            if (o && wpo_is_a(o, WPSchemeClass)) so[nso++] = o;   /* (the service's: borrowed) */
+        }
+        cb_text(&b, "schemes");
+        cb_array(&b, nso);
+        for (size_t i = 0; i < nso; i++) {
+            char *t = WPObject_wpQueryTitle(so[i]), *v = scheme_values(so[i]), addr[WPS_ID_LEN + 8];
+            snprintf(addr, sizeof addr, "vobj:%s", WPObject_data(so[i])->id);
+            cb_map(&b, 3);
+            cb_text(&b, "title"); cb_text(&b, t ? t : "");
+            cb_text(&b, "address"); cb_text(&b, addr);
+            cb_text(&b, "values"); cb_text(&b, v);
+            free(t);
+            free(v);
+        }
+
         size_t n = 0;
         wpo_object *objs[NSETUP] = { 0 };
         for (size_t i = 0; i < NSETUP; i++)
@@ -847,6 +1009,7 @@ void setup_req_done(void *arg)
         cb_free(&b);
     }
     for (size_t i = 0; i < NSETUP; i++) wps_loaded_free(&r->ld[i]);
+    for (size_t i = 0; i < r->nsch; i++) wps_loaded_free(&r->sch[i]);
     client_unref(r->c);
     free(r);
 }

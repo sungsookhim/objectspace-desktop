@@ -848,6 +848,8 @@ void on_event(void *arg, const cv *ev)
     if (!strcmp(name, "trash_changed")) { trash_changed(); return; }
     if (!strcmp(name, "drives_changed")) { drives_changed_event(); return; }
     if (!strcmp(name, "defaults_changed")) {   /* all folders', all of a type's: every window reads its own again */
+        const char *scope = cv_text(ev, "scope");
+        if (scope && !strcmp(scope, "schemes")) { svc_setup(got_setup, NULL); return; }   /* a scheme changed */
         for (struct folder *f = folders; f; f = f->next) if (!f->closing) bg_read(f);
         return;
     }

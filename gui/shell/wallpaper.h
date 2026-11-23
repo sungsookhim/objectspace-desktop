@@ -34,6 +34,10 @@ void wallpaper_draw(cairo_t *cr, ui_rect clip);
  * colour ("#rrggbb", "" OS/2's teal). on false: GNOME's again. */
 void wallpaper_own(bool on, const char *path, int mode, const char *color);
 
+/* The scheme changed: the desktop's colour (no picture) is read again if
+ * the scheme's is another. */
+void wallpaper_scheme_changed(void);
+
 /* For tests: what is shown now ("color", or the picture's path). */
 const char *wallpaper_showing(void);
 

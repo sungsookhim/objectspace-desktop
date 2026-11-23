@@ -68,7 +68,7 @@ n = 0
 seen = set()
 # the desktop and Projects, then the folders their shadows stand for that
 # WPS made (System, System Setup, My Storages, Templates, ...): two levels
-queue = [(DESK, 0), (DESK + "/Projects", 0), (T + "/xdg/data/wps", 0), (T + "/templates", 1)]
+queue = [(DESK, 0), (DESK + "/Projects", 0), (T + "/xdg/data/wps", 0), (T + "/templates", 1), (T + "/xdg/data/wps/System/System Setup/Schemes", 1)]
 n += 1
 dump(n, "the desktop", DESK)
 seen.add(DESK)

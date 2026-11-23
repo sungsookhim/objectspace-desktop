@@ -80,6 +80,15 @@ bool WPSystem__wpSetFoldersExt(wpo_object *self, const char *on) { return folder
 char *WPSystem__wpQueryFoldersFont(wpo_object *self) { return folders_get(self, "font_folders", "icon_font", ""); }
 bool WPSystem__wpSetFoldersFont(wpo_object *self, const char *font) { return folders_set(self, "icon_font", font); }
 
+/* The Scheme Palette's choices: the schemes there are (the service's list),
+ * else the three WPS makes. */
+char *WPSchemePalette__wpQuerySchemes(wpo_object *self)
+{
+    (void)self;
+    char *t = wps_scheme_titles ? wps_scheme_titles() : NULL;
+    return t && *t ? t : (free(t), wps_strdup("classic,dark,high contrast"));
+}
+
 /* Settings objects open as their notebook; they are not copied or made. */
 char *WPSetup__wpModifyPopupMenu(wpo_object *self, const char *menu)
 {

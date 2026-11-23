@@ -84,7 +84,8 @@ static void read_settings(void)
     memset(&want, 0, sizeof want);
     snprintf(want.options, sizeof want.options, "zoom");
     snprintf(want.shading, sizeof want.shading, "solid");
-    want.c1[0] = 0.0; want.c1[1] = 0.5; want.c1[2] = 0.5;   /* OS/2's desktop teal, when GNOME says nothing */
+    /* the scheme's desktop (OS/2's teal), when GNOME says nothing */
+    want.c1[0] = ui_scheme_now.desktop.r; want.c1[1] = ui_scheme_now.desktop.g; want.c1[2] = ui_scheme_now.desktop.b;
     if (own.on) {   /* the desktop's own (its Background page) */
         static const char *const how[] = { "centered", "wallpaper", "zoom", "scaled", "stretched" };
         snprintf(want.options, sizeof want.options, "%s", how[own.mode >= 0 && own.mode <= 4 ? own.mode : 2]);
@@ -446,4 +447,14 @@ void wallpaper_own(bool on, const char *path, int mode, const char *color)
     own.mode = mode;
     snprintf(own.color, sizeof own.color, "%s", color ? color : "");
     if (app) reload();
+}
+
+void wallpaper_scheme_changed(void)
+{
+    static ui_color last = { -1, -1, -1, -1 };
+    ui_color d = ui_scheme_now.desktop;
+    if (d.r == last.r && d.g == last.g && d.b == last.b) return;
+    bool first = last.r < 0;
+    last = d;
+    if (app && !first) reload();
 }

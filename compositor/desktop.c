@@ -362,6 +362,15 @@ static void command(char *line)
     }
     if (!strcmp(line, "find")) return;   /* WPS's own Find answers it */
     /* the desktop's scheme, font and frame options: the frames follow */
+    if (!strcmp(line, "scheme_def")) {   /* "Title\tkey=value;..." (a scheme object's) */
+        const char *tab = strchr(arg, '\t');
+        if (tab) {
+            char name[64];
+            snprintf(name, sizeof name, "%.*s", (int)(tab - arg) < 63 ? (int)(tab - arg) : 63, arg);
+            ui_scheme_define(name, "classic", tab + 1);
+        }
+        return;
+    }
     if (!strcmp(line, "scheme")) { if (ui_scheme_use(arg)) comp_redraw_frames(); return; }
     if (!strcmp(line, "frame")) {
         char key[64];

@@ -933,8 +933,7 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
             /* on a picture: light text with a dark shadow reads on anything */
             cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
             ui_text_draw(cr, c->font, tx + 1, by + 1, lines[l], maxw);
-            if (it->shadow) cairo_set_source_rgb(cr, 0.75, 0.85, 1.0);
-            else cairo_set_source_rgb(cr, 1, 1, 1);
+            ui_set_color(cr, it->shadow ? k->desktop_shadow_title : k->desktop_title);
         } else {
             ui_set_color(cr, sel ? k->selection_text : it->shadow ? k->shadow_text : k->text);
         }

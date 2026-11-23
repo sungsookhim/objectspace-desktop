@@ -42,6 +42,11 @@ typedef struct {
     ui_color menu_bg, menu_text, menu_hilite, menu_hilite_text;
     ui_color placeholder;
     ui_color shadow_text;      /* titles of shadows */
+    /* (0.4 refactor: colours that were fixed in the code, now the scheme's) */
+    ui_color desktop;          /* the desktop with no picture (OS/2's teal) */
+    ui_color desktop_title, desktop_shadow_title;   /* icon titles on a picture */
+    ui_color tooltip_bg, tooltip_text;
+    ui_color urgent_bg, urgent_text;   /* urgent notifications and messages */
     double font_px;
     double border, title_h, button_w, button_h;
     double corner_radius;      /* 0: square (the default) */
@@ -52,6 +57,15 @@ typedef struct {
 } ui_scheme;
 
 extern ui_scheme ui_scheme_now;
+/* Schemes as objects (object-properties-design.md 2.3): a scheme defined
+ * from another ("classic" if base is NULL or unknown) and "key=value" pairs
+ * separated by ";" (colours "#rrggbb", sizes numbers; the keys are the
+ * fields' names: face, text, title_active, desktop, ...). Defining a name
+ * again replaces it; ui_scheme_use then finds it (case aside). */
+bool ui_scheme_define(const char *name, const char *base, const char *settings);
+/* Every key of a scheme as "key=value;...", or NULL if unknown. Caller frees. */
+char *ui_scheme_describe(const char *name);
+
 /* Switch the colours to a scheme ("classic", "dark", "high contrast"),
  * keeping the window options; false if unknown. */
 bool ui_scheme_use(const char *name);

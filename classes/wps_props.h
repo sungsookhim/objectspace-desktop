@@ -37,7 +37,11 @@ extern char *(*wps_prop_inherit)(wpo_object *self, const wpo_property_def *p, co
  * System object's Folders and Fonts fields are all folders'). */
 extern char *(*wps_scope_get)(const char *scope, const char *store, const char *prop);
 extern bool (*wps_scope_set)(const char *scope, const char *store, const char *prop, const char *value);
+/* The service's: the schemes' titles ("Classic,Dark,High contrast,..."), or NULL. */
+extern char *(*wps_scheme_titles)(void);
 
+/* A choice's options now ("a,b,c": its `options` method's, else declared). Caller frees. */
+char *wps_prop_choices(wpo_object *self, const wpo_property_def *p);
 int wps_option_index(const char *options, const char *v);
 char *wps_option_at(const char *options, long k);
 

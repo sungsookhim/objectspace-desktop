@@ -120,6 +120,7 @@ typedef struct {
     const char *set;       /* a method taking a new value, or NULL */
     const char *show;      /* a method saying whether its field is shown, or NULL */
     const char *store;     /* the class whose state keeps it (NULL: the declaring class) */
+    const char *options;   /* a method giving a choice's options now ("a,b,c"), or NULL */
     uint32_t flags;        /* WPO_P_* */
 } wpo_property_def;
 

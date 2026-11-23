@@ -15,6 +15,7 @@
 #include "WPSound.h"
 #include "WPMouse.h"
 #include "WPSchemePalette.h"
+#include "WPScheme.h"
 #include "WPFontPalette.h"
 #include "WPLaunchPad.h"
 #include "WPWarpCenter.h"
@@ -50,6 +51,7 @@ wpo_status wps_classes_register(void)
         WPAbstract_register, WPProgram_register, WPShadow_register,
         WPSetup_register, WPSystem_register, WPSound_register, WPMouse_register, WPSchemePalette_register, WPFontPalette_register,
         WPLaunchPad_register, WPWarpCenter_register, WPMessages_register,
+        WPScheme_register,
         WPMinWinViewer_register, WPRestoreDesktop_register, WPTrashCan_register, WPComputer_register, WPDrives_register, WPDrive_register, WPProgramsFolder_register,
     };
     for (size_t i = 0; i < sizeof regs / sizeof regs[0]; i++) {

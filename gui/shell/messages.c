@@ -258,7 +258,7 @@ static void mw_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         double b1 = y + 5 + ui_text_ascent();
         ui_set_color(cr, sel ? fg : k->disabled_text);
         ui_text_draw(cr, UI_FONT_REGULAR, r.x + r.w - rw - 8, b1, right, 0);
-        ui_set_color(cr, m->urgency == 2 && !sel ? (ui_color){ 0.7, 0, 0, 1 } : fg);
+        ui_set_color(cr, m->urgency == 2 && !sel ? k->urgent_text : fg);
         ui_text_draw(cr, m->read ? UI_FONT_REGULAR : UI_FONT_BOLD, tx, b1, m->summary[0] ? m->summary : m->app, r.w - (tx - r.x) - rw - 20);
         char body[1024];
         snprintf(body, sizeof body, "%s", m->body);

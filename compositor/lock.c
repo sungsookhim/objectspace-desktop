@@ -97,7 +97,7 @@ static void draw(void)
     ui_set_color(cr, k->text);
     double w = ui_text_draw(cr, UI_FONT_REGULAR, f.x + 6, f.y + (f.h + ui_text_ascent()) / 2 - 1, dots, f.w - 12);
     if (!lk.checking) ui_fill(cr, (ui_rect){ f.x + 7 + w, f.y + 4, 1, f.h - 8 }, k->cursor);
-    ui_set_color(cr, lk.msg[0] == '!' ? (ui_color){ 0.7, 0, 0, 1 } : k->text);
+    ui_set_color(cr, lk.msg[0] == '!' ? k->urgent_text : k->text);
     ui_text_draw(cr, UI_FONT_REGULAR, 20, 152, lk.checking ? "Checking..." : lk.msg[0] == '!' ? lk.msg + 1 : lk.msg, PW - 40);
     cairo_destroy(cr);
     cairo_surface_flush(s);

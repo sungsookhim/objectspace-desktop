@@ -70,6 +70,7 @@ static char *chain_value(wpo_object *self, const wpo_property_def *p, const char
 }
 
 static void defaults_broadcast(const char *scope);
+void props_broadcast(const char *scope) { defaults_broadcast(scope); }
 
 static bool scope_set_hook(const char *scope, const char *store, const char *prop, const char *value)
 {
@@ -87,6 +88,7 @@ void props_init(void)
     wps_prop_inherit = chain_value;
     wps_scope_get = wps_defaults_get;
     wps_scope_set = scope_set_hook;
+    wps_scheme_titles = scheme_titles;
 }
 
 /* A class's or a type's settings changed: every client (once) reads what it
@@ -146,8 +148,12 @@ static void put_prop(cbuf *b, wpo_object *o, const wpo_property_def *p)
 {
     char origin[160];
     char *v = wps_prop_get_origin(o, p->name, origin, sizeof origin);
-    put_prop_value(b, p, v, origin);
+    char *ch = wps_prop_choices(o, p);
+    wpo_property_def q = *p;   /* (its options now) */
+    q.choices = ch;
+    put_prop_value(b, &q, v, origin);
     free(v);
+    free(ch);
 }
 
 void do_props(struct req *r, wpo_object *o)

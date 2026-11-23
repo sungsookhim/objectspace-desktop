@@ -2579,7 +2579,8 @@ int main(int argc, char **argv)
     wl_signal_add(&s->backend->events.new_output, &s->new_output);
     s->scene = wlr_scene_create();
     s->scene_layout = wlr_scene_attach_output_layout(s->scene, s->output_layout);
-    static const float teal[4] = { 0.0f, 0.5f, 0.5f, 1.0f };   /* OS/2's desktop colour */
+    const float teal[4] = { (float)ui_scheme_now.desktop.r, (float)ui_scheme_now.desktop.g,   /* the scheme's desktop */
+                            (float)ui_scheme_now.desktop.b, 1.0f };
     s->background = wlr_scene_rect_create(&s->scene->tree, 0, 0, teal);
     s->layer_desktop = wlr_scene_tree_create(&s->scene->tree);
     s->layer_normal = wlr_scene_tree_create(&s->scene->tree);

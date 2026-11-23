@@ -10,7 +10,9 @@
 #include <stdio.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
+#include <strings.h>
 
 #include "ui.h"
 
@@ -32,6 +34,9 @@ static const ui_scheme classic = {
     .menu_hilite = RGB(0, 0, 128), .menu_hilite_text = RGB(255, 255, 255),
     .placeholder = RGB(225, 225, 225),
     .shadow_text = RGB(0, 90, 170),
+    .desktop = { 0, 0.5, 0.5, 1 }, .desktop_title = RGB(255, 255, 255), .desktop_shadow_title = { 0.75, 0.85, 1.0, 1 },
+    .tooltip_bg = { 1.0, 1.0, 0.88, 1 }, .tooltip_text = RGB(0, 0, 0),
+    .urgent_bg = { 1.0, 0.93, 0.85, 1 }, .urgent_text = { 0.7, 0, 0, 1 },
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
@@ -48,6 +53,9 @@ static const ui_scheme dark = {
     .menu_hilite = RGB(40, 70, 140), .menu_hilite_text = RGB(255, 255, 255),
     .placeholder = RGB(55, 56, 60),
     .shadow_text = RGB(120, 180, 255),
+    .desktop = { 0, 0.5, 0.5, 1 }, .desktop_title = RGB(255, 255, 255), .desktop_shadow_title = { 0.75, 0.85, 1.0, 1 },
+    .tooltip_bg = { 1.0, 1.0, 0.88, 1 }, .tooltip_text = RGB(0, 0, 0),
+    .urgent_bg = { 1.0, 0.93, 0.85, 1 }, .urgent_text = { 0.7, 0, 0, 1 },
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
@@ -65,6 +73,9 @@ static const ui_scheme high_contrast = {
     .menu_hilite = RGB(255, 255, 0), .menu_hilite_text = RGB(0, 0, 0),
     .placeholder = RGB(60, 60, 60),
     .shadow_text = RGB(0, 255, 255),
+    .desktop = { 0, 0.5, 0.5, 1 }, .desktop_title = RGB(255, 255, 255), .desktop_shadow_title = { 0.75, 0.85, 1.0, 1 },
+    .tooltip_bg = { 1.0, 1.0, 0.88, 1 }, .tooltip_text = RGB(0, 0, 0),
+    .urgent_bg = { 1.0, 0.93, 0.85, 1 }, .urgent_text = { 0.7, 0, 0, 1 },
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
@@ -92,10 +103,104 @@ static void apply_opts(void)
     if (opts.compact) { ui_scheme_now.title_h = 17; ui_scheme_now.button_w = 15; ui_scheme_now.button_h = 13; }
 }
 
+/* ---- schemes defined at run time (from scheme objects) */
+
+#define SCHEME_COLOR(f) { #f, offsetof(ui_scheme, f), 'c' }
+#define SCHEME_NUMBER(f) { #f, offsetof(ui_scheme, f), 'n' }
+static const struct { const char *key; size_t off; char type; } scheme_keys[] = {
+    SCHEME_COLOR(face), SCHEME_COLOR(light), SCHEME_COLOR(shadow), SCHEME_COLOR(dark), SCHEME_COLOR(text),
+    SCHEME_COLOR(disabled_text), SCHEME_COLOR(title_active), SCHEME_COLOR(title_inactive), SCHEME_COLOR(title_text),
+    SCHEME_COLOR(title_text_inactive), SCHEME_COLOR(client_bg), SCHEME_COLOR(alt_row), SCHEME_COLOR(selection),
+    SCHEME_COLOR(selection_text), SCHEME_COLOR(cursor), SCHEME_COLOR(menu_bg), SCHEME_COLOR(menu_text),
+    SCHEME_COLOR(menu_hilite), SCHEME_COLOR(menu_hilite_text), SCHEME_COLOR(placeholder), SCHEME_COLOR(shadow_text),
+    SCHEME_COLOR(desktop), SCHEME_COLOR(desktop_title), SCHEME_COLOR(desktop_shadow_title),
+    SCHEME_COLOR(tooltip_bg), SCHEME_COLOR(tooltip_text), SCHEME_COLOR(urgent_bg), SCHEME_COLOR(urgent_text),
+    SCHEME_NUMBER(font_px), SCHEME_NUMBER(border), SCHEME_NUMBER(title_h), SCHEME_NUMBER(button_w), SCHEME_NUMBER(button_h),
+};
+
+#define MAX_DEFINED 32
+static struct { char name[64]; ui_scheme s; } defined[MAX_DEFINED];
+static size_t ndefined;
+
+static const ui_scheme *builtin(const char *name)
+{
+    return !strcasecmp(name, "classic") ? &classic : !strcasecmp(name, "dark") ? &dark :
+           !strcasecmp(name, "high contrast") ? &high_contrast : NULL;
+}
+
+static const ui_scheme *find_scheme(const char *name)
+{
+    for (size_t i = 0; name && i < ndefined; i++)
+        if (!strcasecmp(defined[i].name, name)) return &defined[i].s;
+    return name ? builtin(name) : NULL;
+}
+
+static bool hex_color(const char *v, size_t n, ui_color *c)
+{
+    if (n != 7 || v[0] != '#') return false;
+    unsigned x[3];
+    char b[8];
+    memcpy(b, v, 7);
+    b[7] = 0;
+    if (sscanf(b + 1, "%2x%2x%2x", &x[0], &x[1], &x[2]) != 3) return false;
+    *c = (ui_color){ x[0] / 255.0, x[1] / 255.0, x[2] / 255.0, 1 };
+    return true;
+}
+
+bool ui_scheme_define(const char *name, const char *base, const char *settings)
+{
+    if (!name || !*name) return false;
+    const ui_scheme *b = base ? find_scheme(base) : NULL;
+    ui_scheme s = b ? *b : classic;
+    size_t k = 0;
+    while (k < ndefined && strcasecmp(defined[k].name, name)) k++;
+    if (k == ndefined) {
+        if (ndefined == MAX_DEFINED) return false;
+        ndefined++;
+    }
+    snprintf(defined[k].name, sizeof defined[k].name, "%s", name);
+    s.name = defined[k].name;
+    for (const char *p = settings; p && *p;) {
+        const char *e = strchr(p, ';'), *eq = memchr(p, '=', e ? (size_t)(e - p) : strlen(p));
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        if (eq) {
+            size_t kl = (size_t)(eq - p), vl = len - kl - 1;
+            for (size_t i = 0; i < sizeof scheme_keys / sizeof *scheme_keys; i++) {
+                if (strlen(scheme_keys[i].key) != kl || strncmp(scheme_keys[i].key, p, kl)) continue;
+                char *at = (char *)&s + scheme_keys[i].off;
+                if (scheme_keys[i].type == 'c') hex_color(eq + 1, vl, (ui_color *)at);
+                else if (vl) *(double *)at = atof(eq + 1);
+            }
+        }
+        p = e ? e + 1 : NULL;
+    }
+    defined[k].s = s;
+    return true;
+}
+
+char *ui_scheme_describe(const char *name)
+{
+    const ui_scheme *s = find_scheme(name);
+    if (!s) return NULL;
+    size_t cap = 2048, n = 0;
+    char *out = malloc(cap);
+    out[0] = 0;
+    for (size_t i = 0; i < sizeof scheme_keys / sizeof *scheme_keys; i++) {
+        const char *at = (const char *)s + scheme_keys[i].off;
+        if (scheme_keys[i].type == 'c') {
+            const ui_color *c = (const ui_color *)at;
+            n += (size_t)snprintf(out + n, cap - n, "%s=#%02x%02x%02x;", scheme_keys[i].key, (int)(c->r * 255 + 0.5),
+                                  (int)(c->g * 255 + 0.5), (int)(c->b * 255 + 0.5));
+        } else {
+            n += (size_t)snprintf(out + n, cap - n, "%s=%g;", scheme_keys[i].key, *(const double *)at);
+        }
+    }
+    return out;
+}
+
 bool ui_scheme_use(const char *name)
 {
-    const ui_scheme *s = !strcmp(name, "classic") ? &classic : !strcmp(name, "dark") ? &dark :
-                         !strcmp(name, "high contrast") ? &high_contrast : NULL;
+    const ui_scheme *s = find_scheme(name);
     if (!s) return false;
     ui_scheme_now = *s;   /* colours and metrics from the scheme ... */
     apply_opts();         /* ... the System object's choices on top */
