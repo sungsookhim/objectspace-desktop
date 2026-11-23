@@ -387,6 +387,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     if (next_w > 0 && next_h > 0 && !desktop) { w = next_w; h = next_h; }   /* (reopened at login: its size) */
     next_w = next_h = 0;
     f->open_w = w;
+    f->arrange_offered = -1;
     f->open_h = h;
     f->desktop = desktop;
     if (desktop) findwin_set_desktop(path);   /* Find's saved results go there */

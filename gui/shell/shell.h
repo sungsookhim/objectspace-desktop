@@ -136,6 +136,11 @@ struct folder {
     char filter[128];
     bool find_x_down;
     int find_place;          /* its View page's Search field: 0 top, 1 bottom, 2 floating */
+    char msg_last[256];      /* the desktop's: the message its box last showed */
+    bool msg_hidden, msg_sticky;
+    int arrange_offered;     /* -1 not known yet; 1: its overlapping icons' Arrange offered once already */
+    bool lay_placed_in;      /* its stored positions read (got_layout) */
+    bool offer_arrange;      /* its status line offers Arrange now (icons overlapping: positions from 0.2) */   /* the desktop's: its message box gone; staying until clicked (an error) */
     /* benchmark */
     double bench_secs, bench_start, bench_next_jump;
     unsigned bench_seed;
@@ -294,6 +299,7 @@ struct del {
  * names containing it, any case); Esc or x: all again, the row gone. */
 
 #define FIND_H 30
+#define OFFER_TEXT "Some icons overlap (placed by an older WPS):"   /* the Arrange offer's words (a link after them) */
 
 struct rec { char *buf; size_t len, cap; };
 
@@ -466,6 +472,14 @@ void toolkit_action(const char *name, ui_surface *s, ui_rect at);
 #define VIEW_LAST ((ui_view)-1)
 struct folder *open_folder(const char *path, ui_view view);
 void folder_window_save(struct folder *f);
+/* The desktop's status line (0.4 step 5): its message (f->error) in a box
+ * at the bottom of its usable area for a few seconds, an error until
+ * clicked; desktop_say: a message of its own there (sticky: until clicked). */
+void desktop_status(struct folder *f);
+void desktop_say(const char *text, bool sticky);
+/* Icons placed (by 0.2, for two-line titles) over each other: Arrange
+ * offered once in the status line (nothing moves unasked). */
+void arrange_offer_check(struct folder *f);
 void folder_scroll_restore(struct folder *f);
 void launchpad_open_folder(const char *path);
 void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip);

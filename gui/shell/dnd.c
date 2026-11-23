@@ -320,6 +320,7 @@ void set_status(long folder, const char *msg)
     struct folder *f = folder_by_id(folder);
     if (!f) return;
     snprintf(f->error, sizeof f->error, "%s", msg);
+    f->msg_last[0] = 0;   /* (the desktop's box: shown, the same again or not) */
     damage_status(f);
 }
 

@@ -76,6 +76,7 @@ property col_size : checkbox = 1 page "Details view" label Size
 property col_date : checkbox = 1 page "Details view" label "Last write"
 property col_widths : hidden page "Details view" label Widths set wpSetColWidths
 property win_view : hidden = icon page View label "Last view"
+property arrange_offered : hidden page View label "Arrange offered (positions from 0.2)"
 property win_icon : hidden page View label "Icon view window"
 property win_details : hidden page View label "Details view window"
 property win_tree : hidden page View label "Tree view window"

@@ -571,6 +571,7 @@ static void handle(struct client *c, cv *msg)
 void client_io(int fd, short rev, void *arg)
 {
     struct client *c = arg;
+    if (c->broken) { client_close(c); return; }   /* (a send failed: closed here, from the loop) */
     if (rev & POLLOUT) client_flush(c);
     if (c->dead || !(rev & (POLLIN | POLLHUP | POLLERR))) return;
     for (;;) {

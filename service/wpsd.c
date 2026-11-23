@@ -118,13 +118,24 @@ void client_close(struct client *c)
     client_unref(c);
 }
 
-void client_flush(struct client *c)
+/* A client that cannot be written to: closed now from the loop
+ * (client_io), else marked and closed by the loop's next turn for it - a
+ * send made while walking the subscriptions must not free them under the
+ * walk (an event to a client that had gone). */
+static void drop(struct client *c, bool now)
+{
+    if (now) { client_close(c); return; }
+    c->broken = true;
+    wpo_loop_watch_fd(loop, c->fd, POLLIN | POLLOUT, client_io, c);
+}
+
+static void flush(struct client *c, bool now)
 {
     while (c->outoff < c->outlen) {
         ssize_t w = send(c->fd, c->out + c->outoff, c->outlen - c->outoff, MSG_DONTWAIT | MSG_NOSIGNAL);
         if (w < 0) {
             if (errno == EAGAIN) break;
-            client_close(c);
+            drop(c, now);
             return;
         }
         c->outoff += (size_t)w;
@@ -132,23 +143,25 @@ void client_flush(struct client *c)
     if (c->outoff == c->outlen) c->outoff = c->outlen = 0;
     /* A client that stops reading gets a bounded buffer, then is dropped:
      * nobody else waits for it (design: Responsiveness). */
-    if (c->outlen > 16u << 20) { client_close(c); return; }
+    if (c->outlen > 16u << 20) { drop(c, now); return; }
     wpo_loop_watch_fd(loop, c->fd, POLLIN | (c->outlen ? POLLOUT : 0), client_io, c);
 }
 
+void client_flush(struct client *c) { flush(c, true); }
+
 void send_frame(struct client *c, cbuf *b)
 {
-    if (c->dead || b->oom) return;
+    if (c->dead || c->broken || b->oom) return;
     size_t need = c->outlen + 4 + b->n;
     unsigned char *n = realloc(c->out, need);
-    if (!n) { client_close(c); return; }
+    if (!n) { drop(c, false); return; }
     c->out = n;
     unsigned char *w = c->out + c->outlen;
     w[0] = (unsigned char)(b->n >> 24); w[1] = (unsigned char)(b->n >> 16);
     w[2] = (unsigned char)(b->n >> 8); w[3] = (unsigned char)b->n;
     memcpy(w + 4, b->d, b->n);
     c->outlen = need;
-    client_flush(c);
+    flush(c, false);
 }
 
 void reply_error(struct client *c, int64_t id, const char *error, const char *message)

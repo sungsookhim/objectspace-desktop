@@ -358,7 +358,7 @@ gui-test: gui
 	$(TV)/test_wpsicon
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place notify pointer restore schemes search session sounds themes tray
+COMP_TESTS := background clipboard desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place desktop-status arrange-offer notify pointer restore schemes search session sounds themes tray
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \

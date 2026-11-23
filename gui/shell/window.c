@@ -146,6 +146,118 @@ static bool find_pointer(struct folder *f, const ui_pointer_event *e)
     return false;
 }
 
+/* ---- the desktop's status line: a box over the bottom of its usable
+ * area (above the WarpCenter), as WPS's folder windows have their line */
+
+#define MSG_H 28
+
+static int msg_timer = -1;
+
+static bool desk_offer(struct folder *f) { return f->offer_arrange && !strcmp(f->error, OFFER_TEXT); }
+
+static ui_rect desk_msg_rect(struct folder *f)
+{
+    ui_rect c = ui_frame_client(f->win);
+    double w = fmin(c.w - 40, ui_text_width(UI_FONT_REGULAR, f->error) + 40 + (desk_offer(f) ? ui_text_width(UI_FONT_REGULAR, "Arrange") + 6 : 0));
+    return (ui_rect){ floor(c.x + (c.w - w) / 2), c.y + c.h - MSG_H - 16, floor(w), MSG_H };
+}
+
+/* The offer's link in the box, after its words. */
+static ui_rect desk_link(struct folder *f)
+{
+    ui_rect r = desk_msg_rect(f);
+    return (ui_rect){ floor(r.x + 14 + ui_text_width(UI_FONT_REGULAR, f->error) + 6), r.y, ceil(ui_text_width(UI_FONT_REGULAR, "Arrange")), r.h };
+}
+
+static void desk_msg_damage(struct folder *f)
+{
+    ui_rect c = ui_frame_client(f->win);
+    ui_surface_damage(f->win, (ui_rect){ c.x, c.y + c.h - MSG_H - 20, c.w, MSG_H + 20 });   /* (the old box and the new) */
+}
+
+static struct folder *desktop_folder(void)
+{
+    for (struct folder *f = folders; f; f = f->next)
+        if (f->desktop && !f->closing) return f;
+    return NULL;
+}
+
+static void on_msg_timer(void *arg, int fd, short rev)
+{
+    (void)arg; (void)rev;
+    uint64_t n;
+    if (read(fd, &n, sizeof n) < 0) {}
+    struct folder *f = desktop_folder();
+    if (!f || f->msg_sticky) return;
+    f->msg_hidden = true;
+    desk_msg_damage(f);
+}
+
+/* What reads as a problem stays until clicked; the rest goes. */
+static bool msg_is_error(const char *t)
+{
+    static const char *const bad[] = { "fail", "cannot", "no permission", "lost the connection", "does not", "only files",
+                                       "refused", "not done", "error" };
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++)
+        if (strcasestr(t, bad[i])) return true;
+    return false;
+}
+
+static void desk_msg_show(struct folder *f, bool sticky)
+{
+    snprintf(f->msg_last, sizeof f->msg_last, "%s", f->error);
+    f->msg_hidden = !f->error[0];
+    f->msg_sticky = sticky && !f->msg_hidden;
+    if (msg_timer < 0 && (msg_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC)) >= 0)
+        ui_app_watch_fd(app, msg_timer, POLLIN, on_msg_timer, NULL);
+    struct itimerspec its = { .it_value = { f->msg_hidden || f->msg_sticky ? 0 : 5, 0 } };
+    if (msg_timer >= 0) timerfd_settime(msg_timer, 0, &its, NULL);
+    desk_msg_damage(f);
+}
+
+/* (the status line redrawn: the box only for a message it has not shown;
+ * set_status shows one again) */
+void desktop_status(struct folder *f)
+{
+    if (!strcmp(f->error, f->msg_last)) { if (!f->msg_hidden) desk_msg_damage(f); return; }
+    desk_msg_show(f, msg_is_error(f->error));
+}
+
+void desktop_say(const char *text, bool sticky)
+{
+    struct folder *f = desktop_folder();
+    if (!f) return;
+    snprintf(f->error, sizeof f->error, "%s", text);
+    desk_msg_show(f, sticky);
+}
+
+static void desk_msg_draw(struct folder *f, cairo_t *cr, ui_rect clip)
+{
+    if (!f->error[0] || f->msg_hidden) return;
+    ui_rect r = desk_msg_rect(f);
+    if (!ui_rect_meets(clip, r)) return;
+    const ui_scheme *k = &ui_scheme_now;
+    ui_fill(cr, r, k->face);
+    ui_bevel(cr, r, true);
+    ui_set_color(cr, k->text);
+    ui_text_draw(cr, UI_FONT_REGULAR, r.x + 14, r.y + (MSG_H + ui_text_ascent()) / 2 - 1, f->error, r.w - 28);
+    if (desk_offer(f)) {
+        ui_rect l = desk_link(f);
+        ui_set_color(cr, k->selection);
+        ui_text_draw(cr, UI_FONT_REGULAR, l.x, r.y + (MSG_H + ui_text_ascent()) / 2 - 1, "Arrange", l.w + 4);
+        cairo_rectangle(cr, l.x, r.y + (MSG_H + ui_text_ascent()) / 2 + 1, l.w, 1);
+        cairo_fill(cr);
+    }
+}
+
+/* The status line's Arrange link (the offer), after its message. */
+static ui_rect arrange_link(struct folder *f)
+{
+    ui_rect c = ui_frame_client(f->win);
+    double x = c.x + 6 + ui_text_width(UI_FONT_REGULAR, OFFER_TEXT) + 6;
+    return (ui_rect){ floor(x), c.y + c.h - STATUS_H + 2, ceil(ui_text_width(UI_FONT_REGULAR, "Arrange")), STATUS_H - 4 };
+}
+
 void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     struct folder *f = ui_surface_data(s);
@@ -159,7 +271,7 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
-    if (f->desktop) return;   /* no status line */
+    if (f->desktop) { desk_msg_draw(f, cr, clip); return; }   /* its status line: a box */
     if (f->find_on && f->find_place != 2) find_draw(f, cr);   /* (floating: over the list, with it) */
     ui_rect c = ui_frame_client(s);
     ui_rect st = { c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
@@ -169,6 +281,7 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     char msg[512];
     size_t nsel = ui_container_selected_count(f->cont);
     if (f->error[0]) snprintf(msg, sizeof msg, "%s", f->error);
+    else if (f->offer_arrange) snprintf(msg, sizeof msg, OFFER_TEXT);
     else if (is_tree(f)) snprintf(msg, sizeof msg, "%zu folders shown", f->ntvis);
     else if (f->filter[0]) snprintf(msg, sizeof msg, "%zu objects match \"%s\"%s   (Esc: all again)", f->m.total, f->filter,
                                     f->m.complete ? "" : " (reading...)");
@@ -179,6 +292,13 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
     ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
+    if (!f->error[0] && f->offer_arrange) {   /* the offer: a link */
+        ui_rect l = arrange_link(f);
+        ui_set_color(cr, k->selection);
+        ui_text_draw(cr, UI_FONT_REGULAR, l.x, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, "Arrange", l.w + 4);
+        cairo_rectangle(cr, l.x, st.y + (STATUS_H + ui_text_ascent()) / 2 + 1, l.w, 1);
+        cairo_fill(cr);
+    }
     cairo_restore(cr);
 }
 
@@ -207,6 +327,18 @@ void win_pointer(ui_surface *s, const ui_pointer_event *e)
     struct folder *f = ui_surface_data(s);
     /* The window-list button (button 3 by default, as on OS/2) on the desktop. */
     if (f->desktop && e->kind == UI_PRESS && ui_mouse_is(UI_ACT_WINDOW_LIST, e)) { winlist_open(false); return; }
+    if (f->desktop && e->kind == UI_PRESS && f->error[0] && !f->msg_hidden && ui_rect_has(desk_msg_rect(f), e->x, e->y)) {
+        f->msg_hidden = true;   /* (a click closes it) */
+        f->msg_sticky = false;
+        desk_msg_damage(f);
+        if (desk_offer(f) && ui_rect_has(desk_link(f), e->x, e->y)) arrange(f);   /* (the offer taken; elsewhere: let be) */
+        f->offer_arrange = false;
+        return;
+    }
+    if (!f->desktop && e->kind == UI_PRESS && f->offer_arrange && !f->error[0] && ui_rect_has(arrange_link(f), e->x, e->y)) {
+        arrange(f);
+        return;
+    }
     size_t before = ui_container_selected_count(f->cont);
     ui_hit h = ui_frame_hit(s, e->x, e->y);
     bool used = false;

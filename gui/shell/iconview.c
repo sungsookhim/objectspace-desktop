@@ -522,6 +522,8 @@ void got_layout(void *arg, const cv *reply)
     free(ly);
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
     if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
+    f->lay_placed_in = true;
+    arrange_offer_check(f);
     folder_scroll_restore(f);   /* (its stored positions: as tall as it was) */
 }
 
@@ -546,6 +548,37 @@ void placed_reply(void *arg, const cv *reply)
  * this session). */
 
 void arrange(struct folder *f) { arrange_by(f, 0); }
+
+/* Two placed icons over each other (more than a few pixels): positions
+ * kept by 0.2, laid out for two-line titles. Asked once per folder, when
+ * both its properties and its stored positions are in. */
+void arrange_offer_check(struct folder *f)
+{
+    if (f->arrange_offered != 0 || f->offer_arrange || is_tree(f) || f->filter[0] || !f->m.complete || !f->lay_placed_in) return;
+    size_t n = f->m.total, k = 0, *pl = malloc((n ? n : 1) * sizeof *pl);
+    for (size_t i = 0; i < n && k < 2000; i++) {
+        const char *nm = model_name(&f->m, i);
+        if (nm && layout_is_placed(f->lay, nm)) pl[k++] = i;
+    }
+    bool over = false;
+    for (size_t a = 0; a < k && !over; a++) {
+        double ax, ay, aw = layout_item_w(f->lay, pl[a]) - 4, ah = layout_item_h(f->lay, pl[a]) - 4;
+        layout_pos(f->lay, pl[a], &ax, &ay);
+        for (size_t b = a + 1; b < k && !over; b++) {
+            double bx, by, bw = layout_item_w(f->lay, pl[b]) - 4, bh = layout_item_h(f->lay, pl[b]) - 4;
+            layout_pos(f->lay, pl[b], &bx, &by);
+            over = ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
+        }
+    }
+    free(pl);
+    if (!over) return;
+    f->arrange_offered = 1;   /* (once: kept on the folder now, taken or not) */
+    cv yes = { .k = CV_BOOL, .b = true };
+    svc_settings_set(f->path, "arrange_offered", &yes, -1, ignore_reply, NULL);
+    f->offer_arrange = true;
+    if (f->desktop) desktop_say(OFFER_TEXT, true);
+    else damage_status(f);
+}
 
 /* Sort (icon view, as OS/2): the icons arranged in an order, once. Size
  * and date need every row's details: they are read first. */
@@ -574,6 +607,7 @@ void sort_icons(struct folder *f, int key)
 
 static void arrange_by(struct folder *f, int key)
 {
+    if (f->offer_arrange) { f->offer_arrange = false; damage_status(f); }   /* (the offer taken) */
     if (f->lock_all) {   /* (nothing would move) */
         snprintf(f->error, sizeof f->error, "Positions are locked (the folder's Icon view page)");
         damage_status(f);

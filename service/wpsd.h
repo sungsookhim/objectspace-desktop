@@ -77,6 +77,7 @@ struct client {
     struct client *next, *prev;   /* all open connections, for shutdown */
     int fd;
     int refs;          /* the connection plus requests in flight */
+    bool broken;           /* a send failed: closed by the loop next (not while events are sent) */
     bool dead;
     unsigned char *in;
     size_t inlen, incap;

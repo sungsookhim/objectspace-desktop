@@ -206,6 +206,7 @@ static void got_bg(void *arg, const cv *reply)
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
     int icon_size = -1, free_l = -1, find_place = 0;
+    bool offered = false;
     for (size_t i = 0; i < res->n; i++) {
         const cv *pr = &res->items[i];
         const char *key = cv_text(pr, "name"), *v = cv_text(pr, "value"), *ch = cv_text(pr, "choices");
@@ -230,6 +231,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
         else if (!strcmp(key, "show_ext")) f->show_ext = on;
+        else if (!strcmp(key, "arrange_offered")) offered = on || !strcmp(v, "true");
         else if (!strcmp(key, "search_place")) find_place = option_number(ch, v) < 0 ? 0 : option_number(ch, v);
         else if (!strncmp(key, "col_", 4) && on) {
             cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
@@ -258,6 +260,7 @@ static void got_bg(void *arg, const cv *reply)
             if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
         }
     }
+    if (f->arrange_offered < 0) { f->arrange_offered = offered; arrange_offer_check(f); }
     if (find_place != f->find_place) {   /* its search field elsewhere (shown now: moved at once) */
         f->find_place = find_place;
         if (f->find_on) { layout(f); ui_surface_damage_all(f->win); }
@@ -389,6 +392,7 @@ void update_title(struct folder *f)
 
 void damage_status(struct folder *f)
 {
+    if (f->desktop) { desktop_status(f); return; }
     ui_rect c = ui_frame_client(f->win);
     ui_surface_damage(f->win, (ui_rect){ c.x, c.y + c.h - STATUS_H, c.w, STATUS_H });
 }

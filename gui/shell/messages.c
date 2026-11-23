@@ -12,6 +12,8 @@
 #include "appicons.h"
 #include "events.h"
 #include "notify.h"
+
+void desktop_say(const char *text, bool sticky);   /* (the desktop's status line: window.c) */
 #include "svc.h"
 #include "warpcenter.h"
 
@@ -98,6 +100,18 @@ static void got_list(void *arg, const cv *reply)
             for (size_t k = 0; a && a->k == CV_ARRAY && k < a->n && m->nact < MAX_ACT; k++)
                 if (a->items[k].k == CV_TEXT) m->actions[m->nact++] = strdup(a->items[k].s);
         }
+        /* wpsd's own new ones (an action not done): on the desktop for a
+         * moment too (not those there at the start) */
+        static int64_t seen = -1;
+        int64_t top = seen;
+        for (size_t i = 0; i < nmsgs; i++) {
+            if (msgs[i].id > top) top = msgs[i].id;
+            if (seen < 0 || msgs[i].id <= seen || strcmp(msgs[i].app, "WPS") || msgs[i].closed) continue;
+            char t[1400];
+            snprintf(t, sizeof t, "%s: %.*s", msgs[i].summary, (int)strcspn(msgs[i].body, "\n"), msgs[i].body);
+            desktop_say(t, false);
+        }
+        seen = top < 0 ? 0 : top;
         int64_t u = 0;
         if (cv_int(res, "unread", &u)) unread = (size_t)u;
         warpcenter_messages(unread, messages_open);
