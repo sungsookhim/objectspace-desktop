@@ -307,3 +307,22 @@ The total is about the size of a version, comparable to 0.3. **Proposed:** this 
 4. **GNOME's per-file metadata:** not now.
 
 Approved: go (R0 first).
+
+## 7. As built (stages R0-R3, 2026-11-22)
+
+| Stage | Commit | What |
+|---|---|---|
+| R0 | 8e72dfc | The first start's and the LaunchPad's objects made in a fixed order; `make check` again; `tests/visual` (`make visual-baseline`, `make visual-check`), `make comp-test` |
+| R1 | 66a9969 | `wps-shell.c` and `wpsd.c` split by area; wpsd's ops in a table; `tests/gui/golden.sh` for every self-test |
+| R2 | ad74f7f | `property` lines in the `.wpi`; every class's pages from them; `get`, `set` (setup strings), `props`; `tests/props` |
+| R3a | ea4ee8a | The chain: object, type, class and the classes above, default; `class:`/`type:` targets, `reset`; folders' Show hidden files and extensions; the System's Folders and Fonts fields are all folders' |
+| R3d | ad8a06e | Notebooks: where an inherited value comes from, Default, Class... (the notebook of all objects of a class or a type) |
+| R3c | b579fdc | Schemes are objects (WPScheme, the Schemes folder); the colours fixed in the code are the scheme's; the compositor gets the schemes' definitions |
+
+**Not done yet in R3, carried on:**
+
+- A folder's sort and columns are computed by WPFolder from older storage, so they are not shared through `class:WPFolder` yet.
+- Data files have no shareable properties yet, so `type:` scopes hold nothing until R4's actions and R5's default program.
+- The WarpCenter's and the LaunchPad's own colours, and every size (icon sets: 0.4 step 3), are still fixed in the code.
+- The compositor still has its own menus.
+- A `.wpobj`'s `Setup=` line, and setup strings given to `create`.
