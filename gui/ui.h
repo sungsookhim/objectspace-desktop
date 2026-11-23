@@ -428,6 +428,8 @@ typedef struct {
     ui_value value;
     const char *const *choices;
     size_t nchoices;
+    bool own;                  /* the object's own value: Default removes it */
+    const char *from;          /* an inherited value's source ("Folder default"), shown by the label */
 } ui_field_desc;
 typedef struct { const char *title; const ui_field_desc *fields; size_t nfields; } ui_page_desc;
 typedef struct ui_notebook ui_notebook;
@@ -444,6 +446,13 @@ size_t ui_notebook_page(ui_notebook *nb);     /* the page shown */
 /* A text, file or colour field's new value, applied (Browse...'s choice). */
 bool ui_notebook_set_value(ui_notebook *nb, const char *key, const char *text);
 const char *ui_notebook_field_hint(ui_notebook *nb, const char *key);   /* a file field's choices[0], or "" */
+/* Default (object-properties-design.md 2.2): `fn` gets the keys of the
+ * shown page's fields with values of their own, to remove them; Default is
+ * enabled when there are any. */
+void ui_notebook_on_default(ui_notebook *nb, void (*fn)(void *ctx, const char *const *keys, size_t n));
+/* A fourth button (e.g. "Class..."): `fn` gets where it is, to open a menu there. */
+void ui_notebook_set_extra(ui_notebook *nb, const char *label,
+                           void (*fn)(void *ctx, ui_surface *s, double x, double y, uint32_t serial));
 /* "#rrggbb" (or "rrggbb", "#rgb") as 0..1 colour parts; false if not one. */
 bool ui_parse_color(const char *t, double rgb[3]);
 

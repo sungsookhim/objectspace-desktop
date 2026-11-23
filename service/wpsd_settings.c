@@ -1,6 +1,7 @@
 /* wpsd: Menus and settings pages as data; their setters. */
 #define _GNU_SOURCE
 #include "wpsd.h"
+#include "wps_props.h"
 
 /* ---- menus and settings pages as data */
 
@@ -65,7 +66,31 @@ static size_t parse_settings(const char *text, char pages[][64], int *page_of, s
     return nf;
 }
 
-void put_settings(cbuf *b, const char *text, const char *icon_shown)
+/* A declared property's field (setter "@prop"): whether the object has a
+ * value of its own that Default can remove, and where an inherited one
+ * comes from, as its notebook says it ("Folder default"). */
+void field_origin(void *ctx, const char *key, bool *own, char *from, size_t fn)
+{
+    wpo_object *o = ctx;
+    *own = false;
+    from[0] = 0;
+    const wpo_property_def *p = o ? wpo_find_property(o->cls, key, NULL) : NULL;
+    if (!p || p->get || (p->flags & WPO_P_READONLY)) return;
+    char origin[160];
+    char *v = wps_prop_get_origin(o, key, origin, sizeof origin);
+    free(v);
+    if (!strcmp(origin, "object")) { *own = true; return; }
+    if (!strncmp(origin, "class:", 6)) {
+        wpo_class *c = wpo_find_class(origin + 6);
+        char *t = c ? WPObject_wpclsQueryTitle(c) : NULL;
+        snprintf(from, fn, "%s default", t && *t ? t : origin + 6);
+        free(t);
+    } else if (!strncmp(origin, "type:", 5)) {
+        snprintf(from, fn, "%s default", origin + 5);
+    }
+}
+
+void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin_fn of, void *ctx)
 {
     char pages[16][64];
     int page_of[64];
@@ -84,7 +109,12 @@ void put_settings(cbuf *b, const char *text, const char *icon_shown)
             struct field *x = &fields[i];
             if (!strcmp(x->type, "icon") && !x->choices[0] && icon_shown && *icon_shown)   /* (no commas in it: one choice) */
                 snprintf(x->choices, sizeof x->choices, "%s", icon_shown);
-            cb_map(b, x->choices[0] ? 5 : 4);
+            bool own = false;
+            char from[200] = "";
+            if (!strcmp(x->setter, "@prop") && of) of(ctx, x->key, &own, from, sizeof from);
+            cb_map(b, (x->choices[0] ? 5 : 4) + own + (from[0] != 0));
+            if (own) { cb_text(b, "own"); cb_bool(b, true); }
+            if (from[0]) { cb_text(b, "from"); cb_text(b, from); }
             cb_text(b, "key"); cb_text(b, x->key);
             cb_text(b, "type"); cb_text(b, x->type);
             cb_text(b, "label"); cb_text(b, x->label);
@@ -103,6 +133,11 @@ void put_settings(cbuf *b, const char *text, const char *icon_shown)
             }
         }
     }
+}
+
+void put_settings(cbuf *b, wpo_object *o, const char *text, const char *icon_shown)
+{
+    put_settings_with(b, text, icon_shown, o ? field_origin : NULL, o);
 }
 
 char *call_text(wpo_object *o, const char *method, const char *arg)

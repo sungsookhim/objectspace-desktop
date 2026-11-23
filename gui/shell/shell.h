@@ -190,6 +190,7 @@ struct props {
     int64_t changes;
     ui_notebook *nb;
     size_t want_page;        /* reopened at login: the page it showed */
+    char cls[64], cls_title[64];   /* its class (Class... opens all of them) */
 };
 
 /* An icon made from an image (dropped, or chosen in the picker): the

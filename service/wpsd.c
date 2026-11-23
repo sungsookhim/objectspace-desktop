@@ -178,7 +178,7 @@ static void put_object_depth(cbuf *b, wpo_object *o, int depth)
     bool shadow = wpo_is_a(o, WPShadowClass);
     sobj *rec = wps_sobj_of(o);
     bool missing = rec && rec->declared_class[0];
-    cb_map(b, 7 + (shadow ? 2 : 0) + (missing ? 1 : 0));
+    cb_map(b, 8 + (shadow ? 2 : 0) + (missing ? 1 : 0));
     cb_text(b, "path"); path ? cb_text(b, path) : cb_null(b);
     cb_text(b, "address");
     if (central) {
@@ -190,6 +190,9 @@ static void put_object_depth(cbuf *b, wpo_object *o, int depth)
     }
     cb_text(b, "id"); cb_text(b, wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "");
     cb_text(b, "class"); cb_text(b, o->cls->name);
+    char *ct = wpo_is_a(o, WPObjectClass) ? WPObject_wpclsQueryTitle(o->cls) : NULL;   /* ("Folder": its Class... menu) */
+    cb_text(b, "class_title"); cb_text(b, ct && *ct ? ct : o->cls->name);
+    free(ct);
     cb_text(b, "title"); title ? cb_text(b, title) : cb_null(b);
     cb_text(b, "changes"); cb_uint(b, wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->changes : 0);
     cb_text(b, "trashed"); cb_bool(b, path && wps_in_trash(path));
@@ -444,7 +447,7 @@ static void do_menus(struct req *r, wpo_object *o)
         char shown[PATH_MAX];   /* what its Icon page shows without its own */
         const char *p = wpo_is_a(o, WPFileSystemClass) ? WPFileSystem_data(o)->path : NULL;
         wps_listing_shown_icon(p, wpo_is_a(o, WPFolderClass), wpo_is_a(o, WPProgramClass), shown, sizeof shown);
-        put_settings(&b, t, shown);
+        put_settings(&b, o, t, shown);
         free(t);
     }
     cb_text(&b, "object"); put_object(&b, o);

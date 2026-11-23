@@ -264,6 +264,101 @@ static char *scope_value(const wpo_class *cls, const char *target, const wpo_pro
     return strdup(p->def ? p->def : "");
 }
 
+/* A scope's notebook: the pages of what all of its objects can share (not
+ * an object's own, like its title, nor information). */
+struct scope_ctx { const wpo_class *cls; const char *target; };
+
+static bool shared_prop(const wpo_property_def *p)
+{
+    return !p->get && !(p->flags & (WPO_P_READONLY | WPO_P_NOFIELD)) && strcmp(p->type, "info");
+}
+
+static void scope_origin(void *ctx, const char *key, bool *own, char *from, size_t fn)
+{
+    struct scope_ctx *x = ctx;
+    *own = false;
+    from[0] = 0;
+    const wpo_property_def *p = wpo_find_property(x->cls, key, NULL);
+    if (!p) return;
+    char origin[160];
+    free(scope_value(x->cls, x->target, p, wps_prop_store(x->cls, key), origin, sizeof origin));
+    if (!strcmp(origin, x->target)) { *own = true; return; }
+    if (!strncmp(origin, "class:", 6)) {
+        wpo_class *c = wpo_find_class(origin + 6);
+        char *t = c ? WPObject_wpclsQueryTitle(c) : NULL;
+        snprintf(from, fn, "%s default", t && *t ? t : origin + 6);
+        free(t);
+    } else if (!strncmp(origin, "type:", 5)) {
+        snprintf(from, fn, "%s default", origin + 5);
+    }
+}
+
+static char *scope_pages(const wpo_class *cls, const char *target)
+{
+    const wpo_class *chain[64];
+    size_t nc = 0;
+    for (const wpo_class *k = cls; k && nc < 64; k = k->parent) chain[nc++] = k;
+    char *out = strdup("");
+    const char *page = NULL;
+    char origin[160];
+    for (size_t j = nc; j-- > 0;)
+        for (size_t i = 0; i < chain[j]->nprops; i++) {
+            const wpo_property_def *d = &chain[j]->props[i];
+            if (chain[j]->parent && wpo_find_property(chain[j]->parent, d->name, NULL)) continue;   /* where first declared */
+            const wpo_property_def *p = wpo_find_property(cls, d->name, NULL);
+            if (!shared_prop(p)) continue;
+            char *v = scope_value(cls, target, p, wps_prop_store(cls, p->name), origin, sizeof origin);
+            char shown[32];
+            const char *fv = v ? v : "";
+            if (!strcmp(p->type, "choice")) { snprintf(shown, sizeof shown, "%d", wps_option_index(p->choices, fv)); fv = shown; }
+            const char *pg = p->page ? p->page : "General";
+            size_t l = strlen(pg) + strlen(p->name) + strlen(p->label ? p->label : "") + strlen(fv) + strlen(p->choices ? p->choices : "") + 64;
+            char *line = malloc(l);
+            size_t o = 0;
+            if (!page || strcmp(page, pg)) o += (size_t)snprintf(line, l, "page\t%s\n", pg);
+            page = pg;
+            snprintf(line + o, l - o, "field\t%s\t%s\t%s\t%s\t@prop%s%s\n", p->name, p->type, p->label ? p->label : p->name, fv,
+                     p->choices ? "\t" : "", p->choices ? p->choices : "");
+            char *r = malloc(strlen(out) + strlen(line) + 1);
+            strcpy(r, out);
+            strcat(r, line);
+            free(out);
+            free(line);
+            free(v);
+            out = r;
+        }
+    return out;
+}
+
+static void reply_scope_settings(struct client *c, int64_t id, const wpo_class *cls, const char *target)
+{
+    char *t = scope_pages(cls, target);
+    struct scope_ctx x = { cls, target };
+    char title[200];
+    if (!strncmp(target, "class:", 6)) {
+        char *ct = WPObject_wpclsQueryTitle((wpo_class *)cls);
+        snprintf(title, sizeof title, "All %s objects", ct && *ct ? ct : cls->name);
+        free(ct);
+    } else {
+        snprintf(title, sizeof title, "All %s files", target + 5);
+    }
+    cbuf b;
+    cb_init(&b);
+    cb_map(&b, 4);
+    cb_text(&b, "id"); cb_int(&b, id);
+    cb_text(&b, "ok"); cb_bool(&b, true);
+    cb_text(&b, "result");
+    put_settings_with(&b, t, NULL, scope_origin, &x);
+    cb_text(&b, "object");
+    cb_map(&b, 3);
+    cb_text(&b, "address"); cb_text(&b, target);
+    cb_text(&b, "title"); cb_text(&b, title);
+    cb_text(&b, "changes"); cb_uint(&b, 0);
+    send_frame(c, &b);
+    cb_free(&b);
+    free(t);
+}
+
 bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char *target)
 {
     const wpo_class *cls = NULL;
@@ -275,6 +370,28 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
     }
     if (!cls) { reply_error(c, id, "not found", "no such class or type"); return false; }
     char origin[160], m[256];
+    if (!strcmp(op, "settings")) { reply_scope_settings(c, id, cls, target); return false; }
+    if (!strcmp(op, "settings_set")) {
+        /* its notebook's changes: {key: value} (number, checkbox or text) */
+        const cv *values = cv_get(msg, "values");
+        for (size_t k = 0; values && values->k == CV_MAP && k < values->n; k++) {
+            const cv *key = &values->items[2 * k], *val = &values->items[2 * k + 1];
+            const wpo_property_def *p = key->k == CV_TEXT ? wpo_find_property(cls, key->s, NULL) : NULL;
+            if (!p || !shared_prop(p)) { reply_error(c, id, "bad request", "no such setting"); return false; }
+            char num[32];
+            const char *txt = val->k == CV_TEXT ? val->s : NULL;
+            if (val->k == CV_INT) { snprintf(num, sizeof num, "%lld", (long long)val->i); txt = num; }
+            else if (val->k == CV_BOOL) txt = val->b ? "1" : "0";
+            char *cvv = txt ? wps_prop_canonical(p, txt) : NULL;
+            if (!cvv) { reply_error(c, id, "bad request", "the setter refused the value"); return false; }
+            int e = wps_defaults_set(target, wps_prop_store(cls, p->name), p->name, cvv);
+            free(cvv);
+            if (e) { reply_error(c, id, "failed", "the setting was not stored"); return false; }
+        }
+        defaults_broadcast(target);
+        reply_scope_settings(c, id, cls, target);
+        return false;
+    }
     if (!strcmp(op, "get")) {
         const char *name = cv_text(msg, "name");
         const wpo_property_def *p = name ? wpo_find_property(cls, name, NULL) : NULL;

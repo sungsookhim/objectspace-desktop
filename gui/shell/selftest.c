@@ -649,8 +649,8 @@ void win_frame(ui_surface *s, double now)
         if (step == 0) {
             static const char *const kind[] = { "image" };
             static ui_field_desc fd[2];
-            fd[0] = (ui_field_desc){ "picture", "Image", UI_FIELD_FILE, { .text = "" }, kind, 1 };
-            fd[1] = (ui_field_desc){ "colour", "Colour", UI_FIELD_COLOR, { .text = "#336699" }, NULL, 0 };
+            fd[0] = (ui_field_desc){ "picture", "Image", UI_FIELD_FILE, { .text = "" }, kind, 1, false, NULL };
+            fd[1] = (ui_field_desc){ "colour", "Colour", UI_FIELD_COLOR, { .text = "#336699" }, NULL, 0, false, NULL };
             static ui_page_desc pd[1];
             pd[0] = (ui_page_desc){ "Background", fd, 2 };
             selftest_nb = ui_notebook_open(app, "Fields", pd, 1, selftest_field_set, NULL, NULL);

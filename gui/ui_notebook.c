@@ -35,6 +35,8 @@ struct field {
     cairo_surface_t *shown;  /* icon: the one shown without its own (choices[0], a PNG) */
     bool shown_read;
     bool spin_down;          /* an arrow held (number) */
+    bool own;                /* its own value (Default removes it) */
+    char *from;              /* an inherited value's source, or NULL */
 };
 
 struct page {
@@ -62,6 +64,10 @@ struct ui_notebook {
     ui_notebook_close_fn closed;
     void *ctx;
     bool closing;
+    void (*default_fn)(void *ctx, const char *const *keys, size_t n);
+    void (*extra_fn)(void *ctx, ui_surface *s, double x, double y, uint32_t serial);
+    char extra_label[32];
+    uint32_t press_serial;
 };
 
 /* ------------------------------------------------------------ values */
@@ -91,6 +97,7 @@ static void free_pages(struct page *p, size_t n)
             struct field *f = &p[i].f[k];
             free(f->key);
             free(f->label);
+            free(f->from);
             value_free(&f->v);
             value_free(&f->orig);
             for (size_t c = 0; c < f->nchoices; c++) free(f->choices[c]);
@@ -130,6 +137,8 @@ static struct page *copy_pages(const ui_page_desc *src, size_t n)
             struct field *f = &p[i].f[k];
             f->key = strdup(d->key);
             f->label = strdup(d->label ? d->label : d->key);
+            f->own = d->own;
+            f->from = d->from && *d->from ? strdup(d->from) : NULL;
             f->kind = d->kind;
             value_copy(&f->v, &d->value);
             value_copy(&f->orig, &d->value);
@@ -258,6 +267,40 @@ static void damage(ui_notebook *nb)
 /* ------------------------------------------------------------ drawing */
 
 static const char *button_labels[3] = { "Undo", "Default", "Help" };
+
+/* The bottom buttons: Undo, Default, Help, and the owner's fourth if set. */
+static int nbuttons(ui_notebook *nb) { return nb->extra_fn ? 4 : 3; }
+
+static const char *button_label(ui_notebook *nb, int i) { return i == 3 ? nb->extra_label : button_labels[i]; }
+
+static bool page_has_own(ui_notebook *nb)
+{
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    for (size_t k = 0; pg && k < pg->n; k++)
+        if (pg->f[k].own) return true;
+    return false;
+}
+
+static bool button_enabled(ui_notebook *nb, int i)
+{
+    return i == 0 || (i == 1 && nb->default_fn && page_has_own(nb)) || i == 3;
+}
+
+/* Keyboard focus after the fields: the enabled buttons, in order; the
+ * button at focus position nf + j, or -1. */
+static int focus_button(ui_notebook *nb, int j)
+{
+    for (int i = 0; i < nbuttons(nb); i++)
+        if (button_enabled(nb, i) && j-- == 0) return i;
+    return -1;
+}
+
+static int focusable_buttons(ui_notebook *nb)
+{
+    int n = 0;
+    for (int i = 0; i < nbuttons(nb); i++) n += button_enabled(nb, i);
+    return n;
+}
 
 static void draw_check(cairo_t *cr, ui_rect r, bool on)
 {
@@ -393,7 +436,13 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_rect r = control_rect(nb, i);
         bool focused = nb->focus == (int)i;
         ui_set_color(cr, k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, p.x + MARGIN, r.y + base_off, f->label, LABEL_W - 8);
+        double lw = ui_text_draw(cr, UI_FONT_REGULAR, p.x + MARGIN, r.y + base_off, f->label, LABEL_W - 8);
+        if (f->from && lw + 12 < LABEL_W - 8) {   /* where an inherited value comes from */
+            char fr[160];
+            snprintf(fr, sizeof fr, "(%s)", f->from);
+            ui_set_color(cr, k->disabled_text);
+            ui_text_draw(cr, UI_FONT_REGULAR, p.x + MARGIN + lw + 6, r.y + base_off, fr, LABEL_W - 8 - lw - 6);
+        }
         switch (f->kind) {
         case UI_FIELD_TEXT:
             ui_entry_draw(f->entry, cr, r, focused);
@@ -469,17 +518,17 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         }
     }
     int nf = pg ? (int)pg->n : 0;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < nbuttons(nb); i++) {
         ui_rect b = button_rect(nb, i);
-        bool enabled = i == 0;   /* Default and Help: later */
+        bool enabled = button_enabled(nb, i);   /* (Help: later) */
         bool down = nb->pressed_button == i;
         ui_fill(cr, b, k->face);
         ui_bevel(cr, b, !down);
         ui_set_color(cr, enabled ? k->text : k->disabled_text);
-        double tw = ui_text_width(UI_FONT_REGULAR, button_labels[i]);
+        double tw = ui_text_width(UI_FONT_REGULAR, button_label(nb, i));
         ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + (down ? 1 : 0), b.y + (b.h + ui_text_ascent()) / 2 - 1 + (down ? 1 : 0),
-                     button_labels[i], 0);
-        if (nb->focus == nf + i) focus_ring(cr, (ui_rect){ b.x + 3, b.y + 3, b.w - 6, b.h - 6 });
+                     button_label(nb, i), 0);
+        if (nb->focus >= nf && focus_button(nb, nb->focus - nf) == i) focus_ring(cr, (ui_rect){ b.x + 3, b.y + 3, b.w - 6, b.h - 6 });
     }
     ui_rect st = status_rect(nb);
     ui_fill(cr, st, k->face);
@@ -601,9 +650,9 @@ static void a11y_nb(ui_notebook *nb)
             i.description = f->v.number >= 0 && (size_t)f->v.number < f->nchoices ? f->choices[f->v.number] : "";
             break;
         }
-    } else if (nb->focus == nf) {
+    } else if (nb->focus >= nf && focus_button(nb, nb->focus - nf) >= 0) {
         i.role = UI_ROLE_BUTTON;
-        i.name = "Undo";
+        i.name = button_label(nb, focus_button(nb, nb->focus - nf));
     } else if (pg) {
         i.role = UI_ROLE_PAGE_TAB;
         i.name = pg->title;
@@ -656,6 +705,31 @@ static void open_choices(ui_notebook *nb, size_t k, uint32_t serial)
     cc->field = k;
     ui_menu_popup(nb->win, items, f->nchoices, r.x, r.y + r.h, serial, choice_chosen, cc);
     free(items);
+}
+
+static void undo(ui_notebook *nb);
+
+/* Default: the shown page's own values removed (by the owner). */
+static void page_default(ui_notebook *nb)
+{
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    if (!pg || !nb->default_fn) return;
+    const char **keys = calloc(pg->n ? pg->n : 1, sizeof *keys);
+    size_t n = 0;
+    for (size_t k = 0; k < pg->n; k++)
+        if (pg->f[k].own) keys[n++] = pg->f[k].key;
+    if (n) nb->default_fn(nb->ctx, keys, n);
+    free(keys);
+}
+
+static void press_button(ui_notebook *nb, int b)
+{
+    if (b == 0) undo(nb);
+    else if (b == 1) page_default(nb);
+    else if (b == 3 && nb->extra_fn) {
+        ui_rect r = button_rect(nb, 3);
+        nb->extra_fn(nb->ctx, nb->win, r.x, r.y + r.h, nb->press_serial);
+    }
 }
 
 static void undo(ui_notebook *nb)
@@ -883,7 +957,7 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         int b = nb->pressed_button;
         nb->pressed_button = -1;
         damage(nb);
-        if (b == 0 && ui_rect_has(button_rect(nb, 0), e->x, e->y)) undo(nb);
+        if (ui_rect_has(button_rect(nb, b), e->x, e->y)) press_button(nb, b);
         return;
     }
     if (e->kind != UI_PRESS || e->button != ui_mouse_button(UI_ACT_SELECT)) return;
@@ -946,11 +1020,16 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         return;
     }
     int nf = pg ? (int)pg->n : 0;
-    if (ui_rect_has(button_rect(nb, 0), e->x, e->y)) {
-        set_focus(nb, nf);
-        nb->pressed_button = 0;
-        damage(nb);
-        return;
+    for (int i = 0, j = 0; i < nbuttons(nb); i++) {
+        if (!button_enabled(nb, i)) continue;
+        if (ui_rect_has(button_rect(nb, i), e->x, e->y)) {
+            set_focus(nb, nf + j);
+            nb->pressed_button = i;
+            nb->press_serial = e->serial;
+            damage(nb);
+            return;
+        }
+        j++;
     }
     set_focus(nb, -1);   /* a click on the page: nothing focused */
 }
@@ -959,7 +1038,7 @@ static void nb_key(ui_surface *s, const ui_key_event *e)
 {
     ui_notebook *nb = ui_surface_data(s);
     struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
-    int nf = pg ? (int)pg->n : 0, total = nf + 1;   /* fields, then Undo */
+    int nf = pg ? (int)pg->n : 0, total = nf + focusable_buttons(nb);   /* fields, then the buttons */
     struct field *f = focused_field(nb);
     if (e->sym == XKB_KEY_Tab || e->sym == XKB_KEY_ISO_Left_Tab) {
         bool back = (e->mods & UI_MOD_SHIFT) || e->sym == XKB_KEY_ISO_Left_Tab;
@@ -976,7 +1055,11 @@ static void nb_key(ui_surface *s, const ui_key_event *e)
         ui_notebook_close(nb);
         return;
     }
-    if (nb->focus == nf && (e->sym == XKB_KEY_Return || e->sym == XKB_KEY_space)) { undo(nb); return; }
+    if (nb->focus >= nf && (e->sym == XKB_KEY_Return || e->sym == XKB_KEY_space)) {
+        int b = focus_button(nb, nb->focus - nf);
+        if (b >= 0) press_button(nb, b);   /* (a menu it opens: the last click's serial) */
+        return;
+    }
     if (!f) return;
     switch (f->kind) {
     case UI_FIELD_CHECKBOX:
@@ -1128,4 +1211,18 @@ const char *ui_notebook_field_hint(ui_notebook *nb, const char *key)
 {
     struct field *f = nb ? field_by_key(nb, key) : NULL;
     return f && f->nchoices ? f->choices[0] : "";
+}
+
+void ui_notebook_on_default(ui_notebook *nb, void (*fn)(void *ctx, const char *const *keys, size_t n))
+{
+    nb->default_fn = fn;
+    damage(nb);
+}
+
+void ui_notebook_set_extra(ui_notebook *nb, const char *label,
+                           void (*fn)(void *ctx, ui_surface *s, double x, double y, uint32_t serial))
+{
+    snprintf(nb->extra_label, sizeof nb->extra_label, "%s", label ? label : "");
+    nb->extra_fn = fn;
+    damage(nb);
 }

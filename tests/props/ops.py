@@ -120,5 +120,32 @@ check("... one folder shows hidden files anyway", get(DESK + "/Plain", "show_hid
 check("System reads class:WPFolder back", get(sysobj, "font_folders") == "11.Serif", get(sysobj, "font_folders"))
 c.request(op="reset", target="class:WPFolder", names="show_hidden;icon_font;show_ext")
 
+# notebooks (object-properties-design.md 2.2): own values, inherited ones' source
+c.request(op="set", target="class:WPFolder", setup="bg_color=#123456")
+c.request(op="set", target=P, setup="bg_mode=tiled")
+
+
+def fields_of(target):
+    res = c.request(op="settings", target=target).get("result") or []
+    return {f["key"]: f for pg in res for f in pg["fields"]}
+
+
+fp = fields_of(P)
+check("a field with its own value says so (own)", fp.get("bg_mode", {}).get("own") is True, fp.get("bg_mode"))
+check("an inherited one says where from", fp.get("bg_color", {}).get("from") == "Folder default", fp.get("bg_color"))
+check("a default one says neither", "own" not in fp.get("bg_image", {}) and "from" not in fp.get("bg_image", {}), fp.get("bg_image"))
+check("a title: never own (not reset)", "own" not in fp.get("title", {}), fp.get("title"))
+cs = c.request(op="settings", target="class:WPFolder")
+cf = {f["key"]: f for pg in (cs.get("result") or []) for f in pg["fields"]}
+check("class:WPFolder's notebook: its settings", cf.get("bg_color", {}).get("value") == "#123456" and cf.get("bg_color", {}).get("own") is True, cf.get("bg_color"))
+check("... no title, icon or template", not ({"title", "icon", "template", "local"} & set(cf)), sorted(cf)[:8])
+check("... titled for all of them", (cs.get("object") or {}).get("title") == "All Folder objects", cs.get("object"))
+r = c.request(op="settings_set", target="class:WPFolder", values={"icon_titles": 1, "lock_all": True})
+check("... its notebook sets them", r.get("ok") and get(DESK + "/Plain", "icon_titles") == "two lines" and get(DESK + "/Plain", "lock_all") == "1", r)
+c.request(op="reset", target="class:WPTrashCan", names="bg_color")
+tc = {f["key"]: f for pg in (c.request(op="settings", target="class:WPTrashCan").get("result") or []) for f in pg["fields"]}
+check("class:WPTrashCan's: from Folder default", tc.get("bg_color", {}).get("from") == "Folder default", tc.get("bg_color"))
+c.request(op="reset", target="class:WPFolder", names="bg_color;icon_titles;lock_all")
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

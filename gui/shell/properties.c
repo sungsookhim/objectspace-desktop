@@ -16,10 +16,12 @@ static struct props *props_by_id(long id)
 /* The service's pages, as notebook pages (strings point into `res`). */
 static ui_page_desc *pages_from(const cv *res, size_t *n)
 {
-    *n = res && res->k == CV_ARRAY ? res->n : 0;
-    ui_page_desc *pages = calloc(*n ? *n : 1, sizeof *pages);
-    for (size_t i = 0; i < *n; i++) {
-        const cv *pg = &res->items[i], *fs = cv_get(pg, "fields");
+    size_t total = res && res->k == CV_ARRAY ? res->n : 0;
+    ui_page_desc *pages = calloc(total ? total : 1, sizeof *pages);
+    *n = 0;
+    for (size_t i0 = 0; i0 < total; i0++) {
+        size_t i = *n;
+        const cv *pg = &res->items[i0], *fs = cv_get(pg, "fields");
         pages[i].title = cv_text(pg, "title");
         size_t nf = fs && fs->k == CV_ARRAY ? fs->n : 0;
         ui_field_desc *fields = calloc(nf ? nf : 1, sizeof *fields);
@@ -29,6 +31,9 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
             const char *type = cv_text(fd, "type");
             if (type && !strcmp(type, "hidden")) continue;   /* (kept by the GUI itself: column widths) */
             ui_field_desc *d = &fields[kept++];
+            const cv *own = cv_get(fd, "own");
+            d->own = own && own->k == CV_BOOL && own->b;
+            d->from = cv_text(fd, "from");
             d->key = cv_text(fd, "key");
             d->label = cv_text(fd, "label");
             d->kind = !type || !strcmp(type, "text") ? UI_FIELD_TEXT : !strcmp(type, "checkbox") ? UI_FIELD_CHECKBOX
@@ -47,6 +52,8 @@ static ui_page_desc *pages_from(const cv *res, size_t *n)
         }
         pages[i].fields = fields;
         pages[i].nfields = kept;
+        if (kept) (*n)++;   /* a page with nothing shown (only hidden fields): none */
+        else free(fields);
     }
     return pages;
 }
@@ -67,6 +74,9 @@ static void note_object(struct props *p, const cv *reply)
     if (o && cv_int(o, "changes", &ch)) p->changes = ch;
     const char *path = o ? cv_text(o, "path") : NULL;
     if (path && *path) snprintf(p->target, sizeof p->target, "%s", path);   /* renamed */
+    const char *c = o ? cv_text(o, "class") : NULL, *ct = o ? cv_text(o, "class_title") : NULL;
+    if (c) snprintf(p->cls, sizeof p->cls, "%s", c);
+    if (ct) snprintf(p->cls_title, sizeof p->cls_title, "%s", ct);
 }
 
 static void props_refreshed(void *arg, const cv *reply)
@@ -175,6 +185,44 @@ void props_set(void *ctx, const char *key, ui_field_kind kind, const ui_value *v
     svc_settings_set(p->target, key, &val, p->changes, props_applied, arg);
 }
 
+/* Default (object-properties-design.md 2.2): the page's own values removed,
+ * the class's or the type's shown again. */
+static void props_default(void *ctx, const char *const *keys, size_t n)
+{
+    struct props *p = ctx;
+    char names[1024] = "";
+    for (size_t i = 0; i < n; i++)
+        snprintf(names + strlen(names), sizeof names - strlen(names), "%s%s", i ? ";" : "", keys[i]);
+    svc_reset(p->target, names, props_applied, (void *)(intptr_t)p->id);
+}
+
+/* Class...: the notebook of all objects of its class, or for a data file of
+ * its type or its kind of type (a menu). */
+static char class_menu_targets[3][160];
+
+static void class_chosen(void *arg, int64_t id)
+{
+    (void)arg;
+    if (id >= 0 && id < 3 && class_menu_targets[id][0]) open_properties(class_menu_targets[id]);
+}
+
+static void props_class(void *ctx, ui_surface *s, double x, double y, uint32_t serial)
+{
+    struct props *p = ctx;
+    const char *mime = p->target[0] == '/' && strcmp(p->cls, "WPFolder") ? mime_of_file(p->target) : NULL;
+    if (mime && (!strncmp(mime, "inode/", 6) || !strchr(mime, '/'))) mime = NULL;
+    snprintf(class_menu_targets[0], sizeof class_menu_targets[0], "class:%s", p->cls);
+    if (!mime) { open_properties(class_menu_targets[0]); return; }
+    char l0[128], l1[128], l2[128];
+    snprintf(class_menu_targets[1], sizeof class_menu_targets[1], "type:%s", mime);
+    snprintf(class_menu_targets[2], sizeof class_menu_targets[2], "type:%.*s/*", (int)(strchr(mime, '/') - mime), mime);
+    snprintf(l0, sizeof l0, "All objects of its class (%s)", p->cls_title[0] ? p->cls_title : p->cls);
+    snprintf(l1, sizeof l1, "All files of its type (%s)", mime);
+    snprintf(l2, sizeof l2, "All %.*s files", (int)(strchr(mime, '/') - mime), mime);
+    ui_menu_item items[3] = { { 1, l1, true, false, NULL, 0 }, { 2, l2, true, false, NULL, 0 }, { 0, l0, true, false, NULL, 0 } };
+    ui_menu_popup(s, items, 3, x, y, serial, class_chosen, NULL);
+}
+
 static void props_closed(void *ctx)
 {
     struct props *p = ctx;
@@ -200,6 +248,9 @@ static void got_settings(void *arg, const cv *reply)
     size_t n;
     ui_page_desc *pages = pages_from(res, &n);
     p->nb = ui_notebook_open(app, p->title, pages, n, props_set, props_closed, p);
+    ui_notebook_on_default(p->nb, props_default);
+    if (strncmp(p->target, "class:", 6) && strncmp(p->target, "type:", 5) && p->cls[0])
+        ui_notebook_set_extra(p->nb, "Class...", props_class);
     if (p->want_page && p->want_page < n) ui_notebook_show_page(p->nb, p->want_page);
     pages_free(pages, n);
 }
