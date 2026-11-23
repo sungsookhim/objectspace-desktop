@@ -2938,10 +2938,43 @@ static int first_start_done_version(char *marker, size_t n)
     return v;
 }
 
+/* The first start's shadows, made one after another: the desktop places
+ * new icons in the order they appear, so a new desktop is always laid out
+ * the same (concurrently, My System and Programs swapped places at random). */
+struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; struct fs_shadow *next; };
+static struct fs_shadow *fs_queue, **fs_tail = &fs_queue;
+static bool fs_busy;
+
+static void fs_next(void);
+
 static void first_start_shadow_done(void *arg, const char *link, const char *error)
 {
     (void)arg;
     if (!link && error) log_msg("first start: a shadow was not made: %s", error);
+    fs_busy = false;
+    fs_next();
+}
+
+static void fs_next(void)
+{
+    if (fs_busy || !fs_queue) return;
+    struct fs_shadow *q = fs_queue;
+    fs_queue = q->next;
+    if (!fs_queue) fs_tail = &fs_queue;
+    fs_busy = true;
+    wps_shadow_create(q->target, q->folder, first_start_shadow_done, NULL);
+    free(q);
+}
+
+static void first_start_shadow(const char *target, const char *folder)
+{
+    struct fs_shadow *q = calloc(1, sizeof *q);
+    if (!q) return;
+    snprintf(q->target, sizeof q->target, "%s", target);
+    snprintf(q->folder, sizeof q->folder, "%s", folder);
+    *fs_tail = q;
+    fs_tail = &q->next;
+    fs_next();
 }
 
 /* the desktop's shadows of System Setup (0.1 put one there) */
@@ -3117,7 +3150,7 @@ static void first_start_done(void *arg)
         snprintf(legacy, sizeof legacy, "%s/desktop-setup-made", env.config_dir);
         if (j->from < 1) {   /* step 1: a new desktop: Templates, in System since step 7 */
             const char *td = wps_templates_dir();
-            if (td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
+            if (td[0]) first_start_shadow(td, j->sys);
         }
         /* step 2 (0.2's first): nothing */
         if (j->from < 3) {
@@ -3125,19 +3158,19 @@ static void first_start_done(void *arg)
                 wps_central_forget(j->gone[k]);
                 on_central_change(j->desk, j->gone[k], 'd');
             }
-            wps_shadow_create(j->sys, j->desk, first_start_shadow_done, NULL);
+            first_start_shadow(j->sys, j->desk);
             if (j->viewer[0]) on_central_change(j->sys, j->viewer, 'c');
             /* Startup: the autostart folder, titled so, shown in System */
             wpo_object *as = j->asld.err ? NULL : wps_object_from_loaded(&j->asld);
             if (as && wpo_is_a(as, WPObjectClass) && !WPObject_data(as)->title) WPObject_wpSetTitle(as, "Startup");
-            wps_shadow_create(j->autostart, j->sys, first_start_shadow_done, NULL);
+            first_start_shadow(j->autostart, j->sys);
         }
         if (j->from < 4 && j->trash[0]) {
             sobj *old = wps_sobj_by_path(j->trash);   /* (loaded as a plain folder before) */
             if (old) wps_sobj_forget(old);
             wpo_object *tc = j->tld.err ? NULL : wps_object_from_loaded(&j->tld);
             if (tc && wpo_is_a(tc, WPObjectClass) && !WPObject_data(tc)->title) WPObject_wpSetTitle(tc, "Trash Can");
-            wps_shadow_create(j->trash, j->desk, first_start_shadow_done, NULL);
+            first_start_shadow(j->trash, j->desk);
         }
         if (j->from < 5) {
             char comp[PATH_MAX], drv[PATH_MAX + 8];
@@ -3151,7 +3184,7 @@ static void first_start_done(void *arg)
         if (j->from < 6 && j->programs[0]) {
             sobj *old = wps_sobj_by_path(j->programs);
             if (old) wps_sobj_forget(old);
-            wps_shadow_create(j->programs, j->desk, first_start_shadow_done, NULL);
+            first_start_shadow(j->programs, j->desk);
             wps_programs_sync();   /* filled now */
         }
         if (j->from < 7 && j->from >= 1) {
@@ -3161,7 +3194,7 @@ static void first_start_done(void *arg)
                 if (j->tpl_new[i][0]) on_central_change(j->sys, j->tpl_new[i], 'c');
             }
             const char *td = wps_templates_dir();
-            if (!j->tpl_in_system && !j->ntpl && td[0]) wps_shadow_create(td, j->sys, first_start_shadow_done, NULL);
+            if (!j->tpl_in_system && !j->ntpl && td[0]) first_start_shadow(td, j->sys);
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
         if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
@@ -3170,7 +3203,7 @@ static void first_start_done(void *arg)
             char comp[PATH_MAX], drv[PATH_MAX + 8];
             computer_dirs(comp, sizeof comp, drv, sizeof drv);
             wps_mkdirs(comp, 0700);
-            wps_shadow_create(home, comp, first_start_shadow_done, NULL);
+            first_start_shadow(home, comp);
         }
         FILE *f = fopen(marker, "w");
         if (f) {

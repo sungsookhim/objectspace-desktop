@@ -237,6 +237,10 @@ static int by_order(const void *a, const void *b)
 
 static void placed(void *arg, const cv *reply) { (void)arg; (void)reply; }
 
+/* the first time's shadows are being made and placed (below): no places
+ * written back meanwhile, or a stale listing's order could win */
+static bool first_filling;
+
 static void got_order(void *arg, const cv *reply)
 {
     (void)arg;
@@ -266,7 +270,7 @@ static void got_order(void *arg, const cv *reply)
         }
     }
     lp.n = nlisted;
-    if (nplace) svc_place(lp.dir, (const char *const *)t, px, py, nplace, placed, NULL);
+    if (nplace && !first_filling) svc_place(lp.dir, (const char *const *)t, px, py, nplace, placed, NULL);
     for (size_t k = 0; k < nplace; k++) free(t[k]);
     layout();
 }
@@ -1125,6 +1129,37 @@ static void lp_close(ui_surface *s)
 static const ui_surface_ops lp_ops = { .draw = lp_draw, .pointer = lp_pointer, .key = lp_key, .focus = lp_focus, .close = lp_close,
                                        .drag_motion = lp_drag_motion, .drag_leave = lp_drag_leave, .drop = lp_drop };
 
+/* The first time's shadows (home, Templates, System Setup): made one after
+ * another, then placed in that order together - the reloads in between
+ * give each new one a place of its own as it appears, by listing order. */
+static char first[3][PATH_MAX], first_link[3][PATH_MAX];
+static int nfirst, ifirst;
+
+static void first_placed(void *arg, const cv *reply)
+{
+    (void)arg; (void)reply;
+    first_filling = false;
+    reload();
+}
+
+static void first_next(void *arg, const cv *reply)
+{
+    (void)arg;
+    if (reply) {
+        const char *link = cv_text(reply, "result");
+        if (link && *link) snprintf(first_link[ifirst - 1], sizeof first_link[0], "%s", link);
+        else fprintf(stderr, "wps-shell: LaunchPad: a shadow was not made: %s\n", cv_text(reply, "message"));
+    }
+    if (ifirst < nfirst) { ifirst++; svc_shadow(first[ifirst - 1], lp.dir, first_next, NULL); return; }
+    const char *t[3];
+    int64_t x[3], y[3];
+    size_t n = 0;
+    for (int k = 0; k < nfirst; k++)
+        if (first_link[k][0]) { t[n] = first_link[k]; x[n] = (int64_t)n * ORDER_CELL; y[n++] = 0; }
+    if (n) svc_place(lp.dir, t, x, y, n, first_placed, NULL);
+    else first_placed(NULL, NULL);
+}
+
 void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char *templates, const char *setup)
 {
     /* once: the settings objects are read again whenever one changes (a
@@ -1142,9 +1177,11 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
     if (stat(lp.dir, &st) != 0) {
         /* The first time: shadows of the home folder, Templates and System Setup. */
         mkdirs(lp.dir);
-        if (home && *home) svc_shadow(home, lp.dir, removed, NULL);
-        if (templates && *templates) svc_shadow(templates, lp.dir, removed, NULL);
-        if (setup && *setup) svc_shadow(setup, lp.dir, removed, NULL);
+        if (home && *home) snprintf(first[nfirst++], sizeof first[0], "%s", home);
+        if (templates && *templates) snprintf(first[nfirst++], sizeof first[0], "%s", templates);
+        if (setup && *setup) snprintf(first[nfirst++], sizeof first[0], "%s", setup);
+        first_filling = true;
+        first_next(NULL, NULL);
     }
     /* floating on top: the compositor keeps org.wps.LaunchPad above the
      * windows (the WPS session); else an ordinary window's place */

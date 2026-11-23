@@ -1,6 +1,6 @@
 # Objects all the way down: properties, styles, events, plug-ins
 
-Draft, 2026-11-22, on branch `refactor/object-model`, for the owner's review. Nothing here is implemented yet.
+2026-11-22, on branch `refactor/object-model`. Approved by the owner; stages R0-R6 in progress.
 
 ## The owner's directives
 
@@ -299,9 +299,11 @@ The total is about the size of a version, comparable to 0.3. **Proposed:** this 
 - Steps 2-10 then build on properties: icon theme and size, folder windows' remembered places, Prevent delete and Work area are all properties.
 - The 0.4 plan gets shorter and is renumbered after R6.
 
-## 6. For the owner to decide
+## 6. The owner's decisions (2026-11-22)
 
-1. **Folder-to-contents inheritance:** left out, as in OS/2 (2.2)? Proposed: yes, left out for now.
-2. **Script actions (`run:`)** run as the user's own programs, not sandboxed like plug-ins. Proposed: yes; they're the user's own commands.
-3. **Where it goes:** the first part of 0.4 (proposed), or its own version before 0.4.
-4. **GNOME's per-file metadata** as a backing for custom icons: later (proposed), or in R5.
+1. **Folder-to-contents inheritance:** left out, as in OS/2 (2.2).
+2. **Script actions (`run:`)** run as the user's own programs, not sandboxed.
+3. **Placement:** the first part of 0.4; 0.4's steps are rebuilt on this base after R6.
+4. **GNOME's per-file metadata:** not now.
+
+Approved: go (R0 first).

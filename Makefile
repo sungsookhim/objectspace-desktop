@@ -165,7 +165,7 @@ test: unit-test
 # Everything that must stay true: the unit tests (with ASan/UBSan when
 # installed), the core building as strict C11 with only the C library, and
 # the loop under ThreadSanitizer when libtsan is installed.
-CORE_LIBC := calloc free malloc memcpy realloc strchr strcmp strlen
+CORE_LIBC := abort calloc free malloc memcpy realloc strchr strcmp strlen
 TSAN_OK   := $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=thread -x c - -o /dev/null 2>/dev/null && echo yes)
 
 check: test
@@ -340,6 +340,23 @@ gui-test: gui
 	$(TV)/test_ui_mouse
 	$(TV)/test_layout
 	$(TV)/test_wpsicon
+
+# The headless compositor tests (tests/comp), one after another.
+COMP_TESTS := background desktop-menu details icons launchpad notify pointer restore search session tray
+comp-test: session gui compositor
+	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
+	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \
+	 if [ -n "$$fails" ]; then echo "comp-test failed:$$fails (logs: $(TV)/comp-*.log)"; exit 1; fi
+
+# The looks, for the refactor (docs/object-properties-design.md 4): shots
+# of one scene in each scheme; visual-baseline keeps them in build/visual/base,
+# visual-check takes them again and compares (differences in build/visual/diff).
+visual-baseline: session gui compositor
+	rm -rf $(B)/visual/base && tests/visual/run.sh $(B)/visual/base
+visual-check: session gui compositor
+	rm -rf $(B)/visual/new $(B)/visual/diff && tests/visual/run.sh $(B)/visual/new
+	python3 -I tests/visual/compare.py $(B)/visual/base $(B)/visual/new $(B)/visual/diff
+.PHONY: comp-test visual-baseline visual-check
 
 # make install DESTDIR=... PREFIX=/usr: the programs, the user service,
 # the session on the login screen, the lock screen's PAM file and the
