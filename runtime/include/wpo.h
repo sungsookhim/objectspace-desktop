@@ -130,6 +130,7 @@ typedef struct {
 #define WPO_P_NOFIELD  0x8u   /* no field in the pages (set by setup strings, palettes) */
 #define WPO_P_FIRST    0x10u  /* its page before the parent classes' pages (OS/2's
                                  notebooks begin with the object's own page) */
+#define WPO_P_LAST     0x20u  /* its page after every other (Actions) */
 
 typedef struct {
     const char *name;

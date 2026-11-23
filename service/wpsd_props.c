@@ -156,6 +156,20 @@ static void put_prop(cbuf *b, wpo_object *o, const wpo_property_def *p)
     free(ch);
 }
 
+bool apply_setup(wpo_object *o, const char *setup, char *err, size_t en)
+{
+    char k[128], v[4096];
+    bool ok;
+    for (const char *s = setup; (s = next_pair(s, k, sizeof k, v, sizeof v, &ok));) {
+        if (!ok) { snprintf(err, en, "setup strings are key=value;key=value"); return false; }
+        if (!wpo_find_property(o->cls, k, NULL)) { snprintf(err, en, "%s: no such property", k); return false; }
+        if (!WPObject_wpSetProperty(o, k, v)) { snprintf(err, en, "%s: the value was refused", k); return false; }
+        if ((!strcmp(k, "sort_key") || !strcmp(k, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
+            wps_listing_invalidate(WPFileSystem_data(o)->path);
+    }
+    return true;
+}
+
 void do_props(struct req *r, wpo_object *o)
 {
     int64_t ex;
@@ -181,23 +195,8 @@ void do_props(struct req *r, wpo_object *o)
             reply_error(r->c, r->id, "conflict", "conflict");
             return;
         }
-        char k[128], v[4096], msg[256];
-        bool ok;
-        for (const char *s = setup; (s = next_pair(s, k, sizeof k, v, sizeof v, &ok));) {
-            if (!ok) { reply_error(r->c, r->id, "bad request", "setup strings are key=value;key=value"); return; }
-            if (!wpo_find_property(o->cls, k, NULL)) {
-                snprintf(msg, sizeof msg, "%s: no such property", k);
-                reply_error(r->c, r->id, "bad request", msg);
-                return;
-            }
-            if (!WPObject_wpSetProperty(o, k, v)) {
-                snprintf(msg, sizeof msg, "%s: the value was refused", k);
-                reply_error(r->c, r->id, "bad request", msg);
-                return;
-            }
-            if ((!strcmp(k, "sort_key") || !strcmp(k, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
-                wps_listing_invalidate(WPFileSystem_data(o)->path);
-        }
+        char msg[256];
+        if (!apply_setup(o, setup, msg, sizeof msg)) { reply_error(r->c, r->id, "bad request", msg); return; }
         reply_ok_object(r, o, NULL);
         return;
     }

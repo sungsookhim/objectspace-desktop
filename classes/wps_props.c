@@ -180,9 +180,28 @@ static char *canonical_in(const wpo_property_def *p, const char *choices, const 
 
 char *wps_prop_canonical(const wpo_property_def *p, const char *v) { return canonical_in(p, p->choices, v); }
 
+/* An event's actions (object-properties-design.md 2.4): "" (none of its
+ * own), or kinds separated by "|": none, sound:FILE, run:COMMAND,
+ * call:METHOD ARGS, set:SETUP. */
+static bool actions_ok(const char *v)
+{
+    for (const char *p = v; p && *p;) {
+        while (*p == ' ') p++;
+        const char *e = strchr(p, '|');
+        size_t l = e ? (size_t)(e - p) : strlen(p);
+        while (l && p[l - 1] == ' ') l--;
+        bool ok = (l == 4 && !strncmp(p, "none", 4)) || (l > 6 && !strncmp(p, "sound:", 6)) ||
+                  (l > 4 && !strncmp(p, "run:", 4)) || (l > 5 && !strncmp(p, "call:", 5)) || (l > 4 && !strncmp(p, "set:", 4));
+        if (!ok) return false;
+        p = e ? e + 1 : NULL;
+    }
+    return true;
+}
+
 static char *canonical_in(const wpo_property_def *p, const char *choices, const char *v)
 {
     if (!v || strchr(v, '\n') || strchr(v, '\t')) return NULL;
+    if (!strncmp(p->name, "on:", 3) && !actions_ok(v)) return NULL;
     if (!strcmp(p->type, "checkbox")) {
         if (!strcmp(v, "1") || !strcmp(v, "true") || !strcmp(v, "yes") || !strcmp(v, "on")) return wps_strdup("1");
         if (!strcmp(v, "0") || !strcmp(v, "false") || !strcmp(v, "no") || !strcmp(v, "off")) return wps_strdup("0");
@@ -331,16 +350,18 @@ char *wps_prop_pages(wpo_object *self, const wpo_class *only)
     chain(self->cls, c, &n);
     char *out = wps_strdup("");
     const char *page = NULL;
-    /* pages marked first, then the others; each property where it was
-     * first declared, as its nearest declaration (a subclass's label) */
-    for (int pass = 0; pass < 2; pass++)
+    /* pages marked first, then the others, then those marked last; each
+     * property where it was first declared, as its nearest declaration (a
+     * subclass's label) */
+    for (int pass = 0; pass < 3; pass++)
         for (size_t k = 0; k < n; k++) {
             if (only && c[k] != only) continue;
             for (size_t i = 0; i < c[k]->nprops; i++) {
                 const wpo_property_def *d = &c[k]->props[i];
                 if (redeclared(c[k], d)) continue;   /* shown where its ancestor put it */
                 const wpo_property_def *p = wpo_find_property(self->cls, d->name, NULL);
-                if (!p || ((p->flags & WPO_P_FIRST) != 0) != (pass == 0)) continue;
+                int want = (p && (p->flags & WPO_P_FIRST)) ? 0 : (p && (p->flags & WPO_P_LAST)) ? 2 : 1;
+                if (!p || want != pass) continue;
                 char *line = field_lines(self, p, &page);
                 out = append(out, line);
                 free(line);

@@ -147,5 +147,37 @@ tc = {f["key"]: f for pg in (c.request(op="settings", target="class:WPTrashCan")
 check("class:WPTrashCan's: from Folder default", tc.get("bg_color", {}).get("from") == "Folder default", tc.get("bg_color"))
 c.request(op="reset", target="class:WPFolder", names="bg_color;icon_titles;lock_all")
 
+# events' actions (object-properties-design.md 2.4)
+import time
+lst = c.request(op="list", target=DESK, offset=0, count=200, details=True).get("result") or {}
+prog = next((it["name"][1:] if it["name"].startswith("\x01") else DESK + "/" + it["name"])
+            for it in lst.get("items", []) if it.get("title") == "My program")
+out = T + "/opened.txt"
+r = c.request(op="set", target=prog, setup="on:object.open=run:echo $WPS_EVENT $WPS_CLASS > " + out + " | sound:bell")
+check("an action set on a program", r.get("ok"), r)
+r = c.request(op="open", target=prog)
+check("opened: its sound comes back for the GUI", (r.get("result") or {}).get("sound") == "bell", r)
+for _ in range(50):
+    if os.path.exists(out) and open(out).read().strip():
+        break
+    time.sleep(0.1)
+check("... and run: ran, with its event and class", os.path.exists(out) and open(out).read().split() == ["object.open", "WPProgram"],
+      open(out).read() if os.path.exists(out) else "no file")
+c.request(op="set", target=prog, setup="on:object.open=none")
+r = c.request(op="open", target=prog)
+check("none: silence (an empty sound)", (r.get("result") or {}).get("sound") == "", r)
+c.request(op="reset", target=prog, names="on:object.open")
+r = c.request(op="open", target=prog)
+check("none of its own: no sound in the reply (the Sound object's)", "sound" not in (r.get("result") or {}), r)
+r = c.request(op="set", target=prog, setup="on:object.open=beep:loud")
+check("an unknown kind of action is refused", not r.get("ok"), r)
+r = c.request(op="set", target="class:WPFolder", setup=r"on:object.create=set:bg_color=#010203")
+check("all folders: set: when made", r.get("ok"), r)
+r = c.request(op="create", folder=DESK, **{"class": "WPFolder"}, title="Made")
+made = ((r.get("result") or {}).get("path")) or ""
+check("a folder made: its own colour set by the action", made and get(made, "bg_color") == "#010203" and props(made)["bg_color"]["origin"] == "object",
+      (made, get(made, "bg_color") if made else None))
+c.request(op="reset", target="class:WPFolder", names="on:object.create")
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

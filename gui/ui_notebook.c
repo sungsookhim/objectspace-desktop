@@ -1154,7 +1154,10 @@ ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *
     }
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 8 + TAB_H + 2 * MARGIN + most +
                BUTTON_H + 22 + STATUS_H + 20;
-    nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", 520, h < 280 ? 280 : h);
+    /* wide enough for every tab (a class's pages, the Actions page) */
+    double w = 2 * ui_scheme_now.border + 2 * MARGIN + 8;
+    for (size_t i = 0; i < n; i++) w += ui_text_width(UI_FONT_REGULAR, pages[i].title ? pages[i].title : "") + 28;
+    nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", w > 520 ? ceil(w) : 520, h < 280 ? 280 : h);
     ui_window_set_title(nb->win, title);
     return nb;
 }

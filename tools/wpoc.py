@@ -28,7 +28,7 @@ A property (object-properties-design.md 2.1): NAME : TYPE, then any of
     show M           a method saying whether its field is shown
     store CLASS      kept in that class's state (default: the declaring class)
     options M        a method giving a choice's options now ("a,b,c")
-    text index readonly nofield first     flags (WPO_P_*)
+    text index readonly nofield first last     flags (WPO_P_*)
 Types: text number checkbox choice file color icon info hidden. Values with
 spaces or "#" are quoted.
 
@@ -122,7 +122,7 @@ METHOD_RE = re.compile(r"^(method|classmethod)\s+(\w+)\s*\(([^)]*)\)\s*->\s*(\w+
 
 PROP_TYPES = {"text", "number", "checkbox", "choice", "file", "color", "icon", "info", "hidden"}
 PROP_FLAGS = {"text": "WPO_P_TEXT", "index": "WPO_P_INDEX", "readonly": "WPO_P_READONLY", "nofield": "WPO_P_NOFIELD",
-              "first": "WPO_P_FIRST"}
+              "first": "WPO_P_FIRST", "last": "WPO_P_LAST"}
 PROP_KEYS = {"page", "label", "get", "set", "show", "store", "options"}
 
 

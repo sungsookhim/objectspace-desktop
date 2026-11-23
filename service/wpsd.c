@@ -265,11 +265,16 @@ void prepare_work(void *arg)    /* worker */
     for (int i = 0; i < r->nobj; i++) wps_load(r->objpath[i], true, &r->objs[i]);
 }
 
-void reply_ok_object(struct req *r, wpo_object *o, const wpo_value *result)
+void reply_ok_object(struct req *r, wpo_object *o, const wpo_value *result) { reply_ok_object_sound(r, o, result, NULL); }
+
+/* The same, with the sound of the event that came with it (fire_event's:
+ * NULL none, so the Sound object's; "" silence). */
+void reply_ok_object_sound(struct req *r, wpo_object *o, const wpo_value *result, const char *sound)
 {
     cbuf b;
     cb_init(&b);
-    cb_map(&b, 4);
+    cb_map(&b, sound ? 5 : 4);
+    if (sound) { cb_text(&b, "sound"); cb_text(&b, sound); }
     cb_text(&b, "id"); cb_int(&b, r->id);
     cb_text(&b, "ok"); cb_bool(&b, true);
     cb_text(&b, "result");

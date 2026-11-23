@@ -167,7 +167,11 @@ void opened(void *arg, const cv *reply)
         raise_in(f, "alert.error", f->pending_open, "");
     } else {
         f->error[0] = 0;
-        if (res && cv_get(res, "launched")) raise_in(f, "object.open", f->pending_open, "file");
+        if (res && cv_get(res, "launched")) {
+            const char *own = cv_text(res, "sound");   /* its own (on:object.open), if it has one */
+            if (own) events_sound_once("object.open", own);
+            raise_in(f, "object.open", f->pending_open, "file");
+        }
     }
     damage_status(f);
 }

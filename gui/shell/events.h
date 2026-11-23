@@ -59,4 +59,8 @@ bool events_play(const char *value);
 void events_setup_begin(void);
 void events_setup_set(const char *key, const char *value);
 
+/* The next event `name` plays this sound (an object's own action, from the
+ * service: "" none) instead of the Sound object's. */
+void events_sound_once(const char *name, const char *sound);
+
 #endif

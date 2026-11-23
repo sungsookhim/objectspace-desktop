@@ -33,10 +33,18 @@ method wpObjectChanged() -> void
 # Persistence. The service reads and writes storage on workers; these run on
 # the loop thread and only move values between fields and the state bag.
 method wpAddSettingsPages(string pages) -> string
+# Events (object-properties-design.md 2.4) and what is done on them: the
+# on:EVENT properties (its own, its type's, its class's, ...; none: the
+# Sound object's sound for it). Kinds, several with "|": sound:FILE,
+# run:COMMAND (with WPS_OBJECT, WPS_PATH, WPS_EVENT, WPS_CLASS), call:METHOD
+# ARGS, set:SETUP, none (silence).
+event object.open, object.create
 # Its General and Icon pages.
 property title : text page General label Title get wpQueryTitle set wpSetTitle
 property template : checkbox page General label Template get wpQueryTemplate set wpSetTemplate
 property icon : icon page Icon label Icon get wpQueryIcon set wpSetIcon
+property on:object.open : text page Actions label "When opened" last
+property on:object.create : text page Actions label "When made" last
 # Declared properties (object-properties-design.md 2.1; their `property`
 # lines in each class's .wpi): a value as text (NULL: no such property),
 # set from text (false: refused), and all of them as "name\tvalue" lines.

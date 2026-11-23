@@ -470,8 +470,10 @@ static void create_done(void *arg)
             if (r->title[0] && !wpo_is_a(o, WPFileSystemClass)) WPObject_wpSetTitle(o, r->title);
             if (r->command[0] && wpo_is_a(o, WPProgramClass)) WPProgram_wpSetCommand(o, r->command);
             if (r->central && wps_on_central_change) wps_on_central_change(r->folder, r->path + 5, 'c');
+            char *sound = fire_event(o, wps_object_path(o), "object.create", NULL, NULL, NULL, 0);   /* its actions (When made) */
             struct req fake = { .c = r->c, .id = r->id };
-            reply_ok_object(&fake, o, NULL);
+            reply_ok_object_sound(&fake, o, NULL, sound);
+            free(sound);
         }
     }
     wps_loaded_free(&r->ld);

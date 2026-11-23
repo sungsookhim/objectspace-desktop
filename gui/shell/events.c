@@ -147,10 +147,30 @@ const char *events_sound_for(const char *name)
     return NULL;
 }
 
+/* An object's own sound for the next event of a name (its on:EVENT
+ * action, the service's; "" none): in place of the Sound object's. */
+static char once_name[64], once_sound[PATH_MAX];
+static bool once_set;
+
+void events_sound_once(const char *name, const char *sound)
+{
+    snprintf(once_name, sizeof once_name, "%s", name);
+    snprintf(once_sound, sizeof once_sound, "%s", sound ? sound : "");
+    once_set = sound != NULL;
+}
+
 static void play_sound(const wps_event *e, void *ctx)
 {
     (void)ctx;
-    const char *p = events_sound_for(e->name);
+    const char *p;
+    static char own[PATH_MAX];
+    if (once_set && !strcmp(once_name, e->name)) {
+        once_set = false;
+        if (!enabled || !gnome_sounds || !once_sound[0] || !find_sound(once_sound, own, sizeof own)) return;
+        p = own;
+    } else {
+        p = events_sound_for(e->name);
+    }
     if (p && !sound_play(p, volume) && getenv("WPS_DEBUG_EVENTS"))
         fprintf(stderr, "event: cannot play %s (formats: %s)\n", p, sound_formats());
 }

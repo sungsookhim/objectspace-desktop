@@ -147,7 +147,12 @@ void do_open(struct req *r, wpo_object *o)
         path = r->shadow_target.path;
         st = &r->shadow_target.st;
     }
-    if (wpo_is_a(o, WPFolderClass)) { reply_folder(r, path); wpo_unref(orig); return; }
+    if (wpo_is_a(o, WPFolderClass)) {
+        free(fire_event(o, path, "object.open", NULL, NULL, NULL, 0));   /* its actions (its window has its own sound) */
+        reply_folder(r, path);
+        wpo_unref(orig);
+        return;
+    }
     /* A plain file-system link opens what it points to, as that would. */
     struct stat ts;
     char real[PATH_MAX];
@@ -317,15 +322,20 @@ void do_open(struct req *r, wpo_object *o)
     }
     pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs, nenv);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
+    /* its actions on opening (object-properties-design.md 2.4); the sound
+     * the GUI plays: absent, the Sound object's; "" none */
+    char *sound = fire_event(o, path, "object.open", disp, x11, envs, nenv);
     cbuf b;
     cb_init(&b);
     cb_map(&b, 3);
     cb_text(&b, "id"); cb_int(&b, r->id);
     cb_text(&b, "ok"); cb_bool(&b, true);
     cb_text(&b, "result");
-    cb_map(&b, 2);
+    cb_map(&b, sound ? 3 : 2);
     cb_text(&b, "launched"); cb_int(&b, pid);
     cb_text(&b, "command"); cb_text(&b, what);
+    if (sound) { cb_text(&b, "sound"); cb_text(&b, sound); }
+    free(sound);
     send_frame(r->c, &b);
     cb_free(&b);
     wpo_unref(orig);   /* after the reply: `what` may be the original's command */
@@ -462,8 +472,10 @@ void tmpl_done(void *arg)
         else {
             /* Titled by its name, like any file (see create_done). */
             if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);
+            char *sound = fire_event(o, wps_object_path(o), "object.create", NULL, NULL, NULL, 0);   /* its actions (When made) */
             struct req fake = { .c = j->c, .id = j->id };
-            reply_ok_object(&fake, o, NULL);
+            reply_ok_object_sound(&fake, o, NULL, sound);
+            free(sound);
         }
     }
     wps_loaded_free(&j->ld);

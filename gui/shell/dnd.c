@@ -724,6 +724,8 @@ void made_new(void *arg, const cv *reply)
     char nm[NAME_MAX + 64];
     if (!strncmp(addr, "vobj:", 5)) snprintf(nm, sizeof nm, "\x01%s", addr);
     else snprintf(nm, sizeof nm, "%s", strrchr(addr, '/') ? strrchr(addr, '/') + 1 : addr);
+    const char *own = reply ? cv_text(reply, "sound") : NULL;   /* its own (on:object.create), if it has one */
+    if (own) events_sound_once("object.create", own);
     raise_in(folder_by_id(l->folder), "object.create", addr, "");
     for (struct folder *o = folders; o; o = o->next)
         if (!o->closing && !strcmp(o->path, l->dest) && !is_tree(o)) {

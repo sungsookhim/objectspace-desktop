@@ -16,7 +16,7 @@ fails=0
 for scheme in classic dark "high contrast"; do
     tag=$(echo "$scheme" | tr ' ' -)
     # First the desktop's notebook (a right click at 600,300 on the desktop,
-    # 650,382 its Properties, 818,204 the Background tab), closed with
+    # 650,382 its Properties, 782,204 the Background tab), closed with
     # Alt+F4; then Projects (icon at 54,30), which opens at 320,96 (640x480).
     # The pointer is parked at 700,600 before each shot (no tooltips).
     cat > "$S/script" <<EOS
@@ -27,7 +27,7 @@ for scheme in classic dark "high contrast"; do
 5.5 click 650 382
 7 move 700 600
 7.5 shot $OUT/$tag-notebook.png
-7.7 click 818 204
+7.7 click 782 204
 8.5 move 700 600
 9 shot $OUT/$tag-notebook-background.png
 9.2 key alt+F4

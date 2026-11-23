@@ -364,6 +364,14 @@ extern char known_desktop[PATH_MAX];
 
 void do_props(struct req *r, wpo_object *o);   /* wpsd_props.c */
 void props_init(void);
+/* A setup string ("key=value;...") applied to o, in order; false (and why
+ * in err) at the first refused. */
+bool apply_setup(wpo_object *o, const char *setup, char *err, size_t en);
+/* wpsd_actions.c: an event's actions on o (object-properties-design.md
+ * 2.4) run; its sound returned: NULL if none is set (the Sound object's),
+ * "" for none, else the sound. Caller frees. */
+char *fire_event(wpo_object *o, const char *path, const char *event, const char *display, const char *x11,
+                 const char *const *envs, size_t nenvs);
 char *scheme_titles(void);   /* wpsd_setup.c */
 void props_broadcast(const char *scope);   /* wpsd_props.c: defaults_changed */
 bool is_schemes_path(const char *folder);
@@ -379,6 +387,7 @@ void reply_error(struct client *c, int64_t id, const char *error, const char *me
 void put_object(cbuf *b, wpo_object *o);
 void prepare_work(void *arg)    /* worker */;
 void reply_ok_object(struct req *r, wpo_object *o, const wpo_value *result);
+void reply_ok_object_sound(struct req *r, wpo_object *o, const wpo_value *result, const char *sound);
 void prepare_done(void *arg)    /* loop */;
 void do_describe(struct client *c, int64_t id, const char *name);
 void reply_simple_ok(struct simple *s, const char *result);
