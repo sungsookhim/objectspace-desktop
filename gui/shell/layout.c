@@ -73,6 +73,8 @@ static int64_t *map_slot(struct map *m, const char *k, bool create)
     return &m->vals[j];
 }
 
+#define SPOT_NAMELESS 2   /* spot_taken: given while its name was not known */
+
 struct icon_layout {
     int cols;
     double cw, ch;
@@ -202,6 +204,7 @@ void layout_reset(icon_layout *l, int cols)
     l->placed = keep;
     l->cols = cols < 1 ? 1 : cols;
     if (l->spot_taken) memset(l->spot_taken, 0, l->nspots);
+    for (size_t i = 0; i < l->n; i++) l->spot_of[i] = -1;   /* (none kept: the grid starts again) */
     l->next_spot = 0;
     rows_reset(l);
 }
@@ -323,9 +326,20 @@ void layout_update(icon_layout *l, size_t n, layout_name_fn name_at, void *ctx, 
             continue;
         }
         int64_t *sv = name ? map_slot(&l->slots, name, false) : NULL;
+        int64_t had = full && i < l->n ? l->spot_of[i] : -1;
         if (sv && *sv >= 0) {
             give_spot(l, i, *sv);
             size_t r = (size_t)*sv / (size_t)l->cols;
+            if (r < first_row) first_row = r;
+        } else if (had >= 0 && (size_t)had < l->nspots && l->spot_item[had] == SIZE_MAX &&
+                   (!name || l->spot_taken[had] == SPOT_NAMELESS)) {
+            /* A spot given while its name was not known (a big folder keeps
+             * few pages of names): it keeps it, and the name gets it now.
+             * (It was given the next spot after all the others: the top of
+             * a big folder opened empty.) */
+            if (name) { *map_slot(&l->slots, name, true) = had; l->spot_taken[had] = 1; }
+            give_spot(l, i, had);
+            size_t r = (size_t)had / (size_t)l->cols;
             if (r < first_row) first_row = r;
         } else {
             pending[npending++] = i;
@@ -343,7 +357,7 @@ void layout_update(icon_layout *l, size_t n, layout_name_fn name_at, void *ctx, 
             l->spot_taken[l->next_spot] = 1;   /* under a placed icon */
         }
         int64_t spot = (int64_t)l->next_spot++;
-        l->spot_taken[spot] = 1;
+        l->spot_taken[spot] = name ? 1 : SPOT_NAMELESS;
         if (name) *map_slot(&l->slots, name, true) = spot;
         if (l->on_new && name) l->on_new(l->on_new_ctx, name);
         give_spot(l, i, spot);

@@ -144,8 +144,43 @@ TEST(locked_icons_stay_when_arranged)
     layout_free(l);
 }
 
+/* A big folder keeps few pages of names: icons laid out while their
+ * names were not known keep their spots through a full update (they were
+ * moved after all the others: the top of the folder empty). */
+static size_t known_from, known_to;
+static char bigname[1000][8];
+static const char *paged_name(void *ctx, size_t i) { (void)ctx; return i >= known_from && i < known_to ? bigname[i] : NULL; }
+
+TEST(spots_kept_while_names_are_not_known)
+{
+    for (size_t i = 0; i < 1000; i++) snprintf(bigname[i], sizeof bigname[i], "n%zu", i);
+    icon_layout *l = layout_new(100, 70);
+    layout_set_cols(l, 5);
+    known_from = 0, known_to = 128;               /* the first page's names */
+    layout_update(l, 1000, paged_name, NULL, true, NULL);
+    double x, y;
+    layout_pos(l, 500, &x, &y);
+    CHECK(x == 0 && y == 100 * 70);               /* item 500: row 100 */
+    known_from = 384, known_to = 512;             /* another page now */
+    layout_update(l, 1000, paged_name, NULL, true, NULL);
+    layout_pos(l, 0, &x, &y);
+    CHECK(x == 0 && y == 0);                      /* the first did not move */
+    layout_pos(l, 500, &x, &y);
+    CHECK(x == 0 && y == 100 * 70);               /* nor one named now */
+    layout_pos(l, 999, &x, &y);
+    CHECK(x == 400 && y == 199 * 70);             /* nor the last */
+    CHECK(found(l, 0, 0, 100, 70, 0));            /* the top shows them */
+    /* Arrange starts the grid again (none kept) */
+    layout_reset(l, 4);
+    layout_update(l, 1000, paged_name, NULL, true, NULL);
+    layout_pos(l, 5, &x, &y);
+    CHECK(x == 100 && y == 70);                   /* 4 columns now */
+    layout_free(l);
+}
+
 int main(void)
 {
+    RUN(spots_kept_while_names_are_not_known);
     RUN(spots_follow_names_not_indices);
     RUN(placed_icons_keep_their_place_and_block_spots);
     RUN(a_million_names);
