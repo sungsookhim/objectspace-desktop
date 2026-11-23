@@ -546,6 +546,51 @@ static void renamed(void *arg, const cv *reply)
     reload(f);   /* events follow too; this covers a title-only change */
 }
 
+static void rename_apply(struct folder *f, size_t i, const char *name);
+
+/* A name's extension: from its last dot (not a leading one), or "". */
+static const char *ext_of(const char *n)
+{
+    const char *d = strrchr(n, '.');
+    return d && d != n && d[1] ? d : n + strlen(n);
+}
+
+struct ext_q { long folder; char old[NAME_MAX + 1], use[NAME_MAX + 64], keep[NAME_MAX + 64]; };
+
+static void ext_answer(void *ctx, int choice)
+{
+    struct ext_q *q = ctx;
+    struct folder *f = folder_by_id(q->folder);
+    ssize_t i = f && !f->closing ? model_find(&f->m, q->old) : -1;
+    if (i >= 0 && (choice == 0 || choice == 1)) {
+        const char *name = choice == 0 ? q->use : q->keep;
+        if (strcmp(name, q->old)) rename_apply(f, (size_t)i, name);
+    }
+    free(q);
+}
+
+/* "report.txt" renamed "notes.md": Use .md (its type may change), Keep
+ * .txt ("notes.txt"), or Cancel; an extension taken away the same. True:
+ * asked (the dialog finishes it). */
+static bool ext_ask(struct folder *f, const char *old, const char *name)
+{
+    const char *oe = ext_of(old), *ne = ext_of(name);
+    if (!*oe || !strcasecmp(oe, ne)) return false;   /* (none before, or the same) */
+    struct ext_q *q = calloc(1, sizeof *q);
+    q->folder = f->id;
+    snprintf(q->old, sizeof q->old, "%s", old);
+    snprintf(q->use, sizeof q->use, "%s", name);
+    snprintf(q->keep, sizeof q->keep, "%.*s%s", (int)(ne - name), name, oe);
+    char msg[NAME_MAX * 3 + 200], use[96], keep[96];
+    if (*ne) snprintf(msg, sizeof msg, "Change the extension of \"%s\" from %s to %s?\nWhat opens it may change.", old, oe, ne);
+    else snprintf(msg, sizeof msg, "Remove the extension %s from \"%s\"?\nWhat opens it may change.", oe, old);
+    snprintf(use, sizeof use, *ne ? "Use %s" : "Remove %s", *ne ? ne : oe);
+    snprintf(keep, sizeof keep, "Keep %s", oe);
+    const char *buttons[] = { use, keep, "Cancel" };
+    last_dialog = ask("Rename", msg, buttons, 3, 1, ext_answer, q);
+    return true;
+}
+
 void src_rename(void *ctx, size_t i, const char *name)
 {
     struct folder *f = ctx;
@@ -572,6 +617,19 @@ void src_rename(void *ctx, size_t i, const char *name)
         }
     }
     if (old && !strcmp(old, name)) return;
+    /* its extension changed, as typed (extensions shown): asked first, as
+     * its type may change with it */
+    if (old && rw && rw->kind != UI_KIND_FOLDER && !rw->shadow && !rw->link && ext_ask(f, old, name)) return;
+    rename_apply(f, i, name);
+}
+
+/* The rename done: shown at once, its place kept, the service asked. */
+static void rename_apply(struct folder *f, size_t i, const char *name)
+{
+    char t[PATH_MAX];
+    target_of(f, i, t, sizeof t);
+    const char *old = row_name(f, i);
+    struct row *rw = is_tree(f) ? NULL : row_at(f, i);
     /* Shown at once (the service's answer and the change's event follow
      * in a moment; a refused rename reads the folder again, which puts
      * the old title back). */
