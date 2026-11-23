@@ -53,6 +53,7 @@ enum { P_NONE, P_NAMES, P_DETAILED };
 
 struct row { char *name, *title; ui_kind kind; int64_t size, mtime; bool shadow, in_use, link, tpl; char *target, *icon,
              *icon_open;   /* its own open icon (shown while it is open), or NULL */
+             bool open_hatch;   /* hatched while open, over the open icon too */
              float cellh;   /* its icon's cell with the whole title (0: not measured yet) */
              char *noext;   /* its title without the extension (Show file extensions off), made when shown */ };
 struct page { int state; bool requested; struct row rows[PAGE]; };

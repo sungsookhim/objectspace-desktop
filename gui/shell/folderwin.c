@@ -442,6 +442,8 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             dst->icon = ic && *ic ? strdup(ic) : NULL;
             const char *io = cv_text(it, "icon_open");   /* its own open icon */
             dst->icon_open = io && *io ? strdup(io) : NULL;
+            const cv *oh = cv_get(it, "open_hatch");
+            dst->open_hatch = oh && oh->k == CV_BOOL && oh->b;
             const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
             if (mk) dst->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");

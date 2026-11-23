@@ -39,6 +39,7 @@ typedef struct {
     char makes[64];          /* a built-in template: the class of what it makes */
     char icon[PATH_MAX];     /* its own icon (a PNG), or its shadow's target's; "": its kind's */
     char icon_open[PATH_MAX];   /* its own open icon, or its shadow's target's; "": none */
+    bool open_hatch;         /* hatched while open, over its open icon too */
 } wps_entry;
 
 typedef struct {

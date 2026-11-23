@@ -29,15 +29,15 @@ DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1 WPS_WALLPAPER=" 
      '$W' settings \"\$T/desk/Projects\" > \"\$T/page.log\" 2>&1" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 # The page itself: None takes the picture away; the palette (the colour
-# swatch at 554,312) gives a colour: green at 580,358.
+# swatch at 554,305) gives a colour: green at 580,351.
 cat > "$S/page" <<EOS
 3.5 click 600 300 right
 4.2 click 650 382
-5.5 click 782 194
-6.2 click 879 261
-7 click 554 312
+5.5 click 782 177
+6.2 click 879 245
+7 click 554 305
 7.8 shot $S/palette.png
-8 click 580 358
+8 click 580 351
 11 quit
 EOS
 DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=14 tests/comp/run.sh "$S/page" \

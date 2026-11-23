@@ -36,7 +36,8 @@ void list_reply(void *arg, const wps_page *pg)
                 }
                 bool link = e->detailed && !e->shadow && e->type == DT_LNK;
                 bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0], icon = e->detailed && e->icon[0];
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon : 2);
+                bool iopen = e->detailed && e->icon_open[0], hatch = e->detailed && e->open_hatch;
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon + iopen + hatch : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -58,7 +59,8 @@ void list_reply(void *arg, const wps_page *pg)
                     if (tpl) { cb_text(&b, "template"); cb_bool(&b, true); }
                     if (makes) { cb_text(&b, "makes"); cb_text(&b, e->makes); }   /* a built-in template */
                     if (icon) { cb_text(&b, "icon"); cb_text(&b, e->icon); }       /* its own icon (a PNG) */
-                    if (e->detailed && e->icon_open[0]) { cb_text(&b, "icon_open"); cb_text(&b, e->icon_open); }   /* its own open icon */
+                    if (iopen) { cb_text(&b, "icon_open"); cb_text(&b, e->icon_open); }   /* its own open icon */
+                    if (hatch) { cb_text(&b, "open_hatch"); cb_bool(&b, true); }   /* hatched over it too */
                 }
             }
             send_frame(r->c, &b);

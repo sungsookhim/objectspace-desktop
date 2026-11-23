@@ -27,7 +27,7 @@ for scheme in classic dark "high contrast"; do
 5.5 click 650 382
 7 move 700 600
 7.5 shot $OUT/$tag-notebook.png
-7.7 click 782 204
+7.7 click 782 177
 8.5 move 700 600
 9 shot $OUT/$tag-notebook-background.png
 9.2 key alt+F4

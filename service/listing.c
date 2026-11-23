@@ -131,6 +131,7 @@ static bool special_icon(const char *path, char *out, size_t n);
 
 static void central_details(wps_entry *e)
 {
+    int64_t tv0 = 0;
     wps_loaded ld;
     wps_load(e->name + 1, false, &ld);
     e->detailed = true;
@@ -147,6 +148,7 @@ static void central_details(wps_entry *e)
     t = NULL;
     if (op && wps_props_str(op, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
     free(t);
+    if (op && wps_props_int(op, "open_hatch", &tv0) && tv0) e->open_hatch = true;
     int64_t tv;
     if (op && wps_props_int(op, "template", &tv) && tv) e->is_template = true;
     t = NULL;
@@ -174,6 +176,7 @@ static void central_details(wps_entry *e)
             t = NULL;
             if (!e->icon_open[0] && tp && wps_props_str(tp, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
             free(t);
+            if (tp && wps_props_int(tp, "open_hatch", &tv0) && tv0) e->open_hatch = true;
             if (!e->title[0] && tg.desk_name[0]) snprintf(e->title, sizeof e->title, "%s", tg.desk_name);   /* a program: its Name */
             if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
             /* the Trash Can's shadow: empty or full, unless it has its own */
@@ -344,6 +347,7 @@ static void detail_work(void *arg)
             if (wps_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
             free(t);
             int64_t tv;
+            if (wps_props_int(&ps, "open_hatch", &tv) && tv) e->open_hatch = true;
             if (wps_props_int(&ps, "template", &tv) && tv) e->is_template = true;
             wps_props_free(&ps);
         }
@@ -397,6 +401,8 @@ static void detail_work(void *arg)
                     t = NULL;
                     if (!e->icon_open[0] && wps_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
                     free(t);
+                    int64_t hv;
+                    if (wps_props_int(&ps, "open_hatch", &hv) && hv) e->open_hatch = true;
                     wps_props_free(&ps);
                 }
             } else {

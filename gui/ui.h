@@ -524,7 +524,8 @@ typedef struct {
     bool is_template;          /* a template: drawn on a pad of paper (OS/2) */
     bool in_use;               /* in-use emphasis (OS/2): a folder with a window open (drawn open), or a file open in a program */
     cairo_surface_t *image;    /* its own icon (an app's), drawn instead of the kind's; NULL: the kind's */
-    bool open_icon;            /* in use, and image is its open icon: drawn without the in-use emphasis */
+    bool open_icon;            /* in use, and image is its open icon: drawn without the in-use emphasis, */
+    bool hatch_over;           /* ... or with it over the icon (the object's Hatched while open) */
     /* Tree view only. */
     int depth;
     bool expandable, expanded;

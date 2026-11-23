@@ -420,8 +420,9 @@ static void in_use(cairo_t *cr, double x, double y, double size)
     cairo_rectangle(cr, x, y, size, size);
     cairo_clip(cr);
     ui_set_color(cr, ui_scheme_now.shadow);
-    cairo_set_line_width(cr, 1);
-    for (double d = -size; d < size; d += 4) {
+    double k = size >= 48 ? 2 : 1;   /* (large icons: lines twice as wide, twice as far apart) */
+    cairo_set_line_width(cr, k);
+    for (double d = -size; d < size; d += 4 * k) {
         cairo_move_to(cr, x + d, y + size);
         cairo_line_to(cr, x + d + size, y);
     }
@@ -676,6 +677,7 @@ static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double
         return;
     }
     if (it->in_use && !it->open_icon) in_use(cr, x, y, sz);
+    bool over = it->in_use && it->open_icon && it->hatch_over;
     if (it->image && cairo_surface_status(it->image) == CAIRO_STATUS_SUCCESS) {
         double iw = cairo_image_surface_get_width(it->image), ih = cairo_image_surface_get_height(it->image);
         double k = sz / (iw > ih ? iw : ih);
@@ -688,6 +690,7 @@ static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double
         cairo_restore(cr);
     } else if (it->in_use && it->kind == UI_KIND_FOLDER) open_folder_icon(cr, x, y, sz);
     else draw_icon(cr, it->kind == UI_KIND_LINK ? UI_KIND_FILE : it->kind, x, y, sz);
+    if (over) in_use(cr, x, y, sz);   /* (over its open icon: it stands out on anything) */
     if (it->link || it->kind == UI_KIND_LINK) link_mark(cr, x, y, sz);
 }
 

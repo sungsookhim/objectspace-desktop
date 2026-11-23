@@ -20,10 +20,10 @@ method wpSetFoldersExt(string on) -> bool
 method wpQueryFoldersTheme() -> string
 method wpSetFoldersTheme(string theme) -> bool
 method wpQueryIconThemes() -> string
-property icon_theme : choice = "WPS (flat)" page "Icons" label "Icon theme" get wpQueryFoldersTheme set wpSetFoldersTheme options wpQueryIconThemes
+property icon_theme : choice = "WPS (flat)" page "Theme" label "Icon theme" get wpQueryFoldersTheme set wpSetFoldersTheme options wpQueryIconThemes
 method wpQueryFoldersIconSet() -> string
 method wpSetFoldersIconSet(string set) -> bool
-property icon_set : choice "Small,Default,Large" = "Default" page "Icons" label "Icon size (Small 32/16, Default 64/32/16, Large 96/48/24)" get wpQueryFoldersIconSet set wpSetFoldersIconSet
+property icon_set : choice "Small,Default,Large" = "Default" page "Theme" label "Icon size (Small 32/16, Default 64/32/16, Large 96/48/24)" get wpQueryFoldersIconSet set wpSetFoldersIconSet
 method wpQueryFoldersFont() -> string
 method wpSetFoldersFont(string font) -> bool
 property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" get wpQueryFoldersHidden set wpSetFoldersHidden

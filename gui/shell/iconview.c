@@ -89,6 +89,7 @@ void src_item(void *ctx, size_t i, ui_item *out)
         else if (!r->icon && r->kind == UI_KIND_FOLDER) snprintf(on, sizeof on, "theme:folder-open");
         if (!out->image && on[0]) out->image = icons_object(f->icon_theme, on, px);
         out->open_icon = out->image != NULL;
+        out->hatch_over = r->open_hatch;   /* (hatched over it too, if it asks) */
     }
     if (!out->image) out->image = icons_object(f->icon_theme, r->icon, px);   /* its own icon, or WPS's (a theme's) */
     if (!out->image && r->kind == UI_KIND_PROGRAM) {
