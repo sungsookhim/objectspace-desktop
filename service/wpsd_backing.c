@@ -37,10 +37,16 @@ static char *type_of(wpo_object *o)
 
 static void clean_name(char *n) { for (; *n; n++) if (*n == ',' || *n == '\t' || *n == '\n') *n = ' '; }
 
+static int by_name(const void *x, const void *y) { return strcoll(((const wps_app *)x)->name, ((const wps_app *)y)->name); }
+
+/* (by name, not with the default first: a choice's options keep their
+ * places when the default changes) */
 char *mimeapps_options(const char *mime)
 {
     wps_app *a = calloc(64, sizeof *a);
     int n = a ? wps_apps_for_mime(mime, a, 64) : 0;
+    for (int i = 0; i < n; i++) clean_name(a[i].name);
+    if (n > 1) qsort(a, (size_t)n, sizeof *a, by_name);
     size_t cap = 4096, len = 0;
     char *out = malloc(cap);
     out[0] = 0;

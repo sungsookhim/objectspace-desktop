@@ -1174,6 +1174,17 @@ void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n)
                 if (strcmp(f->key, d->key)) continue;
                 value_free(&f->v);
                 value_copy(&f->v, &d->value);
+                /* a choice's options may have changed too (a type's programs) */
+                if (d->choices && d->nchoices) {
+                    for (size_t c = 0; c < f->nchoices; c++) free(f->choices[c]);
+                    free(f->choices);
+                    f->nchoices = d->nchoices;
+                    f->choices = calloc(f->nchoices, sizeof *f->choices);
+                    for (size_t c = 0; c < f->nchoices; c++) f->choices[c] = strdup(d->choices[c]);
+                }
+                f->own = d->own;
+                free(f->from);
+                f->from = d->from && *d->from ? strdup(d->from) : NULL;
                 entry_from_value(f);
             }
         }
