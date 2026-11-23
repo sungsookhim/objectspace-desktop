@@ -40,6 +40,11 @@ void wps_jobs_shutdown(bool logout);
 /* Selections. Returns the selection ID, or -1. `names` may be NULL. */
 int64_t wps_select(const char *folder, bool all, const char *const *names, size_t n);
 
+/* Each path of a selection (its folder's entries but the excepted ones, for
+ * "all"), until `fn` returns false; false if the selection is not known or
+ * `fn` stopped it. */
+bool wps_selection_each(int64_t selection, bool (*fn)(const char *path, void *user), void *user);
+
 /* Start a move or copy of a selection into `dest`. Returns the job ID, or
  * -1 with a message. */
 int64_t wps_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen);

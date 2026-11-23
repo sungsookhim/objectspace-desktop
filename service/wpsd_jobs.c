@@ -67,6 +67,47 @@ static void fire_selection(struct client *c, int64_t sid, const char *event)
     }
 }
 
+bool no_delete_of(const char *target, char *why, size_t n)
+{
+    wps_loaded ld;
+    wps_load(target, false, &ld);
+    wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);   /* (borrowed) */
+    char orig[WPS_ID_LEN + 8] = "";
+    if (!ld.err && ld.shadow_of[0]) snprintf(orig, sizeof orig, "id:%s", ld.shadow_of);   /* (its original, by ID) */
+    wps_loaded_free(&ld);
+    if (!o || !wpo_is_a(o, WPObjectClass)) return false;
+    char *v = WPObject_wpQueryProperty(o, "no_delete");
+    bool on = v && (!strcmp(v, "1") || !strcmp(v, "true"));
+    free(v);
+    if (on) {
+        const char *t = WPObject_data(o)->title, *b = strrchr(target, '/');
+        if ((!t || !*t) && orig[0]) {   /* a shadow: its original's title */
+            wps_load(orig, false, &ld);
+            wpo_object *so = ld.err ? NULL : wps_object_from_loaded(&ld);
+            wps_loaded_free(&ld);
+            if (so && wpo_is_a(so, WPObjectClass)) t = WPObject_data(so)->title;
+        }
+        snprintf(why, n, "%s cannot be deleted: its General page's Prevent delete is on", t && *t ? t : b ? b + 1 : target);
+    }
+    return on;
+}
+
+struct nd { char *why; size_t n; bool hit; };
+
+static bool nd_one(const char *path, void *u)
+{
+    struct nd *x = u;
+    x->hit = no_delete_of(path, x->why, x->n);
+    return !x->hit;   /* (the first one stops the walk) */
+}
+
+bool no_delete_in(int64_t selection, char *why, size_t n)
+{
+    struct nd x = { why, n, false };
+    wps_selection_each(selection, nd_one, &x);
+    return x.hit;
+}
+
 bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
 {
     int64_t job = -1;
@@ -89,7 +130,13 @@ bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
     } else if (!strcmp(op, "move") || !strcmp(op, "copy")) {
         int64_t sel = -1;
         const char *dest = cv_text(msg, "dest");
-        char err[128] = "";
+        char err[128] = "", why[600];
+        /* (a move into the Trash Can is a trash: refused for what may not be deleted) */
+        if (cv_int(msg, "selection", &sel) && dest && !strcmp(op, "move") && wps_is_trash_files_dir(dest) &&
+            no_delete_in(sel, why, sizeof why)) {
+            reply_error(c, id, "protected", why);
+            return true;
+        }
         int64_t jid = cv_int(msg, "selection", &sel) && dest ? wps_job_start(op, sel, dest, err, sizeof err) : -1;
         const cv *pos = cv_get(msg, "positions");   /* [{name, x, y}]: where dropped items go */
         if (jid >= 0 && pos && pos->k == CV_ARRAY && pos->n) {
@@ -114,8 +161,12 @@ bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg)
     } else if (!strcmp(op, "trash") || !strcmp(op, "delete")) {
         /* trash: into the trash of each item's filesystem; delete: for good */
         int64_t sel = -1;
-        char err[128] = "";
-        if (cv_int(msg, "selection", &sel)) fire_selection(c, sel, !strcmp(op, "trash") ? "object.trash" : "object.delete");
+        char err[128] = "", why[600];
+        if (cv_int(msg, "selection", &sel) && no_delete_in(sel, why, sizeof why)) {   /* (all refused: nothing goes) */
+            reply_error(c, id, "protected", why);
+            return true;
+        }
+        if (sel >= 0) fire_selection(c, sel, !strcmp(op, "trash") ? "object.trash" : "object.delete");
         int64_t jid = sel >= 0 ? wps_job_start(op, sel, "", err, sizeof err) : -1;
         if (jid < 0) reply_error(c, id, "bad request", err[0] ? err : "trash/delete needs a selection");
         else reply_int(c, id, jid);

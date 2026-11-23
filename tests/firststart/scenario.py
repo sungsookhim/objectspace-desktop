@@ -104,9 +104,35 @@ if PART == "restore":
     def vobj(it):
         return it["name"][1:]
 
-    # the user's mishaps: Programs dropped on itself, System thrown away,
-    # Startup and the Minimized Window Viewer deleted, the LaunchPad
-    # object moved to the desktop
+    # Prevent delete (step 11, 0.4): WPS's own objects refuse the Trash
+    # Can and delete, as the desktop's shadows of them do; a file of the
+    # user's with it on too, as a trash job and as a move into the Trash Can
+    r = c.request(op="vtrash", target=vobj(shadows_of(DESK, SYS)[0]))
+    check("prevent delete: System's shadow refuses the Trash Can", r.get("error") == "protected" and "My System" in r.get("message", ""), r)
+    r = c.request(op="vdelete", target=vobj(titled(SYS, "Minimized Window Viewer")[0]))
+    check("prevent delete: the viewer refuses delete", r.get("error") == "protected", r)
+    with open(DESK + "/keep.txt", "w") as f:
+        f.write("x")
+    c.request(op="settings_set", target=DESK + "/keep.txt", values={"no_delete": True})
+    sid = c.request(op="select", folder=DESK, items=["keep.txt"]).get("result")
+    r = c.request(op="trash", selection=sid)
+    check("prevent delete: a file's own, trash refused", r.get("error") == "protected" and "keep.txt" in r.get("message", ""), r)
+    sid = c.request(op="select", folder=DESK, all=True, **{"except": []}).get("result")
+    r = c.request(op="delete", selection=sid)
+    check("prevent delete: all of the desktop, delete refused (nothing goes)", r.get("error") == "protected" and os.path.exists(DESK + "/keep.txt"), r)
+    sid = c.request(op="select", folder=DESK, items=["keep.txt"]).get("result")
+    r = c.request(op="move", selection=sid, dest=TRASH)
+    check("prevent delete: moved into the Trash Can, refused", r.get("error") == "protected", r)
+    c.request(op="settings_set", target=DESK + "/keep.txt", values={"no_delete": False})
+    sid = c.request(op="select", folder=DESK, items=["keep.txt"]).get("result")
+    r = c.request(op="trash", selection=sid)
+    check("prevent delete off: trashed", r.get("ok"), r)
+    # the user's mishaps (Prevent delete turned off first): Programs
+    # dropped on itself, System thrown away, Startup and the Minimized
+    # Window Viewer deleted, the LaunchPad object moved to the desktop
+    for t in (vobj(shadows_of(DESK, SYS)[0]), vobj(shadows_of(SYS, T + "/xdg/config/autostart")[0]),
+              vobj(titled(SYS, "Minimized Window Viewer")[0])):
+        c.request(op="settings_set", target=t, values={"no_delete": False})
     r = c.request(op="vmove", target=vobj(shadows_of(DESK, PROG)[0]), folder=PROG)
     check("(Programs moved into Programs)", r.get("ok"), r)
     r = c.request(op="vtrash", target=vobj(shadows_of(DESK, SYS)[0]))
@@ -127,6 +153,8 @@ if PART == "restore":
     check("Startup: made again", len(shadows_of(SYS, AUTO)) == 1, items(SYS))
     check("the viewer: made again", len(titled(SYS, "Minimized Window Viewer")) == 1, items(SYS))
     check("the LaunchPad object: back in System", len(titled(SYS, "LaunchPad")) == 1 and not titled(DESK, "LaunchPad"))
+    r = c.request(op="vdelete", target=vobj(titled(SYS, "Minimized Window Viewer")[0]))
+    check("restored: Prevent delete on again", r.get("error") == "protected", r)
     r = c.request(op="restore_defaults", desktop=DESK)
     check("again: nothing to do", r.get("ok") and (r.get("result") or {}).get("restored") == [], r)
     # renamed outside WPS (a shell), wpsd running: moved back at once
@@ -149,7 +177,7 @@ check("first start answers its step", r.get("result") == (6 if PART == "old" els
 check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_shadows(SYS))
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
-    check("the desktop is at step 10", "version 10" in f.read())
+    check("the desktop is at step 11", "version 11" in f.read())
 COMP = SYS + "/Storages"
 if PART == "old":   # (run.sh made 0.2's Computer, with a file in it)
     check("0.2's Computer is moved to Storages, its contents with it", os.path.exists(COMP + "/kept.txt")
@@ -172,7 +200,7 @@ for own in (DESK, TPL):   # XDG user folders: their titles only (user-dirs.dirs 
     check("renaming %s: its title only" % os.path.basename(own), r.get("ok") and os.path.isdir(own) and title_of(own) == "Renamed", r)
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
-check("a second start changes nothing", r.get("result") == 10 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
+check("a second start changes nothing", r.get("result") == 11 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
       and len(shadows_of(COMP, os.environ["HOME"])) == 1, r)
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

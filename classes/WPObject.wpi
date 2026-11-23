@@ -42,6 +42,7 @@ event object.open, object.create, object.trash, object.delete
 # Its General and Icon pages.
 property title : text page General label Title get wpQueryTitle set wpSetTitle
 property template : checkbox page General label Template get wpQueryTemplate set wpSetTemplate
+property no_delete : checkbox page General label "Prevent delete (not to the Trash Can, not deleted)"
 property icon : icon page Icon label "Base icon" get wpQueryIcon set wpSetIcon
 # Its open icon (0.4 step 3; OS/2's animation icon): shown while it is open
 # (a folder's window, a program running); "": the theme's, or the in-use look.

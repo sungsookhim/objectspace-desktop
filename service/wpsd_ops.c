@@ -391,6 +391,8 @@ static bool op_vtrash(struct client *c, int64_t id, const char *op, cv *msg)
         reply_error(c, id, "bad request", "vtrash needs a central object (vobj:ID)");
         return false;
     }
+    char why[600];
+    if (no_delete_of(t, why, sizeof why)) { reply_error(c, id, "protected", why); return false; }
     struct vmove_job *j = calloc(1, sizeof *j);
     j->c = c; c->refs++;
     j->id = id;
@@ -413,6 +415,8 @@ static bool op_vdelete(struct client *c, int64_t id, const char *op, cv *msg)
         reply_error(c, id, "bad request", "vdelete needs a central object (vobj:ID)");
         return false;
     }
+    char why[600];
+    if (no_delete_of(t, why, sizeof why)) { reply_error(c, id, "protected", why); return false; }
     struct vmove_job *j = calloc(1, sizeof *j);
     j->c = c; c->refs++;
     j->id = id;
@@ -431,6 +435,11 @@ static bool op_vmove(struct client *c, int64_t id, const char *op, cv *msg)
     const cv *cp = cv_get(msg, "copy");
     if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN || !dest) {
         reply_error(c, id, "bad request", "vmove needs a central object (vobj:ID) and a folder");
+        return false;
+    }
+    char why[600];
+    if ((!cp || cp->k != CV_BOOL || !cp->b) && wps_is_trash_files_dir(dest) && no_delete_of(t, why, sizeof why)) {
+        reply_error(c, id, "protected", why);
         return false;
     }
     struct vmove_job *j = calloc(1, sizeof *j);

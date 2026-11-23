@@ -64,6 +64,50 @@ int64_t wps_select(const char *folder, bool all, const char *const *names, size_
     return s->id;
 }
 
+bool wps_selection_each(int64_t selection, bool (*fn)(const char *path, void *user), void *user)
+{
+    /* (a copy: the walk calls out, and may take long) */
+    char folder[PATH_MAX];
+    bool all = false;
+    char **names = NULL;
+    size_t n = 0;
+    bool found = false;
+    pthread_mutex_lock(&mu);
+    for (struct selection *s = selections; s; s = s->next) {
+        if (s->id != selection) continue;
+        snprintf(folder, sizeof folder, "%s", s->folder);
+        all = s->all;
+        names = calloc(s->n + 1, sizeof *names);
+        for (size_t i = 0; i < s->n; i++) names[n++] = strdup(s->names[i]);
+        found = true;
+        break;
+    }
+    pthread_mutex_unlock(&mu);
+    if (!found) return false;
+    bool go = true;
+    char path[PATH_MAX * 2];
+    if (all) {
+        DIR *d = opendir(folder);
+        for (struct dirent *e; go && d && (e = readdir(d));) {
+            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+            bool except = false;
+            for (size_t i = 0; i < n && !except; i++) except = !strcmp(names[i], e->d_name);
+            if (except) continue;
+            snprintf(path, sizeof path, "%s/%s", folder, e->d_name);
+            go = fn(path, user);
+        }
+        if (d) closedir(d);
+    } else {
+        for (size_t i = 0; i < n && go; i++) {
+            snprintf(path, sizeof path, "%s/%s", folder, names[i]);
+            go = fn(path, user);
+        }
+    }
+    for (size_t i = 0; i < n; i++) free(names[i]);
+    free(names);
+    return go;
+}
+
 /* "all" or "items", then one name per line: the journal's form. */
 static char *encode_selection(const struct selection *s)
 {

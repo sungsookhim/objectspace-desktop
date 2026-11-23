@@ -249,7 +249,7 @@ struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*go
  *  10 (0.3): titles (the owner's): System "My System - <host name>",
  *      Computer "My Storages" (unless titled already).
  * After it, the default objects in place are noted (restore_defaults). */
-#define FIRST_START_VERSION 10
+#define FIRST_START_VERSION 11
 
 struct first_start {
     struct client *c;
@@ -385,6 +385,11 @@ char *fire_event(wpo_object *o, const char *path, const char *event, const char 
                  const char *const *envs, size_t nenvs);
 /* ... in the session client c last opened something in (NULL: none). */
 char *fire_event_for(struct client *c, wpo_object *o, const char *path, const char *event);
+/* Prevent delete (its General page, no_delete): true if `target` (a path
+ * or vobj:ID) has it on, with a message naming it in `why`. */
+bool no_delete_of(const char *target, char *why, size_t n);
+/* The same for every object of a selection (the first one found). */
+bool no_delete_in(int64_t selection, char *why, size_t n);
 void client_note_session(struct client *c, const char *display, const char *x11, const char *const *envs, size_t nenvs);
 char *scheme_titles(void);   /* wpsd_setup.c */
 void props_broadcast(const char *scope);   /* wpsd_props.c: defaults_changed */

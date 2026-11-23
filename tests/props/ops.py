@@ -48,7 +48,7 @@ check("... a choice by its number", get(P, "sort_key") == "type", get(P, "sort_k
 pr = props(P)
 check("props: own values say so", pr.get("bg_color", {}).get("origin") == "object", pr.get("bg_color"))
 check("props: others are defaults", pr.get("bg_image", {}).get("origin") == "default", pr.get("bg_image"))
-check("props: the class chain, the root's first", list(pr)[:3] == ["title", "template", "icon"], list(pr)[:5])
+check("props: the class chain, the root's first", list(pr)[:3] == ["title", "template", "no_delete"], list(pr)[:5])
 s = c.request(op="settings", target=P).get("result") or []
 fields = {f["key"]: f["value"] for pg in s for f in pg["fields"]}
 check("the notebook shows what set set", fields.get("bg_color") == "#336699" and fields.get("bg_mode") == 1, fields.get("bg_mode"))

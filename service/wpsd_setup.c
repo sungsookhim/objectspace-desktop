@@ -198,6 +198,8 @@ void first_start_work(void *arg)
     }
 }
 
+static bool protect_pending;   /* first-start step 11: Prevent delete, in defaults_done */
+
 /* My System - <host name> and My Storages, unless they have titles (the
  * user's, or these): at step 10, and again for folders made anew (gone
  * from outside, put back by Restore Desktop or wpsd's start). */
@@ -269,6 +271,7 @@ void first_start_done(void *arg)
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
         if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
+        if (j->from < 11) protect_pending = true;   /* step 11 (0.4): Prevent delete, once they are noted (defaults_done) */
         const char *home = getenv("HOME");
         if (j->from < 9 && home && *home) {   /* step 9: the home folder in Computer */
             char comp[PATH_MAX], drv[PATH_MAX + 8];
@@ -835,9 +838,85 @@ static void defaults_work(void *arg)
     wps_loaded_free(&sy);
 }
 
+/* First-start step 11 (0.4), and Restore Desktop: WPS's own objects get
+ * Prevent delete (no_delete, their General page; the user may turn it
+ * off) - its folders, the default objects and the desktop's shadows of
+ * them, the settings objects. (protect_pending: set by the first start) */
+
+static void protect(const char *target)
+{
+    wps_loaded ld;
+    wps_load(target, false, &ld);
+    wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);   /* (borrowed) */
+    wps_loaded_free(&ld);
+    char err[128];
+    if (o && wpo_is_a(o, WPObjectClass) && !apply_setup(o, "no_delete=1", err, sizeof err))
+        log_msg("prevent delete: %s: %s", target, err);
+}
+
+static void protect_defaults(const char *desk)
+{
+    char t[PATH_MAX + 16], drv[PATH_MAX + 8], home[PATH_MAX];
+    system_dir(t, sizeof t); protect(t);
+    setup_dir(t, sizeof t); protect(t);
+    data_dir("Programs", t, sizeof t); protect(t);
+    wps_trash_home(home, sizeof home);
+    snprintf(t, sizeof t, "%s/files", home); protect(t);
+    if (wps_templates_dir()[0]) protect(wps_templates_dir());
+    autostart_dir(t, sizeof t); protect(t);
+    computer_dirs(t, sizeof t, drv, sizeof drv); protect(t); protect(drv);
+    /* the default objects (central: their shadows, the viewer, Restore Desktop), as noted */
+    char sys[PATH_MAX];
+    system_dir(sys, sizeof sys);
+    wps_loaded sy;
+    wps_load(sys, true, &sy);
+    if (!sy.err && sy.id[0]) {
+        wps_props known;
+        wps_props_init(&known);
+        wps_db_get_class(db, sy.vol, DEFAULTS_LOC, "WPS", &known);
+        struct defobj d[NDEFAULTS];
+        int n = defaults_list(desk, d);
+        for (int i = 0; i < n; i++) {
+            char *id = NULL;
+            if (wps_props_str(&known, d[i].name, &id) && id && strlen(id) == WPS_ID_LEN) {
+                snprintf(t, sizeof t, "vobj:%s", id);
+                protect(t);
+            }
+            free(id);
+        }
+        wps_props_free(&known);
+    }
+    wps_loaded_free(&sy);
+    /* the settings objects (System Setup's, and those in System) */
+    setup_dir(t, sizeof t);
+    wps_loaded fl;
+    wps_load(t, false, &fl);
+    if (!fl.err && fl.id[0]) {
+        wps_props known;
+        wps_props_init(&known);
+        char sloc[WPS_ID_LEN + 8];
+        snprintf(sloc, sizeof sloc, "setup:%s", fl.id);
+        wps_db_get_class(db, fl.vol, sloc, "WPS", &known);
+        for (size_t i = 0; i < NSETUP; i++) {
+            char *id = NULL;
+            if (wps_props_str(&known, setup_classes[i][0], &id) && id && strlen(id) == WPS_ID_LEN) {
+                snprintf(t, sizeof t, "vobj:%s", id);
+                protect(t);
+            }
+            free(id);
+        }
+        wps_props_free(&known);
+    }
+    wps_loaded_free(&fl);
+}
+
 static void defaults_done(void *arg)
 {
     struct defaults_job *j = arg;
+    if ((protect_pending || j->restore) && j->desk[0] && !j->no_desktop) {
+        protect_pending = false;
+        protect_defaults(j->desk);
+    }
     for (int i = 0; i < j->nev; i++) {
         if (j->ev[i].old_id[0]) {
             wps_central_forget(j->ev[i].old_id);
