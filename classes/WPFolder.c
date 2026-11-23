@@ -47,6 +47,21 @@ void WPFolder__wpRestoreProperties(wpo_object *self)
     WPFolder_data(self)->sort_order = wps_state_get_int(self, "WPFolder", "sort", &v) ? (int)v : 0;
     v = 0;
     WPFolder_data(self)->local_objects = wps_state_get_int(self, "WPFolder", "local", &v) ? (int)v : 0;
+    /* 0.3's sort and columns, made the properties they are now (0.4): the
+     * sort as its choice (it was -1 none, 0 name ... 3 last write), the
+     * columns one each (a bitmask) - shared by all folders through Class... */
+    static const char *const sorts[] = { "name", "type", "size", "last write" };
+    if (wps_state_get_int(self, "WPFolder", "sort_key", &v)) {
+        wps_state_put_str(self, "WPFolder", "sort_key", v >= 0 && v <= 3 ? sorts[v] : "none");
+        WPObject_wpSaveDeferred(self);
+    }
+    int64_t cols;
+    if (wps_state_get_int(self, "WPFolder", "cols", &cols)) {
+        static const char *const keys[] = { "col_name", "col_type", "col_size", "col_date" };
+        for (int i = 0; i < 4; i++) wps_state_put_int(self, "WPFolder", keys[i], (cols >> i) & 1);
+        wps_state_remove(self, "WPFolder", "cols");
+        WPObject_wpSaveDeferred(self);
+    }
 }
 
 /* Positions are keyed by the child's object ID, so they survive renames and
@@ -159,11 +174,8 @@ wpo_pending *WPFolder__wpPopulate(wpo_object *self)
 
 bool WPFolder__wpSetSortKey(wpo_object *self, int64_t choice)
 {
-    if (choice < 0 || choice > 4) return false;
-    wps_state_put_int(self, "WPFolder", "sort_key", choice - 1);   /* (-1: none, the folder's own order) */
-    WPObject_wpSaveDeferred(self);
-    WPObject_wpObjectChanged(self);
-    return true;
+    static const char *const opts[] = { "none", "name", "type", "size", "last write" };
+    return choice >= 0 && choice <= 4 && WPObject_wpSetProperty(self, "sort_key", opts[choice]);
 }
 
 bool WPFolder__wpSetSortDesc(wpo_object *self, bool on)
@@ -177,19 +189,12 @@ bool WPFolder__wpSetSortDesc(wpo_object *self, bool on)
 /* "name=1", "type=0", ...: one column on or off */
 bool WPFolder__wpSetColumn(wpo_object *self, const char *which_on)
 {
-    static const char *const names[] = { "name", "type", "size", "date" };
+    /* "name=1": its column property (col_name, ...) */
     const char *eq = which_on ? strchr(which_on, '=') : NULL;
-    if (!eq) return false;
-    int bit = -1;
-    for (int i = 0; i < 4; i++) if ((size_t)(eq - which_on) == strlen(names[i]) && !strncmp(which_on, names[i], strlen(names[i]))) bit = i;
-    if (bit < 0) return false;
-    int64_t cols = 15;
-    wps_state_get_int(self, "WPFolder", "cols", &cols);
-    cols = eq[1] == '1' ? cols | (1 << bit) : cols & ~(1 << bit);
-    wps_state_put_int(self, "WPFolder", "cols", cols);
-    WPObject_wpSaveDeferred(self);
-    WPObject_wpObjectChanged(self);
-    return true;
+    if (!eq || eq - which_on > 8) return false;
+    char key[16];
+    snprintf(key, sizeof key, "col_%.*s", (int)(eq - which_on), which_on);
+    return WPObject_wpSetProperty(self, key, eq[1] == '1' ? "1" : "0");
 }
 
 bool WPFolder__wpSetColWidths(wpo_object *self, const char *widths)
@@ -242,41 +247,12 @@ bool WPFolder__wpSetBgGnome(wpo_object *self, bool on)
 
 /* ---- its pages' properties (WPFolder.wpi) */
 
-int64_t WPFolder__wpQuerySortKey(wpo_object *self)
-{
-    int64_t key = -1;
-    wps_state_get_int(self, "WPFolder", "sort_key", &key);
-    return key + 1;   /* the choice: 0 none, 1 name, ... */
-}
-
 bool WPFolder__wpQueryIsDesktop(wpo_object *self)
 {
     const char *path = wpo_is_a(self, WPFileSystemClass) ? WPFileSystem_data(self)->path : NULL;
     return path && wps_is_desktop && wps_is_desktop(path);
 }
 
-static bool col_on(wpo_object *self, int bit)
-{
-    int64_t cols = 15;
-    wps_state_get_int(self, "WPFolder", "cols", &cols);
-    return (cols & (1 << bit)) != 0;
-}
-
-static bool col_set(wpo_object *self, const char *name, bool on)
-{
-    char a[16];
-    snprintf(a, sizeof a, "%s=%d", name, on);
-    return WPFolder_wpSetColumn(self, a);
-}
-
-bool WPFolder__wpQueryColName(wpo_object *self) { return col_on(self, 0); }
-bool WPFolder__wpQueryColType(wpo_object *self) { return col_on(self, 1); }
-bool WPFolder__wpQueryColSize(wpo_object *self) { return col_on(self, 2); }
-bool WPFolder__wpQueryColDate(wpo_object *self) { return col_on(self, 3); }
-bool WPFolder__wpSetColName(wpo_object *self, bool on) { return col_set(self, "name", on); }
-bool WPFolder__wpSetColType(wpo_object *self, bool on) { return col_set(self, "type", on); }
-bool WPFolder__wpSetColSize(wpo_object *self, bool on) { return col_set(self, "size", on); }
-bool WPFolder__wpSetColDate(wpo_object *self, bool on) { return col_set(self, "date", on); }
 
 char *WPFolder__wpclsQueryTitle(wpo_object *self)
 {

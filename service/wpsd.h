@@ -100,6 +100,7 @@ struct req {
     wps_loaded shadow_target;    /* a shadow's target, when the target is a shadow */
     char *remote_text;           /* a plug-in's answer, for menus (and its settings pages) */
     bool remote_done, remote_ok; /* a plug-in handled it (menu_select, a setter) */
+    char *open_with;             /* a data file's Open With items, made on the worker (menu) */
     int nobj;
     char objpath[MAX_ARGS][PATH_MAX];
     wps_loaded *objs;

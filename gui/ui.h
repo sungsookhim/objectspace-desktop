@@ -352,6 +352,9 @@ void ui_menu_items_free(ui_menu_item *items, size_t n);
  * is asked by its id too. Drawn as ui_draw_item_icon draws it. */
 void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                          ui_menu_fn fn, void *arg, bool (*icon_fn)(void *arg, int64_t id, void *item));
+/* The next menu, and its cascades, open beside their anchors out to the
+ * left (a cascade from a LaunchPad drawer on the left). */
+void ui_menu_next_left(void);
 bool ui_menu_is_open(void);
 void ui_menu_close_all(void);   /* the open menus, unchosen */
 /* Called with the surface of every button press in this program, first

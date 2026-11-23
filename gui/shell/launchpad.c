@@ -529,8 +529,9 @@ static void cascade_read(objmenu *m, void *ctx)
     if (!d->s || d->cascade != m) { if (d->cascade != m) objmenu_free(m); return; }
     size_t n = 0;
     ui_menu_item *it = objmenu_items(m, &n, true, 0);
-    ui_menu_popup_icons(d->s, it, n, DRAWER_W - PAD, PAD + (double)cascade_row * DRAWER_ROW, ui_app_input_serial(lp.app),
-                        cascade_chosen, m, objmenu_icon);
+    if (lp.drawers_left) ui_menu_next_left();   /* out to the left, as its drawer (design 12) */
+    ui_menu_popup_icons(d->s, it, n, lp.drawers_left ? PAD : DRAWER_W - PAD, PAD + (double)cascade_row * DRAWER_ROW,
+                        ui_app_input_serial(lp.app), cascade_chosen, m, objmenu_icon);
     ui_menu_items_free(it, n);
 }
 

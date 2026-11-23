@@ -29,7 +29,7 @@ MANDIR     ?= $(DATADIR)/man
 SYSCONFDIR ?= /etc
 USERUNITDIR   ?= $(PREFIX)/lib/systemd/user
 SYSTEMUNITDIR ?= $(PREFIX)/lib/systemd/system
-VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=2 -DWPS_PLUGINDIR='"$(LIBDIR)/wps/plugins"' -DWPS_ICONDIR='"$(DATADIR)/wps/icons"'
+VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=3 -DWPS_PLUGINDIR='"$(LIBDIR)/wps/plugins"' -DWPS_ICONDIR='"$(DATADIR)/wps/icons"'
 PYTHON  ?= python3
 B       := build
 GEN     := $(B)/gen

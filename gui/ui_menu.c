@@ -48,6 +48,7 @@ struct menu_root {
     bool grab;             /* the root took a grab; so may its cascades */
     double ox, oy, closed_at;
     bool (*icon_fn)(void *arg, int64_t id, void *item);
+    bool left;             /* it and its cascades open out to the left (ui_menu_next_left) */
 };
 
 /* At most one menu tree exists: Wayland requires popups to be destroyed
@@ -336,7 +337,8 @@ static void open_menu(struct menu_root *r, struct menu *parent, ui_surface *on, 
         }
     m->w = w;
     m->h = item_y(m, n) + PAD;
-    m->surf = ui_popup_new(on->app, on, &menu_ops, m, anchor, m->w, m->h, serial);
+    m->surf = r->left ? ui_popup_new_beside(on->app, on, &menu_ops, m, anchor, m->w, m->h, serial, true)
+                      : ui_popup_new(on->app, on, &menu_ops, m, anchor, m->w, m->h, serial);
     if (parent) parent->child = m;
     else r->top = m;
 }
@@ -385,6 +387,9 @@ static void finish(struct menu_root *r, int64_t id)
 }
 
 static bool (*next_icon_fn)(void *arg, int64_t id, void *item);
+static bool next_left;
+
+void ui_menu_next_left(void) { next_left = true; }
 
 void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                          ui_menu_fn fn, void *arg, bool (*icon_fn)(void *arg, int64_t id, void *item))
@@ -398,6 +403,8 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
 {
     bool (*icon_fn)(void *, int64_t, void *) = next_icon_fn;
     next_icon_fn = NULL;
+    bool left = next_left;
+    next_left = false;
     if (!n) { if (fn) fn(arg, -1); return; }
     if (active) {
         struct menu_root *old = active;
@@ -420,6 +427,7 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     r->fn = fn;
     r->arg = arg;
     r->icon_fn = icon_fn;
+    r->left = left;
     r->items = copy_items(items, n);
     r->n = n;
     ui_rect anchor = { x, y, 1, 1 };

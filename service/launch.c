@@ -420,8 +420,8 @@ static bool find_desktop(const char *id, char *out, size_t n)
 
 /* The first installed application among a semicolon-separated list (and
  * its ID, if asked). */
-static char *first_id;
-static size_t first_idn;
+static _Thread_local char *first_id;   /* (thread-local: Open With's list is made on a worker) */
+static _Thread_local size_t first_idn;
 static bool first_installed(const char *list, char *out, size_t n)
 {
     char copy[4096];
@@ -436,7 +436,7 @@ static bool first_installed(const char *list, char *out, size_t n)
 
 static bool default_app(const char *mime, char *desktop, size_t n);
 
-/* (on the loop thread only, as all of these) */
+/* (any thread: the programs for a type are listed on a worker, for a menu) */
 static bool default_app_id(const char *mime, char *desktop, size_t n, char *id, size_t idn)
 {
     first_id = id;

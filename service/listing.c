@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#include "defaults.h"
+#include "WPFolder.h"
 #ifndef WPS_ICONDIR
 #define WPS_ICONDIR "/usr/share/wps/icons"
 #endif
@@ -472,7 +474,17 @@ struct read_job {
     bool hide;
     int key;       /* the folder's sort, from its object in memory (-2: not loaded, read it) */
     bool desc;
+    int def_key;   /* ... all folders' (class:WPFolder), for one not loaded with none of its own */
+    bool def_desc;
 };
+
+/* A sort's choice as the listing's key: -1 none, 0 name, 1 type, 2 size, 3 last write. */
+static int sort_index(const char *v)
+{
+    static const char *const keys[] = { "name", "type", "size", "last write" };
+    for (int i = 0; v && i < 4; i++) if (!strcmp(v, keys[i])) return i;
+    return -1;
+}
 
 /* Central objects are listed as "\x01vobj:<id>": not a file name (no file
  * name starts with \x01), and the address to use for them. */
@@ -611,7 +623,12 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
         wps_load(j->path, false, &fl);
         const wps_props *fp = fl.err ? NULL : props_of(&fl, "WPFolder");
         int64_t v;
-        if (fp && wps_props_int(fp, "sort_key", &v) && v >= 0 && v <= 3) key = (int)v;
+        char *sv = NULL;
+        key = j->def_key;
+        desc = j->def_desc;
+        if (fp && wps_props_str(fp, "sort_key", &sv) && sv) key = sort_index(sv);            /* (0.4: its choice) */
+        else if (fp && wps_props_int(fp, "sort_key", &v)) key = v >= 0 && v <= 3 ? (int)v : -1;   /* (0.3's) */
+        free(sv);
         if (fp && wps_props_int(fp, "sort_desc", &v)) desc = v != 0;
         wps_loaded_free(&fl);
     }
@@ -691,11 +708,18 @@ static void start_read(struct listing *l)
      * written yet: a sort just chosen) */
     j->key = -2;
     sobj *so = wps_sobj_by_path(l->path);
-    if (so && so->o) {
-        int64_t v = -1;
-        j->key = wps_state_get_int(so->o, "WPFolder", "sort_key", &v) && v >= 0 && v <= 3 ? (int)v : -1;
-        v = 0;
-        j->desc = wps_state_get_int(so->o, "WPFolder", "sort_desc", &v) && v;
+    if (so && so->o && wpo_is_a(so->o, WPFolderClass)) {   /* its own, or all folders' (the chain) */
+        char *k = WPObject_wpQueryProperty(so->o, "sort_key"), *d = WPObject_wpQueryProperty(so->o, "sort_desc");
+        j->key = sort_index(k);
+        j->desc = d && !strcmp(d, "1");
+        free(k);
+        free(d);
+    } else {   /* not loaded: all folders', if its own is not stored */
+        char *k = wps_defaults_get("class:WPFolder", "WPFolder", "sort_key"), *d = wps_defaults_get("class:WPFolder", "WPFolder", "sort_desc");
+        j->def_key = sort_index(k);
+        j->def_desc = d && !strcmp(d, "1");
+        free(k);
+        free(d);
     }
     wpo_defer(loop, "read folder", read_work, free, j);
 }

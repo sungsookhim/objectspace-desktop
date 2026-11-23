@@ -236,5 +236,19 @@ if apps:
 r = c.request(op="set", target="class:WPDataFile", setup="open_with=x")
 check("a class has no one type: no Opens with", not r.get("ok"), r)
 
+# a folder's sort and columns: all folders' too (0.4 step 1)
+srt = DESK + "/Sorted"
+os.makedirs(srt, exist_ok=True)
+for n in ("zeta.txt", "alpha.txt", "mid.txt"):
+    open(srt + "/" + n, "w").write(n)
+r = c.request(op="set", target="class:WPFolder", setup="sort_key=name;col_size=0")
+check("all folders: sort by name, no Size column", r.get("ok"), r)
+ps = props(srt)
+check("... a folder follows (from class:WPFolder)", ps["sort_key"]["value"] == "name" and ps["sort_key"]["origin"] == "class:WPFolder"
+      and ps["col_size"]["value"] == "0", (ps["sort_key"], ps["col_size"]))
+names = [it["name"] for it in (c.request(op="list", target=srt, offset=0, count=50).get("result") or {}).get("items", [])]
+check("... and its listing is in that order", names == ["alpha.txt", "mid.txt", "zeta.txt"], names)
+c.request(op="reset", target="class:WPFolder", names="sort_key;col_size")
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

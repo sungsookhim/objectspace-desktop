@@ -33,13 +33,18 @@ cat > "$S/script" <<EOS
 16 click 529 660
 16.5 shot $S/left.png
 16.8 windows
-17 quit
+17.2 click 512 657
+18 move 640 120
+18.5 shot $S/cascade.png
+19 quit
 EOS
 REPO=$PWD
 W="$REPO/build/wpsctl"
 # (at 12 s: the LaunchPad made vertical, its drawers on the right; at 15 s on the left)
-DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_LAUNCHPAD=1" SECS=19 tests/comp/run.sh "$S/script" \
+DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_LAUNCHPAD=1" SECS=21 tests/comp/run.sh "$S/script" \
     "sleep 11.5; A=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"WPLaunchPad\"][\"address\"])');
+     F=\$('$W' layout \"\$T/launchpad\" | python3 -c 'import json,sys; print([k for k, v in json.load(sys.stdin)[\"result\"][\"positions\"].items() if v.startswith(\"0,\")][0])');
+     mkdir -p \"\$T/launchpad Drawers/\$F/Sub\" && echo x > \"\$T/launchpad Drawers/\$F/Sub/a.txt\";
      '$W' settings_set \"\$A\" orientation=1 drawer_side=0 > /dev/null; sleep 3; '$W' settings_set \"\$A\" drawer_side=1 > /dev/null" \
     > "$S/out.txt" 2>&1
 fails=0
@@ -59,6 +64,8 @@ check "Super again: the menu closed" "[ \"\$(px '$S/super-twice.png' 150 700)\" 
 check "vertical: placed on the screen" "grep -q \"LaunchPad' app org.wps.LaunchPad 168x309+520+460\" '$S/out.txt'"
 check "drawers on the right: one opens out to the right" "[ \"\$(px '$S/right.png' 760 668)\" = '204 204 204' ] && [ \"\$(px '$S/right.png' 450 668)\" != '204 204 204' ]"
 check "drawers on the left: out to the left" "[ \"\$(px '$S/left.png' 450 668)\" = '204 204 204' ] && [ \"\$(px '$S/left.png' 760 668)\" != '204 204 204' ]"
+# (the drawer, on the left, spans x 323..520; a cascade from its folder opens left of it)
+check "a cascade from a drawer on the left: out to the left too" "[ \"\$(px '$S/cascade.png' 280 668)\" = '204 204 204' ]"
 check "Super with a click: no menu" "[ \"\$(px '$S/super-click.png' 150 700)\" != '204 204 204' ]"
 echo "$fails failed (screenshots: $S)"
 [ $fails = 0 ]

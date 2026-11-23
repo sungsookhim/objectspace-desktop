@@ -242,6 +242,7 @@ static void req_free(struct req *r)
     wps_loaded_free(&r->tgt);
     wps_loaded_free(&r->shadow_target);
     free(r->remote_text);
+    free(r->open_with);
     for (int i = 0; r->objs && i < r->nobj; i++) wps_loaded_free(&r->objs[i]);
     free(r->objs);
     cv_free(&r->msg);
@@ -249,10 +250,14 @@ static void req_free(struct req *r)
     free(r);
 }
 
+static char *open_with_list(const char *p);
+
 void prepare_work(void *arg)    /* worker */
 {
     struct req *r = arg;
     wps_load(r->target, false, &r->tgt);
+    if (!r->tgt.err && (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select")))
+        r->open_with = open_with_list(r->tgt.path);   /* (here, off the loop) */
     if (!r->tgt.err && r->tgt.shadow_of[0]) {
         char t[WPS_ID_LEN + 4];
         snprintf(t, sizeof t, "id:%s", r->tgt.shadow_of);
@@ -409,16 +414,18 @@ static void local_call_reply(struct req *r, wpo_object *o)
 /* Open With (v0.3-design 7): a data file's Open is a cascade of the
  * programs for its type, the default checked, then Other program...;
  * the GUI opens item WPS_MI_OPEN_APP + k with "app_index" k. */
-static char *open_with_items(wpo_object *o, char *menu)
+/* (a worker: reading every program's desktop entry takes a while) The
+ * items for a regular file that is not a program, or NULL. */
+static char *open_with_list(const char *p)
 {
-    const char *p = wpo_is_a(o, WPDataFileClass) ? WPFileSystem_data(o)->path : NULL;
     struct stat st;
-    if (!p || stat(p, &st) != 0 || !S_ISREG(st.st_mode) || wps_is_program_file(p)) return menu;
+    if (!p || !*p || stat(p, &st) != 0 || !S_ISREG(st.st_mode) || wps_is_program_file(p)) return NULL;
     wps_app *a = malloc(WPS_MI_OPEN_APPS * sizeof *a);
     int n = a ? wps_apps_for_file(p, NULL, 0, a, WPS_MI_OPEN_APPS) : 0;
-    size_t len = strlen(menu), cap = len + (size_t)n * 200 + 64;
-    char *r = realloc(menu, cap);
-    if (!r) { free(a); return menu; }
+    size_t len = 0, cap = (size_t)n * 200 + 64;
+    char *r = malloc(cap);
+    if (!r) { free(a); return NULL; }
+    r[0] = 0;
     for (int i = 0; i < n; i++) {
         char name[128];
         snprintf(name, sizeof name, "%s", a[i].name);
@@ -428,6 +435,15 @@ static char *open_with_items(wpo_object *o, char *menu)
     snprintf(r + len, cap - len, "%d\tOther program...\t1\n", WPS_MI_OPEN_OTHER);
     free(a);
     return r;
+}
+
+/* the menu with them, for a data file (made on the worker: r->open_with) */
+static char *open_with_items(wpo_object *o, struct req *r, char *menu)
+{
+    if (!wpo_is_a(o, WPDataFileClass) || !r->open_with) return menu;
+    char *m = wps_concat(menu, r->open_with);
+    free(menu);
+    return m;
 }
 
 static void do_menus(struct req *r, wpo_object *o)
@@ -458,7 +474,7 @@ static void do_menus(struct req *r, wpo_object *o)
     cb_text(&b, "result");
     if (!strcmp(r->op, "menu") || !strcmp(r->op, "menu_select")) {
         char *t = r->remote_text ? strdup(r->remote_text) : call_text(o, "wpModifyPopupMenu", "");
-        if (!r->remote_text) t = open_with_items(o, t);
+        if (!r->remote_text) t = open_with_items(o, r, t);
         put_menu(&b, t, "");
         free(t);
     } else {
