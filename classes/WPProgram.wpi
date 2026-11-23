@@ -18,5 +18,12 @@ method wpSetStartAtLogin(bool on) -> bool
 method wpSetProgramType(int choice) -> bool
 method wpSetCloseOnExit(bool on) -> bool
 method wpSetWorkingDir(string dir) -> bool
-override wpAddSettingsPages
+method wpQueryProgramType() -> int
+method wpQueryInStartup() -> bool
+method wpQueryStartAtLogin() -> bool
+property command : text page Program label Command get wpQueryCommand set wpSetCommand
+property cwd : text page Program label "Working directory" set wpSetWorkingDir
+property program_type : choice "automatic,window,text mode (in a terminal)" page Program label "Program type" get wpQueryProgramType set wpSetProgramType
+property close_on_exit : checkbox = 1 page Program label "Close window on exit (text mode)" set wpSetCloseOnExit
+property start_at_login : checkbox page Program label "Start at login" show wpQueryInStartup get wpQueryStartAtLogin set wpSetStartAtLogin
 classoverride wpclsQueryTitle

@@ -3,3 +3,15 @@
 class WPWarpCenter : WPSetup
 version 1.0
 classoverride wpclsQueryTitle
+# Its settings (stored as text in the WPSetup state, as before).
+property show_at_start : choice "automatic,yes,no" = "automatic" page "WarpCenter" label "Show at start (WPS session)" store WPSetup text
+property edge : choice "bottom,top" = "bottom" page "WarpCenter" label "Screen edge" store WPSetup text
+property meters : checkbox = "1" page "Parts" label "Meters (processor, memory, disk, network)" store WPSetup text
+property keyboard : checkbox = "1" page "Parts" label "Keyboard (input source)" store WPSetup text
+property tray : checkbox = "1" page "Parts" label "Tray (other programs' status icons)" store WPSetup text
+property messages : checkbox = "1" page "Parts" label "Messages" store WPSetup text
+property system_buttons : checkbox = "1" page "Parts" label "Lockup, Find, Log off and Shut down buttons" store WPSetup text
+property clock : choice "24 hours,12 hours,off" = "24 hours" page "Clock" label "Clock" store WPSetup text
+property seconds : checkbox = "0" page "Clock" label "Seconds" store WPSetup text
+property date : checkbox = "0" page "Clock" label "Date" store WPSetup text
+property font : text = "" page "Font" label "Font (e.g. 10.Sans; empty: the interface font)" store WPSetup text

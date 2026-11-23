@@ -240,66 +240,43 @@ bool WPFolder__wpSetBgGnome(wpo_object *self, bool on)
     return true;
 }
 
-char *WPFolder__wpAddSettingsPages(wpo_object *self, const char *pages)
+/* ---- its pages' properties (WPFolder.wpi) */
+
+int64_t WPFolder__wpQuerySortKey(wpo_object *self)
 {
-    char *base = WPFolder_parent_wpAddSettingsPages(self, pages), line[256];
-    int64_t key = -1, desc = 0, cols = 15, titles = 0, lock_all = 0;
-    char *cw = NULL;
-    wps_state_get_int(self, "WPFolder", "icon_titles", &titles);
-    wps_state_get_int(self, "WPFolder", "lock_all", &lock_all);
-    char *ifont = NULL, *tfont = NULL;
-    wps_state_get_str(self, "WPFolder", "icon_font", &ifont);
-    wps_state_get_str(self, "WPFolder", "title_font", &tfont);
-    wps_state_get_str(self, "WPFolder", "col_widths", &cw);
+    int64_t key = -1;
     wps_state_get_int(self, "WPFolder", "sort_key", &key);
-    wps_state_get_int(self, "WPFolder", "sort_desc", &desc);
-    wps_state_get_int(self, "WPFolder", "cols", &cols);
-    char line2[1400];
-    snprintf(line2, sizeof line2, "page\tView\nfield\tsort_key\tchoice\tSort by\t%lld\twpSetSortKey\tnone,name,type,size,last write\n"
-             "field\tsort_desc\tcheckbox\tDescending\t%d\twpSetSortDesc\n"
-             "field\tlocal\tcheckbox\tKeep objects as files here\t%d\twpSetLocalObjects\n"
-             "page\tIcon view\nfield\ticon_titles\tchoice\tTitles\t%lld\twpSetIconTitles\twhole,two lines\n"
-             "field\tlock_all\tcheckbox\tLock positions of all icons\t%d\twpSetLockAll\n"
-             "field\ticon_font\ttext\tIcon font (e.g. 10.Sans; empty: the System's)\t%s\twpSetIconFont\n"
-             "field\ttitle_font\ttext\tTitle bar font (empty: all title bars')\t%s\twpSetTitleFont\n"
-             "page\tDetails view\nfield\tcol_name\tcheckbox\tReal name\t%d\t@col:name\n"
-             "field\tcol_type\tcheckbox\tType\t%d\t@col:type\n"
-             "field\tcol_size\tcheckbox\tSize\t%d\t@col:size\n"
-             "field\tcol_date\tcheckbox\tLast write\t%d\t@col:date\n"
-             "field\tcol_widths\thidden\tWidths\t%s\twpSetColWidths\n",
-             (long long)key + 1, desc != 0, WPFolder_data(self)->local_objects, (long long)titles, lock_all != 0, ifont ? ifont : "", tfont ? tfont : "",
-             (int)(cols & 1) != 0, (int)(cols & 2) != 0, (int)(cols & 4) != 0, (int)(cols & 8) != 0, cw ? cw : "");
-    free(cw);
-    free(ifont);
-    free(tfont);
-    (void)line;
-    char *r = wps_concat(base, line2);
-    free(base);
-    /* Background (OS/2's page): the desktop's has Use GNOME's background */
-    char *img = NULL, *col = NULL;
-    int64_t mode = 2, gnome = 1;
-    wps_state_get_str(self, "WPFolder", "bg_image", &img);
-    wps_state_get_str(self, "WPFolder", "bg_color", &col);
-    wps_state_get_int(self, "WPFolder", "bg_mode", &mode);
-    wps_state_get_int(self, "WPFolder", "bg_gnome", &gnome);
-    const char *path = wpo_is_a(self, WPFileSystemClass) ? WPFileSystem_data(self)->path : NULL;
-    bool desk = path && wps_is_desktop && wps_is_desktop(path);
-    size_t n = (img ? strlen(img) : 0) + 512;
-    char *bg = malloc(n);
-    snprintf(bg, n, "page\tBackground\n%s"
-             "field\tbg_image\tfile\tImage\t%s\twpSetBgImage\timage\n"
-             "field\tbg_mode\tchoice\tShown\t%lld\twpSetBgMode\tcentred,tiled,scaled to fill,scaled to fit,stretched\n"
-             "field\tbg_color\tcolor\tColour\t%s\twpSetBgColor\n",
-             desk ? (gnome ? "field\tbg_gnome\tcheckbox\tGNOME's background\t1\twpSetBgGnome\n"
-                           : "field\tbg_gnome\tcheckbox\tGNOME's background\t0\twpSetBgGnome\n") : "",
-             img ? img : "", (long long)mode, col ? col : "");
-    free(img);
-    free(col);
-    char *r2 = wps_concat(r, bg);
-    free(r);
-    free(bg);
-    return r2;
+    return key + 1;   /* the choice: 0 none, 1 name, ... */
 }
+
+bool WPFolder__wpQueryIsDesktop(wpo_object *self)
+{
+    const char *path = wpo_is_a(self, WPFileSystemClass) ? WPFileSystem_data(self)->path : NULL;
+    return path && wps_is_desktop && wps_is_desktop(path);
+}
+
+static bool col_on(wpo_object *self, int bit)
+{
+    int64_t cols = 15;
+    wps_state_get_int(self, "WPFolder", "cols", &cols);
+    return (cols & (1 << bit)) != 0;
+}
+
+static bool col_set(wpo_object *self, const char *name, bool on)
+{
+    char a[16];
+    snprintf(a, sizeof a, "%s=%d", name, on);
+    return WPFolder_wpSetColumn(self, a);
+}
+
+bool WPFolder__wpQueryColName(wpo_object *self) { return col_on(self, 0); }
+bool WPFolder__wpQueryColType(wpo_object *self) { return col_on(self, 1); }
+bool WPFolder__wpQueryColSize(wpo_object *self) { return col_on(self, 2); }
+bool WPFolder__wpQueryColDate(wpo_object *self) { return col_on(self, 3); }
+bool WPFolder__wpSetColName(wpo_object *self, bool on) { return col_set(self, "name", on); }
+bool WPFolder__wpSetColType(wpo_object *self, bool on) { return col_set(self, "type", on); }
+bool WPFolder__wpSetColSize(wpo_object *self, bool on) { return col_set(self, "size", on); }
+bool WPFolder__wpSetColDate(wpo_object *self, bool on) { return col_set(self, "date", on); }
 
 char *WPFolder__wpclsQueryTitle(wpo_object *self)
 {

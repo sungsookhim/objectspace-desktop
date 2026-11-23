@@ -12,7 +12,8 @@ data {
 override wpUnInitData
 override wpSaveState
 override wpRestoreProperties
-override wpAddSettingsPages
+property icon : icon page Icon label Empty get wpQueryIcon set wpSetIcon
+property fullicon : icon page Icon label Full get wpQueryFullIcon set wpSetFullIcon
 # Its icon when something is in it (Icon, WPObject's, is when empty):
 # the path of a PNG, or "" for WPS's again.
 method wpQueryFullIcon() -> string

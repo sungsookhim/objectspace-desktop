@@ -16,6 +16,20 @@ A .wpi file describes one class:
     classmethod wpclsQueryTitle() -> string
     override wpQueryTitle               # an inherited method
     classoverride wpclsNew              # an inherited class method
+    property icon_font : text = "" page "Icon view" label "Icon font" set wpSetIconFont
+    property sort_key : choice "none,name,type" = none page View index
+    event open, close                   # events its objects raise
+
+A property (object-properties-design.md 2.1): NAME : TYPE, then any of
+    = DEFAULT        its default, as text ("" if none; a choice: the option)
+    "a,b,c"          (after choice) its options; after file, its kind (image)
+    page "P"  label "L"
+    get M  set M     methods giving / taking its value (else the state keeps it)
+    show M           a method saying whether its field is shown
+    store CLASS      kept in that class's state (default: the declaring class)
+    text index readonly nofield first     flags (WPO_P_*)
+Types: text number checkbox choice file color icon info hidden. Values with
+spaces or "#" are quoted.
 
 Types: void bool int double string object pending. Argument strings are
 borrowed (const char *); returned strings and objects belong to the caller.
@@ -90,6 +104,7 @@ class Cls:
         self.includes, self.data, self.cdata = [], [], []
         self.methods, self.cmethods = [], []
         self.overrides, self.coverrides = [], []
+        self.props, self.events = [], []
         self.builtin = False
 
 
@@ -104,10 +119,54 @@ def builtin_classes():
 METHOD_RE = re.compile(r"^(method|classmethod)\s+(\w+)\s*\(([^)]*)\)\s*->\s*(\w+)\s*(async)?\s*$")
 
 
+PROP_TYPES = {"text", "number", "checkbox", "choice", "file", "color", "icon", "info", "hidden"}
+PROP_FLAGS = {"text": "WPO_P_TEXT", "index": "WPO_P_INDEX", "readonly": "WPO_P_READONLY", "nofield": "WPO_P_NOFIELD",
+              "first": "WPO_P_FIRST"}
+PROP_KEYS = {"page", "label", "get", "set", "show", "store"}
+
+
+def parse_property(raw, where):
+    import shlex
+    try:
+        t = shlex.split(raw, comments=True)
+    except ValueError as e:
+        raise WpiError(f"{where}: {e}")
+    if len(t) < 4 or t[2] != ":" or t[3] not in PROP_TYPES:
+        raise WpiError(f"{where}: property NAME : TYPE ...")
+    p = {"name": t[1], "type": t[3], "def": "", "choices": None, "flags": []}
+    i = 4
+    if p["type"] in ("choice", "file") and i < len(t) and t[i] not in PROP_KEYS | set(PROP_FLAGS) | {"="}:
+        p["choices"] = t[i]
+        i += 1
+    while i < len(t):
+        k = t[i]
+        if k == "=" and i + 1 < len(t):
+            p["def"] = t[i + 1]
+            i += 2
+        elif k in PROP_KEYS and i + 1 < len(t):
+            p[k] = t[i + 1]
+            i += 2
+        elif k in PROP_FLAGS:
+            p["flags"].append(PROP_FLAGS[k])
+            i += 1
+        else:
+            raise WpiError(f"{where}: property {p['name']}: cannot parse '{k}'")
+    if p["type"] == "choice" and not p["choices"]:
+        raise WpiError(f"{where}: property {p['name']}: a choice needs its options")
+    if not re.match(r"^[A-Za-z_][\w.:-]*$", p["name"]):
+        raise WpiError(f"{where}: bad property name {p['name']}")
+    return p
+
+
 def parse(path):
     text = Path(path).read_text()
     c, block, lines = None, None, text.splitlines()
     for no, raw in enumerate(lines, 1):
+        if block is None and raw.strip().startswith("property "):
+            if c is None:
+                raise WpiError(f"{path}:{no}: expected 'class'")
+            c.props.append(parse_property(raw.strip(), f"{path}:{no}"))
+            continue
         line = raw.split("#", 1)[0].rstrip() if block is None else raw.rstrip()
         s = line.strip()
         if block is not None:
@@ -158,6 +217,8 @@ def parse(path):
             c.overrides.append(s.split()[1])
         elif s.startswith("classoverride "):
             c.coverrides.append(s.split()[1])
+        elif s.startswith("event "):
+            c.events += [e.strip() for e in s[len("event "):].split(",") if e.strip()]
         else:
             raise WpiError(f"{where}: cannot parse '{s}'")
     if c is None or c.major is None:
@@ -294,6 +355,26 @@ def gen_reg(w, c):
         o.extend([f"static const wpo_override_def {n}_{kind}[] = {{"] + rows + ["};", ""])
         return f"{n}_{kind}", str(len(names))
 
+    def cstr(v):
+        if v is None:
+            return "NULL"
+        return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    pt, pn = "NULL", "0"
+    if c.props:
+        rows = []
+        for p in c.props:
+            fl = " | ".join(p["flags"]) or "0"
+            rows.append("    { %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s }," % (
+                cstr(p["name"]), cstr(p["type"]), cstr(p["def"]), cstr(p.get("page")), cstr(p.get("label")),
+                cstr(p["choices"]), cstr(p.get("get")), cstr(p.get("set")), cstr(p.get("show")), cstr(p.get("store")), fl))
+        o.extend([f"static const wpo_property_def {n}_props[] = {{"] + rows + ["};", ""])
+        pt, pn = f"{n}_props", str(len(c.props))
+    et, en = "NULL", "0"
+    if c.events:
+        o.extend([f"static const char *const {n}_events[] = {{ " + ", ".join(cstr(e) for e in c.events) + " };", ""])
+        et, en = f"{n}_events", str(len(c.events))
+
     mt, mn = table("methods", c.methods)
     cmt, cmn = table("cmethods", c.cmethods)
     ot, on = otable("overrides", c.overrides)
@@ -312,6 +393,8 @@ def gen_reg(w, c):
           f"        .cmethods = {cmt}, .ncmethods = {cmn},",
           f"        .coverrides = {cot}, .ncoverrides = {con},",
           f"        .cdata_size = {f'sizeof(M_{n}Data)' if c.cdata else '0'},",
+          f"        .props = {pt}, .nprops = {pn},",
+          f"        .events = {et}, .nevents = {en},",
           "    };",
           f"    wpo_status st = wpo_register_class(&def, &{n}Class);",
           f"    if (st == WPO_OK) M_{n}Class = {n}Class->hdr.cls;",

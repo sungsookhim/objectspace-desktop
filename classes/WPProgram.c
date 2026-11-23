@@ -82,34 +82,25 @@ void WPProgram__wpRestoreProperties(wpo_object *self)
     WPProgram_data(self)->command = wps_state_get_str(self, "WPProgram", "command", &c) ? c : NULL;
 }
 
-char *WPProgram__wpAddSettingsPages(wpo_object *self, const char *pages)
+/* Its Program page (WPProgram.wpi). */
+int64_t WPProgram__wpQueryProgramType(wpo_object *self)
 {
-    char *base = WPProgram_parent_wpAddSettingsPages(self, pages);
-    const char *c = WPProgram_data(self)->command;
-    int64_t ptype = 0, close_exit = 1;
-    char *wd = NULL;
+    int64_t ptype = 0;
     wps_state_get_int(self, "WPProgram", "ptype", &ptype);
-    wps_state_get_int(self, "WPProgram", "close_on_exit", &close_exit);
-    wps_state_get_str(self, "WPProgram", "cwd", &wd);
-    size_t n = (c ? strlen(c) : 0) + (wd ? strlen(wd) : 0) + 512;
-    char *line = malloc(n);
-    snprintf(line, n, "page\tProgram\nfield\tcommand\ttext\tCommand\t%s\twpSetCommand\n"
-             "field\tcwd\ttext\tWorking directory\t%s\twpSetWorkingDir\n"
-             "field\tprogram_type\tchoice\tProgram type\t%lld\twpSetProgramType\tautomatic,window,text mode (in a terminal)\n"
-             "field\tclose_on_exit\tcheckbox\tClose window on exit (text mode)\t%d\twpSetCloseOnExit\n",
-             c ? c : "", wd ? wd : "", (long long)ptype, close_exit != 0);
-    free(wd);
+    return ptype;
+}
+
+/* Start at login: shown for an entry in Startup only */
+bool WPProgram__wpQueryInStartup(wpo_object *self)
+{
     bool on = false;
-    if (wps_startup_query && wps_startup_query(self, &on)) {   /* an entry in Startup */
-        char *l2 = wps_concat(line, on ? "field\tstart_at_login\tcheckbox\tStart at login\t1\twpSetStartAtLogin\n"
-                                       : "field\tstart_at_login\tcheckbox\tStart at login\t0\twpSetStartAtLogin\n");
-        free(line);
-        line = l2;
-    }
-    char *r = wps_concat(base, line);
-    free(base);
-    free(line);
-    return r;
+    return wps_startup_query && wps_startup_query(self, &on);
+}
+
+bool WPProgram__wpQueryStartAtLogin(wpo_object *self)
+{
+    bool on = false;
+    return wps_startup_query && wps_startup_query(self, &on) && on;
 }
 
 char *WPProgram__wpclsQueryTitle(wpo_object *self)

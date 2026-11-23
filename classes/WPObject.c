@@ -1,4 +1,5 @@
 #include "WPObject.h"
+#include "wps_props.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,21 +75,19 @@ bool WPObject__wpSetIcon(wpo_object *self, const char *path)
     return true;
 }
 
+/* The pages of every declared property (each class's .wpi), the root
+ * class's first; a class adds pages of its own by overriding this. */
 char *WPObject__wpAddSettingsPages(wpo_object *self, const char *pages)
 {
-    WPObjectData *d = WPObject_data(self);
-    char *title = WPObject_wpQueryTitle(self);
-    size_t n = strlen(title ? title : "") + strlen(d->icon ? d->icon : "") + 192;
-    char *line = malloc(n);
-    snprintf(line, n, "page\tGeneral\nfield\ttitle\ttext\tTitle\t%s\twpSetTitle\n"
-                      "field\ttemplate\tcheckbox\tTemplate\t%d\twpSetTemplate\n"
-                      "page\tIcon\nfield\ticon\ticon\tIcon\t%s\twpSetIcon\n", title ? title : "", d->is_template,
-             d->icon ? d->icon : "");
-    char *r = wps_concat(pages, line);
-    free(line);
-    free(title);
+    char *decl = wps_prop_pages(self, NULL);
+    char *r = wps_concat(pages, decl);
+    free(decl);
     return r;
 }
+
+char *WPObject__wpQueryProperty(wpo_object *self, const char *name) { return wps_prop_get(self, name); }
+bool WPObject__wpSetProperty(wpo_object *self, const char *name, const char *value) { return wps_prop_set(self, name, value); }
+char *WPObject__wpListProperties(wpo_object *self) { return wps_prop_list(self); }
 
 bool WPObject__wpMenuItemSelected(wpo_object *self, int64_t item)
 {

@@ -359,6 +359,8 @@ extern char known_desktop[PATH_MAX];
 
 /* ---- functions */
 
+void do_props(struct req *r, wpo_object *o);   /* wpsd_props.c */
+
 void log_msg(const char *fmt, ...);
 void client_unref(struct client *c);
 void client_close(struct client *c);

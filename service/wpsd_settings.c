@@ -37,6 +37,7 @@ void put_menu(cbuf *b, const char *text, const char *parent)
 static size_t parse_settings(const char *text, char pages[][64], int *page_of, struct field *fields, size_t max, size_t *npages)
 {
     size_t nf = 0;
+    int cur = -1;
     *npages = 0;
     for (const char *l = text; l && *l && nf < max; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) {
         char line[2048], *f[7] = { 0 };
@@ -44,10 +45,15 @@ static size_t parse_settings(const char *text, char pages[][64], int *page_of, s
         snprintf(line, sizeof line, "%.*s", (int)(e ? e - l : (long)strlen(l)), l);
         int k = 0;
         for (char *p = line, *t; k < 7 && (t = strsep(&p, "\t")); k++) f[k] = t;
-        if (k >= 2 && !strcmp(f[0], "page") && *npages < 16) snprintf(pages[(*npages)++], 64, "%s", f[1]);
-        else if (k >= 6 && !strcmp(f[0], "field") && *npages) {
+        if (k >= 2 && !strcmp(f[0], "page")) {
+            /* a page named again (a subclass's or a plug-in's fields on its
+             * parent's page) is the same page */
+            cur = -1;
+            for (size_t p = 0; p < *npages && cur < 0; p++) if (!strcmp(pages[p], f[1])) cur = (int)p;
+            if (cur < 0 && *npages < 16) { snprintf(pages[*npages], 64, "%s", f[1]); cur = (int)(*npages)++; }
+        } else if (k >= 6 && !strcmp(f[0], "field") && cur >= 0) {
             struct field *x = &fields[nf];
-            page_of[nf++] = (int)*npages - 1;
+            page_of[nf++] = cur;
             snprintf(x->key, sizeof x->key, "%s", f[1]);
             snprintf(x->type, sizeof x->type, "%s", f[2]);
             snprintf(x->label, sizeof x->label, "%s", f[3]);
@@ -205,6 +211,18 @@ const char *apply_settings(wpo_object *o, const cv *values)
             if (wpo_send(o, "wpSetColumn", &av, 1, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
             wpo_value_clear(&av);
             wpo_value_clear(&r);
+            continue;
+        }
+        if (!strcmp(f->setter, "@prop")) {
+            /* a declared property (object-properties-design.md 2.1), as text */
+            char num[32];
+            const char *txt = val->k == CV_TEXT ? val->s : NULL;
+            if (val->k == CV_INT) { snprintf(num, sizeof num, "%lld", (long long)val->i); txt = num; }
+            else if (val->k == CV_BOOL) txt = val->b ? "1" : "0";
+            if (!txt) { err = "unsupported value"; break; }
+            if (!WPObject_wpSetProperty(o, f->key, txt)) { err = "the setter refused the value"; break; }
+            if ((!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
+                wps_listing_invalidate(WPFileSystem_data(o)->path);
             continue;
         }
         if (!strcmp(f->setter, "@")) {

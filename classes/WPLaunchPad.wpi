@@ -3,3 +3,11 @@
 class WPLaunchPad : WPSetup
 version 1.0
 classoverride wpclsQueryTitle
+# Its settings (stored as text in the WPSetup state, as before).
+property show_at_start : choice "automatic,yes,no" = "automatic" page "LaunchPad" label "Show at start" store WPSetup text
+property orientation : choice "horizontal,vertical" = "horizontal" page "LaunchPad" label "Orientation" store WPSetup text
+property drawer_side : choice "right,left" = "right" page "LaunchPad" label "Drawers (vertical)" store WPSetup text
+property small_icons : checkbox = "0" page "LaunchPad" label "Small icons" store WPSetup text
+property text : checkbox = "1" page "LaunchPad" label "Text on buttons" store WPSetup text
+property float_top : checkbox = "1" page "LaunchPad" label "Float on top" store WPSetup text
+property close_drawer : checkbox = "1" page "LaunchPad" label "Close drawer after open" store WPSetup text

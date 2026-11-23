@@ -78,28 +78,26 @@ char *WPDrive__wpModifyPopupMenu(wpo_object *self, const char *menu)
 }
 
 /* The Drive page, read only. */
-char *WPDrive__wpAddSettingsPages(wpo_object *self, const char *pages)
+/* Its Drive page (WPDrive.wpi): the device as udisks has it now. */
+char *WPDrive__wpQueryDriveInfo(wpo_object *self, const char *which)
 {
-    char *base = WPDrive_parent_wpAddSettingsPages(self, pages);
     wps_drive_state st;
     bool known = state_of(self, &st, true);
-    const char *u = WPDrive_data(self)->uuid;
-    char page[PATH_MAX + 600];
-    snprintf(page, sizeof page,
-             "page\tDrive\n"
-             "field\tdevice\tinfo\tDevice\t%s\t\n"
-             "field\tfstype\tinfo\tFile system\t%s\t\n"
-             "field\tsize\tinfo\tSize\t%s\t\n"
-             "field\tfree\tinfo\tFree\t%s\t\n"
-             "field\tmount\tinfo\tMounted at\t%s\t\n"
-             "field\tuuid\tinfo\tUUID\t%s\t\n",
-             known ? st.device : "(not present)", known ? st.fstype : "", known ? st.size : "", known ? st.free : "",
-             known ? (st.mounted ? st.mount : (st.encrypted && !st.unlocked ? "(locked)" : "(not mounted)")) : "",
-             u ? u : "");
-    char *r = wps_concat(page, base ? base : "");
-    free(base);
-    return r;
+    const char *v = "";
+    if (!strcmp(which, "device")) v = known ? st.device : "(not present)";
+    else if (!known) v = "";
+    else if (!strcmp(which, "fstype")) v = st.fstype;
+    else if (!strcmp(which, "size")) v = st.size;
+    else if (!strcmp(which, "free")) v = st.free;
+    else if (!strcmp(which, "mount")) v = st.mounted ? st.mount : (st.encrypted && !st.unlocked ? "(locked)" : "(not mounted)");
+    return wps_strdup(v);
 }
+
+char *WPDrive__wpQueryDevice(wpo_object *self) { return WPDrive_wpQueryDriveInfo(self, "device"); }
+char *WPDrive__wpQueryFsType(wpo_object *self) { return WPDrive_wpQueryDriveInfo(self, "fstype"); }
+char *WPDrive__wpQuerySize(wpo_object *self) { return WPDrive_wpQueryDriveInfo(self, "size"); }
+char *WPDrive__wpQueryFree(wpo_object *self) { return WPDrive_wpQueryDriveInfo(self, "free"); }
+char *WPDrive__wpQueryMount(wpo_object *self) { return WPDrive_wpQueryDriveInfo(self, "mount"); }
 
 char *WPDrive__wpclsQueryTitle(wpo_object *self)
 {

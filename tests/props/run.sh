@@ -1,6 +1,7 @@
 #!/bin/sh
 # Every object's settings pages and menu (tests/props/snapshot.py) into OUT,
-# from a private wpsd; then, with BASE, compared with an earlier snapshot.
+# from a private wpsd; get, set and props (tests/props/ops.py); then, with
+# BASE, the snapshot compared with an earlier one.
 #   tests/props/run.sh OUT [BASE]
 cd "$(dirname "$0")/../.."
 REPO=$PWD
@@ -18,6 +19,7 @@ for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep
 rm -f "$OUT"/*.txt
 python3 ${SNAP:-tests/props/snapshot.py} "$OUT"
 R=$?
+python3 tests/props/ops.py || R=1
 "$REPO/build/wpsctl" shutdown >/dev/null 2>&1; wait $WP
 grep -E "ERROR|runtime error" "$T/wpsd.log"
 rm -rf "$T" "$RT"

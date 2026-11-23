@@ -283,6 +283,10 @@ wpo_status wpo_register_class(const wpo_class_def *def, wpo_class **out)
     if (st) { class_free(meta); return st; }
     cls->major = def->major;
     cls->minor = def->minor;
+    cls->props = def->props;
+    cls->nprops = def->nprops;
+    cls->events = def->events;
+    cls->nevents = def->nevents;
     if ((st = registry_add(meta)) || (st = registry_add(cls))) return st;
     if (out) *out = cls;
     return WPO_OK;
@@ -307,6 +311,25 @@ void wpo_bad_call(const wpo_object *obj, const wpo_class *intro, uint32_t k)
 #endif
     (void)obj; (void)intro; (void)k;
     abort();
+}
+
+const wpo_property_def *wpo_find_property(const wpo_class *cls, const char *name, const wpo_class **declaring)
+{
+    for (; cls && name; cls = cls->parent)
+        for (size_t i = 0; i < cls->nprops; i++)
+            if (!strcmp(cls->props[i].name, name)) {
+                if (declaring) *declaring = cls;
+                return &cls->props[i];
+            }
+    return NULL;
+}
+
+bool wpo_has_event(const wpo_class *cls, const char *name)
+{
+    for (; cls && name; cls = cls->parent)
+        for (size_t i = 0; i < cls->nevents; i++)
+            if (!strcmp(cls->events[i], name)) return true;
+    return false;
 }
 
 bool wpo_is_a(const wpo_object *obj, const wpo_class *cls)

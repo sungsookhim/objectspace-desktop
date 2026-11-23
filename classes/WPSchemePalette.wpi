@@ -2,3 +2,5 @@
 class WPSchemePalette : WPSetup
 version 1.0
 classoverride wpclsQueryTitle
+# Its settings (stored as text in the WPSetup state, as before).
+property scheme : choice "classic,dark,high contrast" = "classic" page "Scheme" label "Scheme" store WPSetup text

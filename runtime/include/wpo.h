@@ -26,7 +26,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define WPO_ABI_VERSION 1u
+#define WPO_ABI_VERSION 2u   /* 2: classes declare properties and events */
 
 typedef struct wpo_class wpo_class;
 typedef struct wpo_object wpo_object;
@@ -106,6 +106,30 @@ typedef struct {
     wpo_fn impl;
 } wpo_override_def;
 
+/* A property a class declares (its .wpi's `property` lines;
+ * object-properties-design.md 2.1). The runtime keeps and finds them; the
+ * object layer (WPObject) stores their values and makes the pages. */
+typedef struct {
+    const char *name;      /* its key in the object's state */
+    const char *type;      /* text number checkbox choice file color icon info hidden */
+    const char *def;       /* its default, as text (a choice: the option's text) */
+    const char *page;      /* the settings page its field is on */
+    const char *label;
+    const char *choices;   /* a choice's options ("a,b,c"); a file's kind (image, audio) */
+    const char *get;       /* a method giving its value (by name), or NULL */
+    const char *set;       /* a method taking a new value, or NULL */
+    const char *show;      /* a method saying whether its field is shown, or NULL */
+    const char *store;     /* the class whose state keeps it (NULL: the declaring class) */
+    uint32_t flags;        /* WPO_P_* */
+} wpo_property_def;
+
+#define WPO_P_TEXT     0x1u   /* kept as text, even a number or a checkbox */
+#define WPO_P_INDEX    0x2u   /* a choice kept as its option's number */
+#define WPO_P_READONLY 0x4u   /* shown, not set */
+#define WPO_P_NOFIELD  0x8u   /* no field in the pages (set by setup strings, palettes) */
+#define WPO_P_FIRST    0x10u  /* its page before the parent classes' pages (OS/2's
+                                 notebooks begin with the object's own page) */
+
 typedef struct {
     const char *name;
     const char *parent;
@@ -118,6 +142,9 @@ typedef struct {
     const wpo_method_def *cmethods;  size_t ncmethods;
     const wpo_override_def *coverrides; size_t ncoverrides;
     size_t cdata_size;
+    /* ABI 2: declared properties and events */
+    const wpo_property_def *props; size_t nprops;
+    const char *const *events; size_t nevents;
 } wpo_class_def;
 
 struct wpo_name_ent;
@@ -141,6 +168,10 @@ struct wpo_class {
     const wpo_method_def **minfo;   /* per slot: the method's definition */
     struct wpo_name_ent *names;
     uint32_t names_cap;
+    const wpo_property_def *props;   /* the properties this class declares */
+    size_t nprops;
+    const char *const *events;       /* ... and its events */
+    size_t nevents;
 };
 
 /* The two built-in classes. WPORoot is the root of all object classes and
@@ -164,6 +195,12 @@ size_t wpo_class_count(void);
 wpo_class *wpo_class_at(size_t i);
 
 bool wpo_is_a(const wpo_object *obj, const wpo_class *cls);
+
+/* A property of `cls` or an ancestor, the nearest declaration; `declaring`
+ * (if given) gets the class that declares it. NULL if none. */
+const wpo_property_def *wpo_find_property(const wpo_class *cls, const char *name, const wpo_class **declaring);
+/* Whether `cls` or an ancestor declares the event. */
+bool wpo_has_event(const wpo_class *cls, const char *name);
 
 /* Create through the class method wpclsNew, so replacements apply. */
 wpo_object *wpo_new(wpo_class *cls);

@@ -1,6 +1,6 @@
 # The root of all WPS objects.
 class WPObject
-version 1.0
+version 1.1
 include "wps_state.h"
 data {
     char *title;        /* NULL: the class decides (see wpQueryTitle) */
@@ -33,6 +33,16 @@ method wpObjectChanged() -> void
 # Persistence. The service reads and writes storage on workers; these run on
 # the loop thread and only move values between fields and the state bag.
 method wpAddSettingsPages(string pages) -> string
+# Its General and Icon pages.
+property title : text page General label Title get wpQueryTitle set wpSetTitle
+property template : checkbox page General label Template get wpQueryTemplate set wpSetTemplate
+property icon : icon page Icon label Icon get wpQueryIcon set wpSetIcon
+# Declared properties (object-properties-design.md 2.1; their `property`
+# lines in each class's .wpi): a value as text (NULL: no such property),
+# set from text (false: refused), and all of them as "name\tvalue" lines.
+method wpQueryProperty(string name) -> string
+method wpSetProperty(string name, string value) -> bool
+method wpListProperties() -> string
 # Templates: a template object is copied, settings and all, to make new ones.
 method wpQueryTemplate() -> bool
 method wpSetTemplate(bool on) -> bool

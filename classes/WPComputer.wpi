@@ -3,5 +3,15 @@
 class WPComputer : WPFolder
 version 1.0
 override wpModifyPopupMenu
-override wpAddSettingsPages
+method wpQueryInfo(string which) -> string
+method wpQueryInfoHost() -> string
+method wpQueryInfoOS() -> string
+method wpQueryInfoKernel() -> string
+method wpQueryInfoCPU() -> string
+method wpQueryInfoMemory() -> string
+property host : info page Computer label Name get wpQueryInfoHost first
+property os : info page Computer label System get wpQueryInfoOS first
+property kernel : info page Computer label Kernel get wpQueryInfoKernel first
+property cpu : info page Computer label Processors get wpQueryInfoCPU first
+property memory : info page Computer label Memory get wpQueryInfoMemory first
 classoverride wpclsQueryTitle

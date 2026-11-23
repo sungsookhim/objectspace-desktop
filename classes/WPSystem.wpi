@@ -2,3 +2,20 @@
 class WPSystem : WPSetup
 version 1.0
 classoverride wpclsQueryTitle
+# Its settings (stored as text in the WPSetup state, as before).
+property corner_radius : choice "0,2,4,8,12,16" = "0" page "Window" label "Window corner radius" store WPSetup text
+property buttons : choice "always,on hover" = "always" page "Window" label "Title-bar buttons" store WPSetup text
+property border : choice "visible,thin,none" = "visible" page "Window" label "Frame border" store WPSetup text
+property shadows : choice "off,subtle,strong" = "off" page "Window" label "Window shadows" store WPSetup text
+property translucency : choice "off,title bars,menus" = "off" page "Window" label "Translucency" store WPSetup text
+property title_layout : choice "normal,mirrored,compact" = "normal" page "Window" label "Title-bar layout" store WPSetup text
+property confirm_delete : checkbox = "1" page "Confirmations" label "Confirm on delete" store WPSetup text
+property confirm_folder_delete : checkbox = "1" page "Confirmations" label "Confirm on folder delete" store WPSetup text
+property restore_windows : checkbox = "1" page "Login" label "Restore open windows at login" store WPSetup text
+property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" store WPSetup text
+property show_ext : checkbox = "1" page "Folders" label "Show file extensions in titles" store WPSetup text
+property font_folders : text = "" page "Fonts" label "Folders' icon titles (e.g. 10.Sans; empty: the interface font)" store WPSetup text
+property font_menus : text = "" page "Fonts" label "Menus" store WPSetup text
+property font_titles : text = "" page "Fonts" label "Title bars" store WPSetup text
+property terminal : choice "automatic,xdg-terminal-exec,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" = "automatic" page "Programs" label "Terminal for text-mode programs" store WPSetup text
+property terminal_command : text = "" page "Programs" label "Or this command (the program goes after it)" store WPSetup text

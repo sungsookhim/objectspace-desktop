@@ -499,6 +499,7 @@ void prepare_done(void *arg)    /* loop */
     else if (!strcmp(r->op, "rename")) do_rename(r, o);
     else if (!strcmp(r->op, "layout")) do_layout(r, o);
     else if (!strcmp(r->op, "arrange")) do_arrange(r, o);
+    else if (!strcmp(r->op, "get") || !strcmp(r->op, "set") || !strcmp(r->op, "props")) do_props(r, o);
     else if (do_call(r, o)) return;   /* the reply comes from the plug-in */
     req_free(r);
 }

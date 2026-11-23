@@ -2,3 +2,26 @@
 class WPSound : WPSetup
 version 1.0
 classoverride wpclsQueryTitle
+# Its settings (stored as text in the WPSetup state, as before).
+property enabled : checkbox = "1" page "Setup" label "Play sounds for actions" store WPSetup text
+property volume : text = "70" page "Setup" label "Volume (0-100)" store WPSetup text
+property shell.startup : file audio = "service-login" page "Events" label "Startup" store WPSetup text
+property shell.shutdown : file audio = "" page "Events" label "Shutdown" store WPSetup text
+property window.open : file audio = "" page "Events" label "Open window" store WPSetup text
+property window.close : file audio = "" page "Events" label "Close window" store WPSetup text
+property window.minimize : file audio = "" page "Events" label "Minimize window" store WPSetup text
+property window.maximize : file audio = "" page "Events" label "Maximize window" store WPSetup text
+property window.restore : file audio = "" page "Events" label "Restore window" store WPSetup text
+property menu.open : file audio = "" page "Events" label "Open menu" store WPSetup text
+property menu.select : file audio = "" page "Events" label "Select menu item" store WPSetup text
+property object.open : file audio = "" page "Events" label "Open object" store WPSetup text
+property object.drag : file audio = "" page "Events" label "Begin drag" store WPSetup text
+property object.drop : file audio = "" page "Events" label "Drop" store WPSetup text
+property object.create : file audio = "" page "Events" label "Create object" store WPSetup text
+property object.trash : file audio = "trash-empty" page "Events" label "Move to the trash" store WPSetup text
+property object.delete : file audio = "" page "Events" label "Delete" store WPSetup text
+property job.done : file audio = "complete" page "Events" label "Job finished" store WPSetup text
+property job.failed : file audio = "dialog-error" page "Events" label "Job failed" store WPSetup text
+property alert.info : file audio = "dialog-information" page "Events" label "Information" store WPSetup text
+property alert.warning : file audio = "dialog-warning" page "Events" label "Warning" store WPSetup text
+property alert.error : file audio = "dialog-error" page "Events" label "Error" store WPSetup text

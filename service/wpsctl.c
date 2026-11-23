@@ -60,6 +60,7 @@ static int usage(void)
             "       wpsctl job_decide ID skip|rename [all]\n"
             "       wpsctl menu TARGET | menu_select TARGET ITEM | settings TARGET\n"
             "       wpsctl settings_set TARGET KEY=VALUE...\n"
+            "       wpsctl get TARGET NAME | set TARGET 'NAME=VALUE;NAME=VALUE' | props TARGET\n"
             "       wpsctl watch [folder PATH]... [object TARGET]... [jobs]\n"
             "       wpsctl open TARGET [confirm] | from_template TEMPLATE FOLDER TITLE | rename TARGET NAME\n"
             "       wpsctl layout FOLDER | arrange FOLDER | place FOLDER TARGET X Y [TARGET X Y]...\n"
@@ -291,6 +292,20 @@ int main(int argc, char **argv)
         cb_text(&b, "folder"); cb_text(&b, argv[3]);
         cb_text(&b, "title"); cb_text(&b, argv[4]);
     } else if (!strcmp(op, "menu") || !strcmp(op, "settings")) {
+        if (argc != 3) return usage();
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+    } else if (!strcmp(op, "get") || !strcmp(op, "set")) {
+        /* get TARGET NAME | set TARGET 'key=value;key=value' (declared properties) */
+        if (argc != 4) return usage();
+        cb_map(&b, 4);
+        cb_text(&b, "id"); cb_int(&b, 1);
+        cb_text(&b, "op"); cb_text(&b, op);
+        cb_text(&b, "target"); cb_text(&b, argv[2]);
+        cb_text(&b, !strcmp(op, "get") ? "name" : "setup"); cb_text(&b, argv[3]);
+    } else if (!strcmp(op, "props")) {
         if (argc != 3) return usage();
         cb_map(&b, 3);
         cb_text(&b, "id"); cb_int(&b, 1);

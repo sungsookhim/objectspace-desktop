@@ -1,6 +1,6 @@
 # A directory.
 class WPFolder : WPFileSystem
-version 1.0
+version 1.1
 data {
     int sort_order;
     int local_objects;
@@ -50,5 +50,31 @@ method wpSetBgImage(string path) -> bool
 method wpSetBgMode(int mode) -> bool
 method wpSetBgColor(string color) -> bool
 method wpSetBgGnome(bool on) -> bool
-override wpAddSettingsPages
+# Its pages' properties (object-properties-design.md 2.1).
+method wpQuerySortKey() -> int
+method wpQueryIsDesktop() -> bool
+method wpQueryColName() -> bool
+method wpQueryColType() -> bool
+method wpQueryColSize() -> bool
+method wpQueryColDate() -> bool
+method wpSetColName(bool on) -> bool
+method wpSetColType(bool on) -> bool
+method wpSetColSize(bool on) -> bool
+method wpSetColDate(bool on) -> bool
+property sort_key : choice "none,name,type,size,last write" page View label "Sort by" get wpQuerySortKey set wpSetSortKey
+property sort_desc : checkbox page View label Descending set wpSetSortDesc
+property local : checkbox page View label "Keep objects as files here" get wpQueryLocalObjects set wpSetLocalObjects
+property icon_titles : choice "whole,two lines" = whole index page "Icon view" label Titles set wpSetIconTitles
+property lock_all : checkbox page "Icon view" label "Lock positions of all icons" set wpSetLockAll
+property icon_font : text page "Icon view" label "Icon font (e.g. 10.Sans; empty: the System's)" set wpSetIconFont
+property title_font : text page "Icon view" label "Title bar font (empty: all title bars')" set wpSetTitleFont
+property col_name : checkbox page "Details view" label "Real name" get wpQueryColName set wpSetColName
+property col_type : checkbox page "Details view" label Type get wpQueryColType set wpSetColType
+property col_size : checkbox page "Details view" label Size get wpQueryColSize set wpSetColSize
+property col_date : checkbox page "Details view" label "Last write" get wpQueryColDate set wpSetColDate
+property col_widths : hidden page "Details view" label Widths set wpSetColWidths
+property bg_gnome : checkbox = 1 page Background label "GNOME's background" show wpQueryIsDesktop set wpSetBgGnome
+property bg_image : file image page Background label Image set wpSetBgImage
+property bg_mode : choice "centred,tiled,scaled to fill,scaled to fit,stretched" = "scaled to fill" index page Background label Shown set wpSetBgMode
+property bg_color : color page Background label Colour set wpSetBgColor
 classoverride wpclsQueryTitle

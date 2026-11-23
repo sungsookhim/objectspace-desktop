@@ -4,3 +4,5 @@
 class WPFontPalette : WPSetup
 version 1.0
 classoverride wpclsQueryTitle
+# Its settings (stored as text in the WPSetup state, as before).
+property fonts : text = "8.Sans;9.Sans;10.Sans;12.Sans;14.Sans;10.Sans Bold;10.Serif;12.Serif;14.Serif Bold;10.Monospace;12.Monospace;18.Sans" page "Fonts" label "Samples (separated by ;)" store WPSetup text
