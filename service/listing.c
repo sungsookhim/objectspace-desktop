@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #include "listing.h"
+#include "wps_themes.h"
+#include "wps_classes.h"
 #include "defaults.h"
 #include "WPFolder.h"
 #ifndef WPS_ICONDIR
@@ -117,6 +119,14 @@ static const wps_props *props_of(const wps_loaded *ld, const char *cls)
 }
 
 static void drive_icon(const wps_loaded *ld, char *out, size_t n);
+
+/* An object's class's theme icon (0.4 step 2: sets A and E). */
+static bool class_icon(const char *cls, char *out, size_t n)
+{
+    const char *nm = wps_icon_name_for_class(cls);
+    if (nm) snprintf(out, n, "theme:%s", nm);
+    return nm != NULL;
+}
 static bool special_icon(const char *path, char *out, size_t n);
 
 static void central_details(wps_entry *e)
@@ -140,6 +150,7 @@ static void central_details(wps_entry *e)
     if (wp && wps_props_str(wp, "makes", &t)) { snprintf(e->makes, sizeof e->makes, "%s", t); e->is_template = true; }
     free(t);
     if (!e->icon[0] && !strcmp(ld.obj_class, "WPDrive")) drive_icon(&ld, e->icon, sizeof e->icon);
+    if (!e->icon[0] && !ld.shadow_of[0]) class_icon(ld.obj_class, e->icon, sizeof e->icon);
     if (ld.shadow_of[0]) {
         e->shadow = true;
         e->target_type = DT_UNKNOWN;
@@ -167,6 +178,7 @@ static void central_details(wps_entry *e)
             if (!own[0] && S_ISDIR(tg.st.st_mode) && wps_is_trash_files_dir(tg.path)) wps_trash_icon(tg.path, e->icon, sizeof e->icon);
             else if (!own[0] && S_ISDIR(tg.st.st_mode) && special_icon(tg.path, e->icon, sizeof e->icon)) {}
             else if (!own[0] && !strcmp(tg.obj_class, "WPDrive")) drive_icon(&tg, e->icon, sizeof e->icon);
+            else if (!own[0]) class_icon(tg.obj_class, e->icon, sizeof e->icon);
         }
         wps_loaded_free(&tg);
     }
@@ -268,11 +280,35 @@ static bool special_icon(const char *path, char *out, size_t n)
     return png[0] != 0;
 }
 
-void wps_listing_shown_icon(const char *path, bool dir, bool program, char *out, size_t n)
+bool wps_listing_central_shown(const char *id, char *out, size_t n)
+{
+    static wps_entry e;   /* (big: not on the stack; the service's thread only) */
+    memset(&e, 0, sizeof e);
+    snprintf(e.name, sizeof e.name, "\x01vobj:%s", id);
+    central_details(&e);
+    if (e.icon[0]) { snprintf(out, n, "%s", e.icon); return true; }
+    const char *nm = NULL;
+    if (e.makes[0])   /* a template: what it makes (an empty Data File is text) */
+        nm = !strcmp(e.makes, "WPFolder") ? "folder" : !strcmp(e.makes, "WPProgram") ? "program"
+           : !strcmp(e.makes, "WPDataFile") ? "file-text" : wps_icon_name_for_class(e.makes);
+    else if (e.shadow && e.target_type == DT_DIR) nm = "folder";
+    else if (e.shadow && e.target_type == DT_REG && e.target_path[0] == '/') {   /* its original's, by its name */
+        size_t l = strlen(e.target_path);
+        const char *b = strrchr(e.target_path, '/') + 1;
+        nm = l > 8 && !strcmp(e.target_path + l - 8, ".desktop") ? "program" : wps_icon_name_for_type(wps_mime_for_name(b));
+    }
+    if (nm) snprintf(out, n, "theme:%s", nm);
+    return nm != NULL;
+}
+
+void wps_listing_shown_icon(const char *path, const char *cls, const char *mime, bool dir, bool program, char *out, size_t n)
 {
     if (dir && path && *path && wps_is_trash_files_dir(path)) { wps_trash_icon(path, out, n); return; }
     if (dir && path && *path && special_icon(path, out, n)) return;
-    snprintf(out, n, "%s", dir ? "kind:folder" : program ? "kind:program" : "kind:file");
+    if (class_icon(cls, out, n)) return;
+    /* its kind's from the theme, as the window draws it (a data file's by its type) */
+    if (dir || program || mime) snprintf(out, n, "theme:%s", dir ? "folder" : program ? "program" : wps_icon_name_for_type(mime));
+    else snprintf(out, n, "kind:file");
 }
 
 static void detail_work(void *arg)

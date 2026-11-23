@@ -99,3 +99,47 @@ char *wps_icon_theme_names(void)
     for (size_t i = 0; i < nt; i++) len += (size_t)sprintf(out + len, "%s%s", len ? "," : "", t[i].name);
     return out;
 }
+
+/* (the GUI's icons_name_for_type; the service's for an Icon page) */
+const char *wps_icon_name_for_type(const char *m)
+{
+    if (!m || !*m) return "file-data";
+    static const struct { const char *prefix, *icon; } map[] = {
+        { "image/", "file-image" }, { "audio/", "file-audio" }, { "video/", "file-video" }, { "font/", "file-font" },
+        { "application/x-font", "file-font" }, { "application/vnd.ms-fontobject", "file-font" },
+        { "text/x-shellscript", "file-script" }, { "application/x-shellscript", "file-script" },
+        { "application/x-perl", "file-script" }, { "text/x-python", "file-code" }, { "text/x-", "file-code" },
+        { "application/javascript", "file-code" }, { "application/json", "file-code" }, { "application/xml", "file-code" },
+        { "text/csv", "file-spreadsheet" }, { "text/", "file-text" },
+        { "application/pdf", "file-document" }, { "application/msword", "file-document" }, { "application/rtf", "file-document" },
+        { "application/vnd.oasis.opendocument.text", "file-document" },
+        { "application/vnd.openxmlformats-officedocument.wordprocessingml", "file-document" },
+        { "application/vnd.oasis.opendocument.spreadsheet", "file-spreadsheet" }, { "application/vnd.ms-excel", "file-spreadsheet" },
+        { "application/vnd.openxmlformats-officedocument.spreadsheetml", "file-spreadsheet" },
+        { "application/vnd.oasis.opendocument.presentation", "file-presentation" }, { "application/vnd.ms-powerpoint", "file-presentation" },
+        { "application/vnd.openxmlformats-officedocument.presentationml", "file-presentation" },
+        { "application/x-iso9660-image", "file-disc-image" }, { "application/x-cd-image", "file-disc-image" },
+        { "application/x-raw-disk-image", "file-disc-image" },
+        { "application/x-rpm", "file-package" }, { "application/vnd.debian.binary-package", "file-package" },
+        { "application/vnd.flatpak", "file-package" }, { "application/vnd.appimage", "file-package" },
+        { "application/zip", "file-archive" }, { "application/x-tar", "file-archive" }, { "application/gzip", "file-archive" },
+        { "application/x-compressed-tar", "file-archive" }, { "application/x-7z", "file-archive" },
+        { "application/vnd.rar", "file-archive" }, { "application/x-rar", "file-archive" }, { "application/x-xz", "file-archive" },
+        { "application/x-bzip", "file-archive" }, { "application/zstd", "file-archive" },
+    };
+    for (size_t i = 0; i < sizeof map / sizeof *map; i++)
+        if (!strncmp(m, map[i].prefix, strlen(map[i].prefix))) return map[i].icon;
+    return "file-data";
+}
+
+const char *wps_icon_name_for_class(const char *cls)
+{
+    static const char *const map[][2] = {
+        { "WPSystem", "system" }, { "WPSound", "sound" }, { "WPMouse", "mouse" },
+        { "WPSchemePalette", "scheme-palette" }, { "WPScheme", "scheme-palette" }, { "WPFontPalette", "file-font" },
+        { "WPLaunchPad", "launchpad" }, { "WPWarpCenter", "warpcenter" }, { "WPMessages", "messages" },
+        { "WPMinWinViewer", "minwin-viewer" }, { "WPRestoreDesktop", "restore-desktop" },
+    };
+    for (size_t i = 0; cls && i < sizeof map / sizeof *map; i++) if (!strcmp(cls, map[i][0])) return map[i][1];
+    return NULL;
+}

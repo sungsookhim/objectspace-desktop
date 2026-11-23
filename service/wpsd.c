@@ -481,7 +481,13 @@ static void do_menus(struct req *r, wpo_object *o)
         char *t = r->remote_text ? settings_text_with(o, strdup(r->remote_text)) : settings_text(o);
         char shown[PATH_MAX];   /* what its Icon page shows without its own */
         const char *p = wpo_is_a(o, WPFileSystemClass) ? WPFileSystem_data(o)->path : NULL;
-        wps_listing_shown_icon(p, wpo_is_a(o, WPFolderClass), wpo_is_a(o, WPProgramClass), shown, sizeof shown);
+        char *mt = NULL;
+        wpo_value mr = { 0 };
+        if (wpo_is_a(o, WPDataFileClass) && wpo_send(o, "wpQueryMimeType", NULL, 0, &mr) == WPO_OK && mr.type == 's' && mr.u.s) mt = strdup(mr.u.s);
+        wpo_value_clear(&mr);
+        if (p || !wpo_is_a(o, WPObjectClass) || !wps_listing_central_shown(WPObject_data(o)->id, shown, sizeof shown))
+            wps_listing_shown_icon(p, o->cls->name, mt && *mt ? mt : NULL, wpo_is_a(o, WPFolderClass), wpo_is_a(o, WPProgramClass), shown, sizeof shown);
+        free(mt);
         put_settings(&b, o, t, shown);
         free(t);
     }

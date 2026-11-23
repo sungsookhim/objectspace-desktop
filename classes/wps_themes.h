@@ -16,4 +16,11 @@ bool wps_icon_theme_dir(const char *theme, char *out, size_t n);
 /* Their names, "WPS (flat),WPS (outline),Classic,..." (a choice's options). Caller frees. */
 char *wps_icon_theme_names(void);
 
+/* The theme's icon name for a data file's MIME type ("file-image", ...;
+ * "file-data" for anything else). */
+const char *wps_icon_name_for_type(const char *mime);
+/* An object class's theme icon name (the System Setup objects', WPS's
+ * own abstract ones), NULL for none. */
+const char *wps_icon_name_for_class(const char *cls);
+
 #endif

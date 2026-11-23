@@ -1,6 +1,7 @@
 /* The icon picker (iconpick.h). */
 #define _GNU_SOURCE
 #include "iconpick.h"
+#include "wps_themes.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -83,6 +84,15 @@ static void list_free(struct list *l)
 static int by_name(const void *a, const void *b)
 {
     return strcasecmp(((const struct icon *)a)->name, ((const struct icon *)b)->name);
+}
+
+#define WPS_SCORE 100000   /* WPS's own (its themes' packages): first in the list */
+
+static int wps_first(const void *a, const void *b)
+{
+    const struct icon *x = a, *y = b;
+    bool wx = x->score >= WPS_SCORE, wy = y->score >= WPS_SCORE;
+    return wx != wy ? (wx ? -1 : 1) : by_name(a, b);
 }
 
 static bool image_ext(const char *n, bool any)
@@ -200,10 +210,25 @@ static void *scan_thread(void *arg)
     char user[PATH_MAX];
     if (x && *x) snprintf(user, sizeof user, "%s/icons", x);
     else snprintf(user, sizeof user, "%s/.local/share/icons", home ? home : "/nonexistent");
+    /* WPS's themes first: "WPS (flat): folder", ... (0.4 step 2) */
+    static wps_icon_theme th[32];
+    size_t nth = wps_icon_themes(th, sizeof th / sizeof *th);
+    for (size_t t = 0; t < nth; t++) {
+        DIR *d = opendir(th[t].dir);
+        for (struct dirent *e; d && (e = readdir(d));) {
+            size_t l = strlen(e->d_name);
+            if (l < 9 || strcmp(e->d_name + l - 8, ".wpsicon")) continue;
+            char name[256], p[PATH_MAX];
+            snprintf(name, sizeof name, "%s: %.*s", th[t].name, (int)(l - 8), e->d_name);
+            if ((size_t)snprintf(p, sizeof p, "%s/%s", th[t].dir, e->d_name) >= sizeof p) continue;
+            consider(sc, name, p, WPS_SCORE);
+        }
+        if (d) closedir(d);
+    }
     const char *roots[] = { user, "/usr/share/icons", "/usr/local/share/icons" };
     for (size_t r = 0; r < sizeof roots / sizeof *roots; r++) walk(sc, roots[r], 0, 0);
     walk(sc, "/usr/share/pixmaps", 4, 40);
-    if (sc->out.n) qsort(sc->out.v, sc->out.n, sizeof *sc->out.v, by_name);
+    if (sc->out.n) qsort(sc->out.v, sc->out.n, sizeof *sc->out.v, wps_first);
     ui_app_post(app, scan_done, sc);
     return NULL;
 }

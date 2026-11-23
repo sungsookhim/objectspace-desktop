@@ -101,6 +101,9 @@ void wps_listing_folder_icon(const char *path, const char *png);
 /* The icon an object without its own shows (for its Icon page): a PNG's
  * path (the Trash Can's, a special folder's), else "kind:folder",
  * "kind:program" or "kind:file" (drawn by the GUI). */
-void wps_listing_shown_icon(const char *path, bool dir, bool program, char *out, size_t n);
+/* A central object's icon as its window shows it (its own, its shadow's
+ * original's, a template's class's, its class's); false: none known. */
+bool wps_listing_central_shown(const char *id, char *out, size_t n);
+void wps_listing_shown_icon(const char *path, const char *cls, const char *mime, bool dir, bool program, char *out, size_t n);
 
 #endif

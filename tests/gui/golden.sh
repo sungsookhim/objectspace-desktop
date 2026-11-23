@@ -31,6 +31,7 @@ normalize() {
         -e 's#[0-9]+(\.[0-9]+)? ?ms\b#<MS>#g' \
         -e 's#\b[0-9]+\.[0-9]+ s\b#<S> s#g' \
         -e 's#-[0-9]{9,}\.png#-<N>.png#g' \
+        -e 's#-[0-9]{9,}\.wpsicon#-<N>.wpsicon#g' \
         -e 's#cube-[A-Za-z0-9-]+#<HOST>#g' \
         -e "s#$(hostname)#<HOST>#g"
 }
