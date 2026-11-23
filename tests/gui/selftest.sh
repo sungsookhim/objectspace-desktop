@@ -5,7 +5,9 @@
 #   tests/gnome/with-gnome.sh -- tests/gui/selftest.sh live 'echo a > a.txt'
 # Settings: SHELL_ARGS (before <D>, e.g. --desktop), TEMPLATES=1 (<D>/Templates
 # is the templates folder, opened as a second window), WPS_WALLPAPER,
-# WPS_SHELL_SHOT=file.png (with WPS_UI_NO_LAYER=1), KEEP=1 (keep <D> and the logs).
+# WPS_SHELL_SHOT=file.png (with WPS_UI_NO_LAYER=1), KEEP=1 (keep <D> and the logs),
+# AFTER="sub ..." (folders in <D> opened after it, as more windows),
+# SELFTEST_SECS (the shell's time limit, 60).
 # Modes and their set-ups: see the self-tests in gui/shell/wps-shell.c.
 #
 # usage: tests/gui/selftest.sh MODE [SETUP]
@@ -30,7 +32,7 @@ export WPS_CONFIG_DIR="$W/config" WPS_STATE_DIR="$W/state" WPS_RUNTIME_DIR="$RT"
 XDG_CONFIG_HOME="$W/xdg/config" XDG_DATA_HOME="$W/xdg/data" XDG_CONFIG_DIRS="$W/xdg/sys" build/wpsd 2> "$W/wpsd.log" &
 P=$!
 for i in $(seq 50); do build/wpsctl ping >/dev/null 2>&1 && break; sleep 0.1; done
-WPS_SELFTEST_TRASH="$W/xdg/data/Trash" WPS_SHELL_SELFTEST=$1 XDG_CACHE_HOME="$W/cache" timeout 60 build/wps-shell-asan ${SHELL_ARGS:-} "$W/d" 2>&1 | grep -E "selftest|ERROR|Sanitizer|runtime error${SELFTEST_GREP:+|$SELFTEST_GREP}" || true
+WPS_SELFTEST_TRASH="$W/xdg/data/Trash" WPS_SHELL_SELFTEST=$1 XDG_CACHE_HOME="$W/cache" timeout ${SELFTEST_SECS:-60} build/wps-shell-asan ${SHELL_ARGS:-} "$W/d" $(for a in $AFTER; do printf "%s " "$W/d/$a"; done) 2>&1 | grep -E "selftest|ERROR|Sanitizer|runtime error${SELFTEST_GREP:+|$SELFTEST_GREP}" || true
 build/wpsctl shutdown >/dev/null 2>&1 || true
 wait $P || true
 grep -E "ERROR|runtime error" "$W/wpsd.log" || true

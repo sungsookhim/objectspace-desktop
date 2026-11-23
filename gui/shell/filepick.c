@@ -129,7 +129,7 @@ static bool read_folder(const char *dir)
         pk.v[pk.n++] = (struct ent){ strdup(de->d_name), dir, 0, NULL };
     }
     closedir(d);
-    qsort(pk.v, pk.n, sizeof *pk.v, by_kind_name);
+    if (pk.n) qsort(pk.v, pk.n, sizeof *pk.v, by_kind_name);   /* (an empty folder: no array) */
     if (pk.path) ui_entry_set_text(pk.path, pk.folder);
     if (pk.cont) {
         ui_container_reset(pk.cont);

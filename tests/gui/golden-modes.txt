@@ -1,0 +1,51 @@
+# The wps-shell self-tests for tests/gui/golden.sh: one per line, fields
+# separated by TABs: MODE, RUNNER, ENV, SETUP, STATUS.
+#   RUNNER  comp: the headless wps-compositor (a private D-Bus, no gsettings);
+#           gnome: tests/gnome/with-gnome.sh (a private GNOME Shell);
+#           a11y: with-gnome.sh and tests/gui/a11y-run.sh; gnomerun: tests/gnome/run.sh
+#   ENV     settings for selftest.sh (SHELL_ARGS, TEMPLATES=1, AFTER=, ...), or -
+#   SETUP   a command run in the fresh folder <D> (see the mode's comment in
+#           gui/shell/wps-shell.c), or -
+#   STATUS  stable; sorted (stable once its lines are sorted: printed by
+#           concurrent callbacks); unstable (compared, never fails: a timing's
+#           in-between states); or skip (not run)
+menus	comp	-	echo a > a.txt	stable
+live	comp	-	echo a > a.txt	stable
+close	comp	AFTER=sub	mkdir sub	stable
+ext	comp	-	touch report.odt archive.tar.gz notes; mkdir dir.d	stable
+fonts	comp	-	echo a > a.txt; echo b > a-file-with-a-rather-long-name-indeed.txt	stable
+soundpage	comp	-	-	stable
+templates	comp	-	echo a > a.txt; mkdir sub	stable
+openwith	comp	-	echo a > a.txt	sorted
+layout	comp	-	echo a > a-rather-long-title-for-a-file-that-takes-four-lines.txt; for x in b c d e f g h; do echo $x > $x.txt; done	stable
+search	comp	-	touch report-2025.ods report-2026.ods notes.txt .hidden; mkdir reports	stable
+trashlive	comp	-	echo a > a.txt; echo b > b.txt; echo c > c.txt	stable
+fields	comp	-	mkdir -p pics/sub; echo x > pics/notes.txt; python3 -c "from PIL import Image; Image.new('RGB', (8, 8), (200, 0, 0)).save('pics/b.png')"	stable
+first	comp	SHELL_ARGS=--desktop	-	unstable
+ctxmenu	comp	-	echo a > a.txt	stable
+rename	comp	-	echo a > old-name.txt	stable
+props	comp	-	echo a > old-name.txt	stable
+tree	comp	-	mkdir -p a/b a/c d; echo x > a/x.txt	stable
+dnd	comp	AFTER=sub	mkdir sub; echo a > a.txt; echo b > b.txt; echo w > 'with space.txt'	stable
+place	comp	-	echo a > a.txt; echo b > b.txt; echo c > c.txt	stable
+shadows	comp	-	mkdir T; echo t > T/in.txt; ln -s T link-to-T	stable
+dropkeys	comp	-	mkdir T	stable
+droppos	comp	-	mkdir T; echo f > f.txt	stable
+inuse	comp	-	echo a > a.txt; echo b > b.txt	stable
+delete	comp	-	echo a > a.txt; echo b > b.txt; mkdir sub	stable
+desktop	comp	SHELL_ARGS=--desktop SELFTEST_SECS=10	echo a > a.txt	stable
+follow	comp	-	seq -f 'f%04g.txt' 3000 | xargs touch	stable
+events	comp	-	echo a > a.txt	stable
+setup	comp	-	echo a > a.txt	stable
+newfolder	comp	TEMPLATES=1	mkdir Templates	stable
+appearance	comp	-	echo a > a.txt	stable
+gnome	gnome	SHELL_ARGS=--desktop	-	stable
+lpfill	comp	SHELL_ARGS=--desktop WPS_LAUNCHPAD=1 SELFTEST_SECS=12	echo n > notes.txt; mkdir Projects; echo l > added-later.txt	stable
+launchpad2	comp	SHELL_ARGS=--desktop WPS_LAUNCHPAD=1	echo n > notes.txt	stable
+launchpad	comp	SHELL_ARGS=--desktop WPS_LAUNCHPAD=1	echo n > notes.txt; mkdir Projects	stable
+iconlib	comp	WPS_ICON_LIBRARY=@REPO@/data/icons	echo a > a.txt	stable
+icons	comp	-	echo a > a.txt; python3 -c "from PIL import Image; Image.new('RGB', (32, 32), (0, 0, 200)).save('pic.png')"	stable
+a11y	a11y	-	-	stable
+typeahead	comp	-	touch b1.txt b2.txt b3.txt cat.txt catalog.txt x.txt	stable
+find	comp	-	echo a > notes.txt; echo b > A.TXT; echo c > a.txt; mkdir adir	stable
+winlist	gnomerun	SELFTEST=winlist	-	stable

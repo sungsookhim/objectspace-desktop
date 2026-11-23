@@ -203,7 +203,7 @@ static void *scan_thread(void *arg)
     const char *roots[] = { user, "/usr/share/icons", "/usr/local/share/icons" };
     for (size_t r = 0; r < sizeof roots / sizeof *roots; r++) walk(sc, roots[r], 0, 0);
     walk(sc, "/usr/share/pixmaps", 4, 40);
-    qsort(sc->out.v, sc->out.n, sizeof *sc->out.v, by_name);
+    if (sc->out.n) qsort(sc->out.v, sc->out.n, sizeof *sc->out.v, by_name);
     ui_app_post(app, scan_done, sc);
     return NULL;
 }
@@ -222,7 +222,7 @@ static void read_library(void)
         list_add(&pk.lib, name, p, 0);
     }
     if (d) closedir(d);
-    qsort(pk.lib.v, pk.lib.n, sizeof *pk.lib.v, by_name);
+    if (pk.lib.n) qsort(pk.lib.v, pk.lib.n, sizeof *pk.lib.v, by_name);
 }
 
 /* ---------------------------------------------------------- the model */
