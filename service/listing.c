@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 #define _GNU_SOURCE
 #include "listing.h"
 #include "osd_themes.h"
@@ -579,7 +581,8 @@ static void add_central(const char *vol, const char *id, void *user)
 
 /* ---- a folder's sort order (its OsdFolder sort_key: -1 none, 0 name,
  * 1 type, 2 size, 3 last write; sort_desc): folders first, then the key,
- * then the name. Central objects sort by their titles. */
+ * then the name. Central objects sort by their titles (shadows: their
+ * targets'). */
 struct sort_ent { char *name; unsigned char type; bool dir; char *key; int64_t size, mtime; };
 struct sort_ctx { int key; bool desc; };
 
@@ -623,6 +626,21 @@ static void sort_chunk(struct chunk *c, const char *folder, int key, bool desc)
             const osd_props *op = ld.err ? NULL : props_of(&ld, "OsdObject");
             if (op && osd_props_str(op, "title", &t) && t) e->key = t;
             else free(t);
+            if (!e->key && !ld.err && ld.shadow_of[0]) {   /* a shadow: its target's title, or name */
+                char tl[OSD_ID_LEN + 8];
+                snprintf(tl, sizeof tl, "id:%s", ld.shadow_of);
+                osd_loaded tg;
+                osd_load(tl, false, &tg);
+                const osd_props *tp = tg.err ? NULL : props_of(&tg, "OsdObject");
+                t = NULL;
+                if (tp && osd_props_str(tp, "title", &t) && t) e->key = t;
+                else {
+                    free(t);
+                    const char *b = !tg.err && tg.path[0] ? strrchr(tg.path, '/') : NULL;
+                    if (b && b[1]) e->key = strdup(b + 1);
+                }
+                osd_loaded_free(&tg);
+            }
             osd_loaded_free(&ld);
         } else {
             struct stat st;

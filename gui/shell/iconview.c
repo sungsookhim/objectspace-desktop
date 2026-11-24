@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: The icon and details views' source (the container's items) and the icons' layout and arrangement. */
 #define _GNU_SOURCE
 #include "shell.h"
@@ -341,9 +343,18 @@ void folder_icons_changed(struct folder *f)
 /* Names in name order (for Arrange). */
 static struct folder *sort_folder;
 
+/* What an icon is sorted by: its title (a central object's name is its
+ * ID: the desktop's shadows of My System and Programs fell in no order),
+ * else its name. */
+static const char *sort_text(size_t i)
+{
+    struct row *r = row_at(sort_folder, i);
+    return r && r->title && r->title[0] ? r->title : model_name(&sort_folder->m, i);
+}
+
 static int cmp_index_name(const void *a, const void *b)
 {
-    const char *x = model_name(&sort_folder->m, *(const size_t *)a), *y = model_name(&sort_folder->m, *(const size_t *)b);
+    const char *x = sort_text(*(const size_t *)a), *y = sort_text(*(const size_t *)b);
     return strcoll(x ? x : "", y ? y : "");
 }
 
@@ -355,7 +366,7 @@ static int cmp_index_key(const void *a, const void *b)
 {
     size_t i = *(const size_t *)a, j = *(const size_t *)b;
     struct row *x = row_at(sort_folder, i), *y = row_at(sort_folder, j);
-    const char *nx = model_name(&sort_folder->m, i), *ny = model_name(&sort_folder->m, j);
+    const char *nx = sort_text(i), *ny = sort_text(j);
     nx = nx ? nx : "";
     ny = ny ? ny : "";
     int r = 0;
@@ -389,14 +400,33 @@ void layout_follow(struct folder *f, bool full)
     if (!f->lay_started) { layout_set_cols(f->lay, cols_now(f)); f->lay_started = true; }
     /* A small folder with no stored positions opens arranged by name (not
      * in the order the directory happens to list), once it is all read. */
-    if (f->m.complete && !f->arranged_by_name && f->m.total <= 100000 && f->sort_choice >= 0 && !is_tree(f)) {   /* (its sort known: osdd's order, or by name) */
+    int hold = f->desktop ? desktop_arrange_hold() : 0;
+    if (hold == 2 && f->m.complete) f->arranged_by_name = false;   /* (the first start's shadows coming: again) */
+    if (f->m.complete && !f->arranged_by_name && hold != 1 && f->m.total <= 100000 && f->sort_choice >= 0 && !is_tree(f)) {   /* (its sort known: osdd's order, or by name) */
         f->arranged_by_name = true;
         layout_reset(f->lay, cols_now(f));
+        desktop_keep_corner(f);
         size_t *o = name_order(f);
+        if (f->desktop) {   /* the user's own files first, then Objectspace's objects (My System, Programs) by title */
+            size_t k = 0, *t = malloc((f->m.total ? f->m.total : 1) * sizeof *t);
+            for (size_t j = 0; j < f->m.total; j++) {
+                const char *nm = model_name(&f->m, o[j]);
+                if (!nm || nm[0] != '\x01') t[k++] = o[j];
+            }
+            size_t c0 = k;
+            for (size_t j = 0; j < f->m.total; j++) {
+                const char *nm = model_name(&f->m, o[j]);
+                if (nm && nm[0] == '\x01') t[k++] = o[j];
+            }
+            sort_folder = f;
+            qsort(t + c0, k - c0, sizeof *t, cmp_index_name);
+            free(o);
+            o = t;
+        }
         layout_update(f->lay, f->m.total, lay_name, f, true, o);
         free(o);
         svc_layout(f->path, got_layout, as_arg(f));   /* stored positions win over it */
-        layout_on_new_spot(f->lay, new_spot, f);   /* from now on, new ones' spots are kept */
+        layout_on_new_spot(f->lay, hold == 2 ? NULL : new_spot, f);   /* from now on, new ones' spots are kept */
     } else {
         layout_update(f->lay, f->m.total, lay_name, f, full, NULL);
     }

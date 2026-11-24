@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The Objectspace GUI's shell (osd-shell): what its files share - the folder
  * windows' state and every function and variable used across them.
  * Split from osd-shell.c (refactor R1); see each file's top for its part. */
@@ -509,6 +511,8 @@ void desk_wallpaper_changed(void *ctx);
 void user_dir(const char *key, const char *fallback, char *out, size_t n);
 void windows_at_login(void);
 struct folder *open_desktop(const char *path);
+int desktop_arrange_hold(void);   /* the desktop's first arrangement: 1 waits for the first start, 2 again as its shadows come */
+void desktop_keep_corner(struct folder *f);   /* the Trash Can's corner kept through it */
 struct folder *open_window(const char *path, ui_view view, bool desktop);
 int main(int argc, char **argv);
 

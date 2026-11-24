@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Colour Palette (0.4 step 7), headless: its shadow on the desktop
 # opens it (a shadow of a settings object); a sample (red) dragged with
 # button 2 onto the desktop: its colour (GNOME's background no longer
@@ -9,13 +11,13 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-cpal-XXXX")
 W="$REPO/build/osdctl"
-# The shadow lands at 570,40; the palette opens at 412,164: its first
+# The shadow (made at 4 s: the desktop's first-start arrangement done) lands at 490,40 (after My System and Programs); the palette opens at 412,164: its first
 # sample at 447,215, red (the 7th) at 444,255.
 # Projects (54,30) opens at 320,106: its title bar at y 121, right of the
 # palette at 930; magenta (the 16th sample) at 600,295.
 cat > "$S/script" <<EOS
 3.8 dclick 54 30
-5.5 dclick 570 40
+5.5 dclick 490 40
 7.3 windows
 7.5 down 444 255 right
 7.7 move 600 400
@@ -34,7 +36,7 @@ cat > "$S/script" <<EOS
 13 quit
 EOS
 DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
-    "sleep 2.5; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 9; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
+    "sleep 4; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 7.5; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: The desktop: the user's folders, the Trash corner, the first start, windows restored at login, opening windows. */
 #define _GNU_SOURCE
 #include "shell.h"
@@ -36,6 +38,31 @@ static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", ou
  * after the first start (TheBar has taken its edge by then, and
  * the shadow is made), tried again a few times while it is not there. */
 static int corner_timer = -1, corner_tries;
+/* The desktop's first arrangement (by name, then stored positions) and the
+ * first start: not arranged until its reply; on a new desktop, arranged
+ * again as each of the shadows it makes comes (in no fixed order: each took
+ * the next spot, and the Trash Can's was left empty when it moved), until
+ * the Trash Can is in its corner, and once more then, without it. */
+static int arrange_hold = 0;   /* 1: until the reply; 2: until the corner */
+static char corner_name[NAME_MAX + 1];   /* the Trash Can's shadow, in its corner */
+static int corner_x, corner_y;
+int desktop_arrange_hold(void) { return arrange_hold; }
+
+void desktop_keep_corner(struct folder *f)
+{
+    if (f->desktop && corner_name[0]) layout_place(f->lay, corner_name, corner_x, corner_y);
+}
+
+static void arrange_release(int hold)
+{
+    arrange_hold = hold;
+    for (struct folder *f = folders; f; f = f->next)
+        if (f->desktop && !f->closing) {
+            f->arranged_by_name = false;
+            layout_follow(f, true);
+            ui_surface_damage_all(f->win);
+        }
+}
 
 static bool trash_to_corner(void)
 {
@@ -55,10 +82,10 @@ static bool trash_to_corner(void)
         else snprintf(addr, sizeof addr, "%s/%s", f->path, nm);
         const char *t[1] = { addr };
         layout_place(f->lay, nm, (int)x, (int)y);
+        snprintf(corner_name, sizeof corner_name, "%s", nm);
+        corner_x = (int)x;
+        corner_y = (int)y;
         folder_place(f, f->path, t, &x, &y, 1, placed_reply, as_arg(f));
-        layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
-        ui_container_layout_changed(f->cont);
-        ui_surface_damage_all(f->win);
         return true;
     }
     return false;
@@ -70,6 +97,7 @@ static void on_corner_timer(void *arg, int fd, short rev)
     uint64_t x;
     if (read(fd, &x, sizeof x) < 0) {}
     if (trash_to_corner() || ++corner_tries >= 8) {
+        arrange_release(0);   /* (arranged once more: the Trash Can's spot not left empty) */
         ui_app_unwatch_fd(app, fd);
         close(fd);
         corner_timer = -1;
@@ -83,15 +111,19 @@ static void first_started(void *arg, const cv *reply)
         if (f->desktop && !f->closing) bg_follow(f);   /* its Background (its own, or GNOME's) */
     if (!getenv("OSD_NO_STARTUP")) startup_at_login();
     int64_t from = -1;
-    if (!reply || !cv_int(reply, "result", &from) || from >= 7 || corner_timer >= 0) return;
+    if (!reply || !cv_int(reply, "result", &from) || from >= 7 || corner_timer >= 0) {
+        if (corner_timer < 0) arrange_release(0);
+        return;
+    }
     corner_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    if (corner_timer < 0) return;
+    if (corner_timer < 0) { arrange_release(0); return; }
+    arrange_release(2);
     struct itimerspec its = { { 1, 500000000 }, { 2, 0 } };
     timerfd_settime(corner_timer, 0, &its, NULL);
     ui_app_watch_fd(app, corner_timer, POLLIN, on_corner_timer, NULL);
 }
 
-static void desktop_first_start(const char *desk) { svc_first_start(desk, first_started, NULL); }
+static void desktop_first_start(const char *desk) { arrange_hold = 1; svc_first_start(desk, first_started, NULL); }
 
 /* ---- open windows restored at login (v0.2-design 7.2)
  *
