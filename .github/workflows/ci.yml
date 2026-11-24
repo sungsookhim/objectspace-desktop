@@ -39,6 +39,9 @@ jobs:
           mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
           useradd -m tester
           chown -R tester "$GITHUB_WORKSPACE" "$XDG_RUNTIME_DIR"
+          for d in /tmp /var/tmp "$GITHUB_WORKSPACE"; do
+            f=$(mktemp -p "$d"); if setfattr -n user.osd.test -v 1 "$f" 2>/dev/null; then echo "user xattrs: yes in $d ($(stat -f -c %T "$d"))"; else echo "user xattrs: NO in $d ($(stat -f -c %T "$d"))"; fi; rm -f "$f"
+          done
       - name: Build
         run: su tester -c "make -j$(nproc) && make gui -j$(nproc) && make session -j$(nproc)"
       - name: make check
@@ -54,5 +57,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
-          path: build/tests/*.log
+          path: |
+            build/tests/*.log
+            /tmp/osd-*/**/*.log
           if-no-files-found: ignore
