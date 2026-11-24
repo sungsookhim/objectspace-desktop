@@ -13,7 +13,7 @@ bool hatch_open_all;
 void load_system_conf(void)
 {
     char path[4096];
-    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    const char *cfg = getenv("OSD_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (cfg && *cfg) snprintf(path, sizeof path, "%s/system.conf", cfg);
     else if (xdg && *xdg) snprintf(path, sizeof path, "%s/wps/system.conf", xdg);
     else snprintf(path, sizeof path, "%s/.config/wps/system.conf", home ? home : "");

@@ -22,8 +22,8 @@ cat > "$S/script" <<EOS
 17.8 shot $S/said.png
 18 quit
 EOS
-PRE="'$W' settings_set \"\$T/desk/Projects\" 'on:object.open=call:wpNoSuchMethod' > /dev/null 2>&1" \
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=21 tests/comp/run.sh "$S/script" \
+PRE="'$W' settings_set \"\$T/desk/Projects\" 'on:object.open=call:osdNoSuchMethod' > /dev/null 2>&1" \
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=21 tests/comp/run.sh "$S/script" \
     "sleep 13.5; '$W' open \"\$T/desk/Projects\" > /dev/null 2>&1; sleep 3.5; '$W' say 'Backup finished' > \"\$T/say.log\" 2>&1; sleep 10" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
@@ -48,8 +48,8 @@ cat > "$S/off" <<EOS
 8 shot $S/off-said.png
 8.5 quit
 EOS
-PRE="m=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['WPMessages']['address'])\"); '$W' settings_set \"\$m\" desktop_line=false > /dev/null 2>&1" \
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=11 tests/comp/run.sh "$S/off" \
+PRE="m=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdMessages']['address'])\"); '$W' settings_set \"\$m\" desktop_line=false > /dev/null 2>&1" \
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=11 tests/comp/run.sh "$S/off" \
     "sleep 7; '$W' say 'Backup finished' > /dev/null 2>&1; sleep 10" > "$S/off.txt" 2>&1
 check "the setting off: moved to the trash, no box" "[ \$(box '$S/off-msg.png') -eq 0 ]"
 check "the setting off: a script's message still shown" "[ \$(box '$S/off-said.png') -gt 50 ]"

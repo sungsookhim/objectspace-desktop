@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-os.environ.setdefault("WPS_SUITE", "m5")
+os.environ.setdefault("OSD_SUITE", "m5")
 import harness  # noqa: E402
 from harness import *  # noqa: E402,F401,F403
 
@@ -62,12 +62,12 @@ def se2():
     me = Service("me").start()
     d = fresh("ext4", "e2")
     (d / "doc.txt").write_text("x")
-    me.call(d / "doc.txt", "wpSetTitle", "First")
+    me.call(d / "doc.txt", "osdSetTitle", "First")
     me.ctl("flush")
     oid = obj(me, d / "doc.txt")["id"]
     c = Conn(me)
     c.request(op="subscribe", objects=[f"id:{oid}"])
-    me.call(d / "doc.txt", "wpSetTitle", "Second")        # another client
+    me.call(d / "doc.txt", "osdSetTitle", "Second")        # another client
     ev = c.events(2, until=lambda e: e["event"] == "object_changed")
     c.close()
     me.stop()
@@ -117,12 +117,12 @@ def ss1():
 def ss2():
     me = Service("me").start()
     d = fresh("ext4", "s2m")
-    p = Path(me.ctl("create", d, "WPProgram", "Viewer", "eog").get("result", {}).get("path", ""))
+    p = Path(me.ctl("create", d, "OsdProgram", "Viewer", "eog").get("result", {}).get("path", ""))
     pages = me.ctl("settings", p).get("result", [])
     changes = obj(me, p).get("changes")
     r = me.ctl("settings_set", p, "command=loupe", "title=Image Viewer")
     me.ctl("flush")
-    stale = harness.run([str(BIN / "wpsctl"), "call", "--expect", str(changes), str(p), "wpSetTitle", "x"],
+    stale = harness.run([str(BIN / "wpsctl"), "call", "--expect", str(changes), str(p), "osdSetTitle", "x"],
                         env=me.env).stdout
     me.stop()
     titles = [pg["title"] for pg in pages]
@@ -142,7 +142,7 @@ def s37():
     d = fresh("ext4", "s37", user=60001)
     out = d / "who-ran-it"
     run(["sh", "-c", f"touch {out} && chmod 666 {out}"], user=60001, check=True)
-    p = Path(a.ctl("create", d, "WPProgram", "Who am I", f'sh -c "id -u >> {out}"').get("result", {}).get("path", ""))
+    p = Path(a.ctl("create", d, "OsdProgram", "Who am I", f'sh -c "id -u >> {out}"').get("result", {}).get("path", ""))
     a.ctl("flush")
     asked = b.ctl("open", p).get("result", {})
     time.sleep(0.5)
@@ -167,12 +167,12 @@ def sp2():
     a = Service("me").start()
     b = Service("B", user=60002).start()
     before = obj(a, target)
-    r = a.call(target, "wpSetTitle", "My favourite tool")
+    r = a.call(target, "osdSetTitle", "My favourite tool")
     a.ctl("flush")
     mine, theirs = obj(a, target), obj(b, target)
     a.stop(); b.stop()
     st1 = target.stat()
-    ok = before.get("class") == "WPProgram" and r.get("ok") and mine.get("title") == "My favourite tool" and \
+    ok = before.get("class") == "OsdProgram" and r.get("ok") and mine.get("title") == "My favourite tool" and \
         theirs.get("title") == ini(target, "Name") and st0.st_mtime == st1.st_mtime
     return ok, [f"{target.name}: {before.get('class')} {before.get('title')!r}",
                 f"after retitling: mine {mine.get('title')!r}, another user's {theirs.get('title')!r}",
@@ -184,8 +184,8 @@ def sp3():
     me = Service("me").start()
     d = fresh("ext4", "p3")
     (d / "letter.odt").write_text("Dear ...\n")
-    me.call(d / "letter.odt", "wpSetTitle", "Letter")
-    me.call(d / "letter.odt", "wpSetTemplate", "true")
+    me.call(d / "letter.odt", "osdSetTitle", "Letter")
+    me.call(d / "letter.odt", "osdSetTemplate", "true")
     me.ctl("flush")
     tid = obj(me, d / "letter.odt")["id"]
     r = me.ctl("from_template", d / "letter.odt", d, "Letter to the bank")
@@ -193,7 +193,7 @@ def sp3():
     n = r.get("result", {})
     newp = Path(n.get("path", ""))
     nobj = obj(me, newp)
-    tpl = me.call(newp, "wpQueryTemplate").get("result")
+    tpl = me.call(newp, "osdQueryTemplate").get("result")
     refused = me.ctl("from_template", newp, d, "x")
     me.stop()
     ok = r.get("ok") and newp.name == "Letter to the bank.odt" and newp.read_text() == "Dear ...\n" and \
@@ -212,7 +212,7 @@ def sp4():
     got = {}
     for name in want:
         (d / name).write_text("x")
-        got[name] = me.call(d / name, "wpQueryMimeType").get("result")
+        got[name] = me.call(d / name, "osdQueryMimeType").get("result")
     me.stop()
     return got == want, [f"{k}: {v}" for k, v in got.items()]
 
@@ -238,7 +238,7 @@ def s41():
 
 # ----------------------------------------------------------------- plug-ins
 
-PLUG = {"WPS_PLUGIN_DIRS": f"{ROOT}/build/tests/m5plugins:{ROOT}/build/tests/m5future"}
+PLUG = {"OSD_PLUGIN_DIRS": f"{ROOT}/build/tests/m5plugins:{ROOT}/build/tests/m5future"}
 
 
 def plugins_ready(svc, timeout=10):
@@ -255,7 +255,7 @@ def labels(menu):
     return [i["label"] for i in menu.get("result", [])] if menu.get("ok") else None
 
 
-@scenario(17, "A plug-in replaces WPFolder: new folders are its class and get its menu item")
+@scenario(17, "A plug-in replaces OsdFolder: new folders are its class and get its menu item")
 def s17():
     me = Service("me", extra_env=PLUG).start()
     ps = plugins_ready(me)
@@ -263,7 +263,7 @@ def s17():
     (d / "projects").mkdir()
     o = obj(me, d / "projects")
     m = labels(me.ctl("menu", d / "projects"))
-    st = me.call(d / "projects", "wpStamp")
+    st = me.call(d / "projects", "osdStamp")
     me.ctl("flush")
     me.stop()
     me.start()
@@ -276,7 +276,7 @@ def s17():
                 f"a setting changed in the host is saved by the service: {t!r}"]
 
 
-@scenario(18, "A plug-in built against a newer WPFolder than installed is refused; the service carries on")
+@scenario(18, "A plug-in built against a newer OsdFolder than installed is refused; the service carries on")
 def s18():
     me = Service("me", extra_env=PLUG).start()
     ps = {p["name"]: p for p in plugins_ready(me)}
@@ -295,7 +295,7 @@ def s19():
     plugins_ready(me)
     d = fresh("ext4", "s19")
     (d / "slow").mkdir()
-    me.call(d / "slow", "wpSetTitle", "SLOW")
+    me.call(d / "slow", "osdSetTitle", "SLOW")
     pings, stop = [], [False]
     import threading
     def pinger():
@@ -328,7 +328,7 @@ def s20():
     pid0 = next(p["pid"] for p in ps if p["name"] == "testfolder")
     d = fresh("ext4", "s20")
     (d / "slow").mkdir()
-    me.call(d / "slow", "wpSetTitle", "SLOW")
+    me.call(d / "slow", "osdSetTitle", "SLOW")
     import threading
     res = {}
     def ask():
@@ -361,7 +361,7 @@ def ssb():
     d = fresh("ext4", "sb")
     (d / "x").mkdir()
     data = me.base / "state" / "plugins" / "testfolder"
-    probe = me.call(d / "x", "wpSandboxProbe", str(data)).get("result", "")
+    probe = me.call(d / "x", "osdSandboxProbe", str(data)).get("result", "")
     sb = next(p["sandbox"] for p in ps if p["name"] == "testfolder")
     me.stop()
     ok = "home=Permission denied" in probe and "net=Network is unreachable" in probe and "data=writable" in probe
@@ -376,7 +376,7 @@ def sr1():
     b = Service("B", user=60002).start()
     d = fresh("ext4", "r1", user=60001)
     run(["sh", "-c", f"echo hi > {d}/draft.txt && echo x > {d}/taken.txt && chmod 755 {d}"], user=60001, check=True)
-    a.call(d / "draft.txt", "wpSetTitle", "Old title")
+    a.call(d / "draft.txt", "osdSetTitle", "Old title")
     a.ctl("flush")
     id0 = obj(a, d / "draft.txt").get("id")
     r = a.ctl("rename", d / "draft.txt", "final.txt")
@@ -388,7 +388,7 @@ def sr1():
     rb = b.ctl("rename", d / "final.txt", "Bs name.txt")
     b.ctl("flush")
     seen_b, seen_a = obj(b, d / "final.txt").get("title"), obj(a, d / "final.txt").get("title")
-    p = Path(a.ctl("create", d, "WPProgram", "Tool", "true").get("result", {}).get("path", ""))
+    p = Path(a.ctl("create", d, "OsdProgram", "Tool", "true").get("result", {}).get("path", ""))
     rp = a.ctl("rename", p, "My tool")
     a.ctl("flush")
     a.stop(); b.stop()
@@ -452,7 +452,7 @@ def sc1():
     for sub in ("docs", "desk", "other", "keepfiles"):
         (d / sub).mkdir()
     (d / "docs" / "report.txt").write_text("x")
-    me.call(d / "docs" / "report.txt", "wpSetTitle", "Report")
+    me.call(d / "docs" / "report.txt", "osdSetTitle", "Report")
     r = me.ctl("shadow", d / "docs" / "report.txt", d / "desk")
     addr = r.get("result", "")
     files_in_desk = sorted(os.listdir(d / "desk"))
@@ -466,7 +466,7 @@ def sc1():
     me.ctl("flush")
     lay = {i["name"]: (i["x"], i["y"]) for i in me.ctl("layout", d / "desk").get("result", {}).get("items", [])}
     # a folder set to keep files gets a .wpobj file
-    me.call(d / "keepfiles", "wpSetLocalObjects", "true")
+    me.call(d / "keepfiles", "osdSetLocalObjects", "true")
     me.ctl("flush")
     lr = me.ctl("shadow", d / "docs" / "report.txt", d / "keepfiles").get("result", "")
     # deleting the target removes its central shadows
@@ -476,7 +476,7 @@ def sc1():
     me.stop()
     entry = page[0] if page else {}
     ok = addr.startswith("vobj:") and files_in_desk == [] and entry.get("name", "").startswith("\x01vobj:") and \
-        entry.get("shadow") is True and entry.get("title") == "Report" and sh.get("class") == "WPShadow" and \
+        entry.get("shadow") is True and entry.get("title") == "Report" and sh.get("class") == "OsdShadow" and \
         (sh.get("target") or {}).get("title") == "Report" and mv == addr and in_desk == [] and len(in_other) == 1 and \
         cp.startswith("vobj:") and cp != mv and lay.get("\x01" + cp) == (120, 80) and lr.endswith(".wpobj") and bool(gone)
     return ok, [f"shadow made centrally: {addr[:13]}..., files in desk/: {files_in_desk}",
@@ -609,7 +609,7 @@ def su2():
     term.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> {tlog}\nshift\nexec "$@"\n')   # a stand-in terminal: logs, then runs
     term.chmod(0o755)
     me = Service("me", extra_env={"XDG_CONFIG_HOME": str(xdg / "config"), "XDG_DATA_HOME": str(xdg / "data"),
-                                  "XDG_CONFIG_DIRS": str(xdg / "sys"), "WPS_TERMINAL": f"{term} -e"}).start()
+                                  "XDG_CONFIG_DIRS": str(xdg / "sys"), "OSD_TERMINAL": f"{term} -e"}).start()
     (d / "sub").mkdir()
     (d / "doc.txt").write_text("x")
     os.symlink(d / "sub", d / "to-sub")
@@ -664,7 +664,7 @@ def sd1():
     (d / "a.txt").write_text("a")
     (d / "sub").mkdir()
     (d / "sub" / "inner.txt").write_text("i")
-    me.call(d / "a.txt", "wpSetTitle", "Letter A")
+    me.call(d / "a.txt", "osdSetTitle", "Letter A")
     me.ctl("flush")
     aid = obj(me, d / "a.txt").get("id")
     (b / "c.txt").write_text("c")
@@ -728,7 +728,7 @@ def stp1():
     (tdir / "Project" / "README").write_text("about\n")
     (tdir / "Project" / "src").mkdir()
     (d / "plain.txt").write_text("x")
-    env = {"WPS_TEMPLATES_DIR": str(tdir)}
+    env = {"OSD_TEMPLATES_DIR": str(tdir)}
     me = Service("me", extra_env=env).start()
     c = Conn(me)
 
@@ -752,7 +752,7 @@ def stp1():
     kinds = {"Folder": (dest / "Folder").is_dir(), "Data File": (dest / "Data File").is_file(),
              "Program": any(n.startswith("Program") and n.endswith(".desktop") for n in got)}
     # once made, never again: delete one, restart
-    folder_tpl = next((i["name"][1:] for i in items if i.get("makes") == "WPFolder"), "")
+    folder_tpl = next((i["name"][1:] for i in items if i.get("makes") == "OsdFolder"), "")
     c.request(op="vdelete", target=folder_tpl)
     c.close()
     me.stop()
@@ -762,7 +762,7 @@ def stp1():
     again = sorted(i["title"] for i in listing(tdir) if i.get("makes"))
     c.close()
     me.stop()
-    ok = builtins == {"Folder": ("WPFolder", True), "Data File": ("WPDataFile", True), "Program": ("WPProgram", True)} and \
+    ok = builtins == {"Folder": ("OsdFolder", True), "Data File": ("OsdDataFile", True), "Program": ("OsdProgram", True)} and \
         files == {"Letter.odt": True, "Project": True} and all(made.values()) and len(made) == 5 and \
         not refused.get("ok") and all(kinds.values()) and "Letter.odt" in got and proj_ok and ids and \
         again == ["Data File", "Program"]
@@ -842,16 +842,16 @@ def sb1():
 @scenario("G3", "Settings objects: System, Sound, Mouse, Scheme Palette made once; their pages; changes kept; the GUI reads them all")
 def sg3():
     d = fresh("ext4", "g3")
-    env = {"WPS_SETUP_DIR": str(d / "System Setup")}
+    env = {"OSD_SETUP_DIR": str(d / "System Setup")}
     me = Service("me", extra_env=env).start()
     c = Conn(me)
     setup = wait_for(lambda: (lambda r: r if len(r.get("objects", {})) == 4 else None)(c.request(op="setup").get("result", {})), timeout=5) or {}
     objs = setup.get("objects", {})
     listed = sorted(i.get("title", "") for i in c.request(op="list", target=str(d / "System Setup"), offset=0, count=10, details=True).get("result", {}).get("items", []))
-    sysaddr = objs.get("WPSystem", {}).get("address", "")
+    sysaddr = objs.get("OsdSystem", {}).get("address", "")
     pages = [p["title"] for p in c.request(op="settings", target=sysaddr).get("result", [])]
     r1 = c.request(op="settings_set", target=sysaddr, values={"corner_radius": 3, "confirm_delete": False})
-    r2 = c.request(op="settings_set", target=objs.get("WPSound", {}).get("address", ""), values={"window.open": "bell", "volume": "40"})
+    r2 = c.request(op="settings_set", target=objs.get("OsdSound", {}).get("address", ""), values={"window.open": "bell", "volume": "40"})
     bad = c.request(op="settings_set", target=sysaddr, values={"buttons": 9})
     after = c.request(op="setup").get("result", {}).get("objects", {})
     c.close()
@@ -862,19 +862,19 @@ def sg3():
     n_listed = len(c.request(op="list", target=str(d / "System Setup"), offset=0, count=10).get("result", {}).get("items", []))
     c.close()
     me.stop()
-    sysv, sndv = after.get("WPSystem", {}).get("settings", {}), after.get("WPSound", {}).get("settings", {})
-    ok = sorted(objs) == ["WPMouse", "WPSchemePalette", "WPSound", "WPSystem"] and \
+    sysv, sndv = after.get("OsdSystem", {}).get("settings", {}), after.get("OsdSound", {}).get("settings", {})
+    ok = sorted(objs) == ["OsdMouse", "OsdSchemePalette", "OsdSound", "OsdSystem"] and \
         listed == ["Mouse", "Scheme Palette", "Sound", "System"] and pages == ["General", "Window", "Confirmations"] and \
         r1.get("ok") and r2.get("ok") and not bad.get("ok") and sysv.get("corner_radius") == "8" and \
         sysv.get("confirm_delete") == "0" and sndv.get("window.open") == "bell" and sndv.get("volume") == "40" and \
-        objs.get("WPMouse", {}).get("settings", {}).get("open") == "button1 double" and \
-        again.get("WPSystem", {}).get("settings", {}).get("corner_radius") == "8" and n_listed == 4 and \
-        again.get("WPSystem", {}).get("address") == sysaddr
+        objs.get("OsdMouse", {}).get("settings", {}).get("open") == "button1 double" and \
+        again.get("OsdSystem", {}).get("settings", {}).get("corner_radius") == "8" and n_listed == 4 and \
+        again.get("OsdSystem", {}).get("address") == sysaddr
     return ok, [f"objects {sorted(objs)}; in the System Setup folder: {listed}", f"System's pages: {pages}",
                 f"after changes: corner_radius {sysv.get('corner_radius')!r} (choice 3), confirm_delete {sysv.get('confirm_delete')!r}, "
                 f"window.open {sndv.get('window.open')!r}, volume {sndv.get('volume')!r}; a bad choice refused {not bad.get('ok')}",
-                f"after a restart: corner_radius {again.get('WPSystem', {}).get('settings', {}).get('corner_radius')!r}, "
-                f"{n_listed} objects (not made again), same address {again.get('WPSystem', {}).get('address') == sysaddr}"]
+                f"after a restart: corner_radius {again.get('OsdSystem', {}).get('settings', {}).get('corner_radius')!r}, "
+                f"{n_listed} objects (not made again), same address {again.get('OsdSystem', {}).get('address') == sysaddr}"]
 
 
 # ------------------------------------------------------------------- driver

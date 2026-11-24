@@ -17,7 +17,7 @@ cat > "$S/script" <<EOS
 6.6 shot $S/messages.png
 8 quit
 EOS
-DESKENV="WPS_NOTIFY=1 WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1" SECS=12 dbus-run-session -- tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NOTIFY=1 OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1" SECS=12 dbus-run-session -- tests/comp/run.sh "$S/script" \
     "python3 '$REPO/tests/comp/notify_client.py' \$T/notify.log 8" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0

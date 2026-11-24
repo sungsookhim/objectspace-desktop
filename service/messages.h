@@ -10,8 +10,8 @@
  * ([key, label, ...]) and closed (its program closed it: the actions are
  * gone).
  */
-#ifndef WPS_MESSAGES_H
-#define WPS_MESSAGES_H
+#ifndef OSD_MESSAGES_H
+#define OSD_MESSAGES_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -19,22 +19,22 @@
 
 #include "cbor.h"
 
-#define WPS_MESSAGES_MAX 500
+#define OSD_MESSAGES_MAX 500
 
-void wps_messages_init(const char *path);
-void wps_messages_shutdown(void);
+void osd_messages_init(const char *path);
+void osd_messages_shutdown(void);
 
 /* From a request map's fields; its new ID. */
-int64_t wps_messages_add(const cv *req);
+int64_t osd_messages_add(const cv *req);
 /* The list, newest first, as an array. */
-void wps_messages_encode(cbuf *b);
-size_t wps_messages_count(void);
-size_t wps_messages_unread(void);
+void osd_messages_encode(cbuf *b);
+size_t osd_messages_count(void);
+size_t osd_messages_unread(void);
 /* ids: an array of IDs (or NULL with all). read/closed: -1 unchanged.
  * Returns how many changed. */
-size_t wps_messages_set(const cv *ids, bool all, int read, int closed);
-size_t wps_messages_delete(const cv *ids, bool all);
+size_t osd_messages_set(const cv *ids, bool all, int read, int closed);
+size_t osd_messages_delete(const cv *ids, bool all);
 /* The program's notification nid (from sender) was closed: its actions go. */
-size_t wps_messages_closed(int64_t nid, const char *sender);
+size_t osd_messages_closed(int64_t nid, const char *sender);
 
 #endif

@@ -543,7 +543,7 @@ static int m_caps(sd_bus_message *m, void *ud, sd_bus_error *err)
 static int m_info(sd_bus_message *m, void *ud, sd_bus_error *err)
 {
     (void)ud; (void)err;
-    return sd_bus_reply_method_return(m, "ssss", "Workplace Shell", "wps-linux", WPS_VERSION, "1.2");
+    return sd_bus_reply_method_return(m, "ssss", "Workplace Shell", "wps-linux", OSD_VERSION, "1.2");
 }
 
 static const sd_bus_vtable vtable[] = {
@@ -590,8 +590,8 @@ static void on_bus(void *arg, int fd, short rev) { (void)fd; (void)rev; bus_proc
 bool notify_init(ui_app *a)
 {
     app = a;
-    const char *e = getenv("WPS_NOTIFY");
-    if (e ? strcmp(e, "1") : !getenv("WPS_SESSION")) return false;
+    const char *e = getenv("OSD_NOTIFY");
+    if (e ? strcmp(e, "1") : !getenv("OSD_SESSION")) return false;
     int r = sd_bus_open_user(&bus);
     if (r < 0) { fprintf(stderr, "wps-shell: notifications: no session bus (%s)\n", strerror(-r)); bus = NULL; return false; }
     if ((r = sd_bus_add_object_vtable(bus, NULL, NPATH, NIFACE, vtable, NULL)) < 0 ||

@@ -81,7 +81,7 @@ static void first_started(void *arg, const cv *reply)
     (void)arg;
     for (struct folder *f = folders; f; f = f->next)
         if (f->desktop && !f->closing) bg_follow(f);   /* its Background (its own, or GNOME's) */
-    if (!getenv("WPS_NO_STARTUP")) startup_at_login();
+    if (!getenv("OSD_NO_STARTUP")) startup_at_login();
     int64_t from = -1;
     if (!reply || !cv_int(reply, "result", &from) || from >= 7 || corner_timer >= 0) return;
     corner_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -109,7 +109,7 @@ static char *rec_last;
 
 static void open_windows_file(char *out, size_t n)
 {
-    const char *sd = getenv("WPS_STATE_DIR"), *xs = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
+    const char *sd = getenv("OSD_STATE_DIR"), *xs = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
     char dir[PATH_MAX];
     if (sd && *sd) snprintf(dir, sizeof dir, "%s", sd);
     else if (xs && *xs) snprintf(dir, sizeof dir, "%s/wps", xs);
@@ -223,7 +223,7 @@ static void place_next(const char *app_id, const char *title, int x, int y)
  * recording goes on. */
 void windows_at_login(void)
 {
-    const char *rt = getenv("WPS_RUNTIME_DIR");
+    const char *rt = getenv("OSD_RUNTIME_DIR");
     if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
     const char *sid = getenv("XDG_SESSION_ID");
     char marker[PATH_MAX], was[64] = "";
@@ -237,8 +237,8 @@ void windows_at_login(void)
     open_windows_file(path, sizeof path);
     /* (work areas, and the folders opened from them, open again even with
      * restoring off: v0.4-design 11) */
-    bool all = restore_windows && !getenv("WPS_NO_RESTORE");
-    FILE *f = again || getenv("WPS_NO_RESTORE") ? NULL : fopen(path, "r");
+    bool all = restore_windows && !getenv("OSD_NO_RESTORE");
+    FILE *f = again || getenv("OSD_NO_RESTORE") ? NULL : fopen(path, "r");
     char line[PATH_MAX * 3 + 128];
     while (f && fgets(line, sizeof line, f)) {
         line[strcspn(line, "\n")] = 0;
@@ -397,7 +397,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     const char *base = strrchr(f->path, '/');
     snprintf(f->title, sizeof f->title, "%s", base && base[1] ? base + 1 : f->path);
     double w = view == UI_VIEW_ICON ? 640 : 760, h = 480;
-    const char *sz = getenv("WPS_SHELL_SIZE");
+    const char *sz = getenv("OSD_SHELL_SIZE");
     if (sz) sscanf(sz, "%lfx%lf", &w, &h);
     if (next_w > 0 && next_h > 0 && !desktop) { w = next_w; h = next_h; }   /* (reopened at login: its size) */
     next_w = next_h = 0;

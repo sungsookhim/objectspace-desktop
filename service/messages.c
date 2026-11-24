@@ -133,13 +133,13 @@ static void load(void)
     free(buf);
 }
 
-void wps_messages_init(const char *path)
+void osd_messages_init(const char *path)
 {
     snprintf(file, sizeof file, "%s", path);
     load();
 }
 
-void wps_messages_shutdown(void)
+void osd_messages_shutdown(void)
 {
     for (size_t i = 0; i < nmsgs; i++) msg_free(&msgs[i]);
     free(msgs);
@@ -147,10 +147,10 @@ void wps_messages_shutdown(void)
     nmsgs = capmsgs = 0;
 }
 
-int64_t wps_messages_add(const cv *req)
+int64_t osd_messages_add(const cv *req)
 {
-    if (nmsgs >= WPS_MESSAGES_MAX) {   /* the oldest goes */
-        size_t drop = nmsgs - WPS_MESSAGES_MAX + 1;
+    if (nmsgs >= OSD_MESSAGES_MAX) {   /* the oldest goes */
+        size_t drop = nmsgs - OSD_MESSAGES_MAX + 1;
         for (size_t i = 0; i < drop; i++) msg_free(&msgs[i]);
         memmove(msgs, msgs + drop, (nmsgs - drop) * sizeof *msgs);
         nmsgs -= drop;
@@ -167,15 +167,15 @@ int64_t wps_messages_add(const cv *req)
     return m->id;
 }
 
-void wps_messages_encode(cbuf *b)
+void osd_messages_encode(cbuf *b)
 {
     cb_array(b, nmsgs);
     for (size_t i = nmsgs; i-- > 0;) put_msg(b, &msgs[i]);
 }
 
-size_t wps_messages_count(void) { return nmsgs; }
+size_t osd_messages_count(void) { return nmsgs; }
 
-size_t wps_messages_unread(void)
+size_t osd_messages_unread(void)
 {
     size_t n = 0;
     for (size_t i = 0; i < nmsgs; i++) n += !msgs[i].read;
@@ -189,7 +189,7 @@ static bool listed(const cv *ids, int64_t id)
     return false;
 }
 
-size_t wps_messages_set(const cv *ids, bool all, int read, int closed)
+size_t osd_messages_set(const cv *ids, bool all, int read, int closed)
 {
     size_t n = 0;
     for (size_t i = 0; i < nmsgs; i++) {
@@ -204,7 +204,7 @@ size_t wps_messages_set(const cv *ids, bool all, int read, int closed)
     return n;
 }
 
-size_t wps_messages_delete(const cv *ids, bool all)
+size_t osd_messages_delete(const cv *ids, bool all)
 {
     size_t k = 0, n = 0;
     for (size_t i = 0; i < nmsgs; i++) {
@@ -216,7 +216,7 @@ size_t wps_messages_delete(const cv *ids, bool all)
     return n;
 }
 
-size_t wps_messages_closed(int64_t nid, const char *sender)
+size_t osd_messages_closed(int64_t nid, const char *sender)
 {
     size_t n = 0;
     for (size_t i = 0; i < nmsgs; i++) {

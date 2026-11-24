@@ -33,8 +33,8 @@ cat > "$S/script" <<EOS
 12.6 shot $S/red.png
 13 quit
 EOS
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
-    "sleep 2.5; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['WPColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 9; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
+    "sleep 2.5; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 9; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

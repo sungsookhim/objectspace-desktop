@@ -24,13 +24,13 @@
 #include "objects.h"
 #include "listing.h"
 #include "shadows.h"
-#include "WPObject.h"
+#include "OsdObject.h"
 
-static wpo_loop *loop;
-static const wps_env *env;
-static wps_db *db;
+static osdo_loop *loop;
+static const osd_env *env;
+static osd_db *db;
 static bool backup_names;
-static wps_tracker_stats stats;
+static osd_tracker_stats stats;
 static bool trace;
 
 /* ------------------------------------------------------------ events */
@@ -96,7 +96,7 @@ static void watch_remove(struct watch *w)
 /* A folder was renamed: everything recorded under it moves too. */
 static void rename_prefix(const char *from, const char *to)
 {
-    wps_shadows_prefix_moved(from, to);   /* shadows of everything inside, loaded or not */
+    osd_shadows_prefix_moved(from, to);   /* shadows of everything inside, loaded or not */
     size_t l = strlen(from);
     char np[PATH_MAX];
     for (size_t i = 0; i < nwatches; i++)
@@ -104,11 +104,11 @@ static void rename_prefix(const char *from, const char *to)
             snprintf(np, sizeof np, "%s%s", to, watches[i].path + l);
             snprintf(watches[i].path, sizeof watches[i].path, "%s", np);
         }
-    for (size_t i = 0; i < wps_sobj_count(); i++) {
-        sobj *s = wps_sobj_at(i);
+    for (size_t i = 0; i < osd_sobj_count(); i++) {
+        sobj *s = osd_sobj_at(i);
         if (strncmp(s->path, from, l) == 0 && s->path[l] == '/') {
             snprintf(np, sizeof np, "%s%s", to, s->path + l);
-            wps_sobj_set_path(s, np);
+            osd_sobj_set_path(s, np);
         }
     }
 }
@@ -288,7 +288,7 @@ static void on_helper(int fd, short rev, void *arg)
 
 static void helper_connect(void)
 {
-    const char *p = getenv("WPS_WATCHD_SOCKET");
+    const char *p = getenv("OSD_WATCHD_SOCKET");
     char path[PATH_MAX];
     snprintf(path, sizeof path, "%s", p && *p ? p : "/run/wps-watchd.sock");
     if (strcmp(path, "none") == 0) return;
@@ -305,7 +305,7 @@ static void helper_connect(void)
         return;
     }
     helper_fd = fd;
-    wpo_loop_watch_fd(loop, fd, POLLIN, on_helper, NULL);
+    osdo_loop_watch_fd(loop, fd, POLLIN, on_helper, NULL);
 }
 
 static void inotify_add(struct watch *w)
@@ -313,7 +313,7 @@ static void inotify_add(struct watch *w)
     if (ino_fd < 0) {
         ino_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
         if (ino_fd < 0) return;
-        wpo_loop_watch_fd(loop, ino_fd, POLLIN, on_inotify, NULL);
+        osdo_loop_watch_fd(loop, ino_fd, POLLIN, on_inotify, NULL);
     }
     w->wd = inotify_add_watch(ino_fd, w->path, INO_MASK);
 }
@@ -321,7 +321,7 @@ static void inotify_add(struct watch *w)
 static void helper_lost(void)
 {
     /* Fall back to inotify for everything we watch. */
-    wpo_loop_unwatch_fd(loop, helper_fd);
+    osdo_loop_unwatch_fd(loop, helper_fd);
     close(helper_fd);
     helper_fd = -1;
     for (size_t i = 0; i < nreg_pending; i++) free(reg_pending[i]);
@@ -330,9 +330,9 @@ static void helper_lost(void)
     stats.mode = "inotify";
 }
 
-void wps_tracker_watch(const char *dir)
+void osd_tracker_watch(const char *dir)
 {
-    if (!dir[0] || wps_path_untracked(dir) || watch_by_path(dir)) return;
+    if (!dir[0] || osd_path_untracked(dir) || watch_by_path(dir)) return;
     struct watch *w = watch_add(dir);
     if (!w) return;
     if (helper_fd >= 0) helper_register(w);
@@ -352,7 +352,7 @@ struct displaced {
 };
 /* A file that appeared with another file's ID. */
 struct dup {
-    char id[WPS_ID_LEN + 1];
+    char id[OSD_ID_LEN + 1];
     sobj *orig;
     char newpath[PATH_MAX];
     struct timespec orig_mtime;   /* the original's, when the duplicate appeared */
@@ -383,11 +383,11 @@ static void disp_remove(size_t i) { disp[i] = disp[--ndisp]; }
 static void dup_remove(size_t i) { dups[i] = dups[--ndups]; }
 
 /* An object now exists at `path`: it is no longer an unknown new file. */
-void wps_tracker_object_at(const char *path) { recent_take(path); }
+void osd_tracker_object_at(const char *path) { recent_take(path); }
 
 static void undelete(sobj *s);
 
-void wps_tracker_forget(sobj *s)
+void osd_tracker_forget(sobj *s)
 {
     undelete(s);
     for (size_t i = 0; i < ndisp;) { if (disp[i].obj == s) disp_remove(i); else i++; }
@@ -412,28 +412,28 @@ struct job {
     enum jkind kind;
     char path[PATH_MAX];
     sobj *target;              /* J_PROBE_OVER, J_TRANSFER, J_ADOPT */
-    wps_loaded snap;           /* J_TRANSFER: the object's properties */
+    osd_loaded snap;           /* J_TRANSFER: the object's properties */
     bool split;                /* J_TRANSFER: a hard-link split */
     size_t dupi;               /* J_DUPCHECK */
-    char dup_id[WPS_ID_LEN + 1];
+    char dup_id[OSD_ID_LEN + 1];
     char owner_path[PATH_MAX];  /* J_PROBE_CREATE: the path of the object that may own the ID */
     bool owner_gone;
     /* results */
     int err;
     struct stat st, st2;
-    char id[WPS_ID_LEN + 1];
+    char id[OSD_ID_LEN + 1];
 };
 
 /* Find a file by its object ID under `root` (no symlinks, no other mounts). */
-static char seek_id[WPS_ID_LEN + 1], seek_found[PATH_MAX];
+static char seek_id[OSD_ID_LEN + 1], seek_found[PATH_MAX];
 static pthread_mutex_t seek_mu = PTHREAD_MUTEX_INITIALIZER;   /* nftw has no user pointer */
 
 static int seek_visit(const char *path, const struct stat *st, int flag, struct FTW *ftw)
 {
     (void)st; (void)ftw;
-    if (wps_path_untracked(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
-    char id[WPS_ID_LEN + 1];
-    if (flag != FTW_SL && wps_attr_get_id(path, id) && strcmp(id, seek_id) == 0) {
+    if (osd_path_untracked(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
+    char id[OSD_ID_LEN + 1];
+    if (flag != FTW_SL && osd_attr_get_id(path, id) && strcmp(id, seek_id) == 0) {
         snprintf(seek_found, sizeof seek_found, "%s", path);
         return FTW_STOP;
     }
@@ -457,16 +457,16 @@ static void job_work(void *arg)
     struct job *j = arg;
     if (j->kind == J_VERIFY) {
         /* Still there? If not, search for it like an object that left view. */
-        char id[WPS_ID_LEN + 1];
-        if (lstat(j->path, &j->st) == 0 && wps_attr_get_id(j->path, id) && strcmp(id, j->dup_id) == 0) return;
+        char id[OSD_ID_LEN + 1];
+        if (lstat(j->path, &j->st) == 0 && osd_attr_get_id(j->path, id) && strcmp(id, j->dup_id) == 0) return;
         j->kind = J_SEEK;
     }
     if (j->kind == J_SEEK) {
         /* Search near where it was first, then the whole volume. */
         char root[PATH_MAX], found[PATH_MAX];
         dir_of(j->path, root, sizeof root);
-        wps_volume v;
-        bool have_vol = wps_volume_for_path(j->path, &v);
+        osd_volume v;
+        bool have_vol = osd_volume_for_path(j->path, &v);
         for (int up = 0; up < 3; up++) {
             char next[PATH_MAX];
             dir_of(root, next, sizeof next);
@@ -487,7 +487,7 @@ static void job_work(void *arg)
         return;
     }
     if (j->kind == J_FORGET) {
-        wps_db_location_forget(db, j->id);
+        osd_db_location_forget(db, j->id);
         return;
     }
     if (j->kind == J_DUPCHECK) {
@@ -497,13 +497,13 @@ static void job_work(void *arg)
     }
     if (lstat(j->path, &j->st) < 0) { j->err = errno; return; }
     if (j->kind == J_PROBE_CREATE || j->kind == J_PROBE_OVER || j->kind == J_ADOPT) {
-        if (!wps_attr_get_id(j->path, j->id)) j->id[0] = 0;
+        if (!osd_attr_get_id(j->path, j->id)) j->id[0] = 0;
         /* Is the object that owns this ID still at its last known place? If
          * not, this file is that object, moved here unseen. */
         if (j->kind == J_PROBE_CREATE && j->id[0]) {
-            char vol[WPS_VOLID_MAX], rel[PATH_MAX];
-            wps_volume v;
-            if (wps_db_get_location(db, j->id, vol, sizeof vol, rel, sizeof rel) == 0 && wps_volume_for_uuid(vol, &v)) {
+            char vol[OSD_VOLID_MAX], rel[PATH_MAX];
+            osd_volume v;
+            if (osd_db_get_location(db, j->id, vol, sizeof vol, rel, sizeof rel) == 0 && osd_volume_for_uuid(vol, &v)) {
                 snprintf(j->owner_path, sizeof j->owner_path, "%s%s%s", v.mnt, strcmp(v.mnt, "/") ? "/" : "", rel);
                 j->owner_gone = strcmp(j->owner_path, j->path) != 0 && lstat(j->owner_path, &j->st2) < 0;
             }
@@ -512,20 +512,20 @@ static void job_work(void *arg)
     }
     if (j->kind == J_NEWID) {
         /* A copy: same settings, its own identity. */
-        wps_new_id(j->id);
-        if (lsetxattr(j->path, WPS_ATTR_ID, j->id, WPS_ID_LEN, 0) < 0) j->err = errno;
+        osd_new_id(j->id);
+        if (lsetxattr(j->path, OSD_ATTR_ID, j->id, OSD_ID_LEN, 0) < 0) j->err = errno;
         return;
     }
     /* J_TRANSFER: write the object's identity and settings onto the new
      * inode (merging under its lock; another service may do the same). */
-    char want[WPS_ID_LEN + 1];
+    char want[OSD_ID_LEN + 1];
     memcpy(want, j->snap.id, sizeof want);
-    if (j->split || !want[0]) wps_new_id(want);
-    if (wps_attr_assign_id(j->path, want, j->id) != WPS_A_OK) j->id[0] = 0;
+    if (j->split || !want[0]) osd_new_id(want);
+    if (osd_attr_assign_id(j->path, want, j->id) != OSD_A_OK) j->id[0] = 0;
     for (int c = 0; c < j->snap.nc; c++) {
-        wps_props *p = &j->snap.c[c].props;
-        if (j->split && strcmp(j->snap.c[c].cls, "WPObject") == 0) wps_props_set_int(p, "split", 1);
-        if (p->n) wps_attr_update(j->path, j->snap.c[c].cls, p, NULL, 200, NULL, NULL);
+        osd_props *p = &j->snap.c[c].props;
+        if (j->split && strcmp(j->snap.c[c].cls, "OsdObject") == 0) osd_props_set_int(p, "split", 1);
+        if (p->n) osd_attr_update(j->path, j->snap.c[c].cls, p, NULL, 200, NULL, NULL);
     }
     lstat(j->path, &j->st);
 }
@@ -534,7 +534,7 @@ static void watch_parent(const char *path)
 {
     char d[PATH_MAX];
     dir_of(path, d, sizeof d);
-    wps_tracker_watch(d);
+    osd_tracker_watch(d);
 }
 
 static void start_job(struct job *j);
@@ -546,14 +546,14 @@ static void transfer(sobj *s, const char *newpath, bool split)
     j->target = s;
     j->split = split;
     snprintf(j->path, sizeof j->path, "%s", newpath);
-    wps_sobj_snapshot(s, &j->snap);
+    osd_sobj_snapshot(s, &j->snap);
     start_job(j);
 }
 
 static bool target_alive(sobj *s)
 {
-    for (size_t i = 0; i < wps_sobj_count(); i++)
-        if (wps_sobj_at(i) == s) return true;
+    for (size_t i = 0; i < osd_sobj_count(); i++)
+        if (osd_sobj_at(i) == s) return true;
     return false;
 }
 
@@ -561,16 +561,16 @@ static bool target_alive(sobj *s)
  * too); otherwise only this record is dropped (it reloads on demand). */
 static void forget_object_as(sobj *s, bool deleted)
 {
-    wps_tracker_forget(s);
-    if (deleted) wps_shadows_target_deleted(WPObject_data(s->o)->id);
-    if (WPObject_data(s->o)->id[0]) {
+    osd_tracker_forget(s);
+    if (deleted) osd_shadows_target_deleted(OsdObject_data(s->o)->id);
+    if (OsdObject_data(s->o)->id[0]) {
         /* Keep the location row, marked as deleted (on a worker). */
         struct job *j = calloc(1, sizeof *j);
         j->kind = J_FORGET;
-        memcpy(j->id, WPObject_data(s->o)->id, sizeof j->id);
+        memcpy(j->id, OsdObject_data(s->o)->id, sizeof j->id);
         start_job(j);
     }
-    wps_sobj_forget(s);
+    osd_sobj_forget(s);
 }
 
 static void forget_object(sobj *s) { forget_object_as(s, true); }
@@ -622,14 +622,14 @@ static void job_done(void *arg)
             /* A file appeared carrying an ID. Someone else's? Then it is a
              * copy or a move in progress: shared until one changes or the
              * original goes away (design decision 2026-11-18). */
-            sobj *owner = wps_sobj_by_id(j->id);
+            sobj *owner = osd_sobj_by_id(j->id);
             if (owner && j->owner_gone && strcmp(owner->path, j->owner_path) == 0) {
                 undelete(owner);
                 /* Its old place is empty: it moved here from somewhere we
                  * did not see (an unwatched folder, or the trash). */
                 for (size_t i = 0; i < ndups;) { if (dups[i].orig == owner) dup_remove(i); else i++; }
-                wps_sobj_set_inode(owner, &j->st);
-                wps_sobj_set_path(owner, j->path);
+                osd_sobj_set_inode(owner, &j->st);
+                osd_sobj_set_path(owner, j->path);
                 watch_parent(j->path);
                 break;
             }
@@ -652,13 +652,13 @@ static void job_done(void *arg)
     case J_PROBE_OVER:
         if (!j->target || j->err) break;
         if (S_ISLNK(j->st.st_mode)) {
-            wps_sobj_set_inode(j->target, &j->st);   /* a shadow's symlink was rewritten */
+            osd_sobj_set_inode(j->target, &j->st);   /* a shadow's symlink was rewritten */
         } else if (!j->id[0]) {
             /* Atomic save: same object, new contents. A hard-linked file
              * splits instead: the new file becomes its own object. */
             transfer(j->target, j->path, j->target->nlink > 1 && j->target->xattr_ok);
-        } else if (strcmp(j->id, WPObject_data(j->target->o)->id) == 0) {
-            wps_sobj_set_inode(j->target, &j->st);   /* already carried over (full vim, or another service) */
+        } else if (strcmp(j->id, OsdObject_data(j->target->o)->id) == 0) {
+            osd_sobj_set_inode(j->target, &j->st);   /* already carried over (full vim, or another service) */
         } else {
             forget_object(j->target);                /* replaced by a different object */
         }
@@ -668,16 +668,16 @@ static void job_done(void *arg)
         if (j->split) {
             forget_object_as(j->target, false);   /* reloaded on demand through its other name */
         } else {
-            wps_sobj_set_inode(j->target, &j->st);
-            wps_sobj_set_path(j->target, j->path);
+            osd_sobj_set_inode(j->target, &j->st);
+            osd_sobj_set_path(j->target, j->path);
             watch_parent(j->path);
         }
         break;
     case J_ADOPT:
         /* The original of a duplicate was deleted: it was a move. */
         if (j->target && !j->err) {
-            wps_sobj_set_inode(j->target, &j->st);
-            wps_sobj_set_path(j->target, j->path);
+            osd_sobj_set_inode(j->target, &j->st);
+            osd_sobj_set_path(j->target, j->path);
             watch_parent(j->path);
         }
         break;
@@ -686,15 +686,15 @@ static void job_done(void *arg)
         break;
     case J_SEEK:
         if (j->target && !j->err) {
-            wps_sobj_set_path(j->target, j->path);
+            osd_sobj_set_path(j->target, j->path);
             watch_parent(j->path);
         } else if (j->target && j->err == ENOENT) {
             forget_object(j->target);   /* nowhere to be found: deleted (as far as we can see) */
         }
         break;
     case J_NEWID: {
-        sobj *s = wps_sobj_by_path(j->path);
-        if (s && !j->err) memcpy(WPObject_data(s->o)->id, j->id, sizeof j->id);
+        sobj *s = osd_sobj_by_path(j->path);
+        if (s && !j->err) memcpy(OsdObject_data(s->o)->id, j->id, sizeof j->id);
         break;
     }
     case J_DUPCHECK:
@@ -721,7 +721,7 @@ static void job_done(void *arg)
         break;
     }
     if (j->kind == J_PROBE_CREATE) { probes_inflight--; drain_deletes(); }
-    wps_loaded_free(&j->snap);
+    osd_loaded_free(&j->snap);
     free(j);
 }
 
@@ -731,23 +731,23 @@ static void start_job(struct job *j)
     static const char *names[] = { "probe new file", "probe replacement", "carry identity", "new ID",
                                    "check duplicate", "adopt move", "forget location", "find moved object",
                                    "verify object" };
-    wpo_defer(loop, names[j->kind], job_work, job_done, j);
+    osdo_defer(loop, names[j->kind], job_work, job_done, j);
 }
 
 /* Events before a registration took effect were missed: check that the
  * objects in this folder are still there, and look for those that are not. */
 static void verify_folder(const char *dir)
 {
-    for (size_t i = 0; i < wps_sobj_count(); i++) {
-        sobj *o = wps_sobj_at(i);
+    for (size_t i = 0; i < osd_sobj_count(); i++) {
+        sobj *o = osd_sobj_at(i);
         char d[PATH_MAX];
         dir_of(o->path, d, sizeof d);
-        if (strcmp(d, dir) != 0 || !WPObject_data(o->o)->id[0]) continue;
+        if (strcmp(d, dir) != 0 || !OsdObject_data(o->o)->id[0]) continue;
         struct job *j = calloc(1, sizeof *j);
         j->kind = J_VERIFY;
         j->target = o;
         snprintf(j->path, sizeof j->path, "%s", o->path);
-        memcpy(j->dup_id, WPObject_data(o->o)->id, sizeof j->dup_id);
+        memcpy(j->dup_id, OsdObject_data(o->o)->id, sizeof j->dup_id);
         start_job(j);
     }
 }
@@ -799,7 +799,7 @@ static void on_saved(sobj *s)
 
 static void scan_soon(void);
 
-void (*wps_on_fs_event)(char kind, const char *from, const char *path);
+void (*osd_on_fs_event)(char kind, const char *from, const char *path);
 
 static void apply(const tev *e)
 {
@@ -807,8 +807,8 @@ static void apply(const tev *e)
     /* Subscribers hear about real names only. A rename from one of our
      * temporary names onto a real one (a finished copy, a rewritten shadow)
      * is that name appearing. */
-    bool tmp_path = e->path[0] && strstr(e->path, "/" WPS_SHADOW_TMP);
-    bool tmp_old = e->from[0] && strstr(e->from, "/" WPS_SHADOW_TMP);
+    bool tmp_path = e->path[0] && strstr(e->path, "/" OSD_SHADOW_TMP);
+    bool tmp_old = e->from[0] && strstr(e->from, "/" OSD_SHADOW_TMP);
     /* Cached folder listings follow the change first (entry by entry), so
      * the events below can carry their new versions. Changes to contents
      * or attributes need nothing: details are read at each request. */
@@ -822,25 +822,25 @@ static void apply(const tev *e)
         const char *nn = e->path[0] ? strrchr(e->path, '/') + 1 : "", *on = e->from[0] ? strrchr(e->from, '/') + 1 : "";
         if (e->path[0]) dir_of(e->path, d, sizeof d);
         if (e->from[0]) dir_of(e->from, d2, sizeof d2);
-        if (e->k == E_CREATE) wps_listing_apply(d, 'c', nn, NULL, type);
-        else if (e->k == E_DELETE) wps_listing_apply(d, 'd', nn, NULL, type);
-        else if (e->path[0] && e->from[0] && !strcmp(d, d2)) wps_listing_apply(d, 'r', on, nn, type);
+        if (e->k == E_CREATE) osd_listing_apply(d, 'c', nn, NULL, type);
+        else if (e->k == E_DELETE) osd_listing_apply(d, 'd', nn, NULL, type);
+        else if (e->path[0] && e->from[0] && !strcmp(d, d2)) osd_listing_apply(d, 'r', on, nn, type);
         else {
-            if (e->from[0]) wps_listing_apply(d2, 'd', on, NULL, type);
-            if (e->path[0]) wps_listing_apply(d, 'c', nn, NULL, type);
+            if (e->from[0]) osd_listing_apply(d2, 'd', on, NULL, type);
+            if (e->path[0]) osd_listing_apply(d, 'c', nn, NULL, type);
         }
     }
-    if (wps_on_fs_event && !tmp_path) {
-        if (e->k == E_CREATE) wps_on_fs_event('c', "", e->path);
-        else if (e->k == E_DELETE) wps_on_fs_event('d', "", e->path);
-        else if (e->k == E_MOVE && tmp_old) wps_on_fs_event('c', "", e->path);
-        else if (e->k == E_MOVE) wps_on_fs_event('m', e->from, e->path);
+    if (osd_on_fs_event && !tmp_path) {
+        if (e->k == E_CREATE) osd_on_fs_event('c', "", e->path);
+        else if (e->k == E_DELETE) osd_on_fs_event('d', "", e->path);
+        else if (e->k == E_MOVE && tmp_old) osd_on_fs_event('c', "", e->path);
+        else if (e->k == E_MOVE) osd_on_fs_event('m', e->from, e->path);
     }
-    if (!tmp_path && (e->k == E_CREATE || e->k == E_MOVE)) wps_shadows_file_seen(e->path);   /* only .wpobj files */
+    if (!tmp_path && (e->k == E_CREATE || e->k == E_MOVE)) osd_shadows_file_seen(e->path);   /* only .wpobj files */
     /* A folder that was itself moved or deleted: its own listing is gone. */
     if ((e->k == E_DELETE || e->k == E_MOVE) && e->isdir) {
-        if (e->from[0]) wps_listing_invalidate(e->from);
-        if (e->k == E_DELETE && e->path[0]) wps_listing_invalidate(e->path);
+        if (e->from[0]) osd_listing_invalidate(e->from);
+        if (e->k == E_DELETE && e->path[0]) osd_listing_invalidate(e->path);
     }
     if (trace) {
         static const char *k[] = { "CREATE", "DELETE", "MOVE", "ATTRIB", "WRITE", "OVERFLOW" };
@@ -848,28 +848,28 @@ static void apply(const tev *e)
                 e->from[0] ? " -> " : "", e->path);
     }
     if (e->k == E_OVERFLOW) { stats.overflows++; scan_soon(); return; }
-    if ((e->path[0] && wps_path_excluded(e->path)) || (e->from[0] && wps_path_excluded(e->from))) return;
+    if ((e->path[0] && osd_path_excluded(e->path)) || (e->from[0] && osd_path_excluded(e->from))) return;
     /* Our own temporary names (shadow rewrites) are not events to follow,
      * except that a rename from one onto an object is a rewrite of it. */
-    bool tmp_from = e->from[0] && strstr(e->from, "/" WPS_SHADOW_TMP);
-    if (e->path[0] && strstr(e->path, "/" WPS_SHADOW_TMP)) return;
+    bool tmp_from = e->from[0] && strstr(e->from, "/" OSD_SHADOW_TMP);
+    if (e->path[0] && strstr(e->path, "/" OSD_SHADOW_TMP)) return;
     if (tmp_from && e->k == E_MOVE) {
-        sobj *dst = wps_sobj_by_path(e->path);
+        sobj *dst = osd_sobj_by_path(e->path);
         if (dst) probe(J_PROBE_OVER, e->path, dst);
         return;
     }
 
     if (e->k == E_MOVE) {
-        sobj *src = e->from[0] ? wps_sobj_by_path(e->from) : NULL;
-        sobj *dst = e->path[0] ? wps_sobj_by_path(e->path) : NULL;
+        sobj *src = e->from[0] ? osd_sobj_by_path(e->from) : NULL;
+        sobj *dst = e->path[0] ? osd_sobj_by_path(e->path) : NULL;
         if (e->isdir && e->from[0] && e->path[0]) rename_prefix(e->from, e->path);
         if (!e->path[0]) {
             /* It left the folders we watch: find it by its ID. */
-            if (src && WPObject_data(src->o)->id[0]) {
+            if (src && OsdObject_data(src->o)->id[0]) {
                 struct job *j = calloc(1, sizeof *j);
                 j->kind = J_SEEK;
                 j->target = src;
-                memcpy(j->dup_id, WPObject_data(src->o)->id, sizeof j->dup_id);
+                memcpy(j->dup_id, OsdObject_data(src->o)->id, sizeof j->dup_id);
                 snprintf(j->path, sizeof j->path, "%s", e->from);
                 start_job(j);
             }
@@ -886,8 +886,8 @@ static void apply(const tev *e)
             dir_of(e->from, olddir, sizeof olddir);
             dir_of(e->path, newdir, sizeof newdir);
             for (size_t i = 0; i < ndisp;) { if (disp[i].obj == src) disp_remove(i); else i++; }
-            if (!e->isdir) wps_sobj_set_path(src, e->path);
-            else if (strcmp(src->path, e->path) != 0) wps_sobj_set_path(src, e->path);
+            if (!e->isdir) osd_sobj_set_path(src, e->path);
+            else if (strcmp(src->path, e->path) != 0) osd_sobj_set_path(src, e->path);
             watch_parent(e->path);
             if (strcmp(olddir, newdir) == 0 && !e->isdir) {
                 disp = realloc(disp, (ndisp + 1) * sizeof *disp);
@@ -925,7 +925,7 @@ static void apply(const tev *e)
     }
 
     if (e->k == E_DELETE) {
-        sobj *s = wps_sobj_by_path(e->path);
+        sobj *s = osd_sobj_by_path(e->path);
         for (size_t i = 0; i < ndisp;) {   /* the new file of a pairing removed: cancel */
             if (disp[i].paired && strcmp(disp[i].newpath, e->path) == 0) disp_remove(i);
             else i++;
@@ -964,7 +964,7 @@ static void apply(const tev *e)
     /* An attribute arrived on a freshly created file: does it carry an ID
      * now? Not for the new half of a pending save, which is expected to
      * carry the object's ID (full vim copies attributes). */
-    if (e->k == E_ATTRIB && !wps_sobj_by_path(e->path) && recent_take(e->path)) {
+    if (e->k == E_ATTRIB && !osd_sobj_by_path(e->path) && recent_take(e->path)) {
         bool known = false;
         for (size_t i = 0; i < ndups && !known; i++) known = strcmp(dups[i].newpath, e->path) == 0;
         for (size_t i = 0; i < ndisp && !known; i++) known = disp[i].paired && strcmp(disp[i].newpath, e->path) == 0;
@@ -984,7 +984,7 @@ static void apply(const tev *e)
 
 /* ------------------------------------------------------ catch-up scan */
 
-struct lrow { char id[WPS_ID_LEN + 1]; char vol[WPS_VOLID_MAX]; char rel[PATH_MAX]; char found[PATH_MAX]; bool ok; };
+struct lrow { char id[OSD_ID_LEN + 1]; char vol[OSD_VOLID_MAX]; char rel[PATH_MAX]; char found[PATH_MAX]; bool ok; };
 
 struct scan_job {
     struct lrow *rows;
@@ -1014,10 +1014,10 @@ static struct scan_job *cur_scan;   /* nftw has no user pointer; scans never ove
 static int scan_visit(const char *path, const struct stat *st, int flag, struct FTW *ftw)
 {
     (void)st; (void)ftw;
-    if (wps_path_untracked(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
+    if (osd_path_untracked(path)) return flag == FTW_D ? FTW_SKIP_SUBTREE : FTW_CONTINUE;
     if (flag == FTW_SL || flag == FTW_NS || flag == FTW_DNR) return FTW_CONTINUE;
-    char id[WPS_ID_LEN + 1];
-    if (!wps_attr_get_id(path, id)) return FTW_CONTINUE;
+    char id[OSD_ID_LEN + 1];
+    if (!osd_attr_get_id(path, id)) return FTW_CONTINUE;
     for (size_t i = 0; i < cur_scan->n; i++) {
         struct lrow *r = &cur_scan->rows[i];
         if (!r->ok && !r->found[0] && strcmp(r->id, id) == 0) {
@@ -1031,16 +1031,16 @@ static int scan_visit(const char *path, const struct stat *st, int flag, struct 
 static void scan_work(void *arg)
 {
     struct scan_job *s = arg;
-    wps_db_locations(db, collect_row, s);
-    char vols[64][WPS_VOLID_MAX];
+    osd_db_locations(db, collect_row, s);
+    char vols[64][OSD_VOLID_MAX];
     size_t nvols = 0;
     for (size_t i = 0; i < s->n; i++) {
         struct lrow *r = &s->rows[i];
-        wps_volume v;
-        if (!wps_volume_for_uuid(r->vol, &v)) { r->ok = true; continue; }   /* not mounted: unavailable, not lost */
-        char path[PATH_MAX + 8], id[WPS_ID_LEN + 1];
+        osd_volume v;
+        if (!osd_volume_for_uuid(r->vol, &v)) { r->ok = true; continue; }   /* not mounted: unavailable, not lost */
+        char path[PATH_MAX + 8], id[OSD_ID_LEN + 1];
         snprintf(path, sizeof path, "%s%s%s", v.mnt, strcmp(v.mnt, "/") ? "/" : "", r->rel);
-        if (wps_attr_get_id(path, id) && strcmp(id, r->id) == 0) {
+        if (osd_attr_get_id(path, id) && strcmp(id, r->id) == 0) {
             r->ok = true;
             snprintf(r->found, sizeof r->found, "%s", path);
             continue;
@@ -1048,14 +1048,14 @@ static void scan_work(void *arg)
         s->missing++;
         size_t k;
         for (k = 0; k < nvols && strcmp(vols[k], r->vol) != 0; k++) {}
-        if (k == nvols && nvols < 64) snprintf(vols[nvols++], WPS_VOLID_MAX, "%s", r->vol);
+        if (k == nvols && nvols < 64) snprintf(vols[nvols++], OSD_VOLID_MAX, "%s", r->vol);
     }
     /* Walk only the volumes where something is missing; never follow
      * symlinks or cross into other mounts. */
     size_t before = s->missing;
     for (size_t k = 0; k < nvols && s->missing; k++) {
-        wps_volume v;
-        if (!wps_volume_for_uuid(vols[k], &v)) continue;
+        osd_volume v;
+        if (!osd_volume_for_uuid(vols[k], &v)) continue;
         cur_scan = s;
         nftw(v.mnt, scan_visit, 32, FTW_PHYS | FTW_MOUNT | FTW_ACTIONRETVAL);
         cur_scan = NULL;
@@ -1064,8 +1064,8 @@ static void scan_work(void *arg)
     for (size_t i = 0; i < s->n; i++) {
         struct lrow *r = &s->rows[i];
         if (r->ok || !r->found[0]) continue;
-        wps_volume v;
-        if (wps_volume_for_uuid(r->vol, &v)) wps_db_set_location(db, r->id, r->vol, wps_volume_relpath(&v, r->found));
+        osd_volume v;
+        if (osd_volume_for_uuid(r->vol, &v)) osd_db_set_location(db, r->id, r->vol, osd_volume_relpath(&v, r->found));
         found++;
     }
     snprintf(s->report, sizeof s->report, "%zu known objects; %zu had moved, %zu found, %zu still missing",
@@ -1085,9 +1085,9 @@ static void scan_done(void *arg)
     for (size_t i = 0; i < s->n; i++) {
         struct lrow *r = &s->rows[i];
         if (!r->found[0]) continue;
-        sobj *o = wps_sobj_by_id(r->id);
-        if (o && strcmp(o->path, r->found) != 0) wps_sobj_set_path(o, r->found);   /* shadows follow */
-        else if (!o && !r->ok) wps_shadows_target_moved(r->id, r->found);          /* not loaded: shadows still follow */
+        sobj *o = osd_sobj_by_id(r->id);
+        if (o && strcmp(o->path, r->found) != 0) osd_sobj_set_path(o, r->found);   /* shadows follow */
+        else if (!o && !r->ok) osd_shadows_target_moved(r->id, r->found);          /* not loaded: shadows still follow */
         watch_parent(r->found);
     }
     if (s->done) s->done(s->arg, s->report);
@@ -1098,11 +1098,11 @@ static void scan_done(void *arg)
         /* Requests that came during this scan get the next one's result. */
         scan_again = false;
         struct scan_waiter w = nwaiters ? waiters[--nwaiters] : (struct scan_waiter){ NULL, NULL };
-        wps_tracker_scan(w.done, w.arg);
+        osd_tracker_scan(w.done, w.arg);
     }
 }
 
-void wps_tracker_scan(void (*done)(void *, const char *), void *arg)
+void osd_tracker_scan(void (*done)(void *, const char *), void *arg)
 {
     if (scan_running) {
         if (done && nwaiters < 32) waiters[nwaiters++] = (struct scan_waiter){ done, arg };
@@ -1114,7 +1114,7 @@ void wps_tracker_scan(void (*done)(void *, const char *), void *arg)
     s->done = done;
     s->arg = arg;
     scan_running = true;
-    wpo_defer(loop, "catch-up scan", scan_work, scan_done, s);
+    osdo_defer(loop, "catch-up scan", scan_work, scan_done, s);
 }
 
 static int scan_timer = -1;
@@ -1125,7 +1125,7 @@ static void on_scan_timer(int fd, short rev, void *arg)
     uint64_t n;
     ssize_t r = read(fd, &n, sizeof n);
     (void)r;
-    wps_tracker_scan(NULL, NULL);
+    osd_tracker_scan(NULL, NULL);
 }
 
 /* After an overflow, wait for the burst to settle, then scan once. */
@@ -1137,9 +1137,9 @@ static void scan_soon(void)
 
 /* --------------------------------------------------------------- init */
 
-void wps_tracker_get_stats(wps_tracker_stats *out) { *out = stats; }
+void osd_tracker_get_stats(osd_tracker_stats *out) { *out = stats; }
 
-void wps_tracker_init(wpo_loop *l, const wps_env *e, wps_db *d)
+void osd_tracker_init(osdo_loop *l, const osd_env *e, osd_db *d)
 {
     loop = l;
     env = e;
@@ -1152,16 +1152,16 @@ void wps_tracker_init(wpo_loop *l, const wps_env *e, wps_db *d)
         backup_names = fgets(line, sizeof line, f) && (line[0] == '1' || strncmp(line, "on", 2) == 0 || strncmp(line, "yes", 3) == 0);
         fclose(f);
     }
-    wps_on_saved = on_saved;
-    trace = getenv("WPS_TRACE") && *getenv("WPS_TRACE") == '1';
+    osd_on_saved = on_saved;
+    trace = getenv("OSD_TRACE") && *getenv("OSD_TRACE") == '1';
     helper_connect();
     stats.mode = helper_fd >= 0 ? "wps-watchd" : "inotify";
     scan_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    wpo_loop_watch_fd(loop, scan_timer, POLLIN, on_scan_timer, NULL);
-    wps_tracker_scan(NULL, NULL);   /* catch up with what happened while we were not running */
+    osdo_loop_watch_fd(loop, scan_timer, POLLIN, on_scan_timer, NULL);
+    osd_tracker_scan(NULL, NULL);   /* catch up with what happened while we were not running */
 }
 
-void wps_tracker_shutdown(void)
+void osd_tracker_shutdown(void)
 {
     if (helper_fd >= 0) close(helper_fd);
     if (ino_fd >= 0) close(ino_fd);

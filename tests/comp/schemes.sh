@@ -15,15 +15,15 @@ cat > "$S/script" <<EOS
 9.5 shot $S/two.png
 10 quit
 EOS
-DESKENV="WPS_WARPCENTER=1 WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=13 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_WARPCENTER=1 OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=13 tests/comp/run.sh "$S/script" \
     "sleep 4
      classic=\$('$W' setup | python3 -c \"import json,sys; print([s['address'] for s in json.load(sys.stdin)['result']['schemes'] if s['title']=='Classic'][0])\")
      '$W' set \"\$classic\" 'desktop=#800000' > \"\$T/set1.log\" 2>&1
      sleep 3
-     '$W' create \"\$T/setup/Schemes\" WPScheme Mine > \"\$T/create.log\" 2>&1
+     '$W' create \"\$T/setup/Schemes\" OsdScheme Mine > \"\$T/create.log\" 2>&1
      mine=\$('$W' setup | python3 -c \"import json,sys; print([s['address'] for s in json.load(sys.stdin)['result']['schemes'] if s['title']=='Mine'][0])\")
      '$W' set \"\$mine\" 'desktop=#000080;title_active=#008000' > \"\$T/set2.log\" 2>&1
-     pal=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['WPSchemePalette']['address'])\")
+     pal=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSchemePalette']['address'])\")
      '$W' set \"\$pal\" 'scheme=Mine' > \"\$T/set3.log\" 2>&1
      '$W' props \"\$pal\" > \"\$T/pal.log\" 2>&1" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")

@@ -1,0 +1,11 @@
+# A pointer to another object (a managed symlink in M4).
+class OsdShadow : OsdAbstract
+version 1.0
+data {
+    osdo_object *target;
+}
+override osdUnInitData
+override osdQueryTitle
+method osdQueryTarget() -> object
+method osdSetTarget(object target) -> bool
+classoverride osdclsQueryTitle

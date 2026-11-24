@@ -101,7 +101,7 @@ static bool yes(const char *v) { return !strcasecmp(v, "yes") || !strcasecmp(v, 
 void ui_mouse_load(void)
 {
     char path[4096];
-    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    const char *cfg = getenv("OSD_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (cfg && *cfg) snprintf(path, sizeof path, "%s/mouse.conf", cfg);
     else if (xdg && *xdg) snprintf(path, sizeof path, "%s/wps/mouse.conf", xdg);
     else snprintf(path, sizeof path, "%s/.config/wps/mouse.conf", home ? home : "");

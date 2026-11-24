@@ -301,7 +301,7 @@ export default class WpsExtension extends Extension {
                 // power off, restart or log out without GNOME asking again
                 // (programs that object still say so).
                 const how = { poweroff: '--power-off', reboot: '--reboot', logout: '--logout' }[id] ?? '--power-off';
-                if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command shutdown ${how}`);
+                if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`wps: command shutdown ${how}`);
                 else try {
                     GLib.spawn_command_line_async(`gnome-session-quit ${how} --no-prompt`);
                 } catch (e) {
@@ -311,7 +311,7 @@ export default class WpsExtension extends Extension {
                 return;
             }
             const w = global.display.list_all_windows().find(x => String(x.get_id()) === id);
-            if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command ${cmd} ${id}: ${w ? w.get_title() : 'no such window'}`);
+            if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`wps: command ${cmd} ${id}: ${w ? w.get_title() : 'no such window'}`);
             if (w) {
                 // a time GNOME takes as now (the event's own may be 0)
                 const now = global.display.get_current_time_roundtrip();
@@ -370,7 +370,7 @@ export default class WpsExtension extends Extension {
         const own = new Set(all.filter(w => w.get_wm_class() === DESKTOP_APP_ID).map(w => w.get_pid()));
         const hits = all.filter(w => w.get_window_type() === Meta.WindowType.NORMAL && w.get_pid() > 0 &&
             !own.has(w.get_pid()) && inGroup(w.get_pid()));
-        if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command group ${act}: ${JSON.stringify(hits.map(w => w.get_title()))}`);
+        if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`wps: command group ${act}: ${JSON.stringify(hits.map(w => w.get_title()))}`);
         for (const w of hits) {
             if (act === 'minimize') w.minimize();
             else if (act === 'restore' && w.minimized) w.unminimize();

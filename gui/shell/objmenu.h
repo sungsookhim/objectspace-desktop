@@ -5,8 +5,8 @@
  * trees). Used by the WarpCenter's Desktop menu and the LaunchPad's
  * drawers.
  */
-#ifndef WPS_OBJMENU_H
-#define WPS_OBJMENU_H
+#ifndef OSD_OBJMENU_H
+#define OSD_OBJMENU_H
 
 #include <stdbool.h>
 #include <stddef.h>

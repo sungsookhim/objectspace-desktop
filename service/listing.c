@@ -1,18 +1,18 @@
 #define _GNU_SOURCE
 #include "listing.h"
-#include "wps_themes.h"
-#include "wps_classes.h"
+#include "osd_themes.h"
+#include "osd_classes.h"
 #include "defaults.h"
-#include "WPFolder.h"
-#ifndef WPS_ICONDIR
-#define WPS_ICONDIR "/usr/share/wps/icons"
+#include "OsdFolder.h"
+#ifndef OSD_ICONDIR
+#define OSD_ICONDIR "/usr/share/wps/icons"
 #endif
 #include "trash.h"
 #include "udisks.h"
 #include "launch.h"
 #include "objects.h"
 #include "shadows.h"
-#include "wps_state.h"
+#include "osd_state.h"
 
 #include <dirent.h>
 #include <pthread.h>
@@ -30,7 +30,7 @@ struct waiter {
     struct waiter *next;
     size_t offset, count;
     bool details;
-    wps_page_fn reply;
+    osd_page_fn reply;
     void *arg;
 };
 
@@ -49,15 +49,15 @@ struct listing {
      * any change. The folder's plain listing has neither. */
     char filter[128];
     bool hide;
-    long last_index;         /* where the last edit was (see wps_listing_last_index) */
+    long last_index;         /* where the last edit was (see osd_listing_last_index) */
     unsigned gen;            /* bumped when re-read; chunks of an old read are dropped */
     struct waiter *waiters;
 };
 
-static wpo_loop *loop;
+static osdo_loop *loop;
 static struct listing *listings;
 
-size_t wps_listing_count(void)
+size_t osd_listing_count(void)
 {
     size_t n = 0;
     for (struct listing *l = listings; l; l = l->next) n++;
@@ -74,7 +74,7 @@ static struct listing *find_v(const char *path, const char *filter, bool hide)
 /* The folder's plain listing (the one changes follow in place). */
 static struct listing *find(const char *path) { return find_v(path, "", false); }
 
-bool wps_listing_has(const char *folder, const char *name)
+bool osd_listing_has(const char *folder, const char *name)
 {
     for (struct listing *l = listings; l; l = l->next) {
         if (strcmp(l->path, folder)) continue;
@@ -102,8 +102,8 @@ static void clear(struct listing *l)
 
 struct detail_job {
     char folder[PATH_MAX];
-    wps_page page;
-    wps_page_fn reply;
+    osd_page page;
+    osd_page_fn reply;
     void *arg;
     int pending;            /* slices not yet done (loop thread only) */
     bool in_trash;          /* a trash's files folder: titles from its info files */
@@ -111,115 +111,115 @@ struct detail_job {
 
 struct detail_slice { struct detail_job *j; size_t from, to; };
 
-static const wps_props *props_of(const wps_loaded *ld, const char *cls)
+static const osd_props *props_of(const osd_loaded *ld, const char *cls)
 {
     for (int i = 0; i < ld->nc; i++)
         if (!strcmp(ld->c[i].cls, cls)) return &ld->c[i].props;
     return NULL;
 }
 
-static void drive_icon(const wps_loaded *ld, char *out, size_t n);
+static void drive_icon(const osd_loaded *ld, char *out, size_t n);
 
 /* An object's class's theme icon (0.4 step 2: sets A and E). */
 static bool class_icon(const char *cls, char *out, size_t n)
 {
-    const char *nm = wps_icon_name_for_class(cls);
+    const char *nm = osd_icon_name_for_class(cls);
     if (nm) snprintf(out, n, "theme:%s", nm);
     return nm != NULL;
 }
 static bool special_icon(const char *path, char *out, size_t n);
 
-static void central_details(wps_entry *e)
+static void central_details(osd_entry *e)
 {
     int64_t tv0 = 0;
-    wps_loaded ld;
-    wps_load(e->name + 1, false, &ld);
+    osd_loaded ld;
+    osd_load(e->name + 1, false, &ld);
     e->detailed = true;
     e->size = e->mtime = 0;
-    if (ld.err) { wps_loaded_free(&ld); return; }
+    if (ld.err) { osd_loaded_free(&ld); return; }
     memcpy(e->id, ld.id, sizeof e->id);
-    const wps_props *op = props_of(&ld, "WPObject"), *wp = props_of(&ld, "WPS");
+    const osd_props *op = props_of(&ld, "OsdObject"), *wp = props_of(&ld, "WPS");
     char *t = NULL;
-    if (op && wps_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+    if (op && osd_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
     free(t);
     t = NULL;
-    if (op && wps_props_str(op, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+    if (op && osd_props_str(op, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
     free(t);
     t = NULL;
-    if (op && wps_props_str(op, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
+    if (op && osd_props_str(op, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
     free(t);
-    if (op && wps_props_int(op, "open_hatch", &tv0) && tv0) e->open_hatch = true;
+    if (op && osd_props_int(op, "open_hatch", &tv0) && tv0) e->open_hatch = true;
     int64_t tv;
-    if (op && wps_props_int(op, "template", &tv) && tv) e->is_template = true;
+    if (op && osd_props_int(op, "template", &tv) && tv) e->is_template = true;
     t = NULL;
-    if (wp && wps_props_str(wp, "makes", &t)) { snprintf(e->makes, sizeof e->makes, "%s", t); e->is_template = true; }
+    if (wp && osd_props_str(wp, "makes", &t)) { snprintf(e->makes, sizeof e->makes, "%s", t); e->is_template = true; }
     free(t);
-    if (!e->icon[0] && !strcmp(ld.obj_class, "WPDrive")) drive_icon(&ld, e->icon, sizeof e->icon);
+    if (!e->icon[0] && !strcmp(ld.obj_class, "OsdDrive")) drive_icon(&ld, e->icon, sizeof e->icon);
     if (!e->icon[0] && !ld.shadow_of[0]) class_icon(ld.obj_class, e->icon, sizeof e->icon);
     if (ld.shadow_of[0]) {
         e->shadow = true;
         e->target_type = DT_UNKNOWN;
-        char tl[WPS_ID_LEN + 8];
+        char tl[OSD_ID_LEN + 8];
         snprintf(tl, sizeof tl, "id:%s", ld.shadow_of);
-        wps_loaded tg;
-        wps_load(tl, false, &tg);
+        osd_loaded tg;
+        osd_load(tl, false, &tg);
         if (!tg.err) {
             snprintf(e->target_path, sizeof e->target_path, "%s", tg.path[0] ? tg.path : tl);
             e->target_type = S_ISDIR(tg.st.st_mode) ? DT_DIR : DT_REG;
-            const wps_props *tp = props_of(&tg, "WPObject");
+            const osd_props *tp = props_of(&tg, "OsdObject");
             t = NULL;
-            if (!e->title[0] && tp && wps_props_str(tp, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+            if (!e->title[0] && tp && osd_props_str(tp, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
             free(t);
             t = NULL;
-            if (!e->icon[0] && tp && wps_props_str(tp, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+            if (!e->icon[0] && tp && osd_props_str(tp, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
             t = NULL;
-            if (!e->icon_open[0] && tp && wps_props_str(tp, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
+            if (!e->icon_open[0] && tp && osd_props_str(tp, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
             free(t);
-            if (tp && wps_props_int(tp, "open_hatch", &tv0) && tv0) e->open_hatch = true;
+            if (tp && osd_props_int(tp, "open_hatch", &tv0) && tv0) e->open_hatch = true;
             if (!e->title[0] && tg.desk_name[0]) snprintf(e->title, sizeof e->title, "%s", tg.desk_name);   /* a program: its Name */
             if (!e->title[0] && tg.path[0]) snprintf(e->title, sizeof e->title, "%s", strrchr(tg.path, '/') + 1);
             /* the Trash Can's shadow: empty or full, unless it has its own */
             char own[sizeof e->icon] = "";
-            if (op) { t = NULL; if (wps_props_str(op, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
+            if (op) { t = NULL; if (osd_props_str(op, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
             /* (or its original's own: chosen in the original's notebook) */
-            if (!own[0] && tp) { t = NULL; if (wps_props_str(tp, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
-            if (!own[0] && S_ISDIR(tg.st.st_mode) && wps_is_trash_files_dir(tg.path)) wps_trash_icon(tg.path, e->icon, sizeof e->icon);
+            if (!own[0] && tp) { t = NULL; if (osd_props_str(tp, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
+            if (!own[0] && S_ISDIR(tg.st.st_mode) && osd_is_trash_files_dir(tg.path)) osd_trash_icon(tg.path, e->icon, sizeof e->icon);
             else if (!own[0] && S_ISDIR(tg.st.st_mode) && special_icon(tg.path, e->icon, sizeof e->icon)) {}
-            else if (!own[0] && !strcmp(tg.obj_class, "WPDrive")) drive_icon(&tg, e->icon, sizeof e->icon);
+            else if (!own[0] && !strcmp(tg.obj_class, "OsdDrive")) drive_icon(&tg, e->icon, sizeof e->icon);
             else if (!own[0]) class_icon(tg.obj_class, e->icon, sizeof e->icon);
         }
-        wps_loaded_free(&tg);
+        osd_loaded_free(&tg);
     }
-    wps_loaded_free(&ld);
+    osd_loaded_free(&ld);
 }
 
 /* ---- the Trash Can's icon: empty or full (v0.2-design 4) */
 
 static void any_central(const char *vol, const char *id, void *user) { (void)vol; (void)id; *(bool *)user = true; }
 
-bool wps_trash_full(const char *files)
+bool osd_trash_full(const char *files)
 {
     bool full = false;
     DIR *d = opendir(files);
     for (struct dirent *e; d && (e = readdir(d)) && !full;) full = strcmp(e->d_name, ".") && strcmp(e->d_name, "..");
     if (d) closedir(d);
     if (!full) {   /* trashed shadows and other central objects */
-        wps_loaded ld;
-        wps_load(files, false, &ld);
-        if (!ld.err && ld.id[0]) wps_central_in(ld.vol, ld.id, any_central, &full);
-        wps_loaded_free(&ld);
+        osd_loaded ld;
+        osd_load(files, false, &ld);
+        if (!ld.err && ld.id[0]) osd_central_in(ld.vol, ld.id, any_central, &full);
+        osd_loaded_free(&ld);
     }
     return full;
 }
 
-void wps_default_icon(const char *name, char *out, size_t n)
+void osd_default_icon(const char *name, char *out, size_t n)
 {
     /* the theme's icon of that name (0.4 step 2): "theme:computer" for
      * "computer.png"; the window draws it in its folder's theme */
     size_t nl = strlen(name);
     if (nl > 4 && !strcmp(name + nl - 4, ".png")) { snprintf(out, n, "theme:%.*s", (int)(nl - 4), name); return; }
-    snprintf(out, n, "%s/%s", WPS_ICONDIR, name);
+    snprintf(out, n, "%s/%s", OSD_ICONDIR, name);
     if (access(out, R_OK) == 0) return;
     /* not installed: the tree's (build/wpsd -> data/icons) */
     char exe[PATH_MAX];
@@ -232,33 +232,33 @@ void wps_default_icon(const char *name, char *out, size_t n)
     if (access(t, R_OK) == 0) snprintf(out, n, "%s", t);
 }
 
-void wps_trash_icon(const char *files, char *out, size_t n)
+void osd_trash_icon(const char *files, char *out, size_t n)
 {
-    bool full = wps_trash_full(files);
-    wps_props ps;
+    bool full = osd_trash_full(files);
+    osd_props ps;
     char *t = NULL;
     out[0] = 0;
-    /* its own: Icon (WPObject's) when empty, Full icon (WPTrashCan's) when full */
-    if (wps_attr_read(files, full ? "WPTrashCan" : "WPObject", &ps) == WPS_A_OK) {
-        if (wps_props_str(&ps, full ? "fullicon" : "icon", &t) && t[0]) snprintf(out, n, "%s", t);
+    /* its own: Icon (OsdObject's) when empty, Full icon (OsdTrashCan's) when full */
+    if (osd_attr_read(files, full ? "OsdTrashCan" : "OsdObject", &ps) == OSD_A_OK) {
+        if (osd_props_str(&ps, full ? "fullicon" : "icon", &t) && t[0]) snprintf(out, n, "%s", t);
         free(t);
-        wps_props_free(&ps);
+        osd_props_free(&ps);
     }
-    if (!out[0]) wps_default_icon(full ? "trash-full.png" : "trash-empty.png", out, n);
+    if (!out[0]) osd_default_icon(full ? "trash-full.png" : "trash-empty.png", out, n);
 }
 
 /* A drive's icon: its kind's, lit when mounted (v0.2-design 5). */
-static void drive_icon(const wps_loaded *ld, char *out, size_t n)
+static void drive_icon(const osd_loaded *ld, char *out, size_t n)
 {
-    const wps_props *dp = props_of(ld, "WPDrive");
+    const osd_props *dp = props_of(ld, "OsdDrive");
     char *u = NULL;
-    wps_drive_info d;
+    osd_drive_info d;
     char name[64];
-    if (dp && wps_props_str(dp, "uuid", &u) && wps_udisks_find(u, &d))
+    if (dp && osd_props_str(dp, "uuid", &u) && osd_udisks_find(u, &d))
         snprintf(name, sizeof name, "drive-%s%s.png", d.kind, d.mount[0] ? "" : "-off");
     else snprintf(name, sizeof name, "drive-disk-off.png");   /* not present */
     free(u);
-    wps_default_icon(name, out, n);
+    osd_default_icon(name, out, n);
 }
 
 /* WPS's special folders' own icons (Computer, ...), by path. */
@@ -266,7 +266,7 @@ static struct { char path[PATH_MAX]; char png[64]; } special[16];
 static int nspecial;
 static pthread_mutex_t special_mu = PTHREAD_MUTEX_INITIALIZER;
 
-void wps_listing_folder_icon(const char *path, const char *png)
+void osd_listing_folder_icon(const char *path, const char *png)
 {
     pthread_mutex_lock(&special_mu);
     int i = 0;
@@ -285,38 +285,38 @@ static bool special_icon(const char *path, char *out, size_t n)
     pthread_mutex_lock(&special_mu);
     for (int i = 0; i < nspecial; i++) if (!strcmp(special[i].path, path)) snprintf(png, sizeof png, "%s", special[i].png);
     pthread_mutex_unlock(&special_mu);
-    if (png[0]) wps_default_icon(png, out, n);
+    if (png[0]) osd_default_icon(png, out, n);
     return png[0] != 0;
 }
 
-bool wps_listing_central_shown(const char *id, char *out, size_t n)
+bool osd_listing_central_shown(const char *id, char *out, size_t n)
 {
-    static wps_entry e;   /* (big: not on the stack; the service's thread only) */
+    static osd_entry e;   /* (big: not on the stack; the service's thread only) */
     memset(&e, 0, sizeof e);
     snprintf(e.name, sizeof e.name, "\x01vobj:%s", id);
     central_details(&e);
     if (e.icon[0]) { snprintf(out, n, "%s", e.icon); return true; }
     const char *nm = NULL;
     if (e.makes[0])   /* a template: what it makes (an empty Data File is text) */
-        nm = !strcmp(e.makes, "WPFolder") ? "folder" : !strcmp(e.makes, "WPProgram") ? "program"
-           : !strcmp(e.makes, "WPDataFile") ? "file-text" : wps_icon_name_for_class(e.makes);
+        nm = !strcmp(e.makes, "OsdFolder") ? "folder" : !strcmp(e.makes, "OsdProgram") ? "program"
+           : !strcmp(e.makes, "OsdDataFile") ? "file-text" : osd_icon_name_for_class(e.makes);
     else if (e.shadow && e.target_type == DT_DIR) nm = "folder";
     else if (e.shadow && e.target_type == DT_REG && e.target_path[0] == '/') {   /* its original's, by its name */
         size_t l = strlen(e.target_path);
         const char *b = strrchr(e.target_path, '/') + 1;
-        nm = l > 8 && !strcmp(e.target_path + l - 8, ".desktop") ? "program" : wps_icon_name_for_type(wps_mime_for_name(b));
+        nm = l > 8 && !strcmp(e.target_path + l - 8, ".desktop") ? "program" : osd_icon_name_for_type(osd_mime_for_name(b));
     }
     if (nm) snprintf(out, n, "theme:%s", nm);
     return nm != NULL;
 }
 
-void wps_listing_shown_icon(const char *path, const char *cls, const char *mime, bool dir, bool program, char *out, size_t n)
+void osd_listing_shown_icon(const char *path, const char *cls, const char *mime, bool dir, bool program, char *out, size_t n)
 {
-    if (dir && path && *path && wps_is_trash_files_dir(path)) { wps_trash_icon(path, out, n); return; }
+    if (dir && path && *path && osd_is_trash_files_dir(path)) { osd_trash_icon(path, out, n); return; }
     if (dir && path && *path && special_icon(path, out, n)) return;
     if (class_icon(cls, out, n)) return;
     /* its kind's from the theme, as the window draws it (a data file's by its type) */
-    if (dir || program || mime) snprintf(out, n, "theme:%s", dir ? "folder" : program ? "program" : wps_icon_name_for_type(mime));
+    if (dir || program || mime) snprintf(out, n, "theme:%s", dir ? "folder" : program ? "program" : osd_icon_name_for_type(mime));
     else snprintf(out, n, "kind:file");
 }
 
@@ -325,7 +325,7 @@ static void detail_work(void *arg)
     struct detail_slice *sl = arg;
     struct detail_job *j = sl->j;
     for (size_t i = sl->from; i < sl->to; i++) {
-        wps_entry *e = &j->page.items[i];
+        osd_entry *e = &j->page.items[i];
         char p[PATH_MAX + NAME_MAX + 2];
         snprintf(p, sizeof p, "%s/%s", j->folder, e->name);
         struct stat st;
@@ -335,30 +335,30 @@ static void detail_work(void *arg)
             e->detailed = true;
             /* a program: executable, and an ELF binary or a script (#!) by
              * its first bytes (not +x alone: a FAT drive's files all are) */
-            if (S_ISREG(st.st_mode) && (st.st_mode & 0111) && wps_is_program_file(p))
-                e->exec = wps_program_needs_terminal(p) ? 2 : 1;
+            if (S_ISREG(st.st_mode) && (st.st_mode & 0111) && osd_is_program_file(p))
+                e->exec = osd_program_needs_terminal(p) ? 2 : 1;
         }
-        if (!wps_attr_get_id(p, e->id)) e->id[0] = 0;
-        wps_props ps;
+        if (!osd_attr_get_id(p, e->id)) e->id[0] = 0;
+        osd_props ps;
         char *t = NULL;
-        if (e->id[0] && wps_attr_read(p, "WPObject", &ps) == WPS_A_OK) {
-            if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+        if (e->id[0] && osd_attr_read(p, "OsdObject", &ps) == OSD_A_OK) {
+            if (osd_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
             free(t);
             t = NULL;
-            if (wps_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+            if (osd_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
             free(t);
             t = NULL;
-            if (wps_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
+            if (osd_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
             free(t);
             int64_t tv;
-            if (wps_props_int(&ps, "open_hatch", &tv) && tv) e->open_hatch = true;
-            if (wps_props_int(&ps, "template", &tv) && tv) e->is_template = true;
-            wps_props_free(&ps);
+            if (osd_props_int(&ps, "open_hatch", &tv) && tv) e->open_hatch = true;
+            if (osd_props_int(&ps, "template", &tv) && tv) e->is_template = true;
+            osd_props_free(&ps);
         }
-        if (e->name[0] != '\x01' && !wps_is_lock_file(e->name) && wps_in_templates(p)) e->is_template = true;
+        if (e->name[0] != '\x01' && !osd_is_lock_file(e->name) && osd_in_templates(p)) e->is_template = true;
         if (e->name[0] == '\x01') {   /* a central object */
             central_details(e);
-            if (e->shadow && e->target_type == DT_REG) e->locked = wps_lock_file_present(e->target_path);
+            if (e->shadow && e->target_type == DT_REG) e->locked = osd_lock_file_present(e->target_path);
             continue;
         }
         if (e->type == DT_LNK) {
@@ -367,52 +367,52 @@ static void detail_work(void *arg)
             e->target_type = DT_UNKNOWN;
             if (stat(p, &ts) == 0 && realpath(p, e->target_path)) {
                 e->target_type = S_ISDIR(ts.st_mode) ? DT_DIR : DT_REG;
-                if (S_ISREG(ts.st_mode)) e->locked = wps_lock_file_present(e->target_path);
+                if (S_ISREG(ts.st_mode)) e->locked = osd_lock_file_present(e->target_path);
             } else {
                 e->target_path[0] = 0;   /* dangling */
             }
         }
-        if (e->type == DT_REG) e->locked = wps_lock_file_present(p);
-        if (e->type == DT_DIR && wps_is_trash_files_dir(p)) wps_trash_icon(p, e->icon, sizeof e->icon);
+        if (e->type == DT_REG) e->locked = osd_lock_file_present(p);
+        if (e->type == DT_DIR && osd_is_trash_files_dir(p)) osd_trash_icon(p, e->icon, sizeof e->icon);
         else if (e->type == DT_DIR && !e->icon[0]) special_icon(p, e->icon, sizeof e->icon);
         /* in the Trash Can: its name before it was deleted (trash names
          * may have a number added) */
         if (!e->title[0] && j->in_trash) {
             char orig[PATH_MAX];
-            if (wps_trash_info(p, orig, sizeof orig, NULL, 0) == 0) {
+            if (osd_trash_info(p, orig, sizeof orig, NULL, 0) == 0) {
                 const char *b = strrchr(orig, '/');
                 snprintf(e->title, sizeof e->title, "%s", b ? b + 1 : orig);
             }
         }
         size_t nl = strlen(e->name);
-        char tid[WPS_ID_LEN + 1];
+        char tid[OSD_ID_LEN + 1];
         if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".wpobj") &&
-            wps_shadow_read(p, tid, e->target_path, sizeof e->target_path)) {
+            osd_shadow_read(p, tid, e->target_path, sizeof e->target_path)) {
             /* A shadow shows its target: its title (or name), kind and path. */
             e->shadow = true;
-            wps_shadows_file_seen(p);
-            char hid[WPS_ID_LEN + 1];
+            osd_shadows_file_seen(p);
+            char hid[OSD_ID_LEN + 1];
             struct stat ts;
-            if (e->target_path[0] && wps_attr_get_id(e->target_path, hid) && !strcmp(hid, tid) && stat(e->target_path, &ts) == 0) {
+            if (e->target_path[0] && osd_attr_get_id(e->target_path, hid) && !strcmp(hid, tid) && stat(e->target_path, &ts) == 0) {
                 e->target_type = S_ISDIR(ts.st_mode) ? DT_DIR : DT_REG;
                 t = NULL;
-                if (wps_attr_read(e->target_path, "WPObject", &ps) == WPS_A_OK) {
-                    if (wps_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+                if (osd_attr_read(e->target_path, "OsdObject", &ps) == OSD_A_OK) {
+                    if (osd_props_str(&ps, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
                     free(t);
                     t = NULL;   /* the target's icon, unless the shadow has its own */
-                    if (!e->icon[0] && wps_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+                    if (!e->icon[0] && osd_props_str(&ps, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
                     free(t);
                     t = NULL;
-                    if (!e->icon_open[0] && wps_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
+                    if (!e->icon_open[0] && osd_props_str(&ps, "icon_open", &t)) snprintf(e->icon_open, sizeof e->icon_open, "%s", t);
                     free(t);
                     int64_t hv;
-                    if (wps_props_int(&ps, "open_hatch", &hv) && hv) e->open_hatch = true;
-                    wps_props_free(&ps);
+                    if (osd_props_int(&ps, "open_hatch", &hv) && hv) e->open_hatch = true;
+                    osd_props_free(&ps);
                 }
             } else {
                 e->target_type = DT_UNKNOWN;   /* not where it was: the service finds it by ID when opened */
             }
-            e->locked = e->target_type == DT_REG && wps_lock_file_present(e->target_path);
+            e->locked = e->target_type == DT_REG && osd_lock_file_present(e->target_path);
             if (!e->title[0] && e->target_path[0]) {
                 const char *b = strrchr(e->target_path, '/');
                 snprintf(e->title, sizeof e->title, "%s", b ? b + 1 : e->target_path);
@@ -436,7 +436,7 @@ static void detail_done(void *arg)
 /* Answer a waiter whose range is available (or the folder is complete). */
 static void answer(struct listing *l, struct waiter *w)
 {
-    wps_page pg = { .err = l->err, .total = l->n, .complete = l->complete, .offset = w->offset,
+    osd_page pg = { .err = l->err, .total = l->n, .complete = l->complete, .offset = w->offset,
                     .version = l->complete && !l->stale ? l->version : 0 };
     size_t end = w->offset + w->count;
     if (end > l->n) end = l->n;
@@ -449,7 +449,7 @@ static void answer(struct listing *l, struct waiter *w)
     if (w->details && pg.n) {
         struct detail_job *j = calloc(1, sizeof *j);
         snprintf(j->folder, sizeof j->folder, "%s", l->path);
-        j->in_trash = wps_is_trash_files_dir(l->path);
+        j->in_trash = osd_is_trash_files_dir(l->path);
         j->page = pg;
         j->reply = w->reply;
         j->arg = w->arg;
@@ -461,7 +461,7 @@ static void answer(struct listing *l, struct waiter *w)
             sl->j = j;
             sl->from = from;
             sl->to = from + per < pg.n ? from + per : pg.n;
-            wpo_defer(loop, "listing details", detail_work, detail_done, sl);
+            osdo_defer(loop, "listing details", detail_work, detail_done, sl);
         }
     } else {
         w->reply(w->arg, &pg);
@@ -536,7 +536,7 @@ struct read_job {
     bool hide;
     int key;       /* the folder's sort, from its object in memory (-2: not loaded, read it) */
     bool desc;
-    int def_key;   /* ... all folders' (class:WPFolder), for one not loaded with none of its own */
+    int def_key;   /* ... all folders' (class:OsdFolder), for one not loaded with none of its own */
     bool def_desc;
 };
 
@@ -567,7 +567,7 @@ static void add_central(const char *vol, const char *id, void *user)
     c->names[c->n] = strdup(name);
     c->types[c->n] = DT_UNKNOWN;
     if (++c->n == CHUNK && !ca->whole_cap) {
-        wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
+        osdo_loop_post(loop, OSDO_Q_RESULTS, "listing", chunk_done, c);
         c = calloc(1, sizeof *c);
         c->l = ca->j->l;
         c->gen = ca->j->gen;
@@ -577,7 +577,7 @@ static void add_central(const char *vol, const char *id, void *user)
     }
 }
 
-/* ---- a folder's sort order (its WPFolder sort_key: -1 none, 0 name,
+/* ---- a folder's sort order (its OsdFolder sort_key: -1 none, 0 name,
  * 1 type, 2 size, 3 last write; sort_desc): folders first, then the key,
  * then the name. Central objects sort by their titles. */
 struct sort_ent { char *name; unsigned char type; bool dir; char *key; int64_t size, mtime; };
@@ -617,13 +617,13 @@ static void sort_chunk(struct chunk *c, const char *folder, int key, bool desc)
         char p[PATH_MAX + NAME_MAX + 2];
         snprintf(p, sizeof p, "%s/%s", folder, e->name);
         if (e->name[0] == '\x01') {   /* a central object: its title */
-            wps_loaded ld;
-            wps_load(e->name + 1, false, &ld);
+            osd_loaded ld;
+            osd_load(e->name + 1, false, &ld);
             char *t = NULL;
-            const wps_props *op = ld.err ? NULL : props_of(&ld, "WPObject");
-            if (op && wps_props_str(op, "title", &t) && t) e->key = t;
+            const osd_props *op = ld.err ? NULL : props_of(&ld, "OsdObject");
+            if (op && osd_props_str(op, "title", &t) && t) e->key = t;
             else free(t);
-            wps_loaded_free(&ld);
+            osd_loaded_free(&ld);
         } else {
             struct stat st;
             bool need = key == 2 || key == 3 || e->type == DT_UNKNOWN || e->type == DT_LNK;
@@ -657,13 +657,13 @@ static void filter_chunk(struct chunk *c, const char *filter)
     for (size_t i = 0; i < c->n; i++) {
         bool keep;
         if (c->names[i][0] == '\x01') {
-            wps_loaded ld;
-            wps_load(c->names[i] + 1, false, &ld);
+            osd_loaded ld;
+            osd_load(c->names[i] + 1, false, &ld);
             char *t = NULL;
-            const wps_props *op = ld.err ? NULL : props_of(&ld, "WPObject");
-            keep = op && wps_props_str(op, "title", &t) && t && strcasestr(t, filter);
+            const osd_props *op = ld.err ? NULL : props_of(&ld, "OsdObject");
+            keep = op && osd_props_str(op, "title", &t) && t && strcasestr(t, filter);
             free(t);
-            wps_loaded_free(&ld);
+            osd_loaded_free(&ld);
         } else {
             keep = strcasestr(c->names[i], filter) != NULL;
         }
@@ -681,18 +681,18 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     bool desc = j->desc;
     if (key == -2) {   /* (not in memory: as stored) */
         key = -1;
-        wps_loaded fl;
-        wps_load(j->path, false, &fl);
-        const wps_props *fp = fl.err ? NULL : props_of(&fl, "WPFolder");
+        osd_loaded fl;
+        osd_load(j->path, false, &fl);
+        const osd_props *fp = fl.err ? NULL : props_of(&fl, "OsdFolder");
         int64_t v;
         char *sv = NULL;
         key = j->def_key;
         desc = j->def_desc;
-        if (fp && wps_props_str(fp, "sort_key", &sv) && sv) key = sort_index(sv);            /* (0.4: its choice) */
-        else if (fp && wps_props_int(fp, "sort_key", &v)) key = v >= 0 && v <= 3 ? (int)v : -1;   /* (0.3's) */
+        if (fp && osd_props_str(fp, "sort_key", &sv) && sv) key = sort_index(sv);            /* (0.4: its choice) */
+        else if (fp && osd_props_int(fp, "sort_key", &v)) key = v >= 0 && v <= 3 ? (int)v : -1;   /* (0.3's) */
         free(sv);
-        if (fp && wps_props_int(fp, "sort_desc", &v)) desc = v != 0;
-        wps_loaded_free(&fl);
+        if (fp && osd_props_int(fp, "sort_desc", &v)) desc = v != 0;
+        osd_loaded_free(&fl);
     }
     size_t whole_cap = CHUNK;   /* (sorted or filtered: one chunk that grows) */
     bool whole = key >= 0 || j->filter[0];
@@ -708,14 +708,14 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     if (!d) {
         c->err = errno;
         c->last = true;
-        wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
+        osdo_loop_post(loop, OSDO_Q_RESULTS, "listing", chunk_done, c);
         return;
     }
     struct dirent *de;
     while ((de = readdir(d))) {
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
-        if (!strncmp(de->d_name, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) continue;   /* a job's half-made item */
-        if (wps_is_lock_file(de->d_name)) continue;   /* (shown as the in-use emphasis of what it locks) */
+        if (!strncmp(de->d_name, OSD_SHADOW_TMP, strlen(OSD_SHADOW_TMP))) continue;   /* a job's half-made item */
+        if (osd_is_lock_file(de->d_name)) continue;   /* (shown as the in-use emphasis of what it locks) */
         if (j->hide && de->d_name[0] == '.') continue;
         if (whole && c->n == whole_cap) {
             whole_cap *= 2;
@@ -726,7 +726,7 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
         c->types[c->n] = de->d_type;
         if (++c->n == size && !whole) {
             if (size < CHUNK) size *= 4;
-            wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
+            osdo_loop_post(loop, OSDO_Q_RESULTS, "listing", chunk_done, c);
             c = calloc(1, sizeof *c);
             c->l = j->l;
             c->gen = j->gen;
@@ -736,18 +736,18 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
     }
     closedir(d);
     /* Then the central objects kept for this folder (by its object ID). */
-    wps_loaded fld;
-    wps_load(j->path, false, &fld);
+    osd_loaded fld;
+    osd_load(j->path, false, &fld);
     if (!fld.err && fld.id[0]) {
         struct central_add ca = { &c, j, size, whole ? &whole_cap : NULL };
-        wps_central_in(fld.vol, fld.id, add_central, &ca);
+        osd_central_in(fld.vol, fld.id, add_central, &ca);
     }
-    wps_loaded_free(&fld);
+    osd_loaded_free(&fld);
     if (j->filter[0]) filter_chunk(c, j->filter);
     if (key >= 0) sort_chunk(c, j->path, key, desc);
     else if (whole) c->sorted = true;   /* (filtered: read again on changes, as a sorted one) */
     c->last = true;
-    wpo_loop_post(loop, WPO_Q_RESULTS, "listing", chunk_done, c);
+    osdo_loop_post(loop, OSDO_Q_RESULTS, "listing", chunk_done, c);
 }
 
 static uint64_t versions;   /* never reused: a client cannot mistake one read for another */
@@ -769,31 +769,31 @@ static void start_read(struct listing *l)
     /* the folder's sort, as it is now (its object's state may not be
      * written yet: a sort just chosen) */
     j->key = -2;
-    sobj *so = wps_sobj_by_path(l->path);
-    if (so && so->o && wpo_is_a(so->o, WPFolderClass)) {   /* its own, or all folders' (the chain) */
-        char *k = WPObject_wpQueryProperty(so->o, "sort_key"), *d = WPObject_wpQueryProperty(so->o, "sort_desc");
+    sobj *so = osd_sobj_by_path(l->path);
+    if (so && so->o && osdo_is_a(so->o, OsdFolderClass)) {   /* its own, or all folders' (the chain) */
+        char *k = OsdObject_osdQueryProperty(so->o, "sort_key"), *d = OsdObject_osdQueryProperty(so->o, "sort_desc");
         j->key = sort_index(k);
         j->desc = d && !strcmp(d, "1");
         free(k);
         free(d);
     } else {   /* not loaded: all folders', if its own is not stored */
-        char *k = wps_defaults_get("class:WPFolder", "WPFolder", "sort_key"), *d = wps_defaults_get("class:WPFolder", "WPFolder", "sort_desc");
+        char *k = osd_defaults_get("class:OsdFolder", "OsdFolder", "sort_key"), *d = osd_defaults_get("class:OsdFolder", "OsdFolder", "sort_desc");
         j->def_key = k ? sort_index(k) : 0;   /* (none stored: the class's default, by name) */
         j->def_desc = d && !strcmp(d, "1");
         free(k);
         free(d);
     }
-    wpo_defer(loop, "read folder", read_work, free, j);
+    osdo_defer(loop, "read folder", read_work, free, j);
 }
 
-void wps_listing_request(const char *folder, size_t offset, size_t count, bool details,
-                         wps_page_fn reply, void *arg)
+void osd_listing_request(const char *folder, size_t offset, size_t count, bool details,
+                         osd_page_fn reply, void *arg)
 {
-    wps_listing_request_v(folder, "", false, offset, count, details, reply, arg);
+    osd_listing_request_v(folder, "", false, offset, count, details, reply, arg);
 }
 
-void wps_listing_request_v(const char *folder, const char *filter, bool hide, size_t offset, size_t count, bool details,
-                           wps_page_fn reply, void *arg)
+void osd_listing_request_v(const char *folder, const char *filter, bool hide, size_t offset, size_t count, bool details,
+                           osd_page_fn reply, void *arg)
 {
     if (!filter) filter = "";
     struct listing *l = find_v(folder, filter, hide);
@@ -819,13 +819,13 @@ void wps_listing_request_v(const char *folder, const char *filter, bool hide, si
     serve(l);
 }
 
-void wps_listing_invalidate(const char *folder)
+void osd_listing_invalidate(const char *folder)
 {
     for (struct listing *l = listings; l; l = l->next)
         if (!strcmp(l->path, folder)) l->stale = true;
 }
 
-uint64_t wps_listing_version(const char *folder)
+uint64_t osd_listing_version(const char *folder)
 {
     struct listing *l = find(folder);
     return l && l->complete && !l->loading && !l->stale && !l->err ? l->version : 0;
@@ -847,7 +847,7 @@ static void remove_at(struct listing *l, size_t i)
     l->version++;
 }
 
-void wps_listing_apply(const char *folder, char kind, const char *name, const char *newname, unsigned char type)
+void osd_listing_apply(const char *folder, char kind, const char *name, const char *newname, unsigned char type)
 {
     /* windows' own listings (filtered, without hidden ones): read again */
     for (struct listing *v = listings; v; v = v->next)
@@ -858,14 +858,14 @@ void wps_listing_apply(const char *folder, char kind, const char *name, const ch
     l->last_index = -1;
     if (!l->complete || l->loading || l->err) { l->stale = true; return; }
     if (l->stale) return;
-    bool tmp = !strncmp(name, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP));
+    bool tmp = !strncmp(name, OSD_SHADOW_TMP, strlen(OSD_SHADOW_TMP));
     if (kind == 'r' && tmp) { kind = 'c'; name = newname; tmp = false; }   /* a job's item finished */
-    if (kind == 'r' && !strncmp(newname, WPS_SHADOW_TMP, strlen(WPS_SHADOW_TMP))) kind = 'd';
+    if (kind == 'r' && !strncmp(newname, OSD_SHADOW_TMP, strlen(OSD_SHADOW_TMP))) kind = 'd';
     if (tmp) return;
     /* lock files are never listed (as when read) */
-    if (kind == 'c' && wps_is_lock_file(name)) return;
-    if (kind == 'r' && wps_is_lock_file(newname)) kind = 'd';
-    if (kind == 'd' && wps_is_lock_file(name)) return;
+    if (kind == 'c' && osd_is_lock_file(name)) return;
+    if (kind == 'r' && osd_is_lock_file(newname)) kind = 'd';
+    if (kind == 'd' && osd_is_lock_file(name)) return;
     /* sorted: an addition or rename belongs somewhere in the order, which
      * windows cannot place: read again (removals follow by position) */
     if (l->sorted && kind != 'd') { l->stale = true; return; }
@@ -894,7 +894,7 @@ void wps_listing_apply(const char *folder, char kind, const char *name, const ch
             if (over < i) i--;
         }
         if (i < 0) {
-            wps_listing_apply(folder, 'c', newname, NULL, type);
+            osd_listing_apply(folder, 'c', newname, NULL, type);
             return;
         }
         free(l->names[i]);
@@ -904,15 +904,15 @@ void wps_listing_apply(const char *folder, char kind, const char *name, const ch
     }
 }
 
-long wps_listing_last_index(const char *folder)
+long osd_listing_last_index(const char *folder)
 {
     struct listing *l = find(folder);
     return l ? l->last_index : -1;
 }
 
-void wps_listing_init(wpo_loop *l) { loop = l; }
+void osd_listing_init(osdo_loop *l) { loop = l; }
 
-void wps_listing_shutdown(void)
+void osd_listing_shutdown(void)
 {
     while (listings) {
         struct listing *l = listings;

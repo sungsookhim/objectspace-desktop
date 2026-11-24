@@ -1,0 +1,12 @@
+# The SDK's sample plug-in (object-properties-design.md 2.7): image files
+# are objects of this class (types), with a Rating on an Image page (a
+# declared property: WPS keeps it, shows it, sets it from setup strings and
+# Class...), and a menu item its own code handles (in its host).
+class OsdImageFile : OsdDataFile
+version 1.0
+types image/png, image/jpeg, image/*
+property rating : choice "none,1,2,3,4,5" = none page Image label Rating
+event image.rated
+override osdModifyPopupMenu
+override osdMenuItemSelected
+classoverride osdclsQueryTitle

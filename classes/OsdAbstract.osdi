@@ -1,0 +1,4 @@
+# Objects that are not ordinary files or folders.
+class OsdAbstract : OsdObject
+version 1.0
+classoverride osdclsQueryTitle

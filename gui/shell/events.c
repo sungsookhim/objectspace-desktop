@@ -14,7 +14,7 @@
 
 #define MAX_SUBS 64   /* (GUI plug-ins and scripts later; 8 was the sound player and the self-tests) */
 
-static struct { wps_event_fn fn; void *ctx; } subs[MAX_SUBS];
+static struct { osd_event_fn fn; void *ctx; } subs[MAX_SUBS];
 static int nsubs;
 
 /* ----------------------------------------------------------- the scheme */
@@ -50,16 +50,16 @@ static void set(const char *name, const char *sound)
     nscheme++;
 }
 
-/* GNOME's settings: gnome.c's reader (none with WPS_NO_GSETTINGS: tests) */
+/* GNOME's settings: gnome.c's reader (none with OSD_NO_GSETTINGS: tests) */
 static bool gsetting(const char *schema, const char *key, char *out, size_t n)
 {
-    if (getenv("WPS_NO_GSETTINGS")) return false;
+    if (getenv("OSD_NO_GSETTINGS")) return false;
     return gnome_get(schema, key, out, n);
 }
 
 static void config_path(char *out, size_t n, const char *file)
 {
-    const char *cfg = getenv("WPS_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    const char *cfg = getenv("OSD_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (cfg && *cfg) snprintf(out, n, "%s/%s", cfg, file);
     else if (xdg && *xdg) snprintf(out, n, "%s/wps/%s", xdg, file);
     else snprintf(out, n, "%s/.config/wps/%s", home ? home : "", file);
@@ -194,7 +194,7 @@ void events_sound_once(const char *name, const char *sound)
     once_set = sound != NULL;
 }
 
-static void play_sound(const wps_event *e, void *ctx)
+static void play_sound(const osd_event *e, void *ctx)
 {
     (void)ctx;
     const char *p;
@@ -206,7 +206,7 @@ static void play_sound(const wps_event *e, void *ctx)
     } else {
         p = events_sound_for(e->name);
     }
-    if (p && !sound_play(p, volume) && getenv("WPS_DEBUG_EVENTS"))
+    if (p && !sound_play(p, volume) && getenv("OSD_DEBUG_EVENTS"))
         fprintf(stderr, "event: cannot play %s (formats: %s)\n", p, sound_formats());
 }
 
@@ -242,15 +242,15 @@ void events_shutdown(void)
     nsubs = 0;
 }
 
-void events_subscribe(wps_event_fn fn, void *ctx)
+void events_subscribe(osd_event_fn fn, void *ctx)
 {
     if (nsubs < MAX_SUBS) subs[nsubs++] = (typeof(subs[0])){ fn, ctx };
 }
 
 void events_raise(const char *name, const char *object, const char *cls, ui_rect at)
 {
-    wps_event e = { name, object ? object : "", cls ? cls : "", at };
-    if (getenv("WPS_DEBUG_EVENTS"))
+    osd_event e = { name, object ? object : "", cls ? cls : "", at };
+    if (getenv("OSD_DEBUG_EVENTS"))
         fprintf(stderr, "event: %s %s%s%s at %.0f,%.0f%s%s\n", name, e.cls, *e.cls ? " " : "", e.object, at.x, at.y,
                 events_sound_for(name) ? " -> " : "", events_sound_for(name) ? events_sound_for(name) : "");
     for (int i = 0; i < nsubs; i++) subs[i].fn(&e, subs[i].ctx);

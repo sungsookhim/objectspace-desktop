@@ -12,8 +12,8 @@
  * WPS's own windows are restored through GNOME (no program can
  * unminimize itself). Without the extension the lists say so.
  */
-#ifndef WPS_WINLIST_H
-#define WPS_WINLIST_H
+#ifndef OSD_WINLIST_H
+#define OSD_WINLIST_H
 
 #include <stdbool.h>
 

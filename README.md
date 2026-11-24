@@ -51,10 +51,10 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 
 | Path | Contents |
 |---|---|
-| `runtime/` | `libwpo`: the object runtime (`wpo.h`, `wpo.c`: C11, C library only), the main loop (`wpo_loop.h`, POSIX implementation) and plug-in loading |
-| `tools/wpoc.py` | Generates C headers and registration code from `.wpi` class files |
+| `runtime/` | `libwpo`: the object runtime (`osdo.h`, `osdo.c`: C11, C library only), the main loop (`osdo_loop.h`, POSIX implementation) and plug-in loading |
+| `tools/osdc.py` | Generates C headers and registration code from `.osdi` class files |
 | `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), `wps-watchd` (the optional root helper), `wps-plughost` (runs one plug-in package, sandboxed), change tracker, attribute store, database and volume sync, CBOR protocol |
-| `classes/` | The core classes: `WPObject`, `WPFileSystem`, `WPDataFile`, `WPFolder`, `WPAbstract`, `WPProgram`, `WPShadow` |
+| `classes/` | The core classes: `OsdObject`, `OsdFileSystem`, `OsdDataFile`, `OsdFolder`, `OsdAbstract`, `OsdProgram`, `OsdShadow` |
 | `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
 | `proto/m0/` | M0 kernel and filtering prototypes |
 | `gui/` | `libwpsui` (the widget set: windows, frames, containers, menus, scroll layers) and `gui/shell/wps-shell` |
@@ -105,7 +105,7 @@ Try the service by hand:
 
 ```
 build/wpsd &                                  # socket in $XDG_RUNTIME_DIR/wps.sock
-build/wpsctl call ~/notes.txt wpSetTitle "My notes"
+build/wpsctl call ~/notes.txt osdSetTitle "My notes"
 build/wpsctl resolve ~/notes.txt
 getfattr -d -m user.wps ~/notes.txt           # the title travels with the file
 build/wps-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 tree, Ctrl+3 details)

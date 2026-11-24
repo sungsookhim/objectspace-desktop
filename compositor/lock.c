@@ -9,7 +9,7 @@
  * and the next try waits a second. Built without PAM (pam-devel), the
  * screen cannot be locked: Lockup says so instead.
  *
- * Tests (headless only): WPS_COMP_TEST_PASSWORD is the password, no PAM.
+ * Tests (headless only): OSD_COMP_TEST_PASSWORD is the password, no PAM.
  */
 #define _GNU_SOURCE
 #include <cairo.h>
@@ -188,7 +188,7 @@ static void check(void)
 {
     if (lk.checking) return;
     lk.pw[lk.len] = 0;
-    const char *test = getenv("WPS_COMP_TEST_PASSWORD");
+    const char *test = getenv("OSD_COMP_TEST_PASSWORD");
     if (test && wlr_backend_is_headless(server.backend)) {   /* tests only */
         if (!strcmp(test, lk.pw)) { unlock(); return; }
         lk.len = 0;
@@ -235,7 +235,7 @@ void lock_key(xkb_keysym_t sym, const char *utf8)
 bool lock_screen(void)
 {
 #ifndef HAVE_PAM
-    if (!(getenv("WPS_COMP_TEST_PASSWORD") && wlr_backend_is_headless(server.backend))) {
+    if (!(getenv("OSD_COMP_TEST_PASSWORD") && wlr_backend_is_headless(server.backend))) {
         fprintf(stderr, "wps-compositor: lock: built without PAM (sudo dnf install pam-devel, then make compositor)\n");
         return false;
     }

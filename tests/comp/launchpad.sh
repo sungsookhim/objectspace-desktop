@@ -41,8 +41,8 @@ EOS
 REPO=$PWD
 W="$REPO/build/wpsctl"
 # (at 12 s: the LaunchPad made vertical, its drawers on the right; at 15 s on the left)
-DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_LAUNCHPAD=1" SECS=21 tests/comp/run.sh "$S/script" \
-    "sleep 11.5; A=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"WPLaunchPad\"][\"address\"])');
+DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_LAUNCHPAD=1" SECS=21 tests/comp/run.sh "$S/script" \
+    "sleep 11.5; A=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdLaunchPad\"][\"address\"])');
      F=\$('$W' layout \"\$T/launchpad\" | python3 -c 'import json,sys; print([k for k, v in json.load(sys.stdin)[\"result\"][\"positions\"].items() if v.startswith(\"0,\")][0])');
      mkdir -p \"\$T/launchpad Drawers/\$F/Sub\" && echo x > \"\$T/launchpad Drawers/\$F/Sub/a.txt\";
      '$W' settings_set \"\$A\" orientation=1 drawer_side=0 > /dev/null; sleep 3; '$W' settings_set \"\$A\" drawer_side=1 > /dev/null" \

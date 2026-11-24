@@ -1,7 +1,7 @@
 /* wps-compositor's shared structures (wps-compositor.c: the core;
  * desktop.c: the link to WPS's desktop process). */
-#ifndef WPS_COMP_H
-#define WPS_COMP_H
+#ifndef OSD_COMP_H
+#define OSD_COMP_H
 
 #include <stdbool.h>
 #include <stdint.h>

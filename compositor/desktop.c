@@ -334,8 +334,8 @@ static bool listable(struct toplevel *t)
 {
     if (!t->mapped || !view_app(t)) return t->mapped;
     const char *a = view_app(t);
-    bool wps_own = desktop_is(view_client(t));
-    return !(wps_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad") ||
+    bool osd_own = desktop_is(view_client(t));
+    return !(osd_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad") ||
                          !strcmp(a, "org.wps.WarpCenter") || !strcmp(a, "org.wps.Notice")));
 }
 
@@ -414,7 +414,7 @@ static void command(char *line)
     if (!strcmp(line, "shutdown")) {
         /* the desktop asked already (its Shut Down dialog) */
         if (!strcmp(arg, "logout")) { wl_display_terminate(server.display); return; }
-        if (getenv("WPS_SESSION")) {   /* the WPS session: the machine too */
+        if (getenv("OSD_SESSION")) {   /* the WPS session: the machine too */
             wl_display_terminate(server.display);
             char *argv[] = { "systemctl", !strcmp(arg, "reboot") ? "reboot" : "poweroff", NULL };
             comp_spawn(argv, NULL, NULL);

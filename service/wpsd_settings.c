@@ -1,8 +1,8 @@
 /* wpsd: Menus and settings pages as data; their setters. */
 #define _GNU_SOURCE
 #include "wpsd.h"
-#include "wps_props.h"
-#include "wps_themes.h"
+#include "osd_props.h"
+#include "osd_themes.h"
 
 /* ---- menus and settings pages as data */
 
@@ -72,22 +72,22 @@ static size_t parse_settings(const char *text, char pages[][64], int *page_of, s
  * comes from, as its notebook says it ("Folder default"). */
 void field_origin(void *ctx, const char *key, bool *own, char *from, size_t fn)
 {
-    wpo_object *o = ctx;
+    osdo_object *o = ctx;
     *own = false;
     from[0] = 0;
-    const wpo_property_def *p = o ? wpo_find_property(o->cls, key, NULL) : NULL;
-    if (!p || p->get || (p->flags & WPO_P_READONLY)) return;
+    const osdo_property_def *p = o ? osdo_find_property(o->cls, key, NULL) : NULL;
+    if (!p || p->get || (p->flags & OSDO_P_READONLY)) return;
     if (p->backing) {   /* kept where Linux keeps it */
         snprintf(from, fn, "%s", !strcmp(p->backing, "mimeapps") ? "shared with GNOME" : "its desktop entry");
         return;
     }
     char origin[160];
-    char *v = wps_prop_get_origin(o, key, origin, sizeof origin);
+    char *v = osd_prop_get_origin(o, key, origin, sizeof origin);
     free(v);
     if (!strcmp(origin, "object")) { *own = true; return; }
     if (!strncmp(origin, "class:", 6)) {
-        wpo_class *c = wpo_find_class(origin + 6);
-        char *t = c ? WPObject_wpclsQueryTitle(c) : NULL;
+        osdo_class *c = osdo_find_class(origin + 6);
+        char *t = c ? OsdObject_osdclsQueryTitle(c) : NULL;
         snprintf(from, fn, "%s default", t && *t ? t : origin + 6);
         free(t);
     } else if (!strncmp(origin, "type:", 5)) {
@@ -117,7 +117,7 @@ void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin
             else if (!strcmp(x->key, "icon_open") && !x->choices[0] && icon_shown && !strncmp(icon_shown, "theme:", 6)) {
                 /* the open icon shown without one of its own: the theme's NAME-open, if it has one */
                 char d[PATH_MAX], pk[PATH_MAX + 200];
-                if (wps_icon_theme_dir("wps-flat", d, sizeof d) &&
+                if (osd_icon_theme_dir("wps-flat", d, sizeof d) &&
                     snprintf(pk, sizeof pk, "%s/%s-open.wpsicon", d, icon_shown + 6) > 0 && access(pk, R_OK) == 0)
                     snprintf(x->choices, sizeof x->choices, "%s-open", icon_shown);
             }
@@ -147,28 +147,28 @@ void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin
     }
 }
 
-void put_settings(cbuf *b, wpo_object *o, const char *text, const char *icon_shown)
+void put_settings(cbuf *b, osdo_object *o, const char *text, const char *icon_shown)
 {
     put_settings_with(b, text, icon_shown, o ? field_origin : NULL, o);
 }
 
-char *call_text(wpo_object *o, const char *method, const char *arg)
+char *call_text(osdo_object *o, const char *method, const char *arg)
 {
-    wpo_value a = wpo_v_string(arg), r;
+    osdo_value a = osdo_v_string(arg), r;
     char *out = NULL;
-    if (wpo_send(o, method, &a, 1, &r) == WPO_OK && r.type == 's') { out = r.u.s; r.u.s = NULL; }
-    wpo_value_clear(&a);
-    wpo_value_clear(&r);
+    if (osdo_send(o, method, &a, 1, &r) == OSDO_OK && r.type == 's') { out = r.u.s; r.u.s = NULL; }
+    osdo_value_clear(&a);
+    osdo_value_clear(&r);
     return out ? out : strdup("");
 }
 
 /* The folder an object's icon sits in (loaded: a window lists it), and
  * its path; NULL if not known. */
-static wpo_object *home_folder_of(wpo_object *o, char *fpath, size_t n)
+static osdo_object *home_folder_of(osdo_object *o, char *fpath, size_t n)
 {
-    sobj *s = wps_sobj_of(o), *fs = NULL;
+    sobj *s = osd_sobj_of(o), *fs = NULL;
     if (!s) return NULL;
-    if (s->central) fs = s->folder_id[0] ? wps_sobj_by_id(s->folder_id) : NULL;
+    if (s->central) fs = s->folder_id[0] ? osd_sobj_by_id(s->folder_id) : NULL;
     else {
         char p[PATH_MAX];
         snprintf(p, sizeof p, "%s", s->path);
@@ -176,29 +176,29 @@ static wpo_object *home_folder_of(wpo_object *o, char *fpath, size_t n)
         if (!sl || !sl[1]) return NULL;
         if (sl == p) sl[1] = 0;
         else *sl = 0;
-        fs = wps_sobj_by_path(p);
+        fs = osd_sobj_by_path(p);
     }
-    if (!fs || !fs->o || !wpo_is_a(fs->o, WPFolderClass)) return NULL;
+    if (!fs || !fs->o || !osdo_is_a(fs->o, OsdFolderClass)) return NULL;
     snprintf(fpath, n, "%s", fs->path);
     return fs->o;
 }
 
 /* Its pages, and on the General page Lock position (v0.3-design 5: kept
  * by the folder it sits in, with its position). */
-char *settings_text(wpo_object *o) { return settings_text_with(o, call_text(o, "wpAddSettingsPages", "")); }
+char *settings_text(osdo_object *o) { return settings_text_with(o, call_text(o, "osdAddSettingsPages", "")); }
 
 /* The same from pages already made (a plug-in's, from its host); takes t. */
-char *settings_text_with(wpo_object *o, char *t)
+char *settings_text_with(osdo_object *o, char *t)
 {
     char fpath[PATH_MAX];
-    wpo_object *f = home_folder_of(o, fpath, sizeof fpath);
+    osdo_object *f = home_folder_of(o, fpath, sizeof fpath);
     char *g = strstr(t, "page\tGeneral\n");
     if (!f || !g || (g != t && g[-1] != '\n')) return t;
     char *next = strstr(g + 1, "\npage\t");
     size_t at = next ? (size_t)(next - t) + 1 : strlen(t);
     if (!next && at && t[at - 1] != '\n') return t;
     char line[160];
-    snprintf(line, sizeof line, "field\tlock_pos\tcheckbox\tLock position\t%d\t@lock\n", WPFolder_wpQueryIconLock(f, o) ? 1 : 0);
+    snprintf(line, sizeof line, "field\tlock_pos\tcheckbox\tLock position\t%d\t@lock\n", OsdFolder_osdQueryIconLock(f, o) ? 1 : 0);
     size_t tl = strlen(t), ll = strlen(line);
     char *r = malloc(tl + ll + 1);
     memcpy(r, t, at);
@@ -209,7 +209,7 @@ char *settings_text_with(wpo_object *o, char *t)
 }
 
 /* A key's setter in these pages (or the object's own), into out; false if none. */
-bool settings_setter_of(wpo_object *o, const char *pages_text, const char *key, char *out, size_t n)
+bool settings_setter_of(osdo_object *o, const char *pages_text, const char *key, char *out, size_t n)
 {
     char *text = pages_text ? settings_text_with(o, strdup(pages_text)) : settings_text(o);
     char pages[16][64];
@@ -223,7 +223,7 @@ bool settings_setter_of(wpo_object *o, const char *pages_text, const char *key, 
 }
 
 /* settings_set: apply {key: value} through each field's setter. */
-const char *apply_settings(wpo_object *o, const cv *values, const char *pages_text)
+const char *apply_settings(osdo_object *o, const cv *values, const char *pages_text)
 {
     char *text = pages_text ? settings_text_with(o, strdup(pages_text)) : settings_text(o);
     char pages[16][64];
@@ -237,25 +237,25 @@ const char *apply_settings(wpo_object *o, const cv *values, const char *pages_te
         struct field *f = NULL;
         for (size_t i = 0; i < nf && !f; i++) if (key->k == CV_TEXT && !strcmp(fields[i].key, key->s)) f = &fields[i];
         if (!f) { err = "no such setting"; break; }
-        wpo_value a, r;
+        osdo_value a, r;
         if (!strcmp(f->setter, "@lock")) {
             char fpath[PATH_MAX];
-            wpo_object *fo = home_folder_of(o, fpath, sizeof fpath);
+            osdo_object *fo = home_folder_of(o, fpath, sizeof fpath);
             bool on = val->k == CV_BOOL ? val->b : val->k == CV_INT ? val->i != 0 : false;
-            if (!fo || !WPFolder_wpSetIconLock(fo, o, on)) { err = "the setter refused the value"; break; }
+            if (!fo || !OsdFolder_osdSetIconLock(fo, o, on)) { err = "the setter refused the value"; break; }
             on_layout_changed(fpath);   /* its windows read the positions again */
-            WPObject_wpObjectChanged(o);  /* (its notebook shows it) */
+            OsdObject_osdObjectChanged(o);  /* (its notebook shows it) */
             continue;
         }
         if (!strncmp(f->setter, "@col:", 5)) {
-            /* a details view's column on or off: wpSetColumn("name=1") */
+            /* a details view's column on or off: osdSetColumn("name=1") */
             char arg[64];
             bool on = val->k == CV_BOOL ? val->b : val->k == CV_INT ? val->i != 0 : false;
             snprintf(arg, sizeof arg, "%s=%d", f->setter + 5, on);
-            wpo_value av = wpo_v_string(arg);
-            if (wpo_send(o, "wpSetColumn", &av, 1, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
-            wpo_value_clear(&av);
-            wpo_value_clear(&r);
+            osdo_value av = osdo_v_string(arg);
+            if (osdo_send(o, "osdSetColumn", &av, 1, &r) != OSDO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
+            osdo_value_clear(&av);
+            osdo_value_clear(&r);
             continue;
         }
         if (!strcmp(f->setter, "@prop")) {
@@ -265,36 +265,36 @@ const char *apply_settings(wpo_object *o, const cv *values, const char *pages_te
             if (val->k == CV_INT) { snprintf(num, sizeof num, "%lld", (long long)val->i); txt = num; }
             else if (val->k == CV_BOOL) txt = val->b ? "1" : "0";
             if (!txt) { err = "unsupported value"; break; }
-            if (!WPObject_wpSetProperty(o, f->key, txt)) { err = "the setter refused the value"; break; }
-            if ((!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
-                wps_listing_invalidate(WPFileSystem_data(o)->path);
+            if (!OsdObject_osdSetProperty(o, f->key, txt)) { err = "the setter refused the value"; break; }
+            if ((!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && osdo_is_a(o, OsdFileSystemClass))
+                osd_listing_invalidate(OsdFileSystem_data(o)->path);
             continue;
         }
         if (!strcmp(f->setter, "@")) {
-            /* A settings object's field: wpSetSetting(key, value as text). */
+            /* A settings object's field: osdSetSetting(key, value as text). */
             char num[32];
             const char *txt = val->k == CV_TEXT ? val->s : NULL;
             if (val->k == CV_INT) { snprintf(num, sizeof num, "%lld", (long long)val->i); txt = num; }
             else if (val->k == CV_BOOL) txt = val->b ? "1" : "0";
             if (!txt) { err = "unsupported value"; break; }
-            wpo_value args[2] = { wpo_v_string(f->key), wpo_v_string(txt) };
-            if (wpo_send(o, "wpSetSetting", args, 2, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
-            wpo_value_clear(&args[0]);
-            wpo_value_clear(&args[1]);
-            wpo_value_clear(&r);
+            osdo_value args[2] = { osdo_v_string(f->key), osdo_v_string(txt) };
+            if (osdo_send(o, "osdSetSetting", args, 2, &r) != OSDO_OK || (r.type == 'b' && !r.u.b)) err = "the setter refused the value";
+            osdo_value_clear(&args[0]);
+            osdo_value_clear(&args[1]);
+            osdo_value_clear(&r);
             continue;
         }
-        if (val->k == CV_TEXT) a = wpo_v_string(val->s);
-        else if (val->k == CV_INT) a = wpo_v_int(val->i);
-        else if (val->k == CV_BOOL) a = wpo_v_bool(val->b);
+        if (val->k == CV_TEXT) a = osdo_v_string(val->s);
+        else if (val->k == CV_INT) a = osdo_v_int(val->i);
+        else if (val->k == CV_BOOL) a = osdo_v_bool(val->b);
         else { err = "unsupported value"; break; }
-        if (wpo_send(o, f->setter, &a, 1, &r) != WPO_OK) err = "the setter refused the value";
+        if (osdo_send(o, f->setter, &a, 1, &r) != OSDO_OK) err = "the setter refused the value";
         else if (r.type == 'b' && !r.u.b) err = "the setter refused the value";
-        wpo_value_clear(&a);
-        wpo_value_clear(&r);
+        osdo_value_clear(&a);
+        osdo_value_clear(&r);
         /* a folder's sort: its listing is read again in the new order */
-        if (!err && (!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
-            wps_listing_invalidate(WPFileSystem_data(o)->path);
+        if (!err && (!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && osdo_is_a(o, OsdFileSystemClass))
+            osd_listing_invalidate(OsdFileSystem_data(o)->path);
     }
     return err;
 }

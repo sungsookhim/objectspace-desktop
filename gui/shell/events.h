@@ -20,8 +20,8 @@
  *     job.done = /path/to/done.wav
  *     alert.info = none
  */
-#ifndef WPS_EVENTS_H
-#define WPS_EVENTS_H
+#ifndef OSD_EVENTS_H
+#define OSD_EVENTS_H
 
 #include <stdbool.h>
 
@@ -32,16 +32,16 @@ typedef struct {
     const char *object;   /* its path or address, or "" */
     const char *cls;      /* "folder", "file", "program", "window", or "" */
     ui_rect at;           /* on screen, in its surface */
-} wps_event;
+} osd_event;
 
-typedef void (*wps_event_fn)(const wps_event *e, void *ctx);
+typedef void (*osd_event_fn)(const osd_event *e, void *ctx);
 
 /* Start the bus and the sound scheme (reads the settings). */
 void events_init(void);
 void events_shutdown(void);
 
 void events_raise(const char *name, const char *object, const char *cls, ui_rect at);
-void events_subscribe(wps_event_fn fn, void *ctx);
+void events_subscribe(osd_event_fn fn, void *ctx);
 
 /* The sound file an event plays now, or NULL (self-tests, settings). */
 const char *events_sound_for(const char *name);

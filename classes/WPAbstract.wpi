@@ -1,4 +1,0 @@
-# Objects that are not ordinary files or folders.
-class WPAbstract : WPObject
-version 1.0
-classoverride wpclsQueryTitle

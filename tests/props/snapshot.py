@@ -18,7 +18,7 @@ DESK = T + "/desk"
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())
@@ -67,7 +67,7 @@ for _ in range(50):
     if str(r.get("result")).lower() in ("1", "true"):
         break
     time.sleep(0.1)
-c.request(op="create", folder=DESK, **{"class": "WPProgram"}, title="My program", command="true")
+c.request(op="create", folder=DESK, **{"class": "OsdProgram"}, title="My program", command="true")
 c.request(op="shadow", target=DESK + "/notes.txt", folder=DESK + "/Projects")
 setup = c.request(op="setup").get("result") or {}
 

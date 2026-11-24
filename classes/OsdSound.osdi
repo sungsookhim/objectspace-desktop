@@ -1,0 +1,27 @@
+# The Sound object: which sound each action event plays.
+class OsdSound : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle
+# Its settings (stored as text in the OsdSetup state, as before).
+property enabled : checkbox = "1" page "Setup" label "Play sounds for actions" store OsdSetup text
+property volume : text = "70" page "Setup" label "Volume (0-100)" store OsdSetup text
+property shell.startup : file audio = "service-login" page "Events" label "Startup" store OsdSetup text
+property shell.shutdown : file audio = "" page "Events" label "Shutdown" store OsdSetup text
+property window.open : file audio = "" page "Events" label "Open window" store OsdSetup text
+property window.close : file audio = "" page "Events" label "Close window" store OsdSetup text
+property window.minimize : file audio = "" page "Events" label "Minimize window" store OsdSetup text
+property window.maximize : file audio = "" page "Events" label "Maximize window" store OsdSetup text
+property window.restore : file audio = "" page "Events" label "Restore window" store OsdSetup text
+property menu.open : file audio = "" page "Events" label "Open menu" store OsdSetup text
+property menu.select : file audio = "" page "Events" label "Select menu item" store OsdSetup text
+property object.open : file audio = "" page "Events" label "Open object" store OsdSetup text
+property object.drag : file audio = "" page "Events" label "Begin drag" store OsdSetup text
+property object.drop : file audio = "" page "Events" label "Drop" store OsdSetup text
+property object.create : file audio = "" page "Events" label "Create object" store OsdSetup text
+property object.trash : file audio = "trash-empty" page "Events" label "Move to the trash" store OsdSetup text
+property object.delete : file audio = "" page "Events" label "Delete" store OsdSetup text
+property job.done : file audio = "complete" page "Events" label "Job finished" store OsdSetup text
+property job.failed : file audio = "dialog-error" page "Events" label "Job failed" store OsdSetup text
+property alert.info : file audio = "dialog-information" page "Events" label "Information" store OsdSetup text
+property alert.warning : file audio = "dialog-warning" page "Events" label "Warning" store OsdSetup text
+property alert.error : file audio = "dialog-error" page "Events" label "Error" store OsdSetup text

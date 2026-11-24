@@ -242,7 +242,7 @@ static void negotiate(ui_app *a, uint32_t serial)
     const char *mime = NULL;
     uint32_t act = s->ops->drag_motion ? s->ops->drag_motion(s, a->drag_x, a->drag_y, (const char *const *)f->mimes, f->n,
                                                               f->src_actions, a->mods, &mime) : 0;
-    if (getenv("WPS_DEBUG_DND"))
+    if (getenv("OSD_DEBUG_DND"))
         fprintf(stderr, "dnd: motion at %.0f,%.0f mods %s%s%s, source offers %u, compositor chose %u, we answer %u\n",
                 a->drag_x, a->drag_y, a->mods & UI_MOD_CTRL ? "ctrl " : "", a->mods & UI_MOD_SHIFT ? "shift " : "",
                 a->mods & UI_MOD_ALT ? "alt" : "", f->src_actions, f->action, act);
@@ -360,7 +360,7 @@ static void d_drop(void *x, struct wl_data_device *dd)
     in->action = f->action;
     in->start_action = f->start_action;
     in->mods = a->mods;
-    if (getenv("WPS_DEBUG_DND"))
+    if (getenv("OSD_DEBUG_DND"))
         fprintf(stderr, "dnd: drop, compositor's action %u (it began with %u; 1 copy, 2 move, 4 ask), mods %s%s%s\n",
                 f->action, f->start_action,
                 a->mods & UI_MOD_CTRL ? "ctrl " : "", a->mods & UI_MOD_SHIFT ? "shift " : "", a->mods & UI_MOD_ALT ? "alt" : "");

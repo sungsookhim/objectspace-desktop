@@ -40,12 +40,12 @@ bool work_area_of(const char *path, char *out, size_t n)
     snprintf(p, sizeof p, "%s", path ? path : "");
     for (char *sl = strrchr(p, '/'); sl && sl > p; sl = strrchr(p, '/')) {
         *sl = 0;   /* its folder, then each above it (not "/") */
-        wps_loaded ld;
-        wps_load(p, false, &ld);
-        wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);   /* (borrowed) */
-        wps_loaded_free(&ld);
-        if (!o || !wpo_is_a(o, WPFolderClass)) continue;
-        char *v = WPObject_wpQueryProperty(o, "work_area");
+        osd_loaded ld;
+        osd_load(p, false, &ld);
+        osdo_object *o = ld.err ? NULL : osd_object_from_loaded(&ld);   /* (borrowed) */
+        osd_loaded_free(&ld);
+        if (!o || !osdo_is_a(o, OsdFolderClass)) continue;
+        char *v = OsdObject_osdQueryProperty(o, "work_area");
         bool yes = on(v);
         free(v);
         if (yes) { snprintf(out, n, "%s", p); return true; }
@@ -55,7 +55,7 @@ bool work_area_of(const char *path, char *out, size_t n)
 
 void work_area_opened(const char *group, const char *opened, const char *tracked, pid_t pid)
 {
-    if (pid > 0) wps_launch_set_group(pid, group);
+    if (pid > 0) osd_launch_set_group(pid, group);
     if (!tracked || !*tracked) return;
     for (struct wa_entry *e = entries; e; e = e->next)
         if (!strcmp(e->group, group) && !strcmp(e->opened, opened)) { e->ended = 0; return; }
@@ -104,12 +104,12 @@ static char *open_list(const char *group, double recent)
 
 static void keep_open_list(const char *group, double recent)
 {
-    wps_loaded ld;
-    wps_load(group, false, &ld);
-    wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);
-    wps_loaded_free(&ld);
+    osd_loaded ld;
+    osd_load(group, false, &ld);
+    osdo_object *o = ld.err ? NULL : osd_object_from_loaded(&ld);
+    osd_loaded_free(&ld);
     char *list = open_list(group, recent);
-    bool ok = o && list && WPObject_wpSetProperty(o, "work_area_open", list);
+    bool ok = o && list && OsdObject_osdSetProperty(o, "work_area_open", list);
     log_msg("work area %s: kept %s (%s)", group, list ? list : "", ok ? "ok" : "refused");
     free(list);
 }
@@ -162,11 +162,11 @@ static void count_pid(pid_t pid, const char *unit, const char *path, void *arg)
  * group's windows; on open, `reopen`: what was open when it closed (the
  * desktop opens them again), on close what is open is kept for that. Its
  * events: work_area.open, work_area.close (actions on them). */
-void do_work_area(struct req *r, wpo_object *o)
+void do_work_area(struct req *r, osdo_object *o)
 {
     const char *act = cv_text(&r->msg, "act");
     const char *group = r->tgt.path;
-    if (!act || !group[0] || !wpo_is_a(o, WPFolderClass)) { reply_error(r->c, r->id, "bad request", "a folder and act are needed"); return; }
+    if (!act || !group[0] || !osdo_is_a(o, OsdFolderClass)) { reply_error(r->c, r->id, "bad request", "a folder and act are needed"); return; }
     bool opening = !strcmp(act, "open"), closing = !strcmp(act, "close");
     if (!opening && !closing && strcmp(act, "minimize") && strcmp(act, "restore")) {
         reply_error(r->c, r->id, "bad request", "act: open, close, minimize or restore");
@@ -174,8 +174,8 @@ void do_work_area(struct req *r, wpo_object *o)
     }
     char *reopen = NULL;
     if (opening) {
-        reopen = WPObject_wpQueryProperty(o, "work_area_open");
-        if (reopen && *reopen) WPObject_wpSetProperty(o, "work_area_open", "");   /* (opened once) */
+        reopen = OsdObject_osdQueryProperty(o, "work_area_open");
+        if (reopen && *reopen) OsdObject_osdSetProperty(o, "work_area_open", "");   /* (opened once) */
     }
     if (closing) {
         /* its folders' windows (in it, or opened from it: shadows of
@@ -191,7 +191,7 @@ void do_work_area(struct req *r, wpo_object *o)
     free(sound);   /* (the window's own sounds play) */
     /* the group's processes, and their scopes */
     struct pids cnt = { .count_only = true, .units = calloc(64, 96) };
-    wps_launch_group_each(group, count_pid, &cnt);
+    osd_launch_group_each(group, count_pid, &cnt);
     size_t nre = 0;
     for (const char *p = reopen; p && *p; p = strchr(p, SEP) ? strchr(p, SEP) + 1 : "") nre++;
     cbuf b;
@@ -204,7 +204,7 @@ void do_work_area(struct req *r, wpo_object *o)
     cb_text(&b, "pids");
     cb_array(&b, cnt.n);
     struct pids put = { .b = &b, .units = calloc(64, 96) };
-    wps_launch_group_each(group, count_pid, &put);
+    osd_launch_group_each(group, count_pid, &put);
     cb_text(&b, "scopes");
     cb_array(&b, cnt.nunits);
     for (size_t i = 0; i < cnt.nunits; i++) cb_text(&b, cnt.units[i]);

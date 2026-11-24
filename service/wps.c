@@ -5,13 +5,13 @@
  *
  *   wps open PATH...                 as a double click would
  *   wps get PATH NAME                a property's value
- *   wps set PATH 'NAME=VALUE;...'    properties (class:WPFolder, type:image/png too)
+ *   wps set PATH 'NAME=VALUE;...'    properties (class:OsdFolder, type:image/png too)
  *   wps create FOLDER CLASS TITLE    a new object; prints its path
  *   wps shadow PATH FOLDER           a shadow; prints its path
  *   wps say [--stay] TEXT            a message at the bottom of the desktop
  *   wps notify TITLE [TEXT]          a notification
  *   wps ask TEXT [BUTTON...]         a WPS dialog; prints the button chosen
- *   wps folder                       the folder it was started from ($WPS_FOLDER)
+ *   wps folder                       the folder it was started from ($OSD_FOLDER)
  *   wps selection                    the active folder window's selected objects
  */
 #define _GNU_SOURCE
@@ -49,10 +49,10 @@ static void die(const char *fmt, const char *a)
     exit(1);
 }
 
-static void connect_wpsd(void)
+static void connect_osdd(void)
 {
     char path[4096];
-    const char *s = getenv("WPS_SOCKET"), *rt = getenv("WPS_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
+    const char *s = getenv("OSD_SOCKET"), *rt = getenv("OSD_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
     else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
     else if (xr && *xr) snprintf(path, sizeof path, "%s/wps.sock", xr);
@@ -181,10 +181,10 @@ int main(int argc, char **argv)
 {
     if (argc < 2) usage();
     const char *cmd = argv[1];
-    if (!strcmp(cmd, "--version")) { printf("wps %s\n", WPS_VERSION); return 0; }
+    if (!strcmp(cmd, "--version")) { printf("wps %s\n", OSD_VERSION); return 0; }
     if (!strcmp(cmd, "folder")) {
-        const char *f = getenv("WPS_FOLDER");
-        if (!f || !*f) { fprintf(stderr, "wps: not started from a folder (WPS_FOLDER is not set)\n"); return 1; }
+        const char *f = getenv("OSD_FOLDER");
+        if (!f || !*f) { fprintf(stderr, "wps: not started from a folder (OSD_FOLDER is not set)\n"); return 1; }
         puts(f);
         return 0;
     }
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
         if (argc < 3) usage();
         return notify(argv[2], argc > 3 ? argv[3] : NULL);
     }
-    connect_wpsd();
+    connect_osdd();
     cbuf b;
     char a[PATH_MAX], a2[PATH_MAX];
     if (!strcmp(cmd, "open")) {

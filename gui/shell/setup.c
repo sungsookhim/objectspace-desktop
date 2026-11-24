@@ -99,11 +99,11 @@ static void setup_set(const char *cls, const char *key, const char *val)
 /* The Font Palette's choices (fontpal.h), kept in the settings objects. */
 void font_apply(const char *what, const char *spec)
 {
-    if (!strcmp(what, "samples")) setup_set("WPFontPalette", "fonts", spec);
-    else if (!strcmp(what, "warpcenter")) setup_set("WPWarpCenter", "font", spec);
-    else if (!strcmp(what, "menus")) setup_set("WPSystem", "font_menus", spec);
-    else if (!strcmp(what, "titles")) setup_set("WPSystem", "font_titles", spec);
-    else if (!strcmp(what, "folders")) setup_set("WPSystem", "font_folders", spec);
+    if (!strcmp(what, "samples")) setup_set("OsdFontPalette", "fonts", spec);
+    else if (!strcmp(what, "warpcenter")) setup_set("OsdWarpCenter", "font", spec);
+    else if (!strcmp(what, "menus")) setup_set("OsdSystem", "font_menus", spec);
+    else if (!strcmp(what, "titles")) setup_set("OsdSystem", "font_titles", spec);
+    else if (!strcmp(what, "folders")) setup_set("OsdSystem", "font_folders", spec);
     else if (!strcmp(what, "dialogs")) color_apply("font_dialogs", spec);   /* the scheme's (each scheme its fonts) */
 }
 
@@ -119,7 +119,7 @@ static size_t nschemes;
 
 void color_apply(const char *what, const char *hex)
 {
-    if (!strcmp(what, "samples")) { setup_set("WPColorPalette", "colors", hex); return; }
+    if (!strcmp(what, "samples")) { setup_set("OsdColorPalette", "colors", hex); return; }
     for (size_t i = 0; i < nschemes; i++)
         if (!strcasecmp(scheme_titles[i], ui_scheme_now.name)) {
             cv v = { .k = CV_TEXT, .s = (char *)hex, .len = strlen(hex) };
@@ -141,30 +141,30 @@ static void got_setup_sub(void *arg, const cv *reply)
 static void apply_setup_object(const char *cls, const cv *settings)
 {
     if (!settings || settings->k != CV_MAP) return;
-    if (!strcmp(cls, "WPSound")) events_setup_begin();
+    if (!strcmp(cls, "OsdSound")) events_setup_begin();
     for (size_t i = 0; i < settings->n; i++) {
         const cv *k = &settings->items[2 * i], *v = &settings->items[2 * i + 1];
         if (k->k != CV_TEXT || v->k != CV_TEXT) continue;
         const char *key = k->s, *val = v->s;
-        gnome_wps_value(cls, key, val);
-        if (!strcmp(cls, "WPSound")) events_setup_set(key, val);
-        else if (!strcmp(cls, "WPMouse")) {
+        gnome_osd_value(cls, key, val);
+        if (!strcmp(cls, "OsdSound")) events_setup_set(key, val);
+        else if (!strcmp(cls, "OsdMouse")) {
             ui_mouse_set(key, val);
             char kv[160];   /* the compositor's too (WPS session): its drag pointer follows them */
             snprintf(kv, sizeof kv, "%s=%s", key, val);
             winlist_ext("mouse", kv);
         }
-        else if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
-        else if (!strcmp(cls, "WPLaunchPad") && !strcmp(key, "show_at_start")) snprintf(lp_show, sizeof lp_show, "%s", val);
-        else if (!strcmp(cls, "WPLaunchPad")) launchpad_setting(key, val);
-        else if (!strcmp(cls, "WPWarpCenter")) {
+        else if (!strcmp(cls, "OsdSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
+        else if (!strcmp(cls, "OsdLaunchPad") && !strcmp(key, "show_at_start")) snprintf(lp_show, sizeof lp_show, "%s", val);
+        else if (!strcmp(cls, "OsdLaunchPad")) launchpad_setting(key, val);
+        else if (!strcmp(cls, "OsdWarpCenter")) {
             if (!strcmp(key, "show_at_start")) snprintf(wc_show, sizeof wc_show, "%s", val);
             else warpcenter_setting(key, val);
         }
-        else if (!strcmp(cls, "WPMessages")) messages_setting(key, val);
-        else if (!strcmp(cls, "WPFontPalette") && !strcmp(key, "fonts")) fontpal_set_samples(val);
-        else if (!strcmp(cls, "WPColorPalette") && !strcmp(key, "colors")) colorpal_set_samples(val);
-        else if (!strcmp(cls, "WPSystem")) {
+        else if (!strcmp(cls, "OsdMessages")) messages_setting(key, val);
+        else if (!strcmp(cls, "OsdFontPalette") && !strcmp(key, "fonts")) fontpal_set_samples(val);
+        else if (!strcmp(cls, "OsdColorPalette") && !strcmp(key, "colors")) colorpal_set_samples(val);
+        else if (!strcmp(cls, "OsdSystem")) {
             if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */
                 char kv[160];   /* the compositor's frames too (WPS session) */
                 snprintf(kv, sizeof kv, "%s=%s", key, val);
@@ -204,7 +204,7 @@ static void show_warpcenter(void)
     if (warpcenter_is_open()) return;   /* (the bar: always in view) */
     for (struct folder *f = folders; f; f = f->next)
         if (f->desktop && !f->closing) {
-            warpcenter_open(app, f->path, getenv("WPS_WARPCENTER_TOP") != NULL || warpcenter_top(), launchpad_open_folder);
+            warpcenter_open(app, f->path, getenv("OSD_WARPCENTER_TOP") != NULL || warpcenter_top(), launchpad_open_folder);
             warpcenter_messages(messages_unread(), messages_open);
             return;
         }
@@ -212,7 +212,7 @@ static void show_warpcenter(void)
 
 void templates_dir(char *out, size_t n)
 {
-    const char *t = getenv("WPS_TEMPLATES_DIR");
+    const char *t = getenv("OSD_TEMPLATES_DIR");
     if (t && *t) snprintf(out, n, "%s", t);
     else user_dir("TEMPLATES", "Templates", out, n);
 }
@@ -339,11 +339,11 @@ void got_setup(void *arg, const cv *reply)
         free(def);
     }
     apply_scheme();
-    gnome_wps_read();   /* GNOME follows (or, the first time, leads) */
+    gnome_osd_read();   /* GNOME follows (or, the first time, leads) */
     /* sounds.conf (before the Sound object): moved into it, once */
     static bool sounds_checked;
     for (size_t i = 0; !sounds_checked && i < n; i++)
-        if (!strcmp(setup_cls[i], "WPSound")) {
+        if (!strcmp(setup_cls[i], "OsdSound")) {
             sounds_checked = true;
             char *conf = events_conf_setup();
             if (conf && *conf) svc_set(setup_ids[i], conf, sounds_imported, NULL);
@@ -353,7 +353,7 @@ void got_setup(void *arg, const cv *reply)
     if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
     const char *folder = cv_text(res, "folder");
     /* The desktop's LaunchPad (G4), once System Setup is known (its first
-     * buttons include it). WPS_NO_LAUNCHPAD: none (tests). */
+     * buttons include it). OSD_NO_LAUNCHPAD: none (tests). */
     bool desktop = false;
     for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
     /* In the WPS session the WarpCenter, and not the LaunchPad (the
@@ -361,18 +361,18 @@ void got_setup(void *arg, const cv *reply)
      * GNOME, which has its own bar, the LaunchPad as before. */
     /* The LaunchPad and WarpCenter objects' "Show at start" can say
      * otherwise (only at start: closing them is not offered). */
-    const char *wcs = getenv("WPS_WARPCENTER");
-    bool wpsession = getenv("WPS_SESSION") != NULL;
+    const char *wcs = getenv("OSD_WARPCENTER");
+    bool wpsession = getenv("OSD_SESSION") != NULL;
     bool want_wc = wcs ? !strcmp(wcs, "1") : wpsession && strcmp(wc_show, "no");
-    bool want_lp = getenv("WPS_LAUNCHPAD") ? true : !strcmp(lp_show, "automatic") ? !wpsession : !strcmp(lp_show, "yes");
-    if (wcs && !strcmp(wcs, "1")) want_lp = want_lp && (getenv("WPS_LAUNCHPAD") || !strcmp(lp_show, "yes"));
+    bool want_lp = getenv("OSD_LAUNCHPAD") ? true : !strcmp(lp_show, "automatic") ? !wpsession : !strcmp(lp_show, "yes");
+    if (wcs && !strcmp(wcs, "1")) want_lp = want_lp && (getenv("OSD_LAUNCHPAD") || !strcmp(lp_show, "yes"));
     static bool started;   /* (settings read again later change neither) */
     bool first = !started && desktop;
     if (desktop) started = true;
     if (folder) snprintf(setup_folder, sizeof setup_folder, "%s", folder);
     if (first && want_wc) show_warpcenter();
     if (first) windows_at_login();
-    if (first && !getenv("WPS_NO_LAUNCHPAD") && want_lp) show_launchpad();
+    if (first && !getenv("OSD_NO_LAUNCHPAD") && want_lp) show_launchpad();
 }
 
 /* GNOME's text scaling factor, for the Font Palette's fonts the
@@ -412,7 +412,7 @@ static void apply_scheme(void)
 }
 
 /* GNOME changed a shared setting: the settings object takes it. */
-void gnome_set_wps(const char *cls, const char *key, const char *value)
+void gnome_set_osd(const char *cls, const char *key, const char *value)
 {
     for (int i = 0; i < NSETUP; i++)
         if (!strcmp(setup_cls[i], cls)) {

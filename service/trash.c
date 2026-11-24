@@ -13,7 +13,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "shadows.h"   /* wps_in_trash */
+#include "shadows.h"   /* osd_in_trash */
 
 /* The top of the filesystem `path` is on: the highest folder on the same
  * device. */
@@ -102,11 +102,11 @@ static void encode(const char *s, char *out, size_t n)
     out[o] = 0;
 }
 
-int wps_trash(const char *path, char *out, size_t n)
+int osd_trash(const char *path, char *out, size_t n)
 {
     struct stat st;
     if (lstat(path, &st) != 0) return -errno;
-    if (wps_in_trash(path)) return -EXDEV;   /* deleting from the trash is for good */
+    if (osd_in_trash(path)) return -EXDEV;   /* deleting from the trash is for good */
     char trash[PATH_MAX], rel_to[PATH_MAX];
     if (!trash_for(path, st.st_dev, trash, sizeof trash, rel_to, sizeof rel_to)) return -EXDEV;
     struct stat tst;
@@ -153,7 +153,7 @@ int wps_trash(const char *path, char *out, size_t n)
     return -EEXIST;
 }
 
-void wps_trash_forget_info(const char *path)
+void osd_trash_forget_info(const char *path)
 {
     /* .../files/NAME -> .../info/NAME.trashinfo, for a direct entry only */
     const char *s = strrchr(path, '/');
@@ -165,21 +165,21 @@ void wps_trash_forget_info(const char *path)
 
 /* ---- 0.2: the Trash Can's side (v0.2-design 4) */
 
-void wps_trash_home(char *out, size_t n)
+void osd_trash_home(char *out, size_t n)
 {
     const char *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     if (dh && *dh) snprintf(out, n, "%s/Trash", dh);
     else snprintf(out, n, "%s/.local/share/Trash", home ? home : "");
 }
 
-bool wps_trash_home_ready(void)
+bool osd_trash_home_ready(void)
 {
     char t[PATH_MAX];
-    wps_trash_home(t, sizeof t);
+    osd_trash_home(t, sizeof t);
     return ready(t);
 }
 
-bool wps_is_trash_files_dir(const char *folder)
+bool osd_is_trash_files_dir(const char *folder)
 {
     size_t l = strlen(folder);
     if (l < 7 || strcmp(folder + l - 6, "/files")) return false;
@@ -199,7 +199,7 @@ static void decode(const char *s, char *out, size_t n)
     out[o] = 0;
 }
 
-int wps_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn)
+int osd_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn)
 {
     const char *s = strrchr(item, '/');
     if (!s || s - item < 6 || strncmp(s - 6, "/files", 6)) return -EINVAL;
@@ -228,10 +228,10 @@ int wps_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn
     return 0;
 }
 
-int wps_trash_restore(const char *item, char *out, size_t n)
+int osd_trash_restore(const char *item, char *out, size_t n)
 {
     char orig[PATH_MAX];
-    int e = wps_trash_info(item, orig, sizeof orig, NULL, 0);
+    int e = osd_trash_info(item, orig, sizeof orig, NULL, 0);
     if (e) return e;
     char dir[PATH_MAX];
     snprintf(dir, sizeof dir, "%s", orig);
@@ -247,7 +247,7 @@ int wps_trash_restore(const char *item, char *out, size_t n)
         if (k == 1) snprintf(out, n, "%s", orig);
         else snprintf(out, n, "%s/%.*s (%d)%s", dir, (int)stem, base, k, base + stem);
         if (renameat2(AT_FDCWD, item, AT_FDCWD, out, RENAME_NOREPLACE) == 0) {
-            wps_trash_forget_info(item);
+            osd_trash_forget_info(item);
             return 0;
         }
         if (errno != EEXIST) return -errno;

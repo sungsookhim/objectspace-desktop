@@ -1,0 +1,99 @@
+# A directory.
+class OsdFolder : OsdFileSystem
+version 1.2
+data {
+    int sort_order;
+    int local_objects;
+}
+override osdModifyPopupMenu
+override osdSaveState
+override osdRestoreProperties
+method osdQuerySortOrder() -> int
+method osdSetSortOrder(int order) -> bool
+# WPS-only objects (shadows and others) made here are kept as .wpobj files
+# in the folder, instead of centrally (decided 2026-11-18).
+method osdQueryLocalObjects() -> bool
+method osdSetLocalObjects(bool on) -> bool
+# Icon positions, stored on the folder by the child's object ID (design:
+# Persistence; per user in folders the user does not own).
+method osdSetIconPos(object child, int x, int y) -> bool
+method osdQueryIconPos(object child) -> string
+# Lock position (v0.3-design 5): kept with the position, "x,y,L" ("L"
+# alone: locked, no position stored yet). A locked icon stays where it is
+# in its folder (it can still go to other folders) and Arrange leaves it.
+method osdSetIconLock(object child, bool on) -> bool
+method osdQueryIconLock(object child) -> bool
+# The Icon view page: titles (0 whole, as OS/2's; 1 two lines), and Lock
+# positions of all icons.
+method osdSetIconTitles(int choice) -> bool
+method osdSetLockAll(bool on) -> bool
+# Its icons' title font (the Font Palette's, dropped on its window):
+# "10.Sans", "" the System's for folders.
+method osdSetIconFont(string font) -> bool
+# Its window's title bar font (dropped on its title bar), "" all title bars'.
+method osdSetTitleFont(string font) -> bool
+# Lists the folder's contents; streaming and paging arrive in M4.
+method osdPopulate() -> pending async
+# The Background page (v0.3-design 3): a picture (a path), how it is shown
+# (0 centred, 1 tiled, 2 scaled to fill, 3 scaled to fit, 4 stretched), a
+# colour (#rrggbb, "" none), and for the desktop whether GNOME's
+# background is shown instead (the default).
+# The details view (v0.3-design 4): its sort (the listing's order; 0 none,
+# 1 name, 2 type, 3 size, 4 last write), descending, and its columns
+# (bits: 1 real name, 2 type, 4 size, 8 last write; the title always).
+method osdSetSortKey(int choice) -> bool
+method osdSetSortDesc(bool on) -> bool
+method osdSetColumn(string which_on) -> bool
+# its columns' widths as dragged: "w1,w2,..." (title .. last write; 0 as it fits)
+method osdSetColWidths(string widths) -> bool
+method osdSetBgImage(string path) -> bool
+method osdSetBgMode(int mode) -> bool
+method osdSetBgColor(string color) -> bool
+method osdSetBgGnome(bool on) -> bool
+# Its pages' properties (object-properties-design.md 2.1).
+method osdQueryIsDesktop() -> bool
+method osdQueryIsNotDesktop() -> bool
+property sort_key : choice "none,name,type,size,last write" = name page View label "Sort by"
+property sort_desc : checkbox page View label Descending set osdSetSortDesc
+property local : checkbox page View label "Keep objects as files here" get osdQueryLocalObjects set osdSetLocalObjects
+property show_hidden : checkbox = 1 page View label "Show hidden files (names starting with a dot)"
+property show_ext : checkbox = 1 page View label "Show file extensions in titles"
+property search_place : choice "top,bottom,floating" = top page View label "Search field (Ctrl+F)"
+# Its icons' layout (0.4 step 4): OS/2's free one (cells as wide as their
+# titles, packed in rows) or 0.3's grid.
+property icon_layout : choice "free,grid" = free page "Icon view" label Layout
+property icon_titles : choice "whole,two lines" = whole index page "Icon view" label Titles set osdSetIconTitles
+property lock_all : checkbox page "Icon view" label "Lock positions of all icons" set osdSetLockAll
+# Its icons' theme (0.4 step 2): the installed and the user's themes.
+method osdQueryIconThemes() -> string
+property icon_theme : choice = "WPS (flat)" page "Icon view" label "Icon theme" options osdQueryIconThemes
+# Its icons' set (0.4 step 3): the sizes of its icons (v0.4-design 3).
+property icon_set : choice "Small,Default,Large" = Default page "Icon view" label "Icon size"
+property icon_font : text page "Icon view" label "Icon font (e.g. 10.Sans; empty: the System's)" set osdSetIconFont
+property title_font : text page "Icon view" label "Title bar font (empty: all title bars')" set osdSetTitleFont
+property title_bar_color : color page "Icon view" label "Title bar colour (empty: the scheme's)"
+property title_color : color page "Icon view" label "Title colour (icons' titles)"
+property col_name : checkbox = 1 page "Details view" label "Real name"
+property col_type : checkbox = 1 page "Details view" label Type
+property col_size : checkbox = 1 page "Details view" label Size
+property col_date : checkbox = 1 page "Details view" label "Last write"
+property col_widths : hidden page "Details view" label Widths set osdSetColWidths
+property win_view : hidden = icon page View label "Last view"
+property arrange_offered : hidden page View label "Arrange offered (positions from 0.2)"
+property win_icon : hidden page View label "Icon view window"
+property win_details : hidden page View label "Details view window"
+property win_tree : hidden page View label "Tree view window"
+property bg_gnome : checkbox = 1 page Background label "GNOME's background" show osdQueryIsDesktop set osdSetBgGnome
+property bg_image : file image page Background label Image set osdSetBgImage
+property bg_mode : choice "centred,tiled,scaled to fill,scaled to fit,stretched" = "scaled to fill" index page Background label Shown set osdSetBgMode
+property bg_color : color page Background label Colour set osdSetBgColor
+# Work Area (0.4 step 9, OS/2's, on its File page): what is opened from it
+# (or a folder or shadow in it) is its group, minimized, restored and
+# closed with its window; what was open when it closed (or at logout) is
+# kept (paths separated by 0x1e: no line breaks in a property), and opened again with it.
+event work_area.open, work_area.close
+property work_area : checkbox page File label "Work area" show osdQueryIsNotDesktop
+property work_area_open : hidden page File label "Open when it closed" show osdQueryIsNotDesktop
+property on:work_area.open : text page Actions label "When its window opens (work area)" show osdQueryIsNotDesktop last
+property on:work_area.close : text page Actions label "When its window closes (work area)" show osdQueryIsNotDesktop last
+classoverride osdclsQueryTitle

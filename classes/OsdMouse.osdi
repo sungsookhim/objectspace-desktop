@@ -1,0 +1,17 @@
+# The Mouse object: what each mouse action is.
+class OsdMouse : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle
+# Its settings (stored as text in the OsdSetup state, as before).
+property select : text = "button1" page "Mappings" label "Select" store OsdSetup text
+property open : text = "button1 double" page "Mappings" label "Open" store OsdSetup text
+property popup_menu : text = "button2" page "Mappings" label "Pop-up menu" store OsdSetup text
+property edit_title : text = "alt+button1" page "Mappings" label "Edit title" store OsdSetup text
+property drag : text = "button2" page "Mappings" label "Drag" store OsdSetup text
+property window_list : text = "button3" page "Mappings" label "Window list" store OsdSetup text
+property copy : text = "ctrl" page "Mappings" label "Copy (keys held at the drop)" store OsdSetup text
+property shadow : text = "ctrl+shift" page "Mappings" label "Create shadow (keys held at the drop)" store OsdSetup text
+property drop_menu : text = "alt" page "Mappings" label "Choose at the drop (keys held)" store OsdSetup text
+property left_handed : checkbox = "0" page "Setup" label "Left-handed (buttons 1 and 2 swapped)" store OsdSetup text
+property double_click_ms : text = "400" page "Setup" label "Double-click time (ms)" store OsdSetup text
+property wheel_speed : text = "3" page "Setup" label "Wheel speed (lines)" store OsdSetup text

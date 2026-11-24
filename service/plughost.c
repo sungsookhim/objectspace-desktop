@@ -36,11 +36,11 @@
 #include <unistd.h>
 
 #include "cbor.h"
-#include "wpo.h"
-#include "wps_classes.h"
-#include "wps_state.h"
-#include "WPFileSystem.h"
-#include "WPObject.h"
+#include "osdo.h"
+#include "osd_classes.h"
+#include "osd_state.h"
+#include "OsdFileSystem.h"
+#include "OsdObject.h"
 
 static int sock = 3;
 static const char *net_mode = "unrestricted", *fs_mode = "unrestricted";
@@ -110,9 +110,9 @@ static size_t base_classes;   /* classes registered before the plug-in */
 
 static void hello(const char *error)
 {
-    size_t n = wpo_class_count(), nplug = 0, nrep = 0;
-    for (size_t i = base_classes; i < n; i++) nplug += !wpo_class_at(i)->is_meta;
-    for (size_t i = 0; i < base_classes; i++) nrep += wpo_class_at(i)->replaced_by != NULL;
+    size_t n = osdo_class_count(), nplug = 0, nrep = 0;
+    for (size_t i = base_classes; i < n; i++) nplug += !osdo_class_at(i)->is_meta;
+    for (size_t i = 0; i < base_classes; i++) nrep += osdo_class_at(i)->replaced_by != NULL;
     cbuf b;
     cb_init(&b);
     cb_map(&b, error ? 5 : 4);
@@ -120,13 +120,13 @@ static void hello(const char *error)
     cb_text(&b, "classes");
     cb_array(&b, error ? 0 : nplug);
     for (size_t i = base_classes; !error && i < n; i++) {
-        wpo_class *c = wpo_class_at(i);
+        osdo_class *c = osdo_class_at(i);
         if (c->is_meta) continue;
         size_t novr = 0;
         for (uint32_t s = 0; s < c->mbase; s++) novr += c->mtab[s] != c->parent->mtab[s];
         cb_map(&b, 8);
         cb_text(&b, "name"); cb_text(&b, c->name);
-        char *title = WPObject_wpclsQueryTitle(c);   /* (its class method: run here, said once) */
+        char *title = OsdObject_osdclsQueryTitle(c);   /* (its class method: run here, said once) */
         cb_text(&b, "title"); cb_text(&b, title ? title : c->name);
         free(title);
         cb_text(&b, "parent"); cb_text(&b, c->parent->name);
@@ -134,7 +134,7 @@ static void hello(const char *error)
         cb_text(&b, "props");
         cb_array(&b, c->nprops);
         for (size_t k = 0; k < c->nprops; k++) {
-            const wpo_property_def *p = &c->props[k];
+            const osdo_property_def *p = &c->props[k];
             const char *f[12][2] = { { "name", p->name }, { "type", p->type }, { "def", p->def }, { "page", p->page },
                                      { "label", p->label }, { "choices", p->choices }, { "get", p->get }, { "set", p->set },
                                      { "show", p->show }, { "store", p->store }, { "options", p->options }, { "backing", p->backing } };
@@ -165,7 +165,7 @@ static void hello(const char *error)
     cb_text(&b, "replaces");
     cb_array(&b, error ? 0 : nrep);
     for (size_t i = 0; !error && i < base_classes; i++) {
-        wpo_class *c = wpo_class_at(i);
+        osdo_class *c = osdo_class_at(i);
         if (!c->replaced_by) continue;
         cb_map(&b, 2);
         cb_text(&b, "original"); cb_text(&b, c->name);
@@ -180,7 +180,7 @@ static void hello(const char *error)
     cb_free(&b);
 }
 
-static void put_value(cbuf *b, const wpo_value *v)
+static void put_value(cbuf *b, const osdo_value *v)
 {
     switch (v->type) {
     case 'b': cb_bool(b, v->u.b); break;
@@ -191,7 +191,7 @@ static void put_value(cbuf *b, const wpo_value *v)
     }
 }
 
-static void put_prop(cbuf *b, const wps_prop *p)
+static void put_prop(cbuf *b, const osd_prop *p)
 {
     if (p->type == 's') cb_textn(b, (const char *)p->val, p->len);
     else if (p->type == 'i' && p->len == 8) {
@@ -208,7 +208,7 @@ static void handle_call(const cv *m)
     cv_int(m, "call", &id);
     const char *clsname = cv_text(m, "class"), *method = cv_text(m, "method");
     const cv *args = cv_get(m, "args"), *object = cv_get(m, "object");
-    wpo_class *cls = clsname ? wpo_find_class(clsname) : NULL;
+    osdo_class *cls = clsname ? osdo_find_class(clsname) : NULL;
     cbuf b;
     cb_init(&b);
     if (!cls || !method || !object) {
@@ -221,65 +221,65 @@ static void handle_call(const cv *m)
         return;
     }
     /* A fresh instance carrying the object's stored state. */
-    wpo_object *o = wpo_instantiate(cls);
+    osdo_object *o = osdo_instantiate(cls);
     const char *path = cv_text(object, "path"), *oid = cv_text(object, "id");
-    if (path && wpo_is_a(o, WPFileSystemClass)) WPFileSystem_wpSetPath(o, path);
-    if (oid) snprintf(WPObject_data(o)->id, sizeof WPObject_data(o)->id, "%s", oid);
+    if (path && osdo_is_a(o, OsdFileSystemClass)) OsdFileSystem_osdSetPath(o, path);
+    if (oid) snprintf(OsdObject_data(o)->id, sizeof OsdObject_data(o)->id, "%s", oid);
     const cv *props = cv_get(object, "props");
     for (size_t i = 0; props && props->k == CV_MAP && i < props->n; i++) {
         const cv *cn = &props->items[2 * i], *kv = &props->items[2 * i + 1];
         if (cn->k != CV_TEXT || kv->k != CV_MAP) continue;
-        wps_props ps;
-        wps_props_init(&ps);
+        osd_props ps;
+        osd_props_init(&ps);
         for (size_t k = 0; k < kv->n; k++) {
             const cv *key = &kv->items[2 * k], *val = &kv->items[2 * k + 1];
             if (key->k != CV_TEXT) continue;
-            if (val->k == CV_TEXT) wps_props_set_str(&ps, key->s, val->s);
-            else if (val->k == CV_INT) wps_props_set_int(&ps, key->s, val->i);
-            else if (val->k == CV_BOOL) wps_props_set_bool(&ps, key->s, val->b);
+            if (val->k == CV_TEXT) osd_props_set_str(&ps, key->s, val->s);
+            else if (val->k == CV_INT) osd_props_set_int(&ps, key->s, val->i);
+            else if (val->k == CV_BOOL) osd_props_set_bool(&ps, key->s, val->b);
         }
-        wps_state_load(o, cn->s, &ps);
-        wps_props_free(&ps);
+        osd_state_load(o, cn->s, &ps);
+        osd_props_free(&ps);
     }
-    WPObject_wpRestoreProperties(o);
-    wpo_value av[16], ret;
+    OsdObject_osdRestoreProperties(o);
+    osdo_value av[16], ret;
     size_t na = 0;
     for (size_t i = 0; args && args->k == CV_ARRAY && i < args->n && na < 16; i++) {
         const cv *a = &args->items[i];
-        av[na++] = a->k == CV_BOOL ? wpo_v_bool(a->b) : a->k == CV_INT ? wpo_v_int(a->i) :
-                   a->k == CV_FLOAT ? wpo_v_double(a->d) : a->k == CV_TEXT ? wpo_v_string(a->s) : wpo_v_void();
+        av[na++] = a->k == CV_BOOL ? osdo_v_bool(a->b) : a->k == CV_INT ? osdo_v_int(a->i) :
+                   a->k == CV_FLOAT ? osdo_v_double(a->d) : a->k == CV_TEXT ? osdo_v_string(a->s) : osdo_v_void();
     }
-    wpo_status st = wpo_send(o, method, av, na, &ret);
-    for (size_t i = 0; i < na; i++) wpo_value_clear(&av[i]);
+    osdo_status st = osdo_send(o, method, av, na, &ret);
+    for (size_t i = 0; i < na; i++) osdo_value_clear(&av[i]);
     /* What the method changed: the touched keys of each class. */
-    WPObject_wpSaveState(o);
-    wps_state *bag = WPObject_data(o)->state;
+    OsdObject_osdSaveState(o);
+    osd_state *bag = OsdObject_data(o)->state;
     size_t nch = 0;
     for (size_t c = 0; bag && c < bag->n; c++) nch += bag->c[c].ntouched > 0;
     cb_map(&b, 4);
     cb_text(&b, "reply"); cb_int(&b, id);
-    cb_text(&b, "ok"); cb_bool(&b, st == WPO_OK);
+    cb_text(&b, "ok"); cb_bool(&b, st == OSDO_OK);
     cb_text(&b, "result");
-    if (st == WPO_OK) put_value(&b, &ret);
-    else cb_text(&b, wpo_strerror(st));
+    if (st == OSDO_OK) put_value(&b, &ret);
+    else cb_text(&b, osdo_strerror(st));
     cb_text(&b, "changes");
     cb_map(&b, nch);
     for (size_t c = 0; bag && c < bag->n; c++) {
-        wps_cstate *cs = &bag->c[c];
+        osd_cstate *cs = &bag->c[c];
         if (!cs->ntouched) continue;
         cb_text(&b, cs->cls);
         cb_map(&b, cs->ntouched);
         for (size_t k = 0; k < cs->ntouched; k++) {
             cb_text(&b, cs->touched[k]);
-            const wps_prop *p = wps_props_get(&cs->props, cs->touched[k]);
+            const osd_prop *p = osd_props_get(&cs->props, cs->touched[k]);
             if (p) put_prop(&b, p);
             else cb_null(&b);   /* removed */
         }
     }
     send_cbuf(&b);
     cb_free(&b);
-    wpo_value_clear(&ret);
-    wpo_unref(o);
+    osdo_value_clear(&ret);
+    osdo_unref(o);
 }
 
 int main(int argc, char **argv)
@@ -288,12 +288,12 @@ int main(int argc, char **argv)
     char plugin[4096];
     if (!realpath(argv[1], plugin)) snprintf(plugin, sizeof plugin, "%s", argv[1]);
     sandbox(plugin, argv[2]);
-    if (wpo_init() != WPO_OK || wps_classes_register() != WPO_OK) return 1;
-    base_classes = wpo_class_count();
+    if (osdo_init() != OSDO_OK || osd_classes_register() != OSDO_OK) return 1;
+    base_classes = osdo_class_count();
     char err[512] = "";
-    wpo_status st = wpo_load_plugin(plugin, err, sizeof err);
-    hello(st == WPO_OK ? NULL : err);
-    if (st != WPO_OK) return 1;
+    osdo_status st = osdo_load_plugin(plugin, err, sizeof err);
+    hello(st == OSDO_OK ? NULL : err);
+    if (st != OSDO_OK) return 1;
     static unsigned char buf[1 << 20];
     for (;;) {
         ssize_t n = recv(sock, buf, sizeof buf, 0);

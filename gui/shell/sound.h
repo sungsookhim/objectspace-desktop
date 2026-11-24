@@ -8,8 +8,8 @@
  * Opus: the freedesktop sound theme is Ogg) when it was there at build
  * time, else WAV only. Up to 8 play at once.
  */
-#ifndef WPS_SOUND_H
-#define WPS_SOUND_H
+#ifndef OSD_SOUND_H
+#define OSD_SOUND_H
 
 #include <stdbool.h>
 

@@ -1,9 +1,0 @@
-# The Colour Palette (OS/2's): colour samples dragged onto folder windows'
-# and the desktop's backgrounds (Ctrl: their icons' titles), title bars,
-# the WarpCenter and the LaunchPad, and notebooks' colour fields
-# (v0.4-design 9). It opens as the palette window.
-class WPColorPalette : WPSetup
-version 1.0
-classoverride wpclsQueryTitle
-# Its settings (stored as text in the WPSetup state, as the Font Palette's).
-property colors : text = "#ffffff;#c0c0c0;#808080;#404040;#000000;#008080;#ff0000;#800000;#ffff00;#808000;#00ff00;#008000;#00ffff;#0000ff;#000080;#ff00ff;#800080;#ff8000;#804000;#ffc0c0;#c0ffc0;#c0c0ff;#ffffc0;#c0ffff;#3a6ea5;#5f9ea0;#cccccc;#e0d8b0;#b0c4de;#2f4f4f" page "Colours" label "Samples (#rrggbb, separated by ;)" store WPSetup text

@@ -5,7 +5,7 @@
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sysmenu-XXXX")
 W="$PWD/build/wpsctl"
-ENV="WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1"
+ENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1"
 CLIENT="'$PWD/build/tests/ssd-client' Framed 3060a0"
 # The test client's frame at 436,156: its system menu button at 450,171;
 # the menu opens under it (Maximize, Minimize at y 205, -, Close).
@@ -16,7 +16,7 @@ cat > "$S/one" <<EOS
 5 windows
 5.5 quit
 EOS
-env -u WPS_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/one" "$CLIENT" > "$S/one.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/one" "$CLIENT" > "$S/one.txt" 2>&1
 T1=$(sed -n 's/^T=//p' "$S/one.txt")
 cat > "$S/two" <<EOS
 3.2 click 450 171
@@ -24,9 +24,9 @@ cat > "$S/two" <<EOS
 4.2 key Escape
 4.5 quit
 EOS
-PRE="a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"WPSystem\"][\"address\"])')
+PRE="a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdSystem\"][\"address\"])')
      '$W' settings_set \"\$a\" 'font_menus=18.Sans' > /dev/null" \
-    env -u WPS_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/two" "$CLIENT" > "$S/two.txt" 2>&1
+    env -u OSD_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/two" "$CLIENT" > "$S/two.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/two.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

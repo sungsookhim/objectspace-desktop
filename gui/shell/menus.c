@@ -58,26 +58,26 @@ void menu_chosen(void *arg, int64_t id)
         char t[PATH_MAX];
         target_of(f, m->item, t, sizeof t);
         switch (id) {
-        case WPS_MI_OPEN: open_item(f, m->item, VIEW_LAST); break;
-        case WPS_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
-        case WPS_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
-        case WPS_MI_PROPERTIES: {
+        case OSD_MI_OPEN: open_item(f, m->item, VIEW_LAST); break;
+        case OSD_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
+        case OSD_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
+        case OSD_MI_PROPERTIES: {
             /* a shadow's are its original's (OS/2): renaming there renames it */
             struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
             if (rw && rw->shadow && rw->target && *rw->target) snprintf(t, sizeof t, "%s", rw->target);
             open_properties(t);   /* (or the open one to the front) */
             break;
         }
-        case WPS_MI_OPEN_OTHER: {   /* Open > Other program... */
+        case OSD_MI_OPEN_OTHER: {   /* Open > Other program... */
             struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
             apppick_open(rw ? (rw->title ? rw->title : rw->name) : t, t, open_with_chosen, f->id);
             break;
         }
-        case WPS_MI_VIEW_ICON: set_view(f, UI_VIEW_ICON); break;
-        case WPS_MI_VIEW_DETAILS: set_view(f, UI_VIEW_DETAILS); break;
-        case WPS_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
-        case WPS_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
-        case WPS_MI_ARRANGE:
+        case OSD_MI_VIEW_ICON: set_view(f, UI_VIEW_ICON); break;
+        case OSD_MI_VIEW_DETAILS: set_view(f, UI_VIEW_DETAILS); break;
+        case OSD_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
+        case OSD_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
+        case OSD_MI_ARRANGE:
             if (m->item == SIZE_MAX) { arrange(f); break; }   /* (the window's own menu) */
             {   /* a folder's icon (or a shadow of one): that folder, open or not */
                 struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
@@ -89,13 +89,13 @@ void menu_chosen(void *arg, int64_t id)
                 else svc_arrange(t, ignore_reply, NULL);
             }
             break;
-        case WPS_MI_SORT_NAME: case WPS_MI_SORT_TYPE: case WPS_MI_SORT_SIZE: case WPS_MI_SORT_DATE:
-            sort_icons(f, (int)(id - WPS_MI_SORT_NAME));
+        case OSD_MI_SORT_NAME: case OSD_MI_SORT_TYPE: case OSD_MI_SORT_SIZE: case OSD_MI_SORT_DATE:
+            sort_icons(f, (int)(id - OSD_MI_SORT_NAME));
             break;
-        case WPS_MI_FIND: findwin_open(f->path, NULL); break;
-        case WPS_MI_PROMPT_HERE: svc_open_prompt(t, opened, as_arg(f)); break;   /* (a shadow's: its original's folder) */
-        case WPS_MI_CLOSE: win_close(f->win); break;
-        case WPS_MI_OPEN_PARENT: {
+        case OSD_MI_FIND: findwin_open(f->path, NULL); break;
+        case OSD_MI_PROMPT_HERE: svc_open_prompt(t, opened, as_arg(f)); break;   /* (a shadow's: its original's folder) */
+        case OSD_MI_CLOSE: win_close(f->win); break;
+        case OSD_MI_OPEN_PARENT: {
             char parent[PATH_MAX];
             snprintf(parent, sizeof parent, "%s", f->path);
             char *sl = strrchr(parent, '/');
@@ -104,31 +104,31 @@ void menu_chosen(void *arg, int64_t id)
             if (strcmp(parent, f->path)) open_folder(parent, VIEW_LAST);
             break;
         }
-        case WPS_MI_DELETE: delete_request(f, m->item, false); break;
-        case WPS_MI_EMPTY_TRASH: empty_trash_ask(f); break;
-        case WPS_MI_MOUNT: case WPS_MI_UNMOUNT: case WPS_MI_EJECT: case WPS_MI_POWER_OFF: case WPS_MI_LOCK: case WPS_MI_UNLOCK: {
+        case OSD_MI_DELETE: delete_request(f, m->item, false); break;
+        case OSD_MI_EMPTY_TRASH: empty_trash_ask(f); break;
+        case OSD_MI_MOUNT: case OSD_MI_UNMOUNT: case OSD_MI_EJECT: case OSD_MI_POWER_OFF: case OSD_MI_LOCK: case OSD_MI_UNLOCK: {
             char t[PATH_MAX];
             target_of(f, m->item, t, sizeof t);
-            if (id == WPS_MI_UNLOCK) unlock_ask(f, t, false);
-            else drive_action(f, t, id == WPS_MI_MOUNT ? "mount" : id == WPS_MI_UNMOUNT ? "unmount" : id == WPS_MI_EJECT ? "eject"
-                                    : id == WPS_MI_POWER_OFF ? "poweroff" : "lock", false);
+            if (id == OSD_MI_UNLOCK) unlock_ask(f, t, false);
+            else drive_action(f, t, id == OSD_MI_MOUNT ? "mount" : id == OSD_MI_UNMOUNT ? "unmount" : id == OSD_MI_EJECT ? "eject"
+                                    : id == OSD_MI_POWER_OFF ? "poweroff" : "lock", false);
             break;
         }
-        case WPS_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
-        case WPS_MI_LOCK_POS: if (m->item != SIZE_MAX) lock_items(f, m->item); break;
-        case WPS_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
-        case WPS_MI_CREATE_ANOTHER: create_another(f, m->item); break;
-        case WPS_MI_WINDOW_LIST: winlist_open(false); break;
-        case WPS_MI_LOCKUP: session_lock("desktop"); break;
-        case WPS_MI_SYSTEM_SETUP: if (setup_folder[0]) open_folder(setup_folder, VIEW_LAST); break;
-        case WPS_MI_SHUTDOWN: session_ask_end(app, "desktop"); break;
-        case WPS_MI_MINIMIZED: winlist_open(true); break;
+        case OSD_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
+        case OSD_MI_LOCK_POS: if (m->item != SIZE_MAX) lock_items(f, m->item); break;
+        case OSD_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
+        case OSD_MI_CREATE_ANOTHER: create_another(f, m->item); break;
+        case OSD_MI_WINDOW_LIST: winlist_open(false); break;
+        case OSD_MI_LOCKUP: session_lock("desktop"); break;
+        case OSD_MI_SYSTEM_SETUP: if (setup_folder[0]) open_folder(setup_folder, VIEW_LAST); break;
+        case OSD_MI_SHUTDOWN: session_ask_end(app, "desktop"); break;
+        case OSD_MI_MINIMIZED: winlist_open(true); break;
         default:
-            if (id >= WPS_MI_OPEN_APP && id < WPS_MI_OPEN_APP + WPS_MI_OPEN_APPS) {   /* Open > one of its type's programs */
-                svc_open_with(t, NULL, (int)(id - WPS_MI_OPEN_APP), false, opened, as_arg(f));
+            if (id >= OSD_MI_OPEN_APP && id < OSD_MI_OPEN_APP + OSD_MI_OPEN_APPS) {   /* Open > one of its type's programs */
+                svc_open_with(t, NULL, (int)(id - OSD_MI_OPEN_APP), false, opened, as_arg(f));
                 break;
             }
-            if (id >= WPS_MI_NEW && id < WPS_MI_NEW + WPS_MI_NEWS && (size_t)(id - WPS_MI_NEW) < m->ntpl) {
+            if (id >= OSD_MI_NEW && id < OSD_MI_NEW + OSD_MI_NEWS && (size_t)(id - OSD_MI_NEW) < m->ntpl) {
                 /* New > a template: an object made from it here, at the click */
                 struct land *l = calloc(1, sizeof *l);
                 l->folder = f->id;
@@ -140,7 +140,7 @@ void menu_chosen(void *arg, int64_t id)
                     l->x = lx < 0 ? 0 : (int64_t)lx;
                     l->y = ly < 0 ? 0 : (int64_t)ly;
                 }
-                svc_from_template(m->tpl[id - WPS_MI_NEW], f->path, NULL, made_new, l);
+                svc_from_template(m->tpl[id - OSD_MI_NEW], f->path, NULL, made_new, l);
                 break;
             }
             svc_menu_select(t, id, selected_done, as_arg(f));
@@ -287,7 +287,7 @@ static void got_startup(void *arg, const cv *reply)
 
 void startup_at_login(void)
 {
-    const char *rt = getenv("WPS_RUNTIME_DIR");
+    const char *rt = getenv("OSD_RUNTIME_DIR");
     if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
     const char *sid = getenv("XDG_SESSION_ID");
     char marker[PATH_MAX], was[64] = "";
@@ -389,21 +389,21 @@ static void got_menu(void *arg, const cv *reply)
          * trash again, nor Create another) */
         size_t w = 0;
         for (size_t k = 0; k < n; k++) {
-            if (items[k].id == WPS_MI_DELETE || items[k].id == WPS_MI_CREATE_ANOTHER) continue;
+            if (items[k].id == OSD_MI_DELETE || items[k].id == OSD_MI_CREATE_ANOTHER) continue;
             items[w++] = items[k];
         }
         n = w;
         items = realloc(items, (n + 3) * sizeof *items);
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_RESTORE, "Restore", true, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_DELETE_FOREVER, "Delete permanently...", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_RESTORE, "Restore", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_DELETE_FOREVER, "Delete permanently...", true, false, NULL, 0 };
     }
     if (m->item != SIZE_MAX && !is_tree(f)) {
         /* a shadow of the Trash Can (the desktop's): Empty trash too */
         struct row *rw = row_at(f, m->item);
         if (rw && rw->shadow && rw->target && is_trash_dir(rw->target)) {
             items = realloc(items, (n + 1) * sizeof *items);
-            items[n++] = (ui_menu_item){ WPS_MI_EMPTY_TRASH, "Empty trash", true, false, NULL, 0 };
+            items[n++] = (ui_menu_item){ OSD_MI_EMPTY_TRASH, "Empty trash", true, false, NULL, 0 };
         }
     }
     if (m->item != SIZE_MAX && !is_tree(f) && ui_container_view(f->cont) == UI_VIEW_ICON && !f->filter[0]) {
@@ -411,34 +411,34 @@ static void got_menu(void *arg, const cv *reply)
         const char *nm = model_name(&f->m, m->item);
         items = realloc(items, (n + 2) * sizeof *items);
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_LOCK_POS, "Lock position", nm && !f->lock_all, layout_is_locked(f->lay, nm), NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_LOCK_POS, "Lock position", nm && !f->lock_all, layout_is_locked(f->lay, nm), NULL, 0 };
     }
     if (m->item == SIZE_MAX) {
         /* Every folder's (the desktop's too), as OS/2's: Open parent after
          * Open, then Find, Sort; Close for a window (the desktop stays). */
         bool icons = ui_container_view(f->cont) == UI_VIEW_ICON;
         ui_menu_item *sorts = calloc(4, sizeof *sorts);
-        sorts[0] = (ui_menu_item){ WPS_MI_SORT_NAME, "By name", icons, false, NULL, 0 };
-        sorts[1] = (ui_menu_item){ WPS_MI_SORT_TYPE, "By type", icons, false, NULL, 0 };
-        sorts[2] = (ui_menu_item){ WPS_MI_SORT_SIZE, "By size", icons, false, NULL, 0 };
-        sorts[3] = (ui_menu_item){ WPS_MI_SORT_DATE, "By last write", icons, false, NULL, 0 };
+        sorts[0] = (ui_menu_item){ OSD_MI_SORT_NAME, "By name", icons, false, NULL, 0 };
+        sorts[1] = (ui_menu_item){ OSD_MI_SORT_TYPE, "By type", icons, false, NULL, 0 };
+        sorts[2] = (ui_menu_item){ OSD_MI_SORT_SIZE, "By size", icons, false, NULL, 0 };
+        sorts[3] = (ui_menu_item){ OSD_MI_SORT_DATE, "By last write", icons, false, NULL, 0 };
         items = realloc(items, (n + 6) * sizeof *items);
         size_t at = n ? 1 : 0;
         memmove(items + at + 1, items + at, (n - at) * sizeof *items);
-        items[at] = (ui_menu_item){ WPS_MI_OPEN_PARENT, "Open parent", strcmp(f->path, "/") != 0, false, NULL, 0 };
+        items[at] = (ui_menu_item){ OSD_MI_OPEN_PARENT, "Open parent", strcmp(f->path, "/") != 0, false, NULL, 0 };
         n++;
         /* New > the Templates folder's templates (v0.3-design 9) */
         ui_menu_item *news = calloc(m->ntpl ? m->ntpl : 1, sizeof *news);
-        for (size_t k = 0; k < m->ntpl; k++) news[k] = (ui_menu_item){ WPS_MI_NEW + (int64_t)k, m->tpl_title[k], true, false, NULL, 0 };
+        for (size_t k = 0; k < m->ntpl; k++) news[k] = (ui_menu_item){ OSD_MI_NEW + (int64_t)k, m->tpl_title[k], true, false, NULL, 0 };
         items = realloc(items, (n + 7) * sizeof *items);
         memmove(items + at + 2, items + at + 1, (n - at - 1) * sizeof *items);
-        items[at + 1] = (ui_menu_item){ WPS_MI_NEW_MENU, "New", m->ntpl > 0, false, news, m->ntpl };
+        items[at + 1] = (ui_menu_item){ OSD_MI_NEW_MENU, "New", m->ntpl > 0, false, news, m->ntpl };
         n++;
-        items[n++] = (ui_menu_item){ WPS_MI_FIND, "Find...", true, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_SORT, "Sort", icons, false, sorts, 4 };
+        items[n++] = (ui_menu_item){ OSD_MI_FIND, "Find...", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_SORT, "Sort", icons, false, sorts, 4 };
         if (!f->desktop) {
             items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
-            items[n++] = (ui_menu_item){ WPS_MI_CLOSE, "Close", true, false, NULL, 0 };
+            items[n++] = (ui_menu_item){ OSD_MI_CLOSE, "Close", true, false, NULL, 0 };
         }
     }
     if (m->item == SIZE_MAX && f->desktop) {
@@ -448,25 +448,25 @@ static void got_menu(void *arg, const cv *reply)
          * windows (G4). */
         items = realloc(items, (n + 7) * sizeof *items);
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_SYSTEM_SETUP, "System setup", setup_folder[0] != 0, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_LOCKUP, "Lockup now", true, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_SHUTDOWN, "Shut down...", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_SYSTEM_SETUP, "System setup", setup_folder[0] != 0, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_LOCKUP, "Lockup now", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_SHUTDOWN, "Shut down...", true, false, NULL, 0 };
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_WINDOW_LIST, "Window list", true, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ WPS_MI_MINIMIZED, "Minimized windows", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_WINDOW_LIST, "Window list", true, false, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_MINIMIZED, "Minimized windows", true, false, NULL, 0 };
     }
     if (m->item == SIZE_MAX && !f->desktop) {
         /* The folder window's own menu: a View cascade after Open, to switch
          * this window's view (the Open cascade opens new windows). */
         ui_view v = ui_container_view(f->cont);
         ui_menu_item *views = calloc(3, sizeof *views);
-        views[0] = (ui_menu_item){ WPS_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON, NULL, 0 };
-        views[1] = (ui_menu_item){ WPS_MI_VIEW_TREE, "Tree view\tCtrl+2", true, v == UI_VIEW_TREE, NULL, 0 };
-        views[2] = (ui_menu_item){ WPS_MI_VIEW_DETAILS, "Details view\tCtrl+3", true, v == UI_VIEW_DETAILS, NULL, 0 };
+        views[0] = (ui_menu_item){ OSD_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON, NULL, 0 };
+        views[1] = (ui_menu_item){ OSD_MI_VIEW_TREE, "Tree view\tCtrl+2", true, v == UI_VIEW_TREE, NULL, 0 };
+        views[2] = (ui_menu_item){ OSD_MI_VIEW_DETAILS, "Details view\tCtrl+3", true, v == UI_VIEW_DETAILS, NULL, 0 };
         items = realloc(items, (n + 1) * sizeof *items);
         size_t at = n ? 1 : 0;
         memmove(items + at + 1, items + at, (n - at) * sizeof *items);
-        items[at] = (ui_menu_item){ WPS_MI_VIEW, "View", true, false, views, 3 };
+        items[at] = (ui_menu_item){ OSD_MI_VIEW, "View", true, false, views, 3 };
         n++;
     }
     /* No grab (serial 0): the button was released before the service
@@ -493,7 +493,7 @@ static void got_templates(void *arg, const cv *reply)
     char tdir[PATH_MAX];
     templates_dir(tdir, sizeof tdir);
     size_t n = items && items->k == CV_ARRAY ? items->n : 0;
-    if (n > WPS_MI_NEWS) n = WPS_MI_NEWS;
+    if (n > OSD_MI_NEWS) n = OSD_MI_NEWS;
     char **addr = calloc(n ? n : 1, sizeof *addr), **title = calloc(n ? n : 1, sizeof *title);
     size_t k = 0;
     for (size_t i = 0; i < n; i++) {
@@ -532,7 +532,7 @@ void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
     if (i == SIZE_MAX) {
         char tdir[PATH_MAX];
         templates_dir(tdir, sizeof tdir);
-        svc_list_v(tdir, "", false, 0, WPS_MI_NEWS, true, got_templates, m);
+        svc_list_v(tdir, "", false, 0, OSD_MI_NEWS, true, got_templates, m);
         return;
     }
     char t[PATH_MAX];

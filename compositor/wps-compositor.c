@@ -20,8 +20,8 @@
  * Runs nested in a Wayland or X11 session, or on its own on a console
  * (wlroots chooses: WLR_BACKENDS). Ctrl+Alt+BackSpace ends it.
  *
- * Tests: WPS_COMP_HEADLESS=WxH runs with no display, one virtual screen;
- * WPS_COMP_SCRIPT=file plays timed input and takes screenshots:
+ * Tests: OSD_COMP_HEADLESS=WxH runs with no display, one virtual screen;
+ * OSD_COMP_SCRIPT=file plays timed input and takes screenshots:
  *   <seconds> move X Y | click X Y [right] | down X Y | up X Y | dclick X Y
  *   <seconds> key [ctrl+][alt+][shift+]NAME   (an xkb key name: Tab, F4, a)
  *   <seconds> shot FILE.png | windows | hang SECONDS | quit
@@ -83,7 +83,7 @@
 #include "comp.h"
 
 struct server server;
-bool comp_debug;   /* WPS_COMP_DEBUG */
+bool comp_debug;   /* OSD_COMP_DEBUG */
 static double start_ms;   /* (the session log says when, from here) */
 static double now_ms(void);
 double comp_uptime(void) { return (now_ms() - start_ms) / 1000; }
@@ -1221,7 +1221,7 @@ static void init_buffers(struct wlr_renderer *r, struct wl_display *display)
     drmVersionPtr v = fd >= 0 ? drmGetVersion(fd) : NULL;
     bool vmwgfx = v && v->name && !strcmp(v->name, "vmwgfx");
     if (v) drmFreeVersion(v);
-    if (!vmwgfx && !getenv("WPS_COMP_NO_DMABUF_CHECK")) {
+    if (!vmwgfx && !getenv("OSD_COMP_NO_DMABUF_CHECK")) {
         wlr_renderer_init_wl_display(r, display);
         return;
     }
@@ -1231,7 +1231,7 @@ static void init_buffers(struct wlr_renderer *r, struct wl_display *display)
         if (dm) wlr_linux_dmabuf_v1_set_check_dmabuf_callback(dm, dmabuf_ok, NULL);
     }
     fprintf(stderr, "wps-compositor: %s: programs' GPU buffers are not checked by the card\n",
-            vmwgfx ? "vmwgfx (VirtualBox, VMware)" : "WPS_COMP_NO_DMABUF_CHECK");
+            vmwgfx ? "vmwgfx (VirtualBox, VMware)" : "OSD_COMP_NO_DMABUF_CHECK");
 }
 
 static int on_pace(void *data)
@@ -1266,12 +1266,12 @@ static void place_panel(struct toplevel *t);
 static void place_notice(struct toplevel *t);
 static void refit_maximized(void);
 
-/* A screen's scale: WPS_SCALE, else GNOME's for it (Settings, Displays:
+/* A screen's scale: OSD_SCALE, else GNOME's for it (Settings, Displays:
  * ~/.config/monitors.xml, the logical monitor whose monitor has this
  * connector), else 1. */
 static double screen_scale(const char *connector)
 {
-    const char *env = getenv("WPS_SCALE");
+    const char *env = getenv("OSD_SCALE");
     if (env && atof(env) >= 0.5 && atof(env) <= 4) return atof(env);
     char path[4096];
     const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
@@ -1344,7 +1344,7 @@ static int on_monitors_xml(int fd, uint32_t mask, void *data)
 
 static void watch_monitors_xml(void)
 {
-    if (getenv("WPS_COMP_HEADLESS") && !getenv("WPS_COMP_WATCH_MONITORS")) return;
+    if (getenv("OSD_COMP_HEADLESS") && !getenv("OSD_COMP_WATCH_MONITORS")) return;
     char dir[4096];
     const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (xdg && *xdg) snprintf(dir, sizeof dir, "%s", xdg);
@@ -1376,10 +1376,10 @@ static void on_new_output(struct wl_listener *l, void *data)
     if (mode) wlr_output_state_set_mode(&st, mode);
     /* no modes (headless): its size at 60 Hz. A refresh rate of 0 is
      * divided by: GTK 4 died of SIGFPE in its frame callback. */
-    /* (nested in another session, the window starts at WPS_COMP_SIZE or 1280x800) */
+    /* (nested in another session, the window starts at OSD_COMP_SIZE or 1280x800) */
     else {
         int w = wo->width > 0 ? wo->width : 1280, h = wo->height > 0 ? wo->height : 800;
-        const char *sz = getenv("WPS_COMP_SIZE");
+        const char *sz = getenv("OSD_COMP_SIZE");
         if (sz && !wlr_output_is_headless(wo)) sscanf(sz, "%dx%d", &w, &h);
         /* a refresh rate only where one can be set (headless); a nested
          * window takes a size alone */
@@ -1410,9 +1410,9 @@ static void on_new_output(struct wl_listener *l, void *data)
     }
     /* The pointer drawn into the picture, not by the graphics card's cursor
      * plane: virtual machines' cards (screens named Virtual-N: VirtualBox,
-     * VMware, QEMU) show no pointer that way; WPS_COMP_SOFTWARE_CURSOR=1
+     * VMware, QEMU) show no pointer that way; OSD_COMP_SOFTWARE_CURSOR=1
      * asks for it anywhere. */
-    if (getenv("WPS_COMP_SOFTWARE_CURSOR") || !strncmp(wo->name, "Virtual-", 8)) {
+    if (getenv("OSD_COMP_SOFTWARE_CURSOR") || !strncmp(wo->name, "Virtual-", 8)) {
         wlr_output_lock_software_cursors(wo, true);
         fprintf(stderr, "wps-compositor: %s: the pointer is drawn in software\n", wo->name);
     }
@@ -1574,7 +1574,7 @@ static bool from_desktop(struct toplevel *t) { return desktop_is(view_client(t))
 static enum kind kind_of(struct toplevel *t)
 {
     const char *app = view_app(t) ? view_app(t) : "";
-    if (!from_desktop(t) && !getenv("WPS_COMP_TRUST_APP_IDS")) return KIND_NORMAL;
+    if (!from_desktop(t) && !getenv("OSD_COMP_TRUST_APP_IDS")) return KIND_NORMAL;
     return !strcmp(app, "org.wps.Desktop") ? KIND_DESKTOP : !strcmp(app, "org.wps.LaunchPad") ? KIND_PALETTE
            : !strcmp(app, "org.wps.WarpCenter") ? KIND_PANEL : !strcmp(app, "org.wps.Notice") ? KIND_NOTICE : KIND_NORMAL;
 }
@@ -2469,7 +2469,7 @@ static int on_heartbeat(void *data)
     return 0;
 }
 
-/* The watchdog (WPS_COMP_DEBUG): a thread that sees whether the loop
+/* The watchdog (OSD_COMP_DEBUG): a thread that sees whether the loop
  * still turns (a tick each second); stuck for 8 s, it has gdb write every
  * thread's stack to the log, once: where it is stuck. */
 static atomic_ulong loop_ticks;
@@ -2506,7 +2506,7 @@ static void on_session_active(struct wl_listener *l, void *data)
 
 int main(int argc, char **argv)
 {
-    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wps-compositor %s\n", WPS_VERSION); return 0; }
+    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wps-compositor %s\n", OSD_VERSION); return 0; }
     const char *startup = NULL, *desktop = NULL;
     int c;
     while ((c = getopt(argc, argv, "s:d:h")) != -1) {
@@ -2514,15 +2514,15 @@ int main(int argc, char **argv)
         else if (c == 'd') desktop = optarg;
         else { fprintf(stderr, "usage: %s [-d DESKTOP-COMMAND] [-s COMMAND]\n", argv[0]); return c == 'h' ? 0 : 2; }
     }
-    comp_debug = getenv("WPS_COMP_DEBUG") != NULL;
-    wlr_log_init(getenv("WPS_COMP_DEBUG") && !strcmp(getenv("WPS_COMP_DEBUG"), "wlr") ? WLR_DEBUG : WLR_ERROR, NULL);
+    comp_debug = getenv("OSD_COMP_DEBUG") != NULL;
+    wlr_log_init(getenv("OSD_COMP_DEBUG") && !strcmp(getenv("OSD_COMP_DEBUG"), "wlr") ? WLR_DEBUG : WLR_ERROR, NULL);
     ui_scheme_init();
     ui_text_init();
     struct server *s = &server;
     start_ms = now_ms();
     s->display = wl_display_create();
     s->loop = wl_display_get_event_loop(s->display);
-    const char *headless = getenv("WPS_COMP_HEADLESS");
+    const char *headless = getenv("OSD_COMP_HEADLESS");
     int hw = 0, hh = 0;
     if (headless && sscanf(headless, "%dx%d", &hw, &hh) == 2) {
         s->backend = wlr_headless_backend_create(s->loop);
@@ -2649,7 +2649,7 @@ int main(int argc, char **argv)
     setenv("WAYLAND_DISPLAY", socket, true);
     unsetenv("DISPLAY");
     /* X11 programs: XWayland, started when the first one connects */
-    if (!getenv("WPS_COMP_NO_X11")) {
+    if (!getenv("OSD_COMP_NO_X11")) {
         /* In the WPS session it starts at once and stays: started when the
          * first X11 program comes, wlroots ends it again some seconds after
          * the last goes, and IBus's X11 part (ibus-x11 --kill-daemon) took
@@ -2685,7 +2685,7 @@ int main(int argc, char **argv)
         session_active.notify = on_session_active;
         wl_signal_add(&s->session->events.active, &session_active);
     }
-    if (!getenv("WPS_COMP_HEADLESS") || comp_debug) {
+    if (!getenv("OSD_COMP_HEADLESS") || comp_debug) {
         heartbeat = wl_event_loop_add_timer(s->loop, on_heartbeat, NULL);
         wl_event_source_timer_update(heartbeat, 5000);
     }
@@ -2696,7 +2696,7 @@ int main(int argc, char **argv)
         pthread_t th;
         if (pthread_create(&th, NULL, watchdog, NULL) == 0) pthread_detach(th);
     }
-    const char *script = getenv("WPS_COMP_SCRIPT");
+    const char *script = getenv("OSD_COMP_SCRIPT");
     if (script) load_script(script);
     wl_display_run(s->display);
     desktop_stop();

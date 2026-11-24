@@ -13,10 +13,10 @@
 # Its log: ~/.local/state/wps/session.log (the last session's; the one
 # before is session.log.old).
 # Where the programs are: installed (make install fills these in), or this
-# source tree's build/ (run from the tree); WPS_LIBEXEC and WPS_BINDIR
+# source tree's build/ (run from the tree); OSD_LIBEXEC and OSD_BINDIR
 # override both (tests of an install in a scratch root).
-LIBEXEC=${WPS_LIBEXEC:-@LIBEXECDIR@}
-BINDIR=${WPS_BINDIR:-@BINDIR@}
+LIBEXEC=${OSD_LIBEXEC:-@LIBEXECDIR@}
+BINDIR=${OSD_BINDIR:-@BINDIR@}
 case $LIBEXEC in @*)
     REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
     LIBEXEC=$REPO/build
@@ -37,7 +37,7 @@ if [ -f "$ENVFILE" ]; then
     done < "$ENVFILE"
 fi
 
-export XDG_CURRENT_DESKTOP=WPS XDG_SESSION_DESKTOP=wps XDG_SESSION_TYPE=wayland WPS_SESSION=1
+export XDG_CURRENT_DESKTOP=WPS XDG_SESSION_DESKTOP=wps XDG_SESSION_TYPE=wayland OSD_SESSION=1
 export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM="wayland;xcb" SDL_VIDEODRIVER=wayland _JAVA_AWT_WM_NONREPARENTING=1
 
 # The keyboard layout: GNOME's first input source, and its options.
@@ -74,9 +74,9 @@ size=$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null)
 idle=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null | sed 's/^uint32 //')
 lock=$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)
 lockd=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null | sed 's/^uint32 //')
-case $idle in ''|*[!0-9]*) ;; *) export WPS_IDLE_DELAY=$idle ;; esac
-[ "$lock" = false ] && export WPS_LOCK_ENABLED=0
-case $lockd in ''|*[!0-9]*) ;; *) export WPS_LOCK_DELAY=$lockd ;; esac
+case $idle in ''|*[!0-9]*) ;; *) export OSD_IDLE_DELAY=$idle ;; esac
+[ "$lock" = false ] && export OSD_LOCK_ENABLED=0
+case $lockd in ''|*[!0-9]*) ;; *) export OSD_LOCK_DELAY=$lockd ;; esac
 
 # The desktop portal: GNOME's GTK backend (its Settings read GNOME's
 # settings), for a desktop named WPS.

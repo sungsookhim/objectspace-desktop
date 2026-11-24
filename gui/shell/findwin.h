@@ -12,8 +12,8 @@
  * Opened from the LaunchPad's Find button (the home folder) and with
  * Ctrl+F in a folder window (that folder).
  */
-#ifndef WPS_FINDWIN_H
-#define WPS_FINDWIN_H
+#ifndef OSD_FINDWIN_H
+#define OSD_FINDWIN_H
 
 #include <stdbool.h>
 #include <stddef.h>

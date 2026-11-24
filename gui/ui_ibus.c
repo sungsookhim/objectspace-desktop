@@ -201,8 +201,8 @@ static bool wanted(void)
     if (!ib.tried) {
         ib.tried = true;
         const char *m = getenv("GTK_IM_MODULE");
-        ib.wanted = (m && !strcmp(m, "ibus")) && !getenv("WPS_UI_NO_IM");
-        ib.debug = getenv("WPS_DEBUG_IM") != NULL;
+        ib.wanted = (m && !strcmp(m, "ibus")) && !getenv("OSD_UI_NO_IM");
+        ib.debug = getenv("OSD_DEBUG_IM") != NULL;
     }
     return ib.wanted;
 }

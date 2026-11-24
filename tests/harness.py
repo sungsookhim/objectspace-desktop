@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORK = Path(os.environ.get("WORK", f"/var/tmp/wps-m0-{os.environ.get('USER', os.getlogin())}"))
 MNT = {fs: WORK / "mnt" / fs for fs in ("ext4", "btrfs", "fat")}
 BIN = WORK / "bin"
-OUT = ROOT / "build" / os.environ.get("WPS_SUITE", "m2")
+OUT = ROOT / "build" / os.environ.get("OSD_SUITE", "m2")
 results = []
 scenarios = []
 WATCHD = {"socket": "none"}   # set by a suite to use wps-watchd
@@ -61,12 +61,12 @@ class Service:
         self.name, self.user = name, user
         self.base = WORK / "svc" / name
         self.env = {
-            "WPS_WATCHD_SOCKET": WATCHD["socket"],
-            "WPS_CONFIG_DIR": str(self.base / "config"),
-            "WPS_STATE_DIR": str(self.base / "state"),
-            "WPS_RUNTIME_DIR": str(self.base / "run"),
-            "WPS_SAVE_DELAY_MS": "100",
-            "WPS_HOST_ID": host or f"host-{name}",
+            "OSD_WATCHD_SOCKET": WATCHD["socket"],
+            "OSD_CONFIG_DIR": str(self.base / "config"),
+            "OSD_STATE_DIR": str(self.base / "state"),
+            "OSD_RUNTIME_DIR": str(self.base / "run"),
+            "OSD_SAVE_DELAY_MS": "100",
+            "OSD_HOST_ID": host or f"host-{name}",
             "ASAN_OPTIONS": "detect_leaks=1",
         }
         self.env.update(extra_env or {})
@@ -138,7 +138,7 @@ class Service:
             run(["sudo", "rm", "-f", str(f)])
 
 
-def attr(path, name="user.wps.WPObject"):
+def attr(path, name="user.wps.OsdObject"):
     p = run(["getfattr", "--only-values", "-n", name, str(path)])
     return p.stdout if p.returncode == 0 else None
 
@@ -300,7 +300,7 @@ class Conn:
     def __init__(self, svc):
         import socket
         self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.s.connect(svc.env["WPS_RUNTIME_DIR"] + "/wps.sock")
+        self.s.connect(svc.env["OSD_RUNTIME_DIR"] + "/wps.sock")
         self.next = 0
         self.queued = []
 

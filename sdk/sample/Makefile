@@ -1,22 +1,22 @@
 # A WPS plug-in, built with the SDK (the wps-devel package): make, then
 # make install (your own plug-ins: ~/.config/wps/plugins), and log in again.
-# (wpsctl plugin new NAME makes one like this; WPS_SDK and WPS_INC say
-# where the SDK is, for a checkout: make WPS_SDK=... WPS_INC=...)
-NAME    ?= WPImageFile
+# (wpsctl plugin new NAME makes one like this; OSD_SDK and OSD_INC say
+# where the SDK is, for a checkout: make OSD_SDK=... OSD_INC=...)
+NAME    ?= OsdImageFile
 SO      ?= $(shell echo $(NAME) | tr A-Z a-z).so
-WPS_SDK ?= /usr/share/wps/sdk
-WPS_INC ?= /usr/include/wps
+OSD_SDK ?= /usr/share/wps/sdk
+OSD_INC ?= /usr/include/wps
 CC      ?= cc
 PYTHON  ?= python3
 
 all: $(SO)
 
-gen/$(NAME).reg.c: $(NAME).wpi
+gen/$(NAME).reg.c: $(NAME).osdi
 	mkdir -p gen
-	$(PYTHON) $(WPS_SDK)/wpoc.py -I $(WPS_SDK)/classes -o gen $(NAME).wpi
+	$(PYTHON) $(OSD_SDK)/osdc.py -I $(OSD_SDK)/classes -o gen $(NAME).osdi
 
 $(SO): $(NAME).c gen/$(NAME).reg.c
-	$(CC) -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fPIC -shared -I$(WPS_INC) -Igen -o $@ $(NAME).c gen/$(NAME).reg.c
+	$(CC) -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fPIC -shared -I$(OSD_INC) -Igen -o $@ $(NAME).c gen/$(NAME).reg.c
 
 install: $(SO)
 	install -d $(HOME)/.config/wps/plugins

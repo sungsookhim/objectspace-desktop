@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 #include "objects.h"
-#include "wps_magic.h"
-#include "wps_classes.h"
+#include "osd_magic.h"
+#include "osd_classes.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -15,52 +15,52 @@
 #include <sys/xattr.h>
 #include <unistd.h>
 
-#include "WPDataFile.h"
-#include "WPFileSystem.h"
-#include "WPFolder.h"
-#include "WPObject.h"
+#include "OsdDataFile.h"
+#include "OsdFileSystem.h"
+#include "OsdFolder.h"
+#include "OsdObject.h"
 #include "shadows.h"
 #include "tracker.h"
-#include "WPShadow.h"
-#include "WPAbstract.h"
-#include "WPProgram.h"
-#include "wps_state.h"
+#include "OsdShadow.h"
+#include "OsdAbstract.h"
+#include "OsdProgram.h"
+#include "osd_state.h"
 
 #define LOCK_WAIT_MS 200
 
-static const wps_env *env;
-static wps_db *db;
-static wpo_loop *loop;
+static const osd_env *env;
+static osd_db *db;
+static osdo_loop *loop;
 static int save_delay_ms;
 
 /* ------------------------------------------------------------- volumes */
 
 static pthread_mutex_t vol_mu = PTHREAD_MUTEX_INITIALIZER;
-static wps_volumes vols;
+static osd_volumes vols;
 
-void wps_volumes_replace(wps_volumes *vs)
+void osd_volumes_replace(osd_volumes *vs)
 {
     pthread_mutex_lock(&vol_mu);
-    wps_volumes_free(&vols);
+    osd_volumes_free(&vols);
     vols = *vs;
     vs->v = NULL;
     vs->n = 0;
     pthread_mutex_unlock(&vol_mu);
 }
 
-bool wps_volume_for_path(const char *path, wps_volume *out)
+bool osd_volume_for_path(const char *path, osd_volume *out)
 {
     pthread_mutex_lock(&vol_mu);
-    const wps_volume *v = wps_volumes_of_path(&vols, path);
+    const osd_volume *v = osd_volumes_of_path(&vols, path);
     if (v) *out = *v;
     pthread_mutex_unlock(&vol_mu);
     return v != NULL;
 }
 
-bool wps_volume_for_uuid(const char *uuid, wps_volume *out)
+bool osd_volume_for_uuid(const char *uuid, osd_volume *out)
 {
     pthread_mutex_lock(&vol_mu);
-    const wps_volume *v = wps_volumes_by_uuid(&vols, uuid);
+    const osd_volume *v = osd_volumes_by_uuid(&vols, uuid);
     if (v) *out = *v;
     pthread_mutex_unlock(&vol_mu);
     return v != NULL;
@@ -80,7 +80,7 @@ static struct flush_waiter *waiters;
 static int timer_fd = -1;
 static bool timer_armed;
 
-static sobj *by_object(wpo_object *o)
+static sobj *by_object(osdo_object *o)
 {
     for (size_t i = 0; i < nobjs; i++)
         if (objs[i]->o == o) return objs[i];
@@ -94,13 +94,13 @@ static sobj *by_inode(dev_t dev, ino_t ino)
     return NULL;
 }
 
-size_t wps_objects_count(void) { return nobjs; }
-size_t wps_sobj_count(void) { return nobjs; }
-sobj *wps_sobj_at(size_t i) { return i < nobjs ? objs[i] : NULL; }
-sobj *wps_sobj_of(wpo_object *o) { return by_object(o); }
-void (*wps_on_saved)(sobj *s);
+size_t osd_objects_count(void) { return nobjs; }
+size_t osd_sobj_count(void) { return nobjs; }
+sobj *osd_sobj_at(size_t i) { return i < nobjs ? objs[i] : NULL; }
+sobj *osd_sobj_of(osdo_object *o) { return by_object(o); }
+void (*osd_on_saved)(sobj *s);
 
-sobj *wps_sobj_by_path(const char *path)
+sobj *osd_sobj_by_path(const char *path)
 {
     if (!path || !path[0]) return NULL;   /* central objects have no path */
     for (size_t i = 0; i < nobjs; i++)
@@ -111,14 +111,14 @@ sobj *wps_sobj_by_path(const char *path)
 static sobj *by_central(const char *id)
 {
     for (size_t i = 0; i < nobjs; i++)
-        if (objs[i]->central && !strcmp(WPObject_data(objs[i]->o)->id, id)) return objs[i];
+        if (objs[i]->central && !strcmp(OsdObject_data(objs[i]->o)->id, id)) return objs[i];
     return NULL;
 }
 
-sobj *wps_sobj_by_id(const char *id)
+sobj *osd_sobj_by_id(const char *id)
 {
     for (size_t i = 0; i < nobjs; i++)
-        if (id[0] && strcmp(WPObject_data(objs[i]->o)->id, id) == 0) return objs[i];
+        if (id[0] && strcmp(OsdObject_data(objs[i]->o)->id, id) == 0) return objs[i];
     return NULL;
 }
 
@@ -153,11 +153,11 @@ static void excluded_load(void)
 }
 
 static bool root_session;
-void wps_set_root_session(bool on) { root_session = on; }
+void osd_set_root_session(bool on) { root_session = on; }
 
-bool wps_path_untracked(const char *path)
+bool osd_path_untracked(const char *path)
 {
-    if (wps_path_excluded(path)) return true;
+    if (osd_path_excluded(path)) return true;
     if (!root_session) return false;
     /* Root never follows other users' homes on its own; it may still open
      * something there explicitly. */
@@ -166,7 +166,7 @@ bool wps_path_untracked(const char *path)
 
 /* A pattern with a slash is a path prefix; otherwise it matches any one
  * path component ("node_modules" excludes every node_modules folder). */
-bool wps_path_excluded(const char *path)
+bool osd_path_excluded(const char *path)
 {
     for (size_t i = 0; i < nexcluded; i++) {
         const char *x = excluded[i];
@@ -181,14 +181,14 @@ bool wps_path_excluded(const char *path)
     return false;
 }
 
-size_t wps_objects_pending(void)
+size_t osd_objects_pending(void)
 {
     size_t n = inflight;
     for (size_t i = 0; i < nobjs; i++) n += objs[i]->queued;
     return n;
 }
 
-const char *wps_object_path(wpo_object *o)
+const char *osd_object_path(osdo_object *o)
 {
     sobj *s = by_object(o);
     return s && !s->central ? s->path : NULL;
@@ -210,25 +210,25 @@ static void handle_hex(const char *path, char *out, size_t n)
         o += (size_t)snprintf(out + o, n - o, "%02x", bytes[i]);
 }
 
-static wps_props *class_props(wps_loaded *ld, const char *cls)
+static osd_props *class_props(osd_loaded *ld, const char *cls)
 {
     for (int i = 0; i < ld->nc; i++)
         if (strcmp(ld->c[i].cls, cls) == 0) return &ld->c[i].props;
-    if (ld->nc == WPS_MAX_CLASSES) return NULL;
+    if (ld->nc == OSD_MAX_CLASSES) return NULL;
     snprintf(ld->c[ld->nc].cls, sizeof ld->c[ld->nc].cls, "%s", cls);
-    wps_props_init(&ld->c[ld->nc].props);
+    osd_props_init(&ld->c[ld->nc].props);
     return &ld->c[ld->nc++].props;
 }
 
 static void overlay_prop(const char *cls, const char *prop, char type, const void *val, uint32_t len, void *user)
 {
-    wps_props *p = class_props(user, cls);
-    if (p) wps_props_set(p, prop, type, val, len);
+    osd_props *p = class_props(user, cls);
+    if (p) osd_props_set(p, prop, type, val, len);
 }
 
-void wps_loaded_free(wps_loaded *ld)
+void osd_loaded_free(osd_loaded *ld)
 {
-    for (int i = 0; i < ld->nc; i++) wps_props_free(&ld->c[i].props);
+    for (int i = 0; i < ld->nc; i++) osd_props_free(&ld->c[i].props);
     ld->nc = 0;
 }
 
@@ -275,7 +275,7 @@ static bool ini_localized(const char *text, const char *key, char *out, size_t n
     return ini_value(text, "[Desktop Entry]", key, out, n);
 }
 
-static void read_object_file(wps_loaded *ld)
+static void read_object_file(osd_loaded *ld)
 {
     bool desk = ends_with(ld->path, ".desktop"), wpobj = ends_with(ld->path, ".wpobj");
     if (!desk && !wpobj) return;
@@ -290,41 +290,41 @@ static void read_object_file(wps_loaded *ld)
         char type[64] = "";
         ini_value(buf, "[Desktop Entry]", "Type", type, sizeof type);
         if (strcmp(type, "Application") != 0) return;   /* links and directories stay data files */
-        snprintf(ld->obj_class, sizeof ld->obj_class, "WPProgram");
+        snprintf(ld->obj_class, sizeof ld->obj_class, "OsdProgram");
         ini_localized(buf, "Name", ld->desk_name, sizeof ld->desk_name);
         ini_value(buf, "[Desktop Entry]", "Exec", ld->desk_exec, sizeof ld->desk_exec);
     } else if (!ini_value(buf, "[WPS Object]", "Class", ld->obj_class, sizeof ld->obj_class)) {
-        snprintf(ld->obj_class, sizeof ld->obj_class, "WPAbstract");
-    } else if (!strcmp(ld->obj_class, "WPShadow")) {
-        char id[WPS_ID_LEN + 8] = "";
+        snprintf(ld->obj_class, sizeof ld->obj_class, "OsdAbstract");
+    } else if (!strcmp(ld->obj_class, "OsdShadow")) {
+        char id[OSD_ID_LEN + 8] = "";
         ini_value(buf, "[WPS Object]", "Target", id, sizeof id);
-        if (strlen(id) == WPS_ID_LEN) memcpy(ld->shadow_of, id, WPS_ID_LEN + 1);
+        if (strlen(id) == OSD_ID_LEN) memcpy(ld->shadow_of, id, OSD_ID_LEN + 1);
         ini_value(buf, "[WPS Object]", "TargetPath", ld->link_target, sizeof ld->link_target);
     }
 }
 
-void wps_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len)
+void osd_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len)
 {
     char safe[NAME_MAX - 16];
     snprintf(safe, sizeof safe, "%s", title && *title ? title : cls);
     for (char *p = safe; *p; p++)
         if (*p == '/' || (unsigned char)*p < 0x20) *p = '-';
     if (safe[0] == '.') safe[0] = '_';
-    wpo_class *c = wpo_find_class(cls);
-    const char *ext = !c ? "" : wpo_subclass_of(c, WPProgramClass) ? ".desktop" :
-                      wpo_subclass_of(c, WPAbstractClass) ? ".wpobj" : "";
+    osdo_class *c = osdo_find_class(cls);
+    const char *ext = !c ? "" : osdo_subclass_of(c, OsdProgramClass) ? ".desktop" :
+                      osdo_subclass_of(c, OsdAbstractClass) ? ".wpobj" : "";
     if (n <= 1) snprintf(out, len, "%s/%s%s", folder, safe, ext);
     else snprintf(out, len, "%s/%s (%d)%s", folder, safe, n, ext);
 }
 
-int wps_object_file_create(const char *path, const char *cls, const char *title)
+int osd_object_file_create(const char *path, const char *cls, const char *title)
 {
     int fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);   /* never overwrite */
     if (fd < 0) return errno;
-    wpo_class *c = wpo_find_class(cls);
-    if (c && wpo_subclass_of(c, WPProgramClass))
+    osdo_class *c = osdo_find_class(cls);
+    if (c && osdo_subclass_of(c, OsdProgramClass))
         dprintf(fd, "[Desktop Entry]\nType=Application\nName=%s\nExec=\n", title ? title : "Program");
-    else if (c && wpo_subclass_of(c, WPAbstractClass))
+    else if (c && osdo_subclass_of(c, OsdAbstractClass))
         dprintf(fd, "[WPS Object]\nVersion=1\nClass=%s\n", cls);
     close(fd);
     return 0;
@@ -366,38 +366,38 @@ static void update_desktop_file(const char *path, const char *name, const char *
 }
 
 /* A central object: its rows are all there is. */
-static void load_central(const char *id, wps_loaded *ld)
+static void load_central(const char *id, osd_loaded *ld)
 {
-    if (strlen(id) != WPS_ID_LEN || !wps_db_vobj_vol(db, id, ld->vol, sizeof ld->vol)) { ld->err = ENOENT; return; }
+    if (strlen(id) != OSD_ID_LEN || !osd_db_vobj_vol(db, id, ld->vol, sizeof ld->vol)) { ld->err = ENOENT; return; }
     ld->central = true;
-    memcpy(ld->id, id, WPS_ID_LEN + 1);
+    memcpy(ld->id, id, OSD_ID_LEN + 1);
     snprintf(ld->locator, sizeof ld->locator, "vobj:%s", id);
     ld->owned = ld->writable = true;   /* this user's own rows */
     ld->xattr_ok = false;
-    wps_db_get_locator(db, ld->vol, ld->locator, overlay_prop, ld);
-    wps_props *w = class_props(ld, "WPS");
+    osd_db_get_locator(db, ld->vol, ld->locator, overlay_prop, ld);
+    osd_props *w = class_props(ld, "WPS");
     char *v = NULL;
-    if (w && wps_props_str(w, "class", &v)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", v);
+    if (w && osd_props_str(w, "class", &v)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", v);
     free(v);
     v = NULL;
-    if (w && wps_props_str(w, "folder", &v) && strlen(v) == WPS_ID_LEN) memcpy(ld->folder_id, v, WPS_ID_LEN + 1);
+    if (w && osd_props_str(w, "folder", &v) && strlen(v) == OSD_ID_LEN) memcpy(ld->folder_id, v, OSD_ID_LEN + 1);
     free(v);
     v = NULL;
-    if (w && wps_props_str(w, "target", &v) && strlen(v) == WPS_ID_LEN) memcpy(ld->shadow_of, v, WPS_ID_LEN + 1);
+    if (w && osd_props_str(w, "target", &v) && strlen(v) == OSD_ID_LEN) memcpy(ld->shadow_of, v, OSD_ID_LEN + 1);
     free(v);
     if (!ld->obj_class[0]) ld->err = ENOENT;
 }
 
-void wps_load(const char *target, bool assign_id, wps_loaded *ld)
+void osd_load(const char *target, bool assign_id, osd_loaded *ld)
 {
     memset(ld, 0, sizeof *ld);
     if (strncmp(target, "vobj:", 5) == 0) { load_central(target + 5, ld); return; }
     if (strncmp(target, "id:", 3) == 0) {
         /* An object named by ID: find where it was last seen. */
-        char vol[WPS_VOLID_MAX], rel[PATH_MAX];
-        wps_volume v;
-        if (wps_db_get_location(db, target + 3, vol, sizeof vol, rel, sizeof rel) < 0 ||
-            !wps_volume_for_uuid(vol, &v)) {
+        char vol[OSD_VOLID_MAX], rel[PATH_MAX];
+        osd_volume v;
+        if (osd_db_get_location(db, target + 3, vol, sizeof vol, rel, sizeof rel) < 0 ||
+            !osd_volume_for_uuid(vol, &v)) {
             load_central(target + 3, ld);   /* or a central object */
             return;
         }
@@ -407,10 +407,10 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
     }
     if (lstat(ld->path, &ld->st) < 0) { ld->err = errno; return; }
 
-    wps_volume v;
-    if (!wps_volume_for_path(ld->path, &v)) { ld->err = ENODEV; return; }
+    osd_volume v;
+    if (!osd_volume_for_path(ld->path, &v)) { ld->err = ENODEV; return; }
     snprintf(ld->vol, sizeof ld->vol, "%s", v.uuid);
-    snprintf(ld->rel, sizeof ld->rel, "%s", wps_volume_relpath(&v, ld->path));
+    snprintf(ld->rel, sizeof ld->rel, "%s", osd_volume_relpath(&v, ld->path));
     ld->owned = ld->st.st_uid == geteuid();
     ld->writable = access(ld->path, W_OK) == 0 && !v.ro;
     if (S_ISREG(ld->st.st_mode)) read_object_file(ld);
@@ -427,12 +427,12 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
     /* Shared state: every user.wps.<Class> attribute on the file. */
     char names[8192];
     ssize_t nl = ld->xattr_ok ? llistxattr(ld->path, names, sizeof names) : -1;
-    if (ld->xattr_ok && wps_attr_get_id(ld->path, ld->id)) { /* has an ID */ }
+    if (ld->xattr_ok && osd_attr_get_id(ld->path, ld->id)) { /* has an ID */ }
     for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
         const char *n = names + o;
-        if (strncmp(n, WPS_ATTR_PREFIX, strlen(WPS_ATTR_PREFIX)) != 0 || strcmp(n, WPS_ATTR_ID) == 0) continue;
-        wps_props *p = class_props(ld, n + strlen(WPS_ATTR_PREFIX));
-        if (p) wps_attr_read(ld->path, n + strlen(WPS_ATTR_PREFIX), p);
+        if (strncmp(n, OSD_ATTR_PREFIX, strlen(OSD_ATTR_PREFIX)) != 0 || strcmp(n, OSD_ATTR_ID) == 0) continue;
+        osd_props *p = class_props(ld, n + strlen(OSD_ATTR_PREFIX));
+        if (p) osd_attr_read(ld->path, n + strlen(OSD_ATTR_PREFIX), p);
     }
 
     /* The locator for this user's own rows. */
@@ -443,100 +443,100 @@ void wps_load(const char *target, bool assign_id, wps_loaded *ld)
 
     /* Per-user state on top: overlays, own layouts, state for files without
      * attributes. Its "@id" is the ID this user gave a file it cannot tag. */
-    wps_db_get_locator(db, ld->vol, ld->locator, overlay_prop, ld);
-    wps_props *op = class_props(ld, "WPObject");
+    osd_db_get_locator(db, ld->vol, ld->locator, overlay_prop, ld);
+    osd_props *op = class_props(ld, "OsdObject");
     char *dbid = NULL;
-    if (op && wps_props_str(op, "@id", &dbid)) {
-        if (!ld->id[0] && strlen(dbid) == WPS_ID_LEN) memcpy(ld->id, dbid, WPS_ID_LEN + 1);
-        wps_props_remove(op, "@id");
+    if (op && osd_props_str(op, "@id", &dbid)) {
+        if (!ld->id[0] && strlen(dbid) == OSD_ID_LEN) memcpy(ld->id, dbid, OSD_ID_LEN + 1);
+        osd_props_remove(op, "@id");
     }
     free(dbid);
     /* a special folder's class (WPS "class": Trash Can, Drives, ...) */
     if (S_ISDIR(ld->st.st_mode)) {
-        wps_props *w = class_props(ld, "WPS");
+        osd_props *w = class_props(ld, "WPS");
         char *cv = NULL;
-        if (w && wps_props_str(w, "class", &cv)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", cv);
+        if (w && osd_props_str(w, "class", &cv)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", cv);
         free(cv);
     }
 
-    if (assign_id && !ld->id[0] && !wps_path_excluded(ld->path)) {
-        char cand[WPS_ID_LEN + 1];
-        wps_new_id(cand);
-        if (ld->xattr_ok && ld->writable && wps_attr_assign_id(ld->path, cand, ld->id) == WPS_A_OK) {
+    if (assign_id && !ld->id[0] && !osd_path_excluded(ld->path)) {
+        char cand[OSD_ID_LEN + 1];
+        osd_new_id(cand);
+        if (ld->xattr_ok && ld->writable && osd_attr_assign_id(ld->path, cand, ld->id) == OSD_A_OK) {
             /* stored on the file (another writer's ID wins if it was first) */
         } else {
             char key[PATH_MAX + 128];
-            wps_db_key(key, sizeof key, ld->locator, "WPObject", "@id");
-            wps_db_put(db, ld->vol, key, 's', cand, WPS_ID_LEN);
-            memcpy(ld->id, cand, WPS_ID_LEN + 1);
+            osd_db_key(key, sizeof key, ld->locator, "OsdObject", "@id");
+            osd_db_put(db, ld->vol, key, 's', cand, OSD_ID_LEN);
+            memcpy(ld->id, cand, OSD_ID_LEN + 1);
         }
     }
-    if (ld->id[0]) wps_db_set_location(db, ld->id, ld->vol, ld->rel);
+    if (ld->id[0]) osd_db_set_location(db, ld->id, ld->vol, ld->rel);
 }
 
 /* ------------------------------------------------- objects (loop thread) */
 
 /* A data file's class for its type: a class (a plug-in's) that declares the
  * type (object-properties-design.md 2.7), the exact type before a whole kind
- * ("image/png" before "image/" and a star); none: WPDataFile. */
-static wpo_class *class_for_type(const char *path)
+ * ("image/png" before "image/" and a star); none: OsdDataFile. */
+static osdo_class *class_for_type(const char *path)
 {
-    size_t n = wpo_class_count();
+    size_t n = osdo_class_count();
     bool any = false;
-    for (size_t i = 0; i < n && !any; i++) any = wpo_class_at(i)->ntypes > 0 && !wpo_class_at(i)->is_meta;
-    if (!any) return WPDataFileClass;   /* (no file read: no class wants a type) */
+    for (size_t i = 0; i < n && !any; i++) any = osdo_class_at(i)->ntypes > 0 && !osdo_class_at(i)->is_meta;
+    if (!any) return OsdDataFileClass;   /* (no file read: no class wants a type) */
     const char *base = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
-    const char *mime = wps_mime_for_name(base);
-    if (!mime) mime = wps_mime_sniff(path);
-    if (!mime) return WPDataFileClass;
+    const char *mime = osd_mime_for_name(base);
+    if (!mime) mime = osd_mime_sniff(path);
+    if (!mime) return OsdDataFileClass;
     const char *sl = strchr(mime, '/');
-    wpo_class *kind = NULL;
+    osdo_class *kind = NULL;
     for (size_t i = 0; i < n; i++) {
-        wpo_class *c = wpo_class_at(i);
-        if (c->is_meta || !c->ntypes || !wpo_subclass_of(c, WPDataFileClass)) continue;
+        osdo_class *c = osdo_class_at(i);
+        if (c->is_meta || !c->ntypes || !osdo_subclass_of(c, OsdDataFileClass)) continue;
         for (size_t t = 0; t < c->ntypes; t++) {
             const char *ty = c->types[t];
-            if (!strcmp(ty, mime)) return wpo_resolve_class(c);
+            if (!strcmp(ty, mime)) return osdo_resolve_class(c);
             size_t tl = strlen(ty);
             if (!kind && sl && tl >= 2 && ty[tl - 1] == '*' && ty[tl - 2] == '/' && (size_t)(sl - mime) == tl - 2 && !strncmp(ty, mime, tl - 2))
                 kind = c;
         }
     }
-    return kind ? wpo_resolve_class(kind) : WPDataFileClass;
+    return kind ? osdo_resolve_class(kind) : OsdDataFileClass;
 }
 
-static wpo_class *class_for(const wps_loaded *ld)
+static osdo_class *class_for(const osd_loaded *ld)
 {
     mode_t m = ld->st.st_mode;
     if (S_ISDIR(m)) {
         /* a special folder (Trash Can, Drives, ...): its class stored on it
          * (WPS "class"), if it is a kind of folder */
         if (ld->obj_class[0]) {
-            wpo_class *c = wpo_find_class(ld->obj_class);
-            if (c && !c->is_meta && wpo_subclass_of(c, WPFolderClass)) return c;
+            osdo_class *c = osdo_find_class(ld->obj_class);
+            if (c && !c->is_meta && osdo_subclass_of(c, OsdFolderClass)) return c;
         }
-        return WPFolderClass;
+        return OsdFolderClass;
     }
     if (S_ISREG(m) && ld->obj_class[0]) {
-        wpo_class *c = wpo_find_class(ld->obj_class);
-        return c && !c->is_meta && wpo_subclass_of(c, WPAbstractClass) ? c : WPAbstractClass;
+        osdo_class *c = osdo_find_class(ld->obj_class);
+        return c && !c->is_meta && osdo_subclass_of(c, OsdAbstractClass) ? c : OsdAbstractClass;
     }
     if (S_ISREG(m)) return class_for_type(ld->path);
-    return WPFileSystemClass;   /* user-made symlinks and special files */
+    return OsdFileSystemClass;   /* user-made symlinks and special files */
 }
 
-static void apply_loaded(sobj *s, wps_loaded *ld)
+static void apply_loaded(sobj *s, osd_loaded *ld)
 {
     s->nlink = ld->st.st_nlink;
     s->mtime = ld->st.st_mtim;
-    WPObjectData *d = WPObject_data(s->o);
+    OsdObjectData *d = OsdObject_data(s->o);
     if (ld->id[0]) memcpy(d->id, ld->id, sizeof d->id);
-    for (int i = 0; i < ld->nc; i++) wps_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
-    WPObject_wpRestoreProperties(s->o);
+    for (int i = 0; i < ld->nc; i++) osd_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
+    OsdObject_osdRestoreProperties(s->o);
     /* A program's .desktop file is the source of its command and default
      * title, so other desktops and WPS agree. */
-    if (wpo_is_a(s->o, WPProgramClass)) {
-        if (ld->desk_exec[0] && !WPProgram_data(s->o)->command) WPProgram_data(s->o)->command = strdup(ld->desk_exec);
+    if (osdo_is_a(s->o, OsdProgramClass)) {
+        if (ld->desk_exec[0] && !OsdProgram_data(s->o)->command) OsdProgram_data(s->o)->command = strdup(ld->desk_exec);
         if (ld->desk_name[0] && !d->title) d->title = strdup(ld->desk_name);
     }
     s->ctime = ld->st.st_ctim;
@@ -549,13 +549,13 @@ static void apply_loaded(sobj *s, wps_loaded *ld)
     s->owned = ld->owned;
 }
 
-static wpo_object *central_from_loaded(wps_loaded *ld)
+static osdo_object *central_from_loaded(osd_loaded *ld)
 {
     sobj *s = by_central(ld->id);
     if (s) {
-        if (!s->queued && !s->saving && !WPObject_data(s->o)->dirty) {
-            for (int i = 0; i < ld->nc; i++) wps_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
-            WPObject_wpRestoreProperties(s->o);
+        if (!s->queued && !s->saving && !OsdObject_data(s->o)->dirty) {
+            for (int i = 0; i < ld->nc; i++) osd_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
+            OsdObject_osdRestoreProperties(s->o);
         }
         memcpy(s->folder_id, ld->folder_id, sizeof s->folder_id);
         return s->o;
@@ -567,18 +567,18 @@ static wpo_object *central_from_loaded(wps_loaded *ld)
         objs = n;
         capobjs = ncap;
     }
-    wpo_class *c = wpo_find_class(ld->obj_class);
-    if (!c || c->is_meta || !wpo_subclass_of(c, WPAbstractClass)) c = WPAbstractClass;
+    osdo_class *c = osdo_find_class(ld->obj_class);
+    if (!c || c->is_meta || !osdo_subclass_of(c, OsdAbstractClass)) c = OsdAbstractClass;
     s = calloc(1, sizeof *s);
-    s->o = wpo_new(c);
+    s->o = osdo_new(c);
     if (!s->o) { free(s); return NULL; }
     s->central = true;
     memcpy(s->folder_id, ld->folder_id, sizeof s->folder_id);
     if (strcmp(c->name, ld->obj_class)) snprintf(s->declared_class, sizeof s->declared_class, "%s", ld->obj_class);
-    WPObjectData *d = WPObject_data(s->o);
+    OsdObjectData *d = OsdObject_data(s->o);
     memcpy(d->id, ld->id, sizeof d->id);
-    for (int i = 0; i < ld->nc; i++) wps_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
-    WPObject_wpRestoreProperties(s->o);
+    for (int i = 0; i < ld->nc; i++) osd_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
+    OsdObject_osdRestoreProperties(s->o);
     snprintf(s->vol, sizeof s->vol, "%s", ld->vol);
     snprintf(s->locator, sizeof s->locator, "%s", ld->locator);
     s->writable = s->owned = true;
@@ -586,14 +586,14 @@ static wpo_object *central_from_loaded(wps_loaded *ld)
     return s->o;
 }
 
-wpo_object *wps_object_from_loaded(wps_loaded *ld)
+osdo_object *osd_object_from_loaded(osd_loaded *ld)
 {
     if (ld->err) return NULL;
     if (ld->central) return central_from_loaded(ld);
     sobj *s = by_inode(ld->st.st_dev, ld->st.st_ino);
     if (!s && S_ISLNK(ld->st.st_mode)) {
         /* A shadow's symlink is replaced when it is rewritten: same object. */
-        s = wps_sobj_by_path(ld->path);
+        s = osd_sobj_by_path(ld->path);
         if (s) { s->dev = ld->st.st_dev; s->ino = ld->st.st_ino; }
     }
     if (s) {
@@ -601,8 +601,8 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
          * unless we have unsaved changes of our own; our save merges then. */
         bool changed = s->ctime.tv_sec != ld->st.st_ctim.tv_sec || s->ctime.tv_nsec != ld->st.st_ctim.tv_nsec ||
                        strcmp(s->path, ld->path) != 0;
-        if (changed && !s->queued && !s->saving && !WPObject_data(s->o)->dirty) apply_loaded(s, ld);
-        else if (ld->id[0] && !WPObject_data(s->o)->id[0]) memcpy(WPObject_data(s->o)->id, ld->id, WPS_ID_LEN + 1);
+        if (changed && !s->queued && !s->saving && !OsdObject_data(s->o)->dirty) apply_loaded(s, ld);
+        else if (ld->id[0] && !OsdObject_data(s->o)->id[0]) memcpy(OsdObject_data(s->o)->id, ld->id, OSD_ID_LEN + 1);
         return s->o;
     }
     if (nobjs == capobjs) {
@@ -614,12 +614,12 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     }
     s = calloc(1, sizeof *s);
     if (!s) return NULL;
-    s->o = wpo_new(class_for(ld));   /* replacements apply */
+    s->o = osdo_new(class_for(ld));   /* replacements apply */
     if (!s->o) { free(s); return NULL; }
     s->dev = ld->st.st_dev;
     s->ino = ld->st.st_ino;
-    if (wpo_is_a(s->o, WPFileSystemClass)) WPFileSystem_wpSetPath(s->o, ld->path);
-    if (ld->obj_class[0] && strcmp(s->o->cls->name, ld->obj_class) != 0 && !wpo_find_class(ld->obj_class))
+    if (osdo_is_a(s->o, OsdFileSystemClass)) OsdFileSystem_osdSetPath(s->o, ld->path);
+    if (ld->obj_class[0] && strcmp(s->o->cls->name, ld->obj_class) != 0 && !osdo_find_class(ld->obj_class))
         snprintf(s->declared_class, sizeof s->declared_class, "%s", ld->obj_class);   /* not installed here */
     apply_loaded(s, ld);
     objs[nobjs++] = s;
@@ -627,13 +627,13 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
     char dir[PATH_MAX];
     snprintf(dir, sizeof dir, "%s", ld->path);
     char *slash = strrchr(dir, '/');
-    if (slash && slash != dir) { *slash = 0; wps_tracker_watch(dir); }
+    if (slash && slash != dir) { *slash = 0; osd_tracker_watch(dir); }
     if (S_ISDIR(ld->st.st_mode)) {
-        wps_tracker_watch(ld->path);
-        wps_shadows_folder_seen(ld->path);   /* the shadows in it, so they follow their targets */
+        osd_tracker_watch(ld->path);
+        osd_shadows_folder_seen(ld->path);   /* the shadows in it, so they follow their targets */
     }
-    if (ld->shadow_of[0]) wps_shadows_file_seen(ld->path);   /* index it */
-    wps_tracker_object_at(ld->path);
+    if (ld->shadow_of[0]) osd_shadows_file_seen(ld->path);   /* index it */
+    osd_tracker_object_at(ld->path);
     return s->o;
 }
 
@@ -641,7 +641,7 @@ wpo_object *wps_object_from_loaded(wps_loaded *ld)
 
 struct cls_change {
     char cls[64];
-    wps_props set;
+    osd_props set;
     char **removed;
     size_t nremoved;
 };
@@ -650,26 +650,26 @@ struct save_job {
     sobj *s;                   /* loop-thread pointer; workers only read the copies */
     bool busy;                 /* a class went to the overlay because the file was locked */
     bool retry_only;           /* move overlay values for busy classes back to the file */
-    char path[PATH_MAX], vol[WPS_VOLID_MAX], rel[PATH_MAX], locator[PATH_MAX + 16];
+    char path[PATH_MAX], vol[OSD_VOLID_MAX], rel[PATH_MAX], locator[PATH_MAX + 16];
     bool xattr_ok, writable, owned;
-    char id[WPS_ID_LEN + 1];          /* in: current ID; out: assigned ID */
+    char id[OSD_ID_LEN + 1];          /* in: current ID; out: assigned ID */
     char *desk_name, *desk_exec;      /* a program's .desktop file to update, if set */
     struct cls_change *ch;
     size_t nch;
     int failures;
 };
 
-static void db_write_props(struct save_job *j, const char *cls, const wps_props *set,
+static void db_write_props(struct save_job *j, const char *cls, const osd_props *set,
                            char *const *removed, size_t nremoved)
 {
     char key[PATH_MAX + 128];
     for (size_t i = 0; set && i < set->n; i++) {
-        wps_db_key(key, sizeof key, j->locator, cls, set->p[i].key);
-        if (wps_db_put(db, j->vol, key, set->p[i].type, set->p[i].val, set->p[i].len) < 0) j->failures++;
+        osd_db_key(key, sizeof key, j->locator, cls, set->p[i].key);
+        if (osd_db_put(db, j->vol, key, set->p[i].type, set->p[i].val, set->p[i].len) < 0) j->failures++;
     }
     for (size_t i = 0; i < nremoved; i++) {
-        wps_db_key(key, sizeof key, j->locator, cls, removed[i]);
-        wps_db_delete(db, j->vol, key);
+        osd_db_key(key, sizeof key, j->locator, cls, removed[i]);
+        osd_db_delete(db, j->vol, key);
     }
 }
 
@@ -678,55 +678,55 @@ static void save_work(void *arg)
     struct save_job *j = arg;
     /* Lazy identity: storing something is what gives an object its ID. */
     if (!j->id[0]) {
-        char cand[WPS_ID_LEN + 1];
-        wps_new_id(cand);
-        if (j->xattr_ok && j->writable && wps_attr_assign_id(j->path, cand, j->id) == WPS_A_OK) {
+        char cand[OSD_ID_LEN + 1];
+        osd_new_id(cand);
+        if (j->xattr_ok && j->writable && osd_attr_assign_id(j->path, cand, j->id) == OSD_A_OK) {
             snprintf(j->locator, sizeof j->locator, "%s", j->id);
         } else {
             char key[PATH_MAX + 128];
-            wps_db_key(key, sizeof key, j->locator, "WPObject", "@id");
-            wps_db_put(db, j->vol, key, 's', cand, WPS_ID_LEN);
-            memcpy(j->id, cand, WPS_ID_LEN + 1);
+            osd_db_key(key, sizeof key, j->locator, "OsdObject", "@id");
+            osd_db_put(db, j->vol, key, 's', cand, OSD_ID_LEN);
+            memcpy(j->id, cand, OSD_ID_LEN + 1);
         }
     }
     for (size_t c = 0; c < j->nch; c++) {
         struct cls_change *ch = &j->ch[c];
         /* Icon positions in a folder the user does not own are per user. */
-        wps_props personal;
-        wps_props_init(&personal);
-        if (strcmp(ch->cls, "WPFolder") == 0 && !j->owned) {
+        osd_props personal;
+        osd_props_init(&personal);
+        if (strcmp(ch->cls, "OsdFolder") == 0 && !j->owned) {
             for (size_t i = 0; i < ch->set.n;) {
                 if (strncmp(ch->set.p[i].key, "pos:", 4) == 0) {
-                    wps_props_set(&personal, ch->set.p[i].key, ch->set.p[i].type, ch->set.p[i].val, ch->set.p[i].len);
-                    wps_props_remove(&ch->set, ch->set.p[i].key);
+                    osd_props_set(&personal, ch->set.p[i].key, ch->set.p[i].type, ch->set.p[i].val, ch->set.p[i].len);
+                    osd_props_remove(&ch->set, ch->set.p[i].key);
                 } else {
                     i++;
                 }
             }
             db_write_props(j, ch->cls, &personal, NULL, 0);
         }
-        wps_props_free(&personal);
+        osd_props_free(&personal);
         if (ch->set.n == 0 && ch->nremoved == 0) continue;
-        wps_astatus st = WPS_A_NOTSUP;
+        osd_astatus st = OSD_A_NOTSUP;
         if (j->xattr_ok && j->writable)
-            st = wps_attr_update(j->path, ch->cls, &ch->set, (const char *const *)ch->removed, LOCK_WAIT_MS, NULL, NULL);
-        if (st == WPS_A_OK && j->retry_only) {
+            st = osd_attr_update(j->path, ch->cls, &ch->set, (const char *const *)ch->removed, LOCK_WAIT_MS, NULL, NULL);
+        if (st == OSD_A_OK && j->retry_only) {
             /* Back in the shared attribute: drop the overlay copies. */
             char key[PATH_MAX + 128];
             for (size_t i = 0; i < ch->set.n; i++) {
-                wps_db_key(key, sizeof key, j->locator, ch->cls, ch->set.p[i].key);
-                wps_db_delete(db, j->vol, key);
+                osd_db_key(key, sizeof key, j->locator, ch->cls, ch->set.p[i].key);
+                osd_db_delete(db, j->vol, key);
             }
-        } else if (st != WPS_A_OK && !j->retry_only) {
+        } else if (st != OSD_A_OK && !j->retry_only) {
             /* No permission, no attributes, too big, or lock not obtained:
              * keep it in this user's overlay. A busy file is retried. */
             db_write_props(j, ch->cls, &ch->set, ch->removed, ch->nremoved);
-            if (st == WPS_A_BUSY) j->busy = true;
-        } else if (st == WPS_A_BUSY) {
+            if (st == OSD_A_BUSY) j->busy = true;
+        } else if (st == OSD_A_BUSY) {
             j->busy = true;
         }
     }
-    if (j->id[0] && j->path[0]) wps_db_set_location(db, j->id, j->vol, j->rel);   /* not for central objects */
+    if (j->id[0] && j->path[0]) osd_db_set_location(db, j->id, j->vol, j->rel);   /* not for central objects */
     if ((j->desk_name || j->desk_exec) && j->writable) update_desktop_file(j->path, j->desk_name, j->desk_exec);
 }
 
@@ -740,25 +740,25 @@ static void save_done(void *arg)
     if (s->forgotten) {
         s->saving = false;
         for (size_t c = 0; c < j->nch; c++) {
-            wps_props_free(&j->ch[c].set);
+            osd_props_free(&j->ch[c].set);
             for (size_t i = 0; i < j->ch[c].nremoved; i++) free(j->ch[c].removed[i]);
             free(j->ch[c].removed);
         }
         free(j->ch);
         free(j);
         inflight--;
-        wpo_unref(s->o);
+        osdo_unref(s->o);
         free(s);
         return;
     }
-    if (j->id[0] && !WPObject_data(s->o)->id[0]) memcpy(WPObject_data(s->o)->id, j->id, WPS_ID_LEN + 1);
+    if (j->id[0] && !OsdObject_data(s->o)->id[0]) memcpy(OsdObject_data(s->o)->id, j->id, OSD_ID_LEN + 1);
     snprintf(s->locator, sizeof s->locator, "%s", j->locator);
     s->saving = false;
     free(j->desk_name);
     free(j->desk_exec);
     bool was_retry = j->retry_only, busy = j->busy;
     for (size_t c = 0; c < j->nch; c++) {
-        wps_props_free(&j->ch[c].set);
+        osd_props_free(&j->ch[c].set);
         for (size_t i = 0; i < j->ch[c].nremoved; i++) free(j->ch[c].removed[i]);
         free(j->ch[c].removed);
     }
@@ -774,13 +774,13 @@ static void save_done(void *arg)
         s->retry = false;
         s->retry_delay_ms = 0;
     }
-    if (!was_retry && wps_on_saved) wps_on_saved(s);
+    if (!was_retry && osd_on_saved) osd_on_saved(s);
     /* Written: say so again. Clients that read the object from storage
      * (folder listings, for titles and icons) read it before the write
      * when the change was first announced. */
-    if (!busy && wps_on_changed) wps_on_changed(s->o);
+    if (!busy && osd_on_changed) osd_on_changed(s->o);
     if (s->queued) schedule_flush();
-    if (wps_objects_pending() == 0) {
+    if (osd_objects_pending() == 0) {
         struct flush_waiter *w = waiters;
         waiters = NULL;
         while (w) {
@@ -796,17 +796,17 @@ static void save_done(void *arg)
 static void start_save(sobj *s)
 {
     s->queued = false;
-    if (s->path[0] && wps_path_excluded(s->path)) {
+    if (s->path[0] && osd_path_excluded(s->path)) {
         /* Excluded paths keep no WPS state (design: Excluded paths). */
-        WPObject_wpSaveState(s->o);
-        WPObject_data(s->o)->dirty = 0;
-        wps_state *st = WPObject_data(s->o)->state;
-        for (size_t c = 0; st && c < st->n; c++) wps_state_clear_touched(&st->c[c]);
+        OsdObject_osdSaveState(s->o);
+        OsdObject_data(s->o)->dirty = 0;
+        osd_state *st = OsdObject_data(s->o)->state;
+        for (size_t c = 0; st && c < st->n; c++) osd_state_clear_touched(&st->c[c]);
         return;
     }
-    WPObject_wpSaveState(s->o);
-    WPObject_data(s->o)->dirty = 0;
-    wps_state *st = WPObject_data(s->o)->state;
+    OsdObject_osdSaveState(s->o);
+    OsdObject_data(s->o)->dirty = 0;
+    osd_state *st = OsdObject_data(s->o)->state;
     struct save_job *j = calloc(1, sizeof *j);
     if (!j) return;
     j->s = s;
@@ -814,40 +814,40 @@ static void start_save(sobj *s)
     snprintf(j->vol, sizeof j->vol, "%s", s->vol);
     snprintf(j->rel, sizeof j->rel, "%s", s->rel);
     snprintf(j->locator, sizeof j->locator, "%s", s->locator);
-    memcpy(j->id, WPObject_data(s->o)->id, sizeof j->id);
+    memcpy(j->id, OsdObject_data(s->o)->id, sizeof j->id);
     j->xattr_ok = s->xattr_ok;
     j->writable = s->writable;
     j->owned = s->owned;
     j->ch = calloc(st ? st->n + 1 : 1, sizeof *j->ch);
     for (size_t c = 0; st && c < st->n; c++) {
-        wps_cstate *cs = &st->c[c];
+        osd_cstate *cs = &st->c[c];
         if (!cs->ntouched) continue;
         struct cls_change *ch = &j->ch[j->nch++];
         snprintf(ch->cls, sizeof ch->cls, "%s", cs->cls);
-        wps_props_init(&ch->set);
+        osd_props_init(&ch->set);
         ch->removed = calloc(cs->ntouched + 1, sizeof *ch->removed);
         for (size_t k = 0; k < cs->ntouched; k++) {
-            const wps_prop *p = wps_props_get(&cs->props, cs->touched[k]);
-            if (p) wps_props_set(&ch->set, p->key, p->type, p->val, p->len);
+            const osd_prop *p = osd_props_get(&cs->props, cs->touched[k]);
+            if (p) osd_props_set(&ch->set, p->key, p->type, p->val, p->len);
             else ch->removed[ch->nremoved++] = strdup(cs->touched[k]);
         }
-        wps_state_clear_touched(cs);
+        osd_state_clear_touched(cs);
     }
-    if (wpo_is_a(s->o, WPProgramClass) && strlen(s->path) > 8 && !strcmp(s->path + strlen(s->path) - 8, ".desktop")) {
-        const char *t = WPObject_data(s->o)->title, *c = WPProgram_data(s->o)->command;
+    if (osdo_is_a(s->o, OsdProgramClass) && strlen(s->path) > 8 && !strcmp(s->path + strlen(s->path) - 8, ".desktop")) {
+        const char *t = OsdObject_data(s->o)->title, *c = OsdProgram_data(s->o)->command;
         j->desk_name = t ? strdup(t) : NULL;
         j->desk_exec = c ? strdup(c) : NULL;
     }
     s->saving = true;
     inflight++;
-    wpo_defer(loop, "save object", save_work, save_done, j);
+    osdo_defer(loop, "save object", save_work, save_done, j);
 }
 
 static int retry_fd = -1;
 
 static void start_retry(sobj *s)
 {
-    wps_state *st = WPObject_data(s->o)->state;
+    osd_state *st = OsdObject_data(s->o)->state;
     struct save_job *j = calloc(1, sizeof *j);
     if (!j || !st) { free(j); s->retry = false; return; }
     j->s = s;
@@ -856,7 +856,7 @@ static void start_retry(sobj *s)
     snprintf(j->vol, sizeof j->vol, "%s", s->vol);
     snprintf(j->rel, sizeof j->rel, "%s", s->rel);
     snprintf(j->locator, sizeof j->locator, "%s", s->locator);
-    memcpy(j->id, WPObject_data(s->o)->id, sizeof j->id);
+    memcpy(j->id, OsdObject_data(s->o)->id, sizeof j->id);
     j->xattr_ok = s->xattr_ok;
     j->writable = s->writable;
     j->owned = s->owned;
@@ -864,16 +864,16 @@ static void start_retry(sobj *s)
     for (size_t c = 0; c < st->n; c++) {
         struct cls_change *ch = &j->ch[j->nch++];
         snprintf(ch->cls, sizeof ch->cls, "%s", st->c[c].cls);
-        wps_props_init(&ch->set);
+        osd_props_init(&ch->set);
         for (size_t k = 0; k < st->c[c].props.n; k++) {
-            const wps_prop *p = &st->c[c].props.p[k];
+            const osd_prop *p = &st->c[c].props.p[k];
             if (strncmp(p->key, "pos:", 4) == 0 && !s->owned) continue;   /* stays personal */
-            wps_props_set(&ch->set, p->key, p->type, p->val, p->len);
+            osd_props_set(&ch->set, p->key, p->type, p->val, p->len);
         }
     }
     s->saving = true;
     inflight++;
-    wpo_defer(loop, "retry busy save", save_work, save_done, j);
+    osdo_defer(loop, "retry busy save", save_work, save_done, j);
 }
 
 static void on_retry(int fd, short rev, void *arg)
@@ -917,7 +917,7 @@ static void schedule_flush(void)
     timer_armed = true;
 }
 
-static void on_dirty(wpo_object *o)
+static void on_dirty(osdo_object *o)
 {
     sobj *s = by_object(o);
     if (!s) return;
@@ -925,10 +925,10 @@ static void on_dirty(wpo_object *o)
     schedule_flush();   /* written after `save_delay_ms` of quiet (design: Write policy) */
 }
 
-void wps_objects_flush(void (*done)(void *), void *arg)
+void osd_objects_flush(void (*done)(void *), void *arg)
 {
     flush_now();
-    if (wps_objects_pending() == 0) { done(arg); return; }
+    if (osd_objects_pending() == 0) { done(arg); return; }
     struct flush_waiter *w = calloc(1, sizeof *w);
     w->done = done;
     w->arg = arg;
@@ -936,64 +936,64 @@ void wps_objects_flush(void (*done)(void *), void *arg)
     waiters = w;
 }
 
-void wps_objects_init(const wps_env *e, wps_db *d, wpo_loop *l, int delay_ms)
+void osd_objects_init(const osd_env *e, osd_db *d, osdo_loop *l, int delay_ms)
 {
     env = e;
     db = d;
     loop = l;
     save_delay_ms = delay_ms;
-    wps_on_dirty = on_dirty;
+    osd_on_dirty = on_dirty;
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    wpo_loop_watch_fd(loop, timer_fd, POLLIN, on_timer, NULL);
+    osdo_loop_watch_fd(loop, timer_fd, POLLIN, on_timer, NULL);
     retry_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    wpo_loop_watch_fd(loop, retry_fd, POLLIN, on_retry, NULL);
+    osdo_loop_watch_fd(loop, retry_fd, POLLIN, on_retry, NULL);
     excluded_load();
 }
 
 /* ---- updates from the change tracker */
 
-struct loc_job { char id[WPS_ID_LEN + 1]; char vol[WPS_VOLID_MAX]; char rel[PATH_MAX]; };
+struct loc_job { char id[OSD_ID_LEN + 1]; char vol[OSD_VOLID_MAX]; char rel[PATH_MAX]; };
 
 static void loc_work(void *arg)
 {
     struct loc_job *j = arg;
-    wps_db_set_location(db, j->id, j->vol, j->rel);
+    osd_db_set_location(db, j->id, j->vol, j->rel);
 }
 
 static void free_arg(void *arg) { free(arg); }
 
-void wps_sobj_set_path(sobj *s, const char *path)
+void osd_sobj_set_path(sobj *s, const char *path)
 {
     snprintf(s->path, sizeof s->path, "%s", path);
-    wps_volume v;
-    if (wps_volume_for_path(path, &v)) {
+    osd_volume v;
+    if (osd_volume_for_path(path, &v)) {
         snprintf(s->vol, sizeof s->vol, "%s", v.uuid);
-        snprintf(s->rel, sizeof s->rel, "%s", wps_volume_relpath(&v, path));
+        snprintf(s->rel, sizeof s->rel, "%s", osd_volume_relpath(&v, path));
     }
-    if (wpo_is_a(s->o, WPFileSystemClass)) WPFileSystem_wpSetPath(s->o, path);
-    WPObject_wpObjectChanged(s->o);
-    const char *id = WPObject_data(s->o)->id;
-    wps_shadows_target_moved(id, path);   /* shadows follow, into the trash too */
+    if (osdo_is_a(s->o, OsdFileSystemClass)) OsdFileSystem_osdSetPath(s->o, path);
+    OsdObject_osdObjectChanged(s->o);
+    const char *id = OsdObject_data(s->o)->id;
+    osd_shadows_target_moved(id, path);   /* shadows follow, into the trash too */
     if (id[0]) {
         struct loc_job *j = calloc(1, sizeof *j);
         memcpy(j->id, id, sizeof j->id);
         snprintf(j->vol, sizeof j->vol, "%s", s->vol);
         snprintf(j->rel, sizeof j->rel, "%s", s->rel);
-        wpo_defer(loop, "location", loc_work, free_arg, j);
+        osdo_defer(loop, "location", loc_work, free_arg, j);
     }
 }
 
-void wps_sobj_set_inode(sobj *s, const struct stat *st)
+void osd_sobj_set_inode(sobj *s, const struct stat *st)
 {
     s->dev = st->st_dev;
     s->ino = st->st_ino;
     s->nlink = st->st_nlink;
     s->ctime = st->st_ctim;
     s->mtime = st->st_mtim;
-    WPObject_wpObjectChanged(s->o);
+    OsdObject_osdObjectChanged(s->o);
 }
 
-void wps_sobj_forget(sobj *s)
+void osd_sobj_forget(sobj *s)
 {
     for (size_t i = 0; i < nobjs; i++)
         if (objs[i] == s) {
@@ -1001,37 +1001,37 @@ void wps_sobj_forget(sobj *s)
             break;
         }
     if (s->saving) { s->forgotten = true; return; }   /* freed when the save ends */
-    wpo_unref(s->o);
+    osdo_unref(s->o);
     free(s);
 }
 
-void wps_sobj_snapshot(sobj *s, wps_loaded *out)
+void osd_sobj_snapshot(sobj *s, osd_loaded *out)
 {
     memset(out, 0, sizeof *out);
-    WPObject_wpSaveState(s->o);
-    wps_state *st = WPObject_data(s->o)->state;
-    for (size_t c = 0; st && c < st->n && out->nc < WPS_MAX_CLASSES; c++) {
+    OsdObject_osdSaveState(s->o);
+    osd_state *st = OsdObject_data(s->o)->state;
+    for (size_t c = 0; st && c < st->n && out->nc < OSD_MAX_CLASSES; c++) {
         snprintf(out->c[out->nc].cls, sizeof out->c[out->nc].cls, "%s", st->c[c].cls);
-        wps_props_init(&out->c[out->nc].props);
+        osd_props_init(&out->c[out->nc].props);
         for (size_t k = 0; k < st->c[c].props.n; k++) {
-            const wps_prop *p = &st->c[c].props.p[k];
-            wps_props_set(&out->c[out->nc].props, p->key, p->type, p->val, p->len);
+            const osd_prop *p = &st->c[c].props.p[k];
+            osd_props_set(&out->c[out->nc].props, p->key, p->type, p->val, p->len);
         }
         out->nc++;
     }
-    memcpy(out->id, WPObject_data(s->o)->id, sizeof out->id);
+    memcpy(out->id, OsdObject_data(s->o)->id, sizeof out->id);
 }
 
-void wps_objects_shutdown(void)
+void osd_objects_shutdown(void)
 {
     for (size_t i = 0; i < nobjs; i++) {
-        wpo_unref(objs[i]->o);
+        osdo_unref(objs[i]->o);
         free(objs[i]);
     }
     free(objs);
     objs = NULL;
     nobjs = capobjs = 0;
-    wps_volumes_free(&vols);
+    osd_volumes_free(&vols);
     if (timer_fd >= 0) close(timer_fd);
     if (retry_fd >= 0) close(retry_fd);
     for (size_t i = 0; i < nexcluded; i++) free(excluded[i]);
@@ -1042,91 +1042,91 @@ void wps_objects_shutdown(void)
 
 /* ------------------------------------------------------ central objects */
 
-int wps_central_create(const char *vol, const char *folder_id, const char *cls, const char *title,
-                       const char *target_id, char id[WPS_ID_LEN + 1])
+int osd_central_create(const char *vol, const char *folder_id, const char *cls, const char *title,
+                       const char *target_id, char id[OSD_ID_LEN + 1])
 {
     char key[PATH_MAX + 128], loc[64];
-    wps_new_id(id);
+    osd_new_id(id);
     snprintf(loc, sizeof loc, "vobj:%s", id);
-    wps_db_key(key, sizeof key, loc, "WPS", "folder");
-    if (wps_db_put(db, vol, key, 's', folder_id, WPS_ID_LEN) < 0) return EIO;
-    wps_db_key(key, sizeof key, loc, "WPS", "class");
-    wps_db_put(db, vol, key, 's', cls, (uint32_t)strlen(cls));
+    osd_db_key(key, sizeof key, loc, "WPS", "folder");
+    if (osd_db_put(db, vol, key, 's', folder_id, OSD_ID_LEN) < 0) return EIO;
+    osd_db_key(key, sizeof key, loc, "WPS", "class");
+    osd_db_put(db, vol, key, 's', cls, (uint32_t)strlen(cls));
     if (target_id && *target_id) {
-        wps_db_key(key, sizeof key, loc, "WPS", "target");
-        wps_db_put(db, vol, key, 's', target_id, WPS_ID_LEN);
+        osd_db_key(key, sizeof key, loc, "WPS", "target");
+        osd_db_put(db, vol, key, 's', target_id, OSD_ID_LEN);
     }
     if (title && *title) {
-        wps_db_key(key, sizeof key, loc, "WPObject", "title");
-        wps_db_put(db, vol, key, 's', title, (uint32_t)strlen(title));
+        osd_db_key(key, sizeof key, loc, "OsdObject", "title");
+        osd_db_put(db, vol, key, 's', title, (uint32_t)strlen(title));
     }
     return 0;
 }
 
-int wps_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user)
+int osd_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user)
 {
-    return wps_db_vobjs_in(db, vol, folder_id, fn, user);
+    return osd_db_vobjs_in(db, vol, folder_id, fn, user);
 }
 
-int wps_central_move(const char *id, const char *dest_vol, const char *dest_folder_id, bool copy, char new_id[WPS_ID_LEN + 1])
+int osd_central_move(const char *id, const char *dest_vol, const char *dest_folder_id, bool copy, char new_id[OSD_ID_LEN + 1])
 {
-    char vol[WPS_VOLID_MAX], key[PATH_MAX + 128], loc[64];
-    if (!wps_db_vobj_vol(db, id, vol, sizeof vol)) return ENOENT;
-    if (copy) wps_new_id(new_id);
-    else memcpy(new_id, id, WPS_ID_LEN + 1);
+    char vol[OSD_VOLID_MAX], key[PATH_MAX + 128], loc[64];
+    if (!osd_db_vobj_vol(db, id, vol, sizeof vol)) return ENOENT;
+    if (copy) osd_new_id(new_id);
+    else memcpy(new_id, id, OSD_ID_LEN + 1);
     if (copy || strcmp(vol, dest_vol)) {
-        if (wps_db_vobj_copy(db, vol, id, dest_vol, new_id, !copy) < 0) return EIO;
+        if (osd_db_vobj_copy(db, vol, id, dest_vol, new_id, !copy) < 0) return EIO;
     }
     snprintf(loc, sizeof loc, "vobj:%s", new_id);
-    wps_db_key(key, sizeof key, loc, "WPS", "folder");
-    return wps_db_put(db, dest_vol, key, 's', dest_folder_id, WPS_ID_LEN) < 0 ? EIO : 0;
+    osd_db_key(key, sizeof key, loc, "WPS", "folder");
+    return osd_db_put(db, dest_vol, key, 's', dest_folder_id, OSD_ID_LEN) < 0 ? EIO : 0;
 }
 
-bool wps_folder_keeps_files(const wps_loaded *folder)
+bool osd_folder_keeps_files(const osd_loaded *folder)
 {
     for (int i = 0; i < folder->nc; i++) {
-        if (strcmp(folder->c[i].cls, "WPFolder")) continue;
+        if (strcmp(folder->c[i].cls, "OsdFolder")) continue;
         int64_t v = 0;
-        if (wps_props_int(&folder->c[i].props, "local", &v)) return v != 0;
+        if (osd_props_int(&folder->c[i].props, "local", &v)) return v != 0;
     }
     return false;
 }
 
-int wps_set_folder_class(const char *path, const char *cls)
+int osd_set_folder_class(const char *path, const char *cls)
 {
-    wps_loaded ld;
-    wps_load(path, true, &ld);
+    osd_loaded ld;
+    osd_load(path, true, &ld);
     int e = ld.err ? ld.err : !S_ISDIR(ld.st.st_mode) ? ENOTDIR : 0;
     if (!e) {
         char key[PATH_MAX + 128];
         /* by its ID (just given, if it had none: the locator was made before) */
-        wps_db_key(key, sizeof key, ld.id[0] ? ld.id : ld.locator, "WPS", "class");
-        e = wps_db_put(db, ld.vol, key, 's', cls, (uint32_t)strlen(cls)) < 0 ? EIO : 0;
+        osd_db_key(key, sizeof key, ld.id[0] ? ld.id : ld.locator, "WPS", "class");
+        e = osd_db_put(db, ld.vol, key, 's', cls, (uint32_t)strlen(cls)) < 0 ? EIO : 0;
     }
-    wps_loaded_free(&ld);
+    osd_loaded_free(&ld);
     return e;
 }
 
-int wps_central_delete(const char *id)
+int osd_central_delete(const char *id)
 {
-    char vol[WPS_VOLID_MAX];
-    if (!wps_db_vobj_vol(db, id, vol, sizeof vol)) return ENOENT;
-    return wps_db_vobj_delete(db, vol, id) < 0 ? EIO : 0;
+    char vol[OSD_VOLID_MAX];
+    if (!osd_db_vobj_vol(db, id, vol, sizeof vol)) return ENOENT;
+    return osd_db_vobj_delete(db, vol, id) < 0 ? EIO : 0;
 }
 
-void wps_central_forget(const char *id)
+void osd_central_forget(const char *id)
 {
     sobj *s = by_central(id);
-    if (s) wps_sobj_forget(s);
+    if (s) osd_sobj_forget(s);
 }
 
 /* ------------------------------------------------------- templates folder */
 
 static char templates[PATH_MAX];
 
-void wps_templates_init(void)
+void osd_templates_init(void)
 {
-    const char *t = getenv("WPS_TEMPLATES_DIR"), *home = getenv("HOME"), *xdg = getenv("XDG_CONFIG_HOME");
+    const char *t = getenv("OSD_TEMPLATES_DIR"), *home = getenv("HOME"), *xdg = getenv("XDG_CONFIG_HOME");
     if (t && *t) { snprintf(templates, sizeof templates, "%s", t); return; }
     snprintf(templates, sizeof templates, "%s/Templates", home ? home : "");
     char cfg[PATH_MAX], line[PATH_MAX + 64];
@@ -1147,9 +1147,9 @@ void wps_templates_init(void)
     if (realpath(templates, real)) snprintf(templates, sizeof templates, "%s", real);
 }
 
-const char *wps_templates_dir(void) { return templates; }
+const char *osd_templates_dir(void) { return templates; }
 
-bool wps_in_templates(const char *path)
+bool osd_in_templates(const char *path)
 {
     size_t l = strlen(templates);
     if (!l || !path || strncmp(path, templates, l) || path[l] != '/') return false;

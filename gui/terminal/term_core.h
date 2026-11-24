@@ -7,8 +7,8 @@
  * Rows are numbered from the top of the screen: 0 .. rows-1 the screen,
  * -1 the newest line of the scrollback, -nsb the oldest.
  */
-#ifndef WPS_TERM_CORE_H
-#define WPS_TERM_CORE_H
+#ifndef OSD_TERM_CORE_H
+#define OSD_TERM_CORE_H
 
 #include <stdbool.h>
 #include <stddef.h>

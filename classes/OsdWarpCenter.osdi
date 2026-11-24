@@ -1,0 +1,17 @@
+# The WarpCenter object (v0.2-design 10): the bar's settings (its edge,
+# parts, clock), in System; the desktop applies them.
+class OsdWarpCenter : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle
+# Its settings (stored as text in the OsdSetup state, as before).
+property show_at_start : choice "automatic,yes,no" = "automatic" page "WarpCenter" label "Show at start (WPS session)" store OsdSetup text
+property edge : choice "bottom,top" = "bottom" page "WarpCenter" label "Screen edge" store OsdSetup text
+property meters : checkbox = "1" page "Parts" label "Meters (processor, memory, disk, network)" store OsdSetup text
+property keyboard : checkbox = "1" page "Parts" label "Keyboard (input source)" store OsdSetup text
+property tray : checkbox = "1" page "Parts" label "Tray (other programs' status icons)" store OsdSetup text
+property messages : checkbox = "1" page "Parts" label "Messages" store OsdSetup text
+property system_buttons : checkbox = "1" page "Parts" label "Lockup, Find, Log off and Shut down buttons" store OsdSetup text
+property clock : choice "24 hours,12 hours,off" = "24 hours" page "Clock" label "Clock" store OsdSetup text
+property seconds : checkbox = "0" page "Clock" label "Seconds" store OsdSetup text
+property date : checkbox = "0" page "Clock" label "Date" store OsdSetup text
+property font : text = "" page "Font" label "Font (e.g. 10.Sans; empty: the interface font)" store OsdSetup text

@@ -1,4 +1,4 @@
-/* A file's type from its contents (classes/wps_magic.h), with the system's
+/* A file's type from its contents (classes/osd_magic.h), with the system's
  * shared-mime-info magic rules. */
 #include <stdio.h>
 #include <string.h>
@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #include "check.h"
-#include "wps_magic.h"
+#include "osd_magic.h"
 
 static char dir[256];
 
@@ -18,7 +18,7 @@ static const char *sniff(const char *name, const void *data, size_t n)
     if (n) fwrite(data, 1, n, f);
     fclose(f);
     static char out[128];
-    const char *t = wps_mime_sniff(p);
+    const char *t = osd_mime_sniff(p);
     snprintf(out, sizeof out, "%s", t ? t : "(none)");
     return out;
 }
@@ -38,7 +38,7 @@ TEST(text_and_others)
     CHECK(!strcmp(sniff("notes", "Some words, and more.\n", 22), "text/plain"));
     static const unsigned char bin[] = { 0, 1, 2, 3, 0xfe, 0xff, 0, 7 };
     CHECK(!strcmp(sniff("blob", bin, sizeof bin), "(none)"));
-    CHECK(wps_mime_sniff("/nonexistent/x") == NULL);
+    CHECK(osd_mime_sniff("/nonexistent/x") == NULL);
 }
 
 int main(void)

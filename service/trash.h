@@ -10,31 +10,31 @@
  * without replacing; the item itself is moved by one rename without
  * replacing, so its object ID, settings and shadows go with it.
  */
-#ifndef WPS_TRASH_H
-#define WPS_TRASH_H
+#ifndef OSD_TRASH_H
+#define OSD_TRASH_H
 
 #include <stddef.h>
 
 /* Any thread: move `path` to the trash; its new path into `out`. 0, or a
  * negative errno value: -ENOENT gone already, -EXDEV no trash can be used
  * on its filesystem (read-only, no permission, or already in a trash). */
-int wps_trash(const char *path, char *out, size_t n);
+int osd_trash(const char *path, char *out, size_t n);
 
 /* Any thread: an item inside a trash's files folder that is being deleted
  * for good: remove its info file. */
-void wps_trash_forget_info(const char *path);
+void osd_trash_forget_info(const char *path);
 
 /* 0.2, the Trash Can: the home trash ($XDG_DATA_HOME/Trash); whether a
  * folder is a trash's files folder; an item's original path and deletion
  * date (from its info file); putting it back where it was (made again if
  * gone, "name (2)" if taken). 0, or a negative errno value. */
 #include <stdbool.h>
-void wps_trash_home(char *out, size_t n);
+void osd_trash_home(char *out, size_t n);
 /* The home trash's files/ and info/ made (at wpsd's start): a Trash Can
  * window opened before the first delete follows a folder that is there. */
-bool wps_trash_home_ready(void);
-bool wps_is_trash_files_dir(const char *folder);
-int wps_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn);
-int wps_trash_restore(const char *item, char *out, size_t n);
+bool osd_trash_home_ready(void);
+bool osd_is_trash_files_dir(const char *folder);
+int osd_trash_info(const char *item, char *orig, size_t n, char *when, size_t wn);
+int osd_trash_restore(const char *item, char *out, size_t n);
 
 #endif

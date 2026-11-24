@@ -6,8 +6,8 @@
  * Messages on the socket are framed as a 4-byte big-endian length followed
  * by one CBOR item (a map).
  */
-#ifndef WPS_CBOR_H
-#define WPS_CBOR_H
+#ifndef OSD_CBOR_H
+#define OSD_CBOR_H
 
 #include <stdbool.h>
 #include <stddef.h>

@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-void wps_startup_dir(char *out, size_t n)
+void osd_startup_dir(char *out, size_t n)
 {
     const char *xc = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (xc && *xc) snprintf(out, n, "%s/autostart", xc);
@@ -24,10 +24,10 @@ static bool ends(const char *s, const char *suf)
     return l >= m && !strcmp(s + l - m, suf);
 }
 
-bool wps_startup_is_entry(const char *path)
+bool osd_startup_is_entry(const char *path)
 {
     char dir[PATH_MAX];
-    wps_startup_dir(dir, sizeof dir);
+    osd_startup_dir(dir, sizeof dir);
     size_t l = strlen(dir);
     return path && !strncmp(path, dir, l) && path[l] == '/' && !strchr(path + l + 1, '/') && ends(path, ".desktop");
 }
@@ -79,7 +79,7 @@ static bool has_key(const char *text, const char *key)
     return false;
 }
 
-bool wps_startup_enabled(const char *path)
+bool osd_startup_enabled(const char *path)
 {
     char *t = slurp(path, NULL);
     if (!t) return false;
@@ -137,9 +137,9 @@ static int write_new(const char *path, const char *text, bool replace)
     return 0;
 }
 
-int wps_startup_set_enabled(const char *path, bool on)
+int osd_startup_set_enabled(const char *path, bool on)
 {
-    if (!wps_startup_is_entry(path)) return EINVAL;
+    if (!osd_startup_is_entry(path)) return EINVAL;
     char *t = slurp(path, NULL);
     if (!t) return errno;
     static const char *const keys[] = { "Hidden", "X-GNOME-Autostart-enabled" };
@@ -152,13 +152,13 @@ int wps_startup_set_enabled(const char *path, bool on)
     return e;
 }
 
-int wps_startup_add(const char *path, char *made, size_t n)
+int osd_startup_add(const char *path, char *made, size_t n)
 {
     struct stat st;
     if (stat(path, &st) != 0) return errno;
     if (!S_ISREG(st.st_mode)) return ENOEXEC;
     char dir[PATH_MAX], text_buf[PATH_MAX * 2 + 256];
-    wps_startup_dir(dir, sizeof dir);
+    osd_startup_dir(dir, sizeof dir);
     mkdir(dir, 0755);
     const char *base = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
     char *text = NULL;

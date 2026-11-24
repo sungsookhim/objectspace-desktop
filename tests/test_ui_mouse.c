@@ -49,7 +49,7 @@ TEST(a_config_file_remaps)
                "popup_menu = button3\nedit_title = shift+button1   # as in some OS/2 setups\n"
                "left_handed = yes\ndouble_click_ms = 600\nwheel_speed = 5\n");
     fclose(f);
-    setenv("WPS_CONFIG_DIR", dir, 1);
+    setenv("OSD_CONFIG_DIR", dir, 1);
     ui_mouse_load();
     ui_pointer_event b3 = press(UI_BTN3, 0, 1), b2 = press(UI_BTN2, 0, 1), sh1 = press(UI_BTN1, UI_MOD_SHIFT, 1);
     CHECK(ui_mouse_is(UI_ACT_POPUP, &b3));

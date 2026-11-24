@@ -12,7 +12,7 @@ cat > "$S/script" <<EOS
 6.5 shot $S/after.png
 7 quit
 EOS
-DESKENV="WPS_WARPCENTER=1 WPS_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=10 tests/comp/run.sh "$S/script" "sleep 20" > "$S/out.txt" 2>&1
+DESKENV="OSD_WARPCENTER=1 OSD_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=10 tests/comp/run.sh "$S/script" "sleep 20" > "$S/out.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 px() { python3 -c "from PIL import Image; print('%d %d %d' % Image.open('$1').convert('RGB').getpixel(($2, $3)))"; }

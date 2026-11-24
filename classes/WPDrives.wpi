@@ -1,6 +1,0 @@
-# Drives (v0.2-design 5): a live folder of WPDrive objects, one per
-# volume, kept in step with udisks2 by wpsd.
-class WPDrives : WPFolder
-version 1.0
-override wpModifyPopupMenu
-classoverride wpclsQueryTitle

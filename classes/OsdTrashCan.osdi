@@ -1,0 +1,20 @@
+# The Trash Can (v0.2-design 4): the trash's files folder
+# (~/.local/share/Trash/files, as the freedesktop.org Trash specification
+# has it, GNOME's too), its items shown by their original names; Empty
+# trash in its menu.
+class OsdTrashCan : OsdFolder
+version 1.0
+override osdModifyPopupMenu
+classoverride osdclsQueryTitle
+data {
+    char *full_icon;    /* its own icon when full (a PNG); NULL: WPS's */
+}
+override osdUnInitData
+override osdSaveState
+override osdRestoreProperties
+property icon : icon page Icon label Empty get osdQueryIcon set osdSetIcon
+property fullicon : icon page Icon label Full get osdQueryFullIcon set osdSetFullIcon
+# Its icon when something is in it (Icon, OsdObject's, is when empty):
+# the path of a PNG, or "" for WPS's again.
+method osdQueryFullIcon() -> string
+method osdSetFullIcon(string path) -> bool

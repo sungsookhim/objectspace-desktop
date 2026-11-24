@@ -29,7 +29,7 @@ cat > "$S/script" <<EOS
 16 quit
 EOS
 PRE='for i in $(seq 300); do echo x > "$T/desk/Projects/f$i.txt"; done' \
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=19 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=19 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

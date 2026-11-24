@@ -1,0 +1,6 @@
+# A test plug-in: replaces OsdFolder; runs in a sandboxed wps-plughost.
+class TestFolder : OsdFolder
+version 1.0
+override osdModifyPopupMenu
+method osdStamp() -> bool
+method osdSandboxProbe(string data_dir) -> string

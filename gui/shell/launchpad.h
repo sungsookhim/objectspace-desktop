@@ -2,7 +2,7 @@
  * The LaunchPad (G4; OS/2 Warp 3/4): a floating palette of buttons.
  *
  * Its buttons are the objects in a folder ($XDG_DATA_HOME/wps/LaunchPad;
- * WPS_LAUNCHPAD_DIR for tests), mostly shadows: drop any object on the
+ * OSD_LAUNCHPAD_DIR for tests), mostly shadows: drop any object on the
  * palette to add a button, remove one from its menu. Each button has a
  * drawer (the arrow above it): a folder in "<LaunchPad folder> Drawers"
  * named after the button, shown above it; drop on the arrow to put an
@@ -14,8 +14,8 @@
  * The first time, it gets shadows of the home folder, Templates and System
  * Setup.
  */
-#ifndef WPS_LAUNCHPAD_H
-#define WPS_LAUNCHPAD_H
+#ifndef OSD_LAUNCHPAD_H
+#define OSD_LAUNCHPAD_H
 
 #include <stdbool.h>
 #include <stdint.h>

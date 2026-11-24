@@ -16,7 +16,7 @@ import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-os.environ.setdefault("WPS_SUITE", "m2")
+os.environ.setdefault("OSD_SUITE", "m2")
 from harness import *  # noqa: E402,F401,F403
 
 
@@ -28,8 +28,8 @@ def s1():
     d, f = fresh("ext4", "s1"), fresh("fat", "s1")
     (d / "notes.txt").write_text("x")
     (f / "notes.txt").write_text("x")
-    me.call(d / "notes.txt", "wpSetTitle", "Notes on ext4")
-    me.call(f / "notes.txt", "wpSetTitle", "Notes on FAT")
+    me.call(d / "notes.txt", "osdSetTitle", "Notes on ext4")
+    me.call(f / "notes.txt", "osdSetTitle", "Notes on FAT")
     me.ctl("flush")
     stored = attr(d / "notes.txt") is not None
     me.stop()
@@ -62,13 +62,13 @@ def s10():
     (d / "b").mkdir()
     (d / "a" / "doc.txt").write_text("x")
     os.link(d / "a" / "doc.txt", d / "b" / "doc.txt")
-    me.call(d / "a", "wpSetIconPos", f"@{d}/a/doc.txt", 10, 10)
-    me.call(d / "b", "wpSetIconPos", f"@{d}/b/doc.txt", 90, 90)
+    me.call(d / "a", "osdSetIconPos", f"@{d}/a/doc.txt", 10, 10)
+    me.call(d / "b", "osdSetIconPos", f"@{d}/b/doc.txt", 90, 90)
     me.ctl("flush")
     ida = me.ctl("resolve", d / "a" / "doc.txt")["result"]["id"]
     idb = me.ctl("resolve", d / "b" / "doc.txt")["result"]["id"]
-    pa = me.call(d / "a", "wpQueryIconPos", f"@{d}/a/doc.txt").get("result")
-    pb = me.call(d / "b", "wpQueryIconPos", f"@{d}/b/doc.txt").get("result")
+    pa = me.call(d / "a", "osdQueryIconPos", f"@{d}/a/doc.txt").get("result")
+    pb = me.call(d / "b", "osdQueryIconPos", f"@{d}/b/doc.txt").get("result")
     me.stop()
     ok = ida and ida == idb and pa == "10,10" and pb == "90,90"
     return ok, [f"IDs through the two names: {ida} / {idb}", f"positions: folder a {pa}, folder b {pb}"]
@@ -83,14 +83,14 @@ def s21():
     def client(method, values):
         for v in values:
             me.call(target, method, v)
-    t1 = threading.Thread(target=client, args=("wpSetTitle", [f"title {i}" for i in range(200)]))
-    t2 = threading.Thread(target=client, args=("wpSetSortOrder", [i % 16 for i in range(200)]))
+    t1 = threading.Thread(target=client, args=("osdSetTitle", [f"title {i}" for i in range(200)]))
+    t2 = threading.Thread(target=client, args=("osdSetSortOrder", [i % 16 for i in range(200)]))
     t1.start(); t2.start(); t1.join(); t2.join()
     me.ctl("flush")
     me.stop()
     me.start()
     title = me.title(target)
-    sort = me.call(target, "wpQuerySortOrder").get("result")
+    sort = me.call(target, "osdQuerySortOrder").get("result")
     me.stop()
     ok = title == "title 199" and sort == 199 % 16
     return ok, [f"after both clients and a restart: title {title!r}, sort order {sort}"]
@@ -102,8 +102,8 @@ def s22():
     d = fresh("ext4", "s22")
     (d / "f.txt").write_text("x")
     seen = me.ctl("resolve", d / "f.txt")["result"]["changes"]
-    r1 = me.call(d / "f.txt", "wpSetTitle", "from client 1", expect=seen)
-    r2 = me.call(d / "f.txt", "wpSetTitle", "from client 2", expect=seen)
+    r1 = me.call(d / "f.txt", "osdSetTitle", "from client 1", expect=seen)
+    r2 = me.call(d / "f.txt", "osdSetTitle", "from client 2", expect=seen)
     me.stop()
     ok = r1.get("ok") and not r2.get("ok") and r2.get("error") == "conflict" and \
         r2.get("object", {}).get("title") == "from client 1"
@@ -117,11 +117,11 @@ def s23():
     d = fresh("ext4", "s23", user=60001)
     run(["mkdir", f"{d}/project"], user=60001, check=True)
     run(["chmod", "2775", f"{d}/project"], user=60001, check=True)
-    a.call(d / "project", "wpSetTitle", "Project X")
-    b.call(d / "project", "wpSetSortOrder", 5)
+    a.call(d / "project", "osdSetTitle", "Project X")
+    b.call(d / "project", "osdSetSortOrder", 5)
     a.ctl("flush"); b.ctl("flush")
-    ta, sa = a.title(d / "project"), a.call(d / "project", "wpQuerySortOrder").get("result")
-    tb, sb = b.title(d / "project"), b.call(d / "project", "wpQuerySortOrder").get("result")
+    ta, sa = a.title(d / "project"), a.call(d / "project", "osdQuerySortOrder").get("result")
+    tb, sb = b.title(d / "project"), b.call(d / "project", "osdQuerySortOrder").get("result")
     a.stop(); b.stop()
     ok = ta == tb == "Project X" and sa == sb == 5
     return ok, [f"A sees title {ta!r}, sort {sa}", f"B sees title {tb!r}, sort {sb}",
@@ -134,9 +134,9 @@ def s24():
     b = Service("B", user=60002).start()
     d = fresh("ext4", "s24", user=60001)
     write_as(60001, d / "report.txt", mode="0644")
-    a.call(d / "report.txt", "wpSetTitle", "Report")
+    a.call(d / "report.txt", "osdSetTitle", "Report")
     a.ctl("flush")
-    rb = b.call(d / "report.txt", "wpSetTitle", "My copy of the report")
+    rb = b.call(d / "report.txt", "osdSetTitle", "My copy of the report")
     b.ctl("flush")
     tb, ta = b.title(d / "report.txt"), a.title(d / "report.txt")
     b.stop(); b.start()
@@ -154,12 +154,12 @@ def s25():
     b = Service("B", user=60002).start()
     d = fresh("ext4", "s25", user=60001)
     write_as(60001, d / "plan.txt", mode="0664")
-    a.call(d, "wpSetIconPos", f"@{d}/plan.txt", 40, 40)
-    b.call(d, "wpSetIconPos", f"@{d}/plan.txt", 300, 200)
+    a.call(d, "osdSetIconPos", f"@{d}/plan.txt", 40, 40)
+    b.call(d, "osdSetIconPos", f"@{d}/plan.txt", 300, 200)
     a.ctl("flush"); b.ctl("flush")
     a.stop(); b.stop(); a.start(); b.start()
-    pa = a.call(d, "wpQueryIconPos", f"@{d}/plan.txt").get("result")
-    pb = b.call(d, "wpQueryIconPos", f"@{d}/plan.txt").get("result")
+    pa = a.call(d, "osdQueryIconPos", f"@{d}/plan.txt").get("result")
+    pb = b.call(d, "osdQueryIconPos", f"@{d}/plan.txt").get("result")
     a.stop(); b.stop()
     ok = pa == "40,40" and pb == "300,200"
     return ok, [f"A (owner, stored on the folder): {pa}", f"B (stored in B's own database): {pb}"]
@@ -178,7 +178,7 @@ def s25a():
     d = fresh("fat", "s25a")
     (d / "slides.odp").write_text("x")
     home.start()
-    home.call(d / "slides.odp", "wpSetTitle", "Conference slides")
+    home.call(d / "slides.odp", "osdSetTitle", "Conference slides")
     home.ctl("flush")
     home.stop()
     remount("fat", "rw")                          # the disk is unplugged and taken to work
@@ -196,12 +196,12 @@ def s25b():
     d = MNT["fat"] / "s25a"
     remount("fat", "ro")                          # at home, mounted read-only
     home.start()
-    r = home.call(d / "slides.odp", "wpSetTitle", "Home version")
+    r = home.call(d / "slides.odp", "osdSetTitle", "Home version")
     home.ctl("flush")
     home.stop()
     remount("fat", "rw")                          # taken to work, writable there
     work.start()
-    work.call(d / "slides.odp", "wpSetTitle", "Work version")
+    work.call(d / "slides.odp", "osdSetTitle", "Work version")
     work.ctl("flush")
     work.stop()
     remount("fat", "rw")                          # back home, writable now: sync
@@ -233,8 +233,8 @@ def s25d():
     d = fresh("ext4", "s25d", user=60001)
     write_as(60001, d / "shared.txt", mode="0644")
     a.start(); b.start()
-    a.call(d, "wpSetIconPos", f"@{d}/shared.txt", 1, 1)
-    b.call(d / "shared.txt", "wpSetTitle", "B's private name")   # no permission: B's overlay
+    a.call(d, "osdSetIconPos", f"@{d}/shared.txt", 1, 1)
+    b.call(d / "shared.txt", "osdSetTitle", "B's private name")   # no permission: B's overlay
     a.ctl("flush"); b.ctl("flush")
     a.ctl("sync"); b.ctl("sync")
     ta = a.title(d / "shared.txt")

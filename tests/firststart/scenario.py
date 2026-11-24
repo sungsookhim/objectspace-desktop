@@ -19,7 +19,7 @@ def check(what, ok, more=""):
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())

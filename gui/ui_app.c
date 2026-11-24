@@ -26,7 +26,7 @@ double ui_now_ms(void)
 
 int ui_app_scale_override(void)
 {
-    const char *s = getenv("WPS_UI_SCALE");
+    const char *s = getenv("OSD_UI_SCALE");
     return s ? atoi(s) : 0;
 }
 
@@ -961,7 +961,7 @@ void ui_app_run(ui_app *a)
             if (s->needs_draw || s->continuous) render(s);
         }
     }
-    if (getenv("WPS_UI_DEBUG_EXIT"))
+    if (getenv("OSD_UI_DEBUG_EXIT"))
         fprintf(stderr, "wps-ui: main loop ended: %s\n", !a->surfaces ? "no windows left" : !a->running ? "quit requested" : "the display was lost");
     wl_display_flush(a->dpy);
 }

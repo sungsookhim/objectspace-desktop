@@ -34,7 +34,7 @@ mkdir -p "$T/config" "$T/data/gnome-shell/extensions/wps@wps-linux" "$T/cache" "
 E="$T/data/gnome-shell/extensions/wps@wps-linux"
 cp "$REPO/gnome-extension/wps@wps-linux/metadata.json" "$REPO/gnome-extension/wps@wps-linux/extension.js" "$E/"
 cp -r "$REPO/gnome-extension/wps@wps-linux/schemas" "$E/" && glib-compile-schemas "$E/schemas"
-printf '{"command": ["env", "WPS_UI_DEBUG_EXIT=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$DESK" > "$E/config.json"
+printf '{"command": ["env", "OSD_UI_DEBUG_EXIT=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$DESK" > "$E/config.json"
 
 cleanup() {
     "$REPO/build/wpsctl" shutdown >/dev/null 2>&1 || true
@@ -56,7 +56,7 @@ trap 'exit 130' INT TERM
 # in your own runtime folder).
 export PIPEWIRE_RUNTIME_DIR="$PARENT_RT"
 export XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache"
-export WPS_CONFIG_DIR="$T/wps/config" WPS_STATE_DIR="$T/wps/state" WPS_RUNTIME_DIR="$RT/wps"
+export OSD_CONFIG_DIR="$T/wps/config" OSD_STATE_DIR="$T/wps/state" OSD_RUNTIME_DIR="$RT/wps"
 unset DISPLAY JOURNAL_STREAM INVOCATION_ID
 "$REPO/build/wpsd" 2> "$T/wpsd.log" &
 # The nested shell's viewer opens in your session (by the socket's full path).

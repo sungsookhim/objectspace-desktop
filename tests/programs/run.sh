@@ -6,12 +6,12 @@ REPO=$PWD
 T=$(mktemp -d "${TMPDIR:-/tmp}/wps-progs-XXXX")
 RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-progs-XXXX")
 mkdir -p "$T/desk" "$T/share/applications"
-export T WPS_CONFIG_DIR="$T/config" WPS_STATE_DIR="$T/state" WPS_RUNTIME_DIR="$RT" WPS_SAVE_DELAY_MS=100
-export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" WPS_TEMPLATES_DIR="$T/templates"
-export WPS_PROGRAMS_DESKTOP=GNOME WPS_UDISKS_BUS="unix:path=$RT/none"
+export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
+export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" OSD_TEMPLATES_DIR="$T/templates"
+export OSD_PROGRAMS_DESKTOP=GNOME OSD_UDISKS_BUS="unix:path=$RT/none"
 # (an executable's text mode: this "terminal" notes what it was asked to run)
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/term.txt"\n' "$T" > "$T/fake-term" && chmod +x "$T/fake-term"
-export WPS_TERMINAL="$T/fake-term"
+export OSD_TERMINAL="$T/fake-term"
 python3 tests/programs/scenario.py setup
 "$REPO/build/wpsd" 2> "$T/wpsd.log" &
 WP=$!

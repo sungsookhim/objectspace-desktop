@@ -1,5 +1,5 @@
-#ifndef WPS_MIME_H
-#define WPS_MIME_H
+#ifndef OSD_MIME_H
+#define OSD_MIME_H
 #include <stdbool.h>
 #include <stddef.h>
 /* A file's type (shared-mime-info, by its name; text/plain for text). */

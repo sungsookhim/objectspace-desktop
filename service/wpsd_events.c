@@ -56,11 +56,11 @@ static void trash_broadcast(bool full)
 static void trash_check(const char *path)
 {
     char files[PATH_MAX];
-    wps_trash_home(files, sizeof files);
+    osd_trash_home(files, sizeof files);
     strncat(files, "/files", sizeof files - strlen(files) - 1);
     size_t l = strlen(files);
     if (!path || strncmp(path, files, l) || path[l] != '/' || strchr(path + l + 1, '/')) return;
-    bool full = wps_trash_full(files);
+    bool full = osd_trash_full(files);
     if (trash_was_full == (int)full) return;
     trash_was_full = full;
     trash_broadcast(full);
@@ -76,8 +76,8 @@ void messages_broadcast(int64_t added)
         if (sent) continue;
         cbuf b;
         event_head(&b, "messages_changed", x->id, 3);
-        cb_text(&b, "unread"); cb_uint(&b, wps_messages_unread());
-        cb_text(&b, "total"); cb_uint(&b, wps_messages_count());
+        cb_text(&b, "unread"); cb_uint(&b, osd_messages_unread());
+        cb_text(&b, "total"); cb_uint(&b, osd_messages_count());
         cb_text(&b, "added"); cb_int(&b, added);
         send_frame(x->c, &b);
         cb_free(&b);
@@ -136,9 +136,9 @@ size_t desktop_broadcast(const char *kind, int64_t ask, const char *text, const 
 }
 
 /* The System object's Terminal (v0.3-design 8), for text-mode programs. */
-void terminal_from_system(wpo_object *o)
+void terminal_from_system(osdo_object *o)
 {
-    char *t = WPSetup_wpQuerySettings(o), choice[64] = "", cmd[1024] = "";
+    char *t = OsdSetup_osdQuerySettings(o), choice[64] = "", cmd[1024] = "";
     for (char *q = t, *l; q && (l = strsep(&q, "\n"));) {
         char *tab = strchr(l, '\t');
         if (!tab) continue;
@@ -147,17 +147,17 @@ void terminal_from_system(wpo_object *o)
         else if (!strcmp(l, "terminal_command")) snprintf(cmd, sizeof cmd, "%s", tab + 1);
     }
     free(t);
-    wps_terminal_choose(choice, cmd);
+    osd_terminal_choose(choice, cmd);
 }
 
-void on_object_changed(wpo_object *o)
+void on_object_changed(osdo_object *o)
 {
-    if (wpo_is_a(o, WPSystemClass)) terminal_from_system(o);
-    if (wpo_is_a(o, WPTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
-    if (wpo_is_a(o, WPSchemeClass)) props_broadcast("schemes");   /* its colours: every window */
-    sobj *rec = wps_sobj_of(o);
-    const char *path = rec ? rec->path : wps_object_path(o);
-    const char *id = wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "";
+    if (osdo_is_a(o, OsdSystemClass)) terminal_from_system(o);
+    if (osdo_is_a(o, OsdTrashCanClass)) trash_broadcast(trash_was_full == 1);   /* (its icons) */
+    if (osdo_is_a(o, OsdSchemeClass)) props_broadcast("schemes");   /* its colours: every window */
+    sobj *rec = osd_sobj_of(o);
+    const char *path = rec ? rec->path : osd_object_path(o);
+    const char *id = osdo_is_a(o, OsdObjectClass) ? OsdObject_data(o)->id : "";
     for (struct sub *x = subs; x; x = x->next) {
         bool hit = false;
         for (size_t i = 0; i < x->ntargets && !hit; i++)
@@ -166,9 +166,9 @@ void on_object_changed(wpo_object *o)
         /* a central object (no file): the folders listing it, e.g. System
          * Setup's objects renamed - their windows showed the old title */
         if (!hit && rec && rec->central && id[0]) {
-            char nm[WPS_ID_LEN + 16];
+            char nm[OSD_ID_LEN + 16];
             snprintf(nm, sizeof nm, "\x01vobj:%s", id);
-            for (size_t i = 0; i < x->nfolders && !hit; i++) hit = wps_listing_has(x->folders[i], nm);
+            for (size_t i = 0; i < x->nfolders && !hit; i++) hit = osd_listing_has(x->folders[i], nm);
         }
         if (!hit || x->c->dead) continue;
         cbuf b;
@@ -182,14 +182,14 @@ void on_object_changed(wpo_object *o)
      * not reach the desktop's shadow of it) */
     if (!id[0]) return;
     struct shadow_ids sh = { 0 };
-    wps_db_vobjs_shadowing(db, id, collect_shadow, &sh);
+    osd_db_vobjs_shadowing(db, id, collect_shadow, &sh);
     for (int k = 0; k < sh.n; k++) {
-        char nm[WPS_ID_LEN + 16], addr[WPS_ID_LEN + 8];
+        char nm[OSD_ID_LEN + 16], addr[OSD_ID_LEN + 8];
         snprintf(nm, sizeof nm, "\x01vobj:%s", sh.ids[k]);
         snprintf(addr, sizeof addr, "vobj:%s", sh.ids[k]);
         for (struct sub *x = subs; x; x = x->next) {
             bool hit = false;
-            for (size_t i = 0; i < x->nfolders && !hit; i++) hit = wps_listing_has(x->folders[i], nm);
+            for (size_t i = 0; i < x->nfolders && !hit; i++) hit = osd_listing_has(x->folders[i], nm);
             if (!hit || x->c->dead) continue;
             cbuf b;
             event_head(&b, "object_changed", x->id, 1);
@@ -226,7 +226,7 @@ void on_central_change(const char *folder, const char *id, char kind)
     if (is_schemes_path(folder)) props_broadcast("schemes");   /* a scheme made or gone: the palette's list */
     char p[PATH_MAX + 64];
     snprintf(p, sizeof p, "%s/\x01vobj:%s", folder, id);
-    wps_listing_apply(folder, kind == 'c' ? 'c' : 'd', p + strlen(folder) + 1, NULL, DT_UNKNOWN);
+    osd_listing_apply(folder, kind == 'c' ? 'c' : 'd', p + strlen(folder) + 1, NULL, DT_UNKNOWN);
     on_fs_event(kind, "", p);
 }
 
@@ -236,11 +236,11 @@ void on_fs_event(char kind, const char *from, const char *path)
      * file manager): put back, as wpsd finds them by their paths (else the
      * desktop's shadows would follow the folder and wpsd would make a new,
      * empty one). The move back comes as its own event. */
-    if (kind == 'm' && from[0] && path[0] && wps_folder(from) && access(from, F_OK) != 0) {
+    if (kind == 'm' && from[0] && path[0] && osd_folder(from) && access(from, F_OK) != 0) {
         if (rename(path, from) == 0) { log_msg("%s is WPS's own folder: moved back from %s", from, path); return; }
         log_msg("%s is WPS's own folder, moved to %s: cannot move it back (%s)", from, path, strerror(errno));
     }
-    if (kind == 'm') wps_launch_moved(from, path);
+    if (kind == 'm') osd_launch_moved(from, path);
     trash_check(path);
     if (kind == 'm') trash_check(from);
     /* A folder moved or renamed: windows open on it (or inside it) follow,
@@ -262,19 +262,19 @@ void on_fs_event(char kind, const char *from, const char *path)
             const char *f = x->folders[i];
             bool in_new = path[0] && in_folder(path, f), in_old = from[0] && in_folder(from, f);
             /* lock files are not listed (only their in-use emphasis shows) */
-            if (in_new && wps_is_lock_file(strrchr(path, '/') + 1)) in_new = false;
-            if (in_old && wps_is_lock_file(strrchr(from, '/') + 1)) in_old = false;
+            if (in_new && osd_is_lock_file(strrchr(path, '/') + 1)) in_new = false;
+            if (in_old && osd_is_lock_file(strrchr(from, '/') + 1)) in_old = false;
             if (!in_new && !in_old) continue;
             cbuf b;
             /* version: the folder's listing after this change (0: read it again) */
-            uint64_t ver = wps_listing_version(f);
+            uint64_t ver = osd_listing_version(f);
             if (kind == 'm' && in_new && in_old) {
                 event_head(&b, "object_moved", x->id, 5);
                 cb_text(&b, "folder"); cb_text(&b, f);
                 cb_text(&b, "from"); cb_text(&b, strrchr(from, '/') + 1);
                 cb_text(&b, "to"); cb_text(&b, strrchr(path, '/') + 1);
                 cb_text(&b, "version"); cb_uint(&b, ver);
-                cb_text(&b, "index"); cb_int(&b, wps_listing_last_index(f));   /* where it is, by position */
+                cb_text(&b, "index"); cb_int(&b, osd_listing_last_index(f));   /* where it is, by position */
             } else {
                 bool added = kind == 'c' || (kind == 'm' && in_new);
                 const char *p = added ? path : (kind == 'm' ? from : path);
@@ -283,7 +283,7 @@ void on_fs_event(char kind, const char *from, const char *path)
                 cb_text(&b, "folder"); cb_text(&b, f);
                 cb_text(&b, "name"); cb_text(&b, nm);
                 cb_text(&b, "version"); cb_uint(&b, ver);
-                cb_text(&b, "index"); cb_int(&b, wps_listing_last_index(f));   /* where, by position (added: at the end) */
+                cb_text(&b, "index"); cb_int(&b, osd_listing_last_index(f));   /* where, by position (added: at the end) */
                 struct stat st;   /* added: its type, as a listing gives it */
                 cb_text(&b, "type");
                 cb_text(&b, !added ? "" : nm[0] == '\x01' ? "object" : lstat(p, &st) != 0 ? "other" : S_ISDIR(st.st_mode) ? "folder" :
@@ -317,7 +317,7 @@ void on_job(int64_t jid)
         if (!x->jobs || x->c->dead) continue;
         cbuf st;
         cb_init(&st);
-        if (!wps_job_status(jid, &st)) { cb_free(&st); return; }
+        if (!osd_job_status(jid, &st)) { cb_free(&st); return; }
         cbuf b;
         event_head(&b, "job", x->id, 1);
         cb_text(&b, "status");

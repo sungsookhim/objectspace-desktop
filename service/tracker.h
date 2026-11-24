@@ -22,24 +22,24 @@
  *
  * A catch-up scan finds objects that moved while nothing was watching.
  */
-#ifndef WPS_TRACKER_H
-#define WPS_TRACKER_H
+#ifndef OSD_TRACKER_H
+#define OSD_TRACKER_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "db.h"
 #include "env.h"
-#include "wpo_loop.h"
+#include "osdo_loop.h"
 
-void wps_tracker_init(wpo_loop *loop, const wps_env *env, wps_db *db);
-void wps_tracker_shutdown(void);
+void osd_tracker_init(osdo_loop *loop, const osd_env *env, osd_db *db);
+void osd_tracker_shutdown(void);
 
 /* Make sure events for this folder's entries arrive (loop thread). */
-void wps_tracker_watch(const char *dir);
+void osd_tracker_watch(const char *dir);
 
 /* Run the catch-up scan now; `done` (may be NULL) runs when it finishes. */
-void wps_tracker_scan(void (*done)(void *arg, const char *report), void *arg);
+void osd_tracker_scan(void (*done)(void *arg, const char *report), void *arg);
 
 typedef struct {
     const char *mode;        /* "wps-watchd" or "inotify" */
@@ -48,19 +48,19 @@ typedef struct {
     uint64_t watched;        /* folders watched */
     uint64_t scans;
     uint64_t missing;        /* objects the last scan could not find */
-} wps_tracker_stats;
+} osd_tracker_stats;
 
-void wps_tracker_get_stats(wps_tracker_stats *out);
+void osd_tracker_get_stats(osd_tracker_stats *out);
 
 /* An object record is going away: drop pending pairings that refer to it. */
 struct sobj;
-void wps_tracker_forget(struct sobj *s);
+void osd_tracker_forget(struct sobj *s);
 /* Folder content changes, for event subscribers (loop thread):
  * kind 'c' created, 'd' deleted, 'm' moved (from -> path; either may be ""
  * when outside the folders in view). */
-extern void (*wps_on_fs_event)(char kind, const char *from, const char *path);
+extern void (*osd_on_fs_event)(char kind, const char *from, const char *path);
 
 /* An object record was created for `path`. */
-void wps_tracker_object_at(const char *path);
+void osd_tracker_object_at(const char *path);
 
 #endif

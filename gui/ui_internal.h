@@ -1,6 +1,6 @@
 /* Internal to libwpsui: surface and app structures. */
-#ifndef WPS_UI_INTERNAL_H
-#define WPS_UI_INTERNAL_H
+#ifndef OSD_UI_INTERNAL_H
+#define OSD_UI_INTERNAL_H
 
 #include <pthread.h>
 #include <wayland-client.h>

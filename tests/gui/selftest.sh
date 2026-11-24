@@ -1,11 +1,11 @@
 #!/bin/sh
-# One GUI self-test (WPS_SHELL_SELFTEST=MODE): a private wpsd, then the
+# One GUI self-test (OSD_SHELL_SELFTEST=MODE): a private wpsd, then the
 # ASan shell in that mode on a fresh folder <D> prepared by SETUP (run in
 # <D>). Run it inside a compositor that shows its windows, e.g.
 #   tests/gnome/with-gnome.sh -- tests/gui/selftest.sh live 'echo a > a.txt'
 # Settings: SHELL_ARGS (before <D>, e.g. --desktop), TEMPLATES=1 (<D>/Templates
-# is the templates folder, opened as a second window), WPS_WALLPAPER,
-# WPS_SHELL_SHOT=file.png (with WPS_UI_NO_LAYER=1), KEEP=1 (keep <D> and the logs),
+# is the templates folder, opened as a second window), OSD_WALLPAPER,
+# OSD_SHELL_SHOT=file.png (with OSD_UI_NO_LAYER=1), KEEP=1 (keep <D> and the logs),
 # AFTER="sub ..." (folders in <D> opened after it, as more windows),
 # SELFTEST_SECS (the shell's time limit, 60).
 # Modes and their set-ups: see the self-tests in gui/shell/wps-shell.c.
@@ -23,16 +23,16 @@ printf '#!/bin/sh\nsleep 2\n' > "$W/hold.sh"; chmod +x "$W/hold.sh"
 printf '[Desktop Entry]\nType=Application\nName=Hold\nExec=%s %%f\n' "$W/hold.sh" > "$W/xdg/data/applications/wps-hold.desktop"
 printf '[Default Applications]\ntext/plain=wps-hold.desktop\n' > "$W/xdg/config/mimeapps.list"
 [ -n "$2" ] && (cd "$W/d" && sh -c "$2")
-export WPS_TEMPLATES_DIR="$W/templates"   # never the user's own
-export WPS_SETUP_DIR="$W/setup"            # nor their settings objects
-export WPS_LAUNCHPAD_DIR="$W/launchpad"    # nor their LaunchPad
-[ -n "$TEMPLATES" ] && export WPS_TEMPLATES_DIR="$W/d/Templates" && SHELL_ARGS="$W/d/Templates"
+export OSD_TEMPLATES_DIR="$W/templates"   # never the user's own
+export OSD_SETUP_DIR="$W/setup"            # nor their settings objects
+export OSD_LAUNCHPAD_DIR="$W/launchpad"    # nor their LaunchPad
+[ -n "$TEMPLATES" ] && export OSD_TEMPLATES_DIR="$W/d/Templates" && SHELL_ARGS="$W/d/Templates"
 export LSAN_OPTIONS="suppressions=$PWD/tests/gui/lsan.supp:print_suppressions=0"
-export WPS_CONFIG_DIR="$W/config" WPS_STATE_DIR="$W/state" WPS_RUNTIME_DIR="$RT" WPS_SAVE_DELAY_MS=100
+export OSD_CONFIG_DIR="$W/config" OSD_STATE_DIR="$W/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
 XDG_CONFIG_HOME="$W/xdg/config" XDG_DATA_HOME="$W/xdg/data" XDG_CONFIG_DIRS="$W/xdg/sys" build/wpsd 2> "$W/wpsd.log" &
 P=$!
 for i in $(seq 50); do build/wpsctl ping >/dev/null 2>&1 && break; sleep 0.1; done
-WPS_SELFTEST_TRASH="$W/xdg/data/Trash" WPS_SHELL_SELFTEST=$1 XDG_CACHE_HOME="$W/cache" timeout ${SELFTEST_SECS:-60} build/wps-shell-asan ${SHELL_ARGS:-} "$W/d" $(for a in $AFTER; do printf "%s " "$W/d/$a"; done) 2>&1 | grep -E "selftest|ERROR|Sanitizer|runtime error${SELFTEST_GREP:+|$SELFTEST_GREP}" || true
+OSD_SELFTEST_TRASH="$W/xdg/data/Trash" OSD_SHELL_SELFTEST=$1 XDG_CACHE_HOME="$W/cache" timeout ${SELFTEST_SECS:-60} build/wps-shell-asan ${SHELL_ARGS:-} "$W/d" $(for a in $AFTER; do printf "%s " "$W/d/$a"; done) 2>&1 | grep -E "selftest|ERROR|Sanitizer|runtime error${SELFTEST_GREP:+|$SELFTEST_GREP}" || true
 build/wpsctl shutdown >/dev/null 2>&1 || true
 wait $P || true
 grep -E "ERROR|runtime error" "$W/wpsd.log" || true

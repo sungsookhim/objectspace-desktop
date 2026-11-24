@@ -28,10 +28,10 @@ static bool io(int fd, void *buf, size_t n, bool wr)
     return true;
 }
 
-static int connect_wpsd(void)
+static int connect_osdd(void)
 {
     char path[4096];
-    const char *s = getenv("WPS_SOCKET"), *rt = getenv("WPS_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
+    const char *s = getenv("OSD_SOCKET"), *rt = getenv("OSD_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
     else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
     else if (xr && *xr) snprintf(path, sizeof path, "%s/wps.sock", xr);
@@ -57,7 +57,7 @@ static const char *setting(const cv *objects, const char *cls, const char *key)
 
 bool term_setup_read(char *font, size_t fn)
 {
-    int fd = connect_wpsd();
+    int fd = connect_osdd();
     if (fd < 0) return false;
     cbuf b;
     cb_init(&b);
@@ -90,15 +90,15 @@ bool term_setup_read(char *font, size_t fn)
         const char *t = cv_text(&sch->items[i], "title"), *v = cv_text(&sch->items[i], "values");
         if (t && *t && v) ui_scheme_define(t, "classic", v);
     }
-    const char *use = objs ? setting(objs, "WPSchemePalette", "scheme") : NULL;
+    const char *use = objs ? setting(objs, "OsdSchemePalette", "scheme") : NULL;
     if (!use || !ui_scheme_use(use)) ui_scheme_use("classic");
     /* the System's frame options (corners, border, title layout ...) */
-    const cv *so = objs ? cv_get(objs, "WPSystem") : NULL, *st = so ? cv_get(so, "settings") : NULL;
+    const cv *so = objs ? cv_get(objs, "OsdSystem") : NULL, *st = so ? cv_get(so, "settings") : NULL;
     for (size_t i = 0; st && st->k == CV_MAP && i < st->n; i++) {
         const cv *k = &st->items[2 * i], *v = &st->items[2 * i + 1];
         if (k->k == CV_TEXT && v->k == CV_TEXT) ui_scheme_set_option(k->s, v->s);
     }
-    const char *tf = objs ? setting(objs, "WPSystem", "font_terminal") : NULL;
+    const char *tf = objs ? setting(objs, "OsdSystem", "font_terminal") : NULL;
     if (tf && *tf && ui_font_valid(tf)) snprintf(font, fn, "%s", tf);
     cv_free(&m);
     return true;

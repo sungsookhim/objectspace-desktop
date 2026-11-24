@@ -44,11 +44,11 @@ run_comp() {   # MODE ENV SETUP
     RT=$(mktemp -d "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/wps-golden-XXXX"); chmod 700 "$RT"
     cat > "$W/cmd" <<EOC
 cd '$REPO'
-env WPS_NO_GSETTINGS=1 $2 tests/gui/selftest.sh '$1' "\$(cat '$W/setup')" > '$W/out.txt' 2>&1
+env OSD_NO_GSETTINGS=1 $2 tests/gui/selftest.sh '$1' "\$(cat '$W/setup')" > '$W/out.txt' 2>&1
 kill \$(cat '$W/pid') 2>/dev/null
 EOC
     printf '%s' "$3" > "$W/setup"
-    XDG_RUNTIME_DIR=$RT WPS_COMP_HEADLESS=1280x800 timeout 120 dbus-run-session -- sh -c \
+    XDG_RUNTIME_DIR=$RT OSD_COMP_HEADLESS=1280x800 timeout 120 dbus-run-session -- sh -c \
         "echo \$\$ > '$W/pid'; exec '$REPO/build/wps-compositor' -s 'sh $W/cmd'" > "$W/comp.log" 2>&1
     cat "$W/out.txt" 2>/dev/null
     rm -rf "$RT"

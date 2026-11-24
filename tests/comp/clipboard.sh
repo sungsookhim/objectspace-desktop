@@ -20,7 +20,7 @@ cat > "$S/script" <<EOS
 9.7 key ctrl+c
 12 quit
 EOS
-DESKENV="WPS_WARPCENTER=1 WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1" SECS=15 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_WARPCENTER=1 OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1" SECS=15 tests/comp/run.sh "$S/script" \
     "sleep 7; wl-paste -n > '$S/out1.txt' 2>&1; wl-copy xyz; sleep 4; wl-paste -n > '$S/out2.txt' 2>&1" > "$S/out.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

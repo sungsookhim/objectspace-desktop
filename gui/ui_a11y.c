@@ -12,7 +12,7 @@
  * follow the focus, not explore the window.
  *
  * The AT-SPI bus is the one org.a11y.Bus gives on the session bus; with
- * none (or WPS_NO_A11Y), nothing is done.
+ * none (or OSD_NO_A11Y), nothing is done.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -717,8 +717,8 @@ static int embedded(sd_bus_message *m, void *ud, sd_bus_error *e)
 void ui_a11y_init(ui_app *a)
 {
     app = a;
-    debug = getenv("WPS_DEBUG_A11Y") != NULL;
-    if (getenv("WPS_NO_A11Y")) return;
+    debug = getenv("OSD_DEBUG_A11Y") != NULL;
+    if (getenv("OSD_NO_A11Y")) return;
     sd_bus *session = NULL;
     sd_bus_message *rep = NULL;
     sd_bus_error err = SD_BUS_ERROR_NULL;

@@ -10,8 +10,8 @@
  * background is GNOME's primary colour. Changes made in GNOME Settings
  * are followed through `gsettings monitor`.
  */
-#ifndef WPS_WALLPAPER_H
-#define WPS_WALLPAPER_H
+#ifndef OSD_WALLPAPER_H
+#define OSD_WALLPAPER_H
 
 #include <cairo.h>
 

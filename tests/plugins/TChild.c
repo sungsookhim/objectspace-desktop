@@ -5,14 +5,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-void TChild__wpInitData(wpo_object *self)
+void TChild__osdInitData(osdo_object *self)
 {
-    TChild_parent_wpInitData(self);
+    TChild_parent_osdInitData(self);
     TChild_data(self)->c = 77;
     TBase_tSetA(self, 5);
 }
 
-char *TChild__tDescribe(wpo_object *self)
+char *TChild__tDescribe(osdo_object *self)
 {
     char *base = TChild_parent_tDescribe(self);
     char *s = malloc(128);
@@ -21,10 +21,10 @@ char *TChild__tDescribe(wpo_object *self)
     return s;
 }
 
-int64_t TChild__tGetC(wpo_object *self) { return TChild_data(self)->c; }
+int64_t TChild__tGetC(osdo_object *self) { return TChild_data(self)->c; }
 
-wpo_status wpo_plugin_init(uint32_t abi)
+osdo_status osdo_plugin_init(uint32_t abi)
 {
-    if (abi != WPO_ABI_VERSION) return WPO_EVERSION;
+    if (abi != OSDO_ABI_VERSION) return OSDO_EVERSION;
     return TChild_register();
 }

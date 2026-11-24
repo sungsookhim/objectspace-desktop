@@ -26,8 +26,8 @@
 #define MAX_RUNNING 2
 #define CHUNK_BYTES (64u << 20)
 
-static wpo_loop *loop;
-static wps_db *db;
+static osdo_loop *loop;
+static osd_db *db;
 static char owner[16];   /* start of the WPS identity: temporary names are per user */
 
 /* ------------------------------------------------------------ selections */
@@ -45,7 +45,7 @@ static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;   /* selections and the j
 static struct selection *selections;
 static int64_t next_sel = 1;
 
-int64_t wps_select(const char *folder, bool all, const char *const *names, size_t n)
+int64_t osd_select(const char *folder, bool all, const char *const *names, size_t n)
 {
     struct selection *s = calloc(1, sizeof *s);
     if (!s) return -1;
@@ -64,7 +64,7 @@ int64_t wps_select(const char *folder, bool all, const char *const *names, size_
     return s->id;
 }
 
-bool wps_selection_each(int64_t selection, bool (*fn)(const char *path, void *user), void *user)
+bool osd_selection_each(int64_t selection, bool (*fn)(const char *path, void *user), void *user)
 {
     /* (a copy: the walk calls out, and may take long) */
     char folder[PATH_MAX];
@@ -169,12 +169,12 @@ static struct job *job_by_id(int64_t id)
     return NULL;
 }
 
-void (*wps_on_job)(int64_t id);
+void (*osd_on_job)(int64_t id);
 
 static void job_event(void *arg)   /* loop thread */
 {
     int64_t *id = arg;
-    if (wps_on_job) wps_on_job(*id);
+    if (osd_on_job) osd_on_job(*id);
     free(id);
 }
 
@@ -190,7 +190,7 @@ static void journal(struct job *j, bool force)   /* caller holds mu */
     j->journaled_items = j->items_done;
     /* Subscribers hear about it on the loop thread. */
     int64_t *eid = malloc(sizeof *eid);
-    if (eid && loop) { *eid = j->id; wpo_loop_post(loop, WPO_Q_RESULTS, "job event", job_event, eid); }
+    if (eid && loop) { *eid = j->id; osdo_loop_post(loop, OSDO_Q_RESULTS, "job event", job_event, eid); }
     else free(eid);
     char *sel = encode_selection(&j->sel);
     char src[PATH_MAX], dest[PATH_MAX], kind[8], state[32];
@@ -200,7 +200,7 @@ static void journal(struct job *j, bool force)   /* caller holds mu */
     snprintf(state, sizeof state, "%s", state_names[j->state]);
     int64_t items = (int64_t)j->items_done, bytes = (int64_t)j->bytes_done, id = j->id;
     pthread_mutex_unlock(&mu);   /* the database has its own lock */
-    wps_db_job_put(db, id, kind, src, sel, dest, state, items, bytes);
+    osd_db_job_put(db, id, kind, src, sel, dest, state, items, bytes);
     pthread_mutex_lock(&mu);
     free(sel);
 }
@@ -243,7 +243,7 @@ static void copy_xattrs(int sfd, int dfd, bool keep_id)
     for (ssize_t o = 0; n > 0 && o < n; o += (ssize_t)strlen(names + o) + 1) {
         const char *nm = names + o;
         if (strncmp(nm, "user.", 5) != 0) continue;            /* SELinux labels etc. are the system's */
-        if (!keep_id && strcmp(nm, WPS_ATTR_ID) == 0) continue;  /* a copy is a new object */
+        if (!keep_id && strcmp(nm, OSD_ATTR_ID) == 0) continue;  /* a copy is a new object */
         char val[65536];
         ssize_t vl = fgetxattr(sfd, nm, val, sizeof val);
         if (vl >= 0) fsetxattr(dfd, nm, val, (size_t)vl, 0);
@@ -416,14 +416,14 @@ static int place(struct job *j, const char *from, const char *name, bool is_tmp)
     }
 }
 
-void (*wps_on_job_placed)(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
+void (*osd_on_job_placed)(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
 
 struct placed_post { char dest[PATH_MAX]; char **paths; int64_t *x, *y; size_t n; };
 
 static void placed_now(void *arg)   /* loop thread */
 {
     struct placed_post *p = arg;
-    if (wps_on_job_placed && p->n) wps_on_job_placed(p->dest, p->paths, p->x, p->y, p->n);
+    if (osd_on_job_placed && p->n) osd_on_job_placed(p->dest, p->paths, p->x, p->y, p->n);
     for (size_t i = 0; i < p->n; i++) free(p->paths[i]);
     free(p->paths);
     free(p->x);
@@ -444,7 +444,7 @@ static void finish(struct job *j, jstate st)
         j->placed = NULL;
         j->placed_x = j->placed_y = NULL;
         j->nplaced = 0;
-        wpo_loop_post(loop, WPO_Q_RESULTS, "place dropped items", placed_now, p);
+        osdo_loop_post(loop, OSDO_Q_RESULTS, "place dropped items", placed_now, p);
     }
     pthread_mutex_unlock(&mu);
     pthread_mutex_lock(&mu);
@@ -474,11 +474,11 @@ static jstate trash_or_delete(struct job *j, char **items, size_t nitems)
         pthread_mutex_unlock(&mu);
         int rc;
         if (trash) {
-            rc = wps_trash(src, to, sizeof to);
+            rc = osd_trash(src, to, sizeof to);
         } else {
             struct stat st;
             rc = lstat(src, &st) < 0 ? -errno : rm_tree(src) ? -errno : 0;
-            if (rc == 0) wps_trash_forget_info(src);
+            if (rc == 0) osd_trash_forget_info(src);
         }
         pthread_mutex_lock(&mu);
         if (rc == -ENOENT) push_name(&j->missing, &j->nmissing, name);
@@ -586,7 +586,7 @@ static void *job_main(void *arg)
                 rc = 0;
             } else {
                 /* Unique per user and item: two users' jobs may write into one folder. */
-                snprintf(tmp, sizeof tmp, "%s/" WPS_SHADOW_TMP "%s-job%lld-%zu", j->dest, owner, (long long)j->id, i);
+                snprintf(tmp, sizeof tmp, "%s/" OSD_SHADOW_TMP "%s-job%lld-%zu", j->dest, owner, (long long)j->id, i);
                 rm_tree(tmp);   /* left by a crash mid-item */
                 rc = copy_tree(j, src, tmp, move);
                 if (rc == 0) rc = place(j, tmp, name, true);
@@ -652,7 +652,7 @@ static struct job *new_job(const char *kind, const struct selection *s, const ch
     return j;
 }
 
-int64_t wps_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen)
+int64_t osd_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen)
 {
     if (strcmp(kind, "move") && strcmp(kind, "copy") && strcmp(kind, "trash") && strcmp(kind, "delete")) {
         snprintf(err, errlen, "kind is move, copy, trash or delete");
@@ -701,10 +701,10 @@ static bool control(int64_t id, int what, const char *decision, bool all)
     return ok;
 }
 
-bool wps_job_cancel(int64_t id) { return control(id, 0, NULL, false); }
-bool wps_job_pause(int64_t id) { return control(id, 1, NULL, false); }
-bool wps_job_resume(int64_t id) { return control(id, 2, NULL, false); }
-bool wps_job_decide(int64_t id, const char *decision, bool all) { return control(id, 3, decision, all); }
+bool osd_job_cancel(int64_t id) { return control(id, 0, NULL, false); }
+bool osd_job_pause(int64_t id) { return control(id, 1, NULL, false); }
+bool osd_job_resume(int64_t id) { return control(id, 2, NULL, false); }
+bool osd_job_decide(int64_t id, const char *decision, bool all) { return control(id, 3, decision, all); }
 
 static void put_names(cbuf *b, char **v, size_t n)
 {
@@ -731,7 +731,7 @@ static void put_job(cbuf *b, struct job *j)
     cb_text(b, "error"); j->error[0] ? cb_text(b, j->error) : cb_null(b);
 }
 
-bool wps_job_status(int64_t id, cbuf *out)
+bool osd_job_status(int64_t id, cbuf *out)
 {
     pthread_mutex_lock(&mu);
     bool ok = true;
@@ -785,12 +785,12 @@ static void restore_row(int64_t id, const char *kind, const char *src, const cha
     jobs = j;
 }
 
-void wps_jobs_init(wpo_loop *l, wps_db *d, const char *who)
+void osd_jobs_init(osdo_loop *l, osd_db *d, const char *who)
 {
     loop = l;
     db = d;
     snprintf(owner, sizeof owner, "%.8s", who);
-    wps_db_jobs_list(db, restore_row, NULL);
+    osd_db_jobs_list(db, restore_row, NULL);
     pthread_mutex_lock(&mu);
     for (struct job *j = jobs; j; j = j->next)
         if (j->state == J_INTERRUPTED) journal(j, true);
@@ -798,7 +798,7 @@ void wps_jobs_init(wpo_loop *l, wps_db *d, const char *who)
     pthread_mutex_unlock(&mu);
 }
 
-void wps_jobs_shutdown(bool logout)
+void osd_jobs_shutdown(bool logout)
 {
     pthread_mutex_lock(&mu);
     for (struct job *j = jobs; j; j = j->next) {
@@ -844,7 +844,7 @@ void wps_jobs_shutdown(bool logout)
     pthread_mutex_unlock(&mu);
 }
 
-void wps_job_set_positions(int64_t id, const char *const *names, const int64_t *x, const int64_t *y, size_t n)
+void osd_job_set_positions(int64_t id, const char *const *names, const int64_t *x, const int64_t *y, size_t n)
 {
     pthread_mutex_lock(&mu);
     struct job *j = job_by_id(id);

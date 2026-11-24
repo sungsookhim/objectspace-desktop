@@ -1,0 +1,10 @@
+# Settings objects (gui-design.md: these settings are objects themselves,
+# like OS/2's System, Sound and Mouse objects and the Scheme Palette): one
+# of each per user, kept centrally in the System Setup folder. Each
+# subclass declares its settings as properties (stored as text in the
+# OsdSetup state), and the GUI reads them all (osdQuerySettings).
+class OsdSetup : OsdAbstract
+version 1.0
+method osdQuerySettings() -> string
+method osdSetSetting(string key, string value) -> bool
+override osdModifyPopupMenu

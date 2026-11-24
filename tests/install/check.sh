@@ -48,26 +48,26 @@ for t in wps-flat wps-outline classic; do
         { echo "FAIL: icon theme $t"; exit 1; }
 done
 echo "ok   the icon themes (wps-flat, wps-outline, classic)"
-for f in include/wps/wpo.h include/wps/wps_classes.h include/wps/WPObject.h include/wps/WPDataFile.h \
-         share/wps/sdk/wpoc.py share/wps/sdk/README.md share/wps/sdk/classes/WPObject.wpi share/wps/sdk/sample/Makefile; do
+for f in include/wps/osdo.h include/wps/osd_classes.h include/wps/OsdObject.h include/wps/OsdDataFile.h \
+         share/wps/sdk/osdc.py share/wps/sdk/README.md share/wps/sdk/classes/OsdObject.osdi share/wps/sdk/sample/Makefile; do
     [ -f "$R/usr/$f" ] || { echo "FAIL: the SDK: $f"; exit 1; }
 done
-echo "ok   the plug-in SDK (headers, interfaces, wpoc, sample)"
+echo "ok   the plug-in SDK (headers, interfaces, osdc, sample)"
 ls "$R/usr/share/man/man1/"wpsctl.1* >/dev/null 2>&1 || { echo "FAIL: man pages"; exit 1; }
-grep -q "^LIBEXEC=\${WPS_LIBEXEC:-/usr/libexec/wps}" "$R/usr/bin/wps-session" || { echo "FAIL: wps-session's paths"; exit 1; }
+grep -q "^LIBEXEC=\${OSD_LIBEXEC:-/usr/libexec/wps}" "$R/usr/bin/wps-session" || { echo "FAIL: wps-session's paths"; exit 1; }
 grep -q "^ExecStart=/usr/libexec/wps/wpsd$" "$R/usr/lib/systemd/user/wpsd.service" || { echo "FAIL: wpsd.service"; exit 1; }
 echo "ok   paths in wps-session and wpsd.service"
 # the installed programs, headless, with a private service
 T=$(mktemp -d); RT=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/wps-inst-XXXX")
 mkdir -p "$T/desk" "$T/xdg/config" "$T/xdg/data"
-export WPS_CONFIG_DIR="$T/config" WPS_STATE_DIR="$T/state" WPS_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" \
-       WPS_TEMPLATES_DIR="$T/templates" WPS_SETUP_DIR="$T/setup" WPS_LAUNCHPAD_DIR="$T/launchpad"
+export OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" \
+       OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHPAD_DIR="$T/launchpad"
 "$R/usr/libexec/wps/wpsd" 2>"$T/wpsd.log" & WP=$!
 for i in $(seq 50); do "$R/usr/bin/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
 v=$("$R/usr/bin/wpsctl" ping)
 case $v in *'"version":"'$(cat VERSION)'"'*) echo "ok   the installed wpsd answers, version $(cat VERSION)";; *) echo "FAIL: ping: $v"; kill $WP; exit 1;; esac
 printf '3 windows\n3.5 quit\n' > "$T/s"
-out=$(WPS_COMP_HEADLESS=800x600 WPS_COMP_SCRIPT="$T/s" timeout 20 "$R/usr/libexec/wps/wps-compositor" -d "'$R/usr/bin/wps-shell' --desktop '$T/desk'" 2>&1 || true)
+out=$(OSD_COMP_HEADLESS=800x600 OSD_COMP_SCRIPT="$T/s" timeout 20 "$R/usr/libexec/wps/wps-compositor" -d "'$R/usr/bin/wps-shell' --desktop '$T/desk'" 2>&1 || true)
 "$R/usr/bin/wpsctl" shutdown >/dev/null 2>&1; wait $WP 2>/dev/null || true
 rm -rf "$T" "$RT"
 echo "$out" | grep -q "window 'Desktop' app org.wps.Desktop" || { echo "FAIL: no desktop from the installed programs"; echo "$out" | tail -5; exit 1; }

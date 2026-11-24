@@ -26,9 +26,9 @@ struct find {
     char folder[PATH_MAX];
     char pattern[256];
     bool subfolders;
-    wps_find_kind kind;
+    osd_find_kind kind;
     size_t limit;
-    wps_find_fn fn;
+    osd_find_fn fn;
     void *arg;
     atomic_bool cancel;
 };
@@ -44,14 +44,14 @@ struct batch {
     int err;
 };
 
-static wpo_loop *loop;
+static osdo_loop *loop;
 static struct find *running;
 static int64_t next_id = 1;
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t idle = PTHREAD_COND_INITIALIZER;
 static int threads;               /* search threads still running */
 
-bool wps_find_match(const char *name, const char *pattern)
+bool osd_find_match(const char *name, const char *pattern)
 {
     if (!*pattern) return true;
     if (strpbrk(pattern, "*?[")) return fnmatch(pattern, name, FNM_CASEFOLD | FNM_PERIOD) == 0;
@@ -81,8 +81,8 @@ static void deliver(void *arg)
 {
     struct batch *b = arg;
     struct find *f = b->f;
-    wps_found *items = calloc(b->n ? b->n : 1, sizeof *items);
-    for (size_t i = 0; i < b->n; i++) items[i] = (wps_found){ b->paths[i], b->types[i], b->sizes[i], b->mtimes[i] };
+    osd_found *items = calloc(b->n ? b->n : 1, sizeof *items);
+    for (size_t i = 0; i < b->n; i++) items[i] = (osd_found){ b->paths[i], b->types[i], b->sizes[i], b->mtimes[i] };
     f->fn(f->arg, f->id, items, b->n, b->done, b->scanned, b->truncated, b->err);
     free(items);
     if (b->done) {
@@ -93,7 +93,7 @@ static void deliver(void *arg)
     batch_free(b);
 }
 
-bool wps_find_cancel(int64_t id)
+bool osd_find_cancel(int64_t id)
 {
     for (struct find *f = running; f; f = f->next)
         if (f->id == id) { atomic_store(&f->cancel, true); return true; }
@@ -121,7 +121,7 @@ static void post(struct walk *w, bool done)
 {
     w->b->scanned = w->scanned;
     w->b->done = done;
-    wpo_loop_post(loop, WPO_Q_RESULTS, "find results", deliver, w->b);
+    osdo_loop_post(loop, OSDO_Q_RESULTS, "find results", deliver, w->b);
     w->b = done ? NULL : batch_new(w->f);
     w->last_post = now_ms();
 }
@@ -177,11 +177,11 @@ static void walk_dir(struct walk *w, const char *dir, int depth)
         }
         char path[PATH_MAX];
         if ((size_t)snprintf(path, sizeof path, "%s/%s", strcmp(dir, "/") ? dir : "", e->d_name) >= sizeof path) continue;
-        if (wps_find_match(e->d_name, f->pattern)) {
+        if (osd_find_match(e->d_name, f->pattern)) {
             bool want = true;
-            if (f->kind == WPS_FIND_FOLDER) want = t == DT_DIR;
-            else if (f->kind == WPS_FIND_FILE) want = t == DT_REG;
-            else if (f->kind == WPS_FIND_PROGRAM) {
+            if (f->kind == OSD_FIND_FOLDER) want = t == DT_DIR;
+            else if (f->kind == OSD_FIND_FILE) want = t == DT_REG;
+            else if (f->kind == OSD_FIND_PROGRAM) {
                 size_t nl = strlen(e->d_name);
                 if (t != DT_REG) want = false;
                 else if (nl > 8 && !strcmp(e->d_name + nl - 8, ".desktop")) want = true;
@@ -221,8 +221,8 @@ static void *thread_main(void *arg)
     return NULL;
 }
 
-int64_t wps_find_start(const char *folder, const char *pattern, bool subfolders, wps_find_kind kind, size_t limit,
-                       wps_find_fn fn, void *arg)
+int64_t osd_find_start(const char *folder, const char *pattern, bool subfolders, osd_find_kind kind, size_t limit,
+                       osd_find_fn fn, void *arg)
 {
     struct find *f = calloc(1, sizeof *f);
     f->id = next_id++;
@@ -251,15 +251,15 @@ int64_t wps_find_start(const char *folder, const char *pattern, bool subfolders,
         struct batch *b = batch_new(f);
         b->done = true;
         b->err = EAGAIN;
-        wpo_loop_post(loop, WPO_Q_RESULTS, "find results", deliver, b);
+        osdo_loop_post(loop, OSDO_Q_RESULTS, "find results", deliver, b);
     }
     pthread_attr_destroy(&at);
     return f->id;
 }
 
-void wps_find_init(wpo_loop *l) { loop = l; }
+void osd_find_init(osdo_loop *l) { loop = l; }
 
-void wps_find_shutdown(void)
+void osd_find_shutdown(void)
 {
     for (struct find *f = running; f; f = f->next) atomic_store(&f->cancel, true);
     pthread_mutex_lock(&mu);

@@ -8,8 +8,8 @@
  * (or a double click): Edit colour... (hue and saturation, brightness,
  * #rrggbb).
  */
-#ifndef WPS_COLORPAL_H
-#define WPS_COLORPAL_H
+#ifndef OSD_COLORPAL_H
+#define OSD_COLORPAL_H
 
 #include <stdbool.h>
 #include <stddef.h>

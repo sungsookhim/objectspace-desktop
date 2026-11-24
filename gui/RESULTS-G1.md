@@ -1,13 +1,13 @@
 # G1 results (2026-11-18)
 
-G1 builds the first part of the widget set ([gui-design.md](../docs/gui-design.md), Widget set 1–3) and `wps-shell` folder windows over `wpsd`. Measured on Fedora with GNOME Shell 51.1 (Wayland, 60 Hz, monitor at 1×; 2× forced with `WPS_UI_SCALE=2`).
+G1 builds the first part of the widget set ([gui-design.md](../docs/gui-design.md), Widget set 1–3) and `wps-shell` folder windows over `wpsd`. Measured on Fedora with GNOME Shell 51.1 (Wayland, 60 Hz, monitor at 1×; 2× forced with `OSD_UI_SCALE=2`).
 
 ## What is in G1
 
 - `libwpsui` (`gui/ui_*.c`): Wayland connection, windows and popups, three buffers per surface, damage-based drawing, scroll layers, input (double clicks, key repeat, cursors, OS/2 button numbering: button 2 is the right button), schemes (classic and dark), text with HarfBuzz and FreeType and a cache of shaped runs.
-- Window frame: sizing border with resize cursors, title bar, system menu button (Maximize/Restore, Minimize, Close), minimize, maximize and close buttons. Square by default; `WPS_UI_CORNER_RADIUS` and `WPS_UI_BUTTONS=hover` try the appearance settings until the scheme objects exist (G3).
+- Window frame: sizing border with resize cursors, title bar, system menu button (Maximize/Restore, Minimize, Close), minimize, maximize and close buttons. Square by default; `OSD_UI_CORNER_RADIUS` and `OSD_UI_BUTTONS=hover` try the appearance settings until the scheme objects exist (G3).
 - Containers: icon view (arranged in a grid) and details view (Title, Name, Size, Last write), over a model of any size. Selection with click, Ctrl, Shift, rubber band (icon view) and keyboard (arrows, Page Up/Down, Home/End, Space, Ctrl+/ and Ctrl+A select all, Ctrl+\ deselect all, Enter opens, Shift+F10 or Menu key for the pop-up menu). Warp-style scroll bar with arrow buttons.
-- Pop-up menus from the service's menu data, with cascades, keyboard navigation and first-letter selection. Folders now have an "Open" cascade (Icon view, Tree view, Details view) as in Warp 4. The GUI carries out well-known items itself (`classes/wps_menu_ids.h`); others go to the service as `menu_select`.
+- Pop-up menus from the service's menu data, with cascades, keyboard navigation and first-letter selection. Folders now have an "Open" cascade (Icon view, Tree view, Details view) as in Warp 4. The GUI carries out well-known items itself (`classes/osd_menu_ids.h`); others go to the service as `menu_select`.
 - `wps-shell FOLDER...`: folder windows that stream the folder from `wpsd`, fetch details for what is on screen, open folders in new windows (double click or Enter), open files and programs through the service, and show the object's title. Ctrl+1 / Ctrl+2 switch between icon and details view; Ctrl+W closes.
 
 ## Speed: a folder of 1,000,000 entries
@@ -28,7 +28,7 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 
 ## Correctness
 
-`WPS_SHELL_VERIFY=<prefix>` makes the benchmark rebuild, every 30 frames, what the compositor shows (the window's last buffer with the layer's visible slice placed on it) and compare it pixel by pixel with the whole window drawn afresh, saving both images on a mismatch. In all eight combinations (with and without layers, 1× and 2×, both views), 152 checks during scrolling and jumping all matched exactly.
+`OSD_SHELL_VERIFY=<prefix>` makes the benchmark rebuild, every 30 frames, what the compositor shows (the window's last buffer with the layer's visible slice placed on it) and compare it pixel by pixel with the whole window drawn afresh, saving both images on a mismatch. In all eight combinations (with and without layers, 1× and 2×, both views), 152 checks during scrolling and jumping all matched exactly.
 
 `tests/test_ui_damage.c` simulates 60,000 frames of random scrolls, row changes and buffer ages and checks every drawn buffer against the truth.
 
@@ -44,7 +44,7 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 
 ## Found by hand (2026-11-18)
 
-- **Clicking the system menu button while its menu was open killed the shell** (`xdg_wm_base error 2: parent not top most surface`). The click dismissed the menu, then reached the button, which opened a new menu while the dismissed one still existed; destroying the old one afterwards broke Wayland's rule that popups go topmost first. Now at most one menu tree exists: opening a menu destroys any other at once, and a click on the button whose menu it just dismissed closes it without reopening. `WPS_SHELL_SELFTEST=menus` replays these orders (the old code fails it with the same error).
+- **Clicking the system menu button while its menu was open killed the shell** (`xdg_wm_base error 2: parent not top most surface`). The click dismissed the menu, then reached the button, which opened a new menu while the dismissed one still existed; destroying the old one afterwards broke Wayland's rule that popups go topmost first. Now at most one menu tree exists: opening a menu destroys any other at once, and a click on the button whose menu it just dismissed closes it without reopening. `OSD_SHELL_SELFTEST=menus` replays these orders (the old code fails it with the same error).
 
 - **A menu could not be closed by clicking elsewhere in the window.** GNOME dismisses a menu only for clicks on other programs' windows; clicks on the program's own windows are delivered to it, and it must close its menus itself. Now a press anywhere outside the open menu closes it and is used up (as in OS/2), keys go to the open menu wherever the keyboard focus is (Escape works), and menus close when their window loses focus.
 
@@ -54,8 +54,8 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
   - **Closing one folder window crashed the shell, taking every window with it.** The close button freed the window inside its own click handler, which then used it. Closing now happens on the next loop turn; menus opened from a window are closed before it goes.
   - Pop-up menus on items and the background never appeared. They open on button release, after asking the service for their items, and GNOME refuses an input grab once no button is held, dismissing the menu at once. These menus now open without a grab (the shell closes its own menus on clicks elsewhere and when the window loses focus); the system menu, opened on press, still grabs.
   - New files did not appear until the folder was opened again. Windows now subscribe to their folder's events and re-read it in the background after a change, swapping the new contents in with details for the rows on screen, keeping scroll position, selection and cursor. A burst of changes costs at most two re-reads. (Incremental updates for very large folders: G2.)
-  - Pop-up menus on items and the background still did not appear after that: the toolkit could open a menu without a grab, but the shell still passed the click's serial. Fixed; `WPS_SHELL_SELFTEST=ctxmenu` sends a right click with a real-looking serial and checks the menu is still open 0.7 s later (the old code fails it).
-  - Self-tests: `WPS_SHELL_SELFTEST=menus`, `=ctxmenu`, `=live` (files created and deleted appear and disappear) and `=close` (closing one of two windows leaves the other and the process running).
+  - Pop-up menus on items and the background still did not appear after that: the toolkit could open a menu without a grab, but the shell still passed the click's serial. Fixed; `OSD_SHELL_SELFTEST=ctxmenu` sends a right click with a real-looking serial and checks the menu is still open 0.7 s later (the old code fails it).
+  - Self-tests: `OSD_SHELL_SELFTEST=menus`, `=ctxmenu`, `=live` (files created and deleted appear and disappear) and `=close` (closing one of two windows leaves the other and the process running).
 
 - **A View cascade on the folder background's menu** (asked for by hand): Icon view (Ctrl+1), Tree view (until G2, greyed out) and Details view (Ctrl+2), with a check mark on the current view, switches this window; Open as… still opens new windows, as in Warp 4. Menus show shortcuts right-aligned (a label "Text\tShortcut"). Properties and Open With say in the status line that they come in G2.
 

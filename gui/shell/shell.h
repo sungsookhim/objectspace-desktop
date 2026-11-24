@@ -45,7 +45,7 @@
 #include "sound.h"
 #include "svc.h"
 #include "ui.h"
-#include "wps_menu_ids.h"
+#include "osd_menu_ids.h"
 
 #define PAGE 256
 #define STATUS_H status_h()
@@ -120,7 +120,7 @@ struct folder {
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
     int free_layout;         /* the Icon view page's Layout: 1 free (OS/2's), 0 grid; -1 not read yet */
-    bool show_hidden;        /* its View page (all folders' by default: class:WPFolder) */
+    bool show_hidden;        /* its View page (all folders' by default: class:OsdFolder) */
     bool show_ext;
     bool lock_all;           /* ... Lock positions of all icons */
     char icon_font[128];     /* its own icon font (the Font Palette's), "" the System's */
@@ -159,7 +159,7 @@ struct bg_load { long folder; char path[PATH_MAX]; };
 /* Which model and generation a reply belongs to. */
 struct pctx { long id; unsigned gen; bool shadow; };
 #define NSETUP 11
-#define TIMING(f, fmt, ...) do { if ((f)->desktop && getenv("WPS_DEBUG_TIMING")) \
+#define TIMING(f, fmt, ...) do { if ((f)->desktop && getenv("OSD_DEBUG_TIMING")) \
     fprintf(stderr, "timing: %7.0f ms: " fmt "\n", since_start(), ##__VA_ARGS__); } while (0)
 
 /* The re-read model replaces the one on screen, keeping the scroll
@@ -392,7 +392,7 @@ void workarea_settings(struct folder *f, bool on);
 void workarea_window(const char *title, bool minimized);
 const char *workarea_group_of(struct folder *f);   /* the work area f is (or is in, or was opened from), NULL none */
 void workarea_join(struct folder *f, const char *group);
-bool wps_command_event(const cv *ev);   /* the wps command's ask, selection, show (0.4.1) */
+bool osd_command_event(const cv *ev);   /* the wps command's ask, selection, show (0.4.1) */
 void workarea_focused(struct folder *f);
 struct row *row_at(struct folder *f, size_t i);
 void open_item(struct folder *f, size_t i, ui_view view);
@@ -482,7 +482,7 @@ void color_dropped_bar(const char *hex);
 void templates_dir(char *out, size_t n);
 bool open_view(const char *v);
 void got_setup(void *arg, const cv *reply);
-void gnome_set_wps(const char *cls, const char *key, const char *value);
+void gnome_set_osd(const char *cls, const char *key, const char *value);
 void gnome_font(void);
 bool setup_event(const cv *ev);
 void toolkit_action(const char *name, ui_surface *s, ui_rect at);

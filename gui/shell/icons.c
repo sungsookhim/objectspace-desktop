@@ -2,13 +2,13 @@
 #define _GNU_SOURCE
 #include "icons.h"
 
-#ifndef WPS_ICONDIR
-#define WPS_ICONDIR "/usr/share/wps/icons"
+#ifndef OSD_ICONDIR
+#define OSD_ICONDIR "/usr/share/wps/icons"
 #endif
 
 #include <math.h>
 #include "wpsicon.h"
-#include "wps_themes.h"
+#include "osd_themes.h"
 #include "launchpad.h"
 #include "mime.h"
 
@@ -57,7 +57,7 @@ static void data_dir(const char *sub, char *out, size_t n)
 const char *icons_library_dir(void)
 {
     static char dir[PATH_MAX];
-    const char *t = getenv("WPS_ICON_LIBRARY");   /* tests */
+    const char *t = getenv("OSD_ICON_LIBRARY");   /* tests */
     if (t && *t) { snprintf(dir, sizeof dir, "%s", t); mkdir(dir, 0755); }
     else data_dir("Icons", dir, sizeof dir);
     return dir;
@@ -304,7 +304,7 @@ void icons_set_default_size(ui_icon_size which)
 static bool package_in(const char *theme, const char *name, char *out, size_t n)
 {
     char dir[PATH_MAX];
-    if (!wps_icon_theme_dir(theme, dir, sizeof dir)) return false;
+    if (!osd_icon_theme_dir(theme, dir, sizeof dir)) return false;
     snprintf(out, n, "%s/%s.wpsicon", dir, name);
     return access(out, R_OK) == 0;
 }
@@ -333,7 +333,7 @@ static cairo_surface_t *package_at(const char *path, int px)
 /* WPS's 0.2 picture of a name (installed, or a build tree's data/icons) */
 static bool classic_png(const char *name, char *out, size_t n)
 {
-    snprintf(out, n, "%s/%s.png", WPS_ICONDIR, name);
+    snprintf(out, n, "%s/%s.png", OSD_ICONDIR, name);
     if (access(out, R_OK) == 0) return true;
     char exe[PATH_MAX];
     ssize_t l = readlink("/proc/self/exe", exe, sizeof exe - 1);
@@ -365,7 +365,7 @@ cairo_surface_t *icons_object(const char *theme, const char *icon, int px)
     return icons_get(icon);
 }
 
-const char *icons_name_for_type(const char *m) { return wps_icon_name_for_type(m); }
+const char *icons_name_for_type(const char *m) { return osd_icon_name_for_type(m); }
 
 /* $XDG_CACHE_HOME/wps/theme-icons, made (each level: a new home has no
  * ~/.cache yet) */

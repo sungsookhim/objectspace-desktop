@@ -14,9 +14,9 @@ for part in new old; do
     export HOME="$T/home"   # (step 9 shadows the home folder: never the real one)
     [ $part = old ] && printf 'version 6\n' > "$T/config/desktop-made"
     [ $part = old ] && mkdir -p "$T/xdg/data/wps/System/Computer/Drives" && echo x > "$T/xdg/data/wps/System/Computer/kept.txt"
-    export T WPS_CONFIG_DIR="$T/config" WPS_STATE_DIR="$T/state" WPS_RUNTIME_DIR="$RT" WPS_SAVE_DELAY_MS=100
-    export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" WPS_TEMPLATES_DIR="$T/templates"
-    export WPS_UDISKS_BUS="unix:path=$RT/none"
+    export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
+    export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" OSD_TEMPLATES_DIR="$T/templates"
+    export OSD_UDISKS_BUS="unix:path=$RT/none"
     "$REPO/build/wpsd" 2> "$T/wpsd.log" &
     WP=$!
     for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done

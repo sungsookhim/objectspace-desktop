@@ -22,7 +22,7 @@ EOS
 P='$T/desk/Projects'
 PRE="cd \"$P\" && touch a-rather-long-file-name-one.txt a-rather-long-file-name-two.txt &&
      '$W' place \"$P\" \"$P/a-rather-long-file-name-one.txt\" 0 0 \"$P/a-rather-long-file-name-two.txt\" 60 0 > /dev/null 2>&1" \
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=14 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=14 tests/comp/run.sh "$S/script" \
     "sleep 4.5; '$W' layout \"$P\" > \"\$T/before.log\" 2>&1; sleep 2.5; '$W' layout \"$P\" > \"\$T/after.log\" 2>&1;
      '$W' props \"$P\" > \"\$T/props.log\" 2>&1; sleep 10" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")

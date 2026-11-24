@@ -43,7 +43,7 @@ def check(what, ok, more=""):
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())
@@ -79,7 +79,7 @@ want = {"Accessories": ["calc.desktop"], "Development": ["editor.desktop"], "Gam
 tr = wait_tree(lambda tr: tr == want)   # (the folders come before their shadows)
 check("made by category; hidden, other desktops', missing TryExec and links left out", tr == want, tr)
 r = c.request(op="resolve", target=PROGS)["result"]
-check("Programs is a WPProgramsFolder", r.get("class") == "WPProgramsFolder", r.get("class"))
+check("Programs is a OsdProgramsFolder", r.get("class") == "OsdProgramsFolder", r.get("class"))
 desk = [x.get("title") for x in items(T + "/desk")]
 check("Programs on the desktop", "Programs" in desk, desk)
 it = items(PROGS + "/Development")

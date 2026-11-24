@@ -248,9 +248,9 @@ bool ui_scheme_set_option(const char *key, const char *v)
 
 void ui_scheme_init(void)
 {
-    const char *n = getenv("WPS_UI_SCHEME");
+    const char *n = getenv("OSD_UI_SCHEME");
     ui_scheme_now = n && !strcmp(n, "dark") ? dark : classic;
-    const char *r = getenv("WPS_UI_CORNER_RADIUS"), *b = getenv("WPS_UI_BUTTONS"), *sh = getenv("WPS_UI_SHADOWS");
+    const char *r = getenv("OSD_UI_CORNER_RADIUS"), *b = getenv("OSD_UI_BUTTONS"), *sh = getenv("OSD_UI_SHADOWS");
     if (r) ui_scheme_set_option("corner_radius", r);
     if (b) ui_scheme_set_option("buttons", b);
     if (sh) ui_scheme_set_option("shadows", sh);

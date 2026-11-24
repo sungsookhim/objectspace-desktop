@@ -21,7 +21,7 @@ cat > "$S/script" <<EOS
 13.5 quit
 EOS
 W="$REPO/build/wpsctl"
-DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1 WPS_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 4; '$W' settings_set \"\$T/desk\" bg_gnome=false bg_image='$S/다운로드/green.webp' bg_mode=4 > \"\$T/set.log\" 2>&1;
      '$W' settings_set \"\$T/desk/Projects\" bg_color='#ff00ff' >> \"\$T/set.log\" 2>&1;
      sleep 4; '$W' settings_set \"\$T/desk/Projects\" bg_image='$S/blue.png' bg_mode=0 >> \"\$T/set.log\" 2>&1;
@@ -42,7 +42,7 @@ cat > "$S/page" <<EOS
 8 click 580 327
 11 quit
 EOS
-DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=14 tests/comp/run.sh "$S/page" \
+DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=14 tests/comp/run.sh "$S/page" \
     "sleep 2.5; '$W' settings_set \"\$T/desk\" bg_image='$S/x.png' > /dev/null; sleep 6.5; '$W' settings \"\$T/desk\" > \"\$T/after.log\"" > "$S/page.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/page.txt")
 fails=0
@@ -52,7 +52,7 @@ check "every setting taken" "[ \$(grep -c '\"ok\":true' '$T/set.log') -eq 4 ]"
 check "the desktop: its own picture, stretched" "[ \"\$(px '$S/one.png' 100 650)\" = '20 200 20' ] && [ \"\$(px '$S/one.png' 1270 10)\" = '20 200 20' ]"
 check "a folder window: its colour" "[ \"\$(px '$S/one.png' 600 400)\" = '255 0 255' ]"
 check "its picture, centred in the list" "[ \"\$(px '$S/two.png' 631 336)\" = '20 20 220' ] && [ \"\$(px '$S/two.png' 340 140)\" = '255 0 255' ]"
-check "GNOME's background again (WPS_WALLPAPER empty: a colour, OS/2's teal)" "[ \"\$(px '$S/three.png' 100 650)\" = '0 128 128' ]"
+check "GNOME's background again (OSD_WALLPAPER empty: a colour, OS/2's teal)" "[ \"\$(px '$S/three.png' 100 650)\" = '0 128 128' ]"
 check "the picture's preview beside its path" "[ \"\$(px '$S/page.png' 558 220)\" = '9 9 9' ]"
 check "no colour: the swatch the one used (teal)" "[ \"\$(px '$S/page.png' 553 280)\" = '0 128 128' ]"
 check "None: no picture" "grep -q '\"key\":\"bg_image\"[^}]*\"value\":\"\"' '$T2/after.log'"

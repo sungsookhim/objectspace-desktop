@@ -1,11 +1,11 @@
-/* wps-shell: The self-tests (WPS_SHELL_SELFTEST=MODE): scenarios run in the window's frame callback. */
+/* wps-shell: The self-tests (OSD_SHELL_SELFTEST=MODE): scenarios run in the window's frame callback. */
 #define _GNU_SOURCE
 #include "shell.h"
 
 #include <spawn.h>
 #include <sys/wait.h>
 
-static void selftest_record(const wps_event *e, void *ctx)
+static void selftest_record(const osd_event *e, void *ctx)
 {
     char *seen = ctx;
     if (strlen(seen) + strlen(e->name) + 2 < 1024) { strcat(seen, " "); strcat(seen, e->name); }
@@ -36,7 +36,7 @@ static void selftest(ui_surface *s, double now)
     else if (step == 6 && t > 1500) { fprintf(stderr, "selftest: done\n"); ui_app_quit(app); step++; }
 }
 
-/* WPS_SHELL_SELFTEST=live: files created and deleted in the folder appear
+/* OSD_SHELL_SELFTEST=live: files created and deleted in the folder appear
  * and disappear. =close: closing one of two windows (as its close button
  * does) leaves the other and the process running. */
 static void selftest_live(struct folder *f, double now)
@@ -88,7 +88,7 @@ static void selftest_after_close(void *arg)
     ui_app_quit(app);
 }
 
-/* WPS_SHELL_SELFTEST=fields: what a notebook's fields set, printed. */
+/* OSD_SHELL_SELFTEST=fields: what a notebook's fields set, printed. */
 static ui_notebook *selftest_nb;
 
 static void selftest_file_chosen(long owner, const char *key, const char *path)
@@ -111,7 +111,7 @@ static void selftest_field_set(void *ctx, const char *key, ui_field_kind kind, c
     fprintf(stderr, "selftest: fields: set %s = %s\n", key, base ? base + 1 : v->text ? v->text : "");
 }
 
-/* WPS_SHELL_SELFTEST=layout: the icons' cells, checked. */
+/* OSD_SHELL_SELFTEST=layout: the icons' cells, checked. */
 static size_t selftest_index(struct folder *f, const char *name)
 {
     for (size_t i = 0; i < f->m.total; i++)
@@ -170,7 +170,7 @@ static void selftest_lock_page(void *arg, const cv *reply)
     fprintf(stderr, "selftest: layout: b.txt's General page: Lock position %s\n", v);
 }
 
-/* WPS_SHELL_SELFTEST=openwith: a data file's Open cascade, printed. */
+/* OSD_SHELL_SELFTEST=openwith: a data file's Open cascade, printed. */
 static void selftest_cascade(void *arg, const cv *reply)
 {
     (void)arg;
@@ -180,7 +180,7 @@ static void selftest_cascade(void *arg, const cv *reply)
         int64_t id = 0;
         cv_int(&res->items[i], "id", &id);
         const cv *sub = cv_get(&res->items[i], "items");
-        if (id != WPS_MI_OPEN) continue;
+        if (id != OSD_MI_OPEN) continue;
         for (size_t k = 0; sub && sub->k == CV_ARRAY && k < sub->n; k++) {
             const cv *ck = cv_get(&sub->items[k], "checked");
             snprintf(out + strlen(out), sizeof out - strlen(out), "%s%s%s", k ? ", " : "", cv_text(&sub->items[k], "label"),
@@ -190,13 +190,13 @@ static void selftest_cascade(void *arg, const cv *reply)
     fprintf(stderr, "selftest: openwith: Open: %s\n", out);
 }
 
-/* WPS_SHELL_SELFTEST=templates: New > printed, its Folder chosen. */
+/* OSD_SHELL_SELFTEST=templates: New > printed, its Folder chosen. */
 static void selftest_new_menu(struct menu_ctx *m, const ui_menu_item *items, size_t n)
 {
     char out[512] = "";
     int64_t folder_id = -1;
     for (size_t i = 0; i < n; i++) {
-        if (items[i].id != WPS_MI_NEW_MENU) continue;
+        if (items[i].id != OSD_MI_NEW_MENU) continue;
         for (size_t k = 0; k < items[i].nitems; k++) {
             snprintf(out + strlen(out), sizeof out - strlen(out), "%s%s", k ? ", " : "", items[i].items[k].label);
             if (!strcmp(items[i].items[k].label, "Folder")) folder_id = items[i].items[k].id;
@@ -217,7 +217,7 @@ static bool selftest_pos(struct folder *f, const char *name, double *x, double *
 void win_frame(ui_surface *s, double now)
 {
     struct folder *f = ui_surface_data(s);
-    const char *st = getenv("WPS_SHELL_SELFTEST");
+    const char *st = getenv("OSD_SHELL_SELFTEST");
     if (st && !strcmp(st, "ext")) {
         /* Show file extensions off (0.3 step 8): titles without them, and
          * renaming keeps the file's. <D>: report.odt archive.tar.gz notes dir.d/ */
@@ -263,7 +263,7 @@ void win_frame(ui_surface *s, double now)
          * title bar; Edit font... <D> has a.txt and a long-named file. */
         static double t0;
         static int step;
-        if (!t0) { if (!f->m.complete || !setup_addr("WPSystem")[0]) return; t0 = now; }
+        if (!t0) { if (!f->m.complete || !setup_addr("OsdSystem")[0]) return; t0 = now; }
         double t = now - t0;
         if (step == 0) {
             fontpal_open();
@@ -274,7 +274,7 @@ void win_frame(ui_surface *s, double now)
             step++;
             t0 = now;
         } else if (step == 1 && t > 1500) {
-            const char *shot = getenv("WPS_SHELL_SHOT");
+            const char *shot = getenv("OSD_SHELL_SHOT");
             if (shot) fontpal_snapshot(shot);
             fprintf(stderr, "selftest: fonts: dropped on the folder: its font %s, %.0f px, a tall title's cell %.0f\n", f->icon_font,
                     ui_font_px(f->font), layout_item_h(f->lay, 0) > layout_item_h(f->lay, 1) ? layout_item_h(f->lay, 0) : layout_item_h(f->lay, 1));
@@ -295,7 +295,7 @@ void win_frame(ui_surface *s, double now)
             step++;
             t0 = now;
         } else if (step == 3 && t > 1500) {
-            fprintf(stderr, "selftest: fonts: the first sample now %s (kept: %s)\n", fontpal_sample(0), setup_addr("WPFontPalette")[0] ? "yes" : "no");
+            fprintf(stderr, "selftest: fonts: the first sample now %s (kept: %s)\n", fontpal_sample(0), setup_addr("OsdFontPalette")[0] ? "yes" : "no");
             f->icon_font[0] = 0;
             bg_read(f);   /* read back from its settings */
             step++;
@@ -344,7 +344,7 @@ void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 7 && t > 2000) {
             ui_notebook *nb = props_open && !strcmp(props_open->target, f->path) ? props_open->nb : NULL;
-            const char *shot = getenv("WPS_SHELL_SHOT");
+            const char *shot = getenv("OSD_SHELL_SHOT");
             if (shot && nb) {
                 char p[PATH_MAX];
                 snprintf(p, sizeof p, "%s-notebook.png", shot);
@@ -366,9 +366,9 @@ void win_frame(ui_surface *s, double now)
         static double t0;
         static int step;
         static ui_notebook *nb;
-        if (!t0) { if (!f->m.complete || !setup_addr("WPColorPalette")[0]) return; t0 = now; }
+        if (!t0) { if (!f->m.complete || !setup_addr("OsdColorPalette")[0]) return; t0 = now; }
         double t = now - t0;
-        const char *shot = getenv("WPS_SHELL_SHOT");
+        const char *shot = getenv("OSD_SHELL_SHOT");
         if (step == 0) {
             colorpal_open();
             fprintf(stderr, "selftest: colors: palette open %d, %zu samples, first %s\n", colorpal_is_open(), colorpal_count(),
@@ -397,7 +397,7 @@ void win_frame(ui_surface *s, double now)
                     f->bg_color, f->title_bar_color,
                     (int)lround(c.r * 255), (int)lround(c.g * 255), (int)lround(c.b * 255));
             open_properties(f->path);
-            svc_props("class:WPFolder", colors_class_read, NULL);
+            svc_props("class:OsdFolder", colors_class_read, NULL);
             step++;
             t0 = now;
         } else if (step == 3 && t > 1500) {
@@ -449,12 +449,12 @@ void win_frame(ui_surface *s, double now)
         static double t0;
         static int step;
         static unsigned played0;
-        if (!t0) { if (!f->m.complete || !setup_addr("WPSound")[0]) return; t0 = now; }
+        if (!t0) { if (!f->m.complete || !setup_addr("OsdSound")[0]) return; t0 = now; }
         double t = now - t0;
         struct props *p = NULL;
-        for (struct props *x = props_open; x; x = x->next) if (!strcmp(x->target, setup_addr("WPSound"))) p = x;
+        for (struct props *x = props_open; x; x = x->next) if (!strcmp(x->target, setup_addr("OsdSound"))) p = x;
         if (step == 0) {
-            open_properties(setup_addr("WPSound"));
+            open_properties(setup_addr("OsdSound"));
             step++;
             t0 = now;
         } else if (step == 1 && t > 1500) {
@@ -469,7 +469,7 @@ void win_frame(ui_surface *s, double now)
                     sound_formats(), sound_played() - played0);
             cv sv = { .k = CV_TEXT, .s = "/usr/share/sounds/freedesktop/stereo/bell.oga" };
             sv.len = strlen(sv.s);
-            svc_settings_set(setup_addr("WPSound"), "window.open", &sv, -1, ignore_reply, NULL);
+            svc_settings_set(setup_addr("OsdSound"), "window.open", &sv, -1, ignore_reply, NULL);
             step++;
             t0 = now;
         } else if (step == 2 && t > 1500) {
@@ -579,7 +579,7 @@ void win_frame(ui_surface *s, double now)
             size_t hold = SIZE_MAX;
             for (size_t i = 0; i < apppick_count(); i++) if (!strcmp(apppick_name(i), "Hold")) hold = i;
             fprintf(stderr, "selftest: openwith: Other program: %zu programs, Hold among them %d\n", apppick_count(), hold != SIZE_MAX);
-            const char *shot = getenv("WPS_SHELL_SHOT");
+            const char *shot = getenv("OSD_SHELL_SHOT");
             if (shot) apppick_snapshot(shot);
             apppick_choose(hold, false);
             fprintf(stderr, "selftest: openwith: chosen: picker open %d\n", apppick_is_open());
@@ -734,14 +734,14 @@ void win_frame(ui_surface *s, double now)
         }
         return;
     }
-    if (st && !strcmp(st, "trashlive") && getenv("WPS_SELFTEST_TRASH")) {
+    if (st && !strcmp(st, "trashlive") && getenv("OSD_SELFTEST_TRASH")) {
         /* The Trash Can's window follows deletes and restores of several
          * objects at once (a.txt b.txt c.txt in <D>) */
         static double t0;
         static int step;
         static long dw = -1;
         char tp[PATH_MAX];
-        snprintf(tp, sizeof tp, "%s/files", getenv("WPS_SELFTEST_TRASH"));
+        snprintf(tp, sizeof tp, "%s/files", getenv("OSD_SELFTEST_TRASH"));
         struct folder *tw = NULL, *d = dw >= 0 ? folder_by_id(dw) : NULL;
         for (struct folder *x = folders; x; x = x->next)
             if (!x->closing && !strcmp(x->path, tp)) tw = x;
@@ -810,7 +810,7 @@ void win_frame(ui_surface *s, double now)
             ui_notebook_set_value(nb, "colour", "nonsense");
             ui_notebook_set_value(nb, "colour", "#C00");
             fprintf(stderr, "selftest: fields: hint \"%s\"\n", ui_notebook_field_hint(nb, "picture"));
-            const char *shot = getenv("WPS_FIELDS_SHOT");   /* prefix: -notebook.png, -picker.png */
+            const char *shot = getenv("OSD_FIELDS_SHOT");   /* prefix: -notebook.png, -picker.png */
             char png[PATH_MAX];
             if (shot) { snprintf(png, sizeof png, "%s-notebook.png", shot); ui_surface_snapshot(ui_notebook_surface(nb), png); }
             /* Browse... (as its button does): the owner opens the picker */
@@ -827,7 +827,7 @@ void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: fields: the picker in pics shows: %s\n", names);
             step++;
         } else if (step == 3 && t > 2300) {
-            const char *shot = getenv("WPS_FIELDS_SHOT");
+            const char *shot = getenv("OSD_FIELDS_SHOT");
             char png[PATH_MAX];
             if (shot) { snprintf(png, sizeof png, "%s-picker.png", shot); filepick_snapshot(png); }
             for (size_t i = 0; i < filepick_count(); i++)
@@ -891,7 +891,7 @@ void win_frame(ui_surface *s, double now)
             mc->folder = f->id;
             mc->item = SIZE_MAX;
             ui_view before = ui_container_view(f->cont);
-            menu_chosen(mc, WPS_MI_VIEW_DETAILS);
+            menu_chosen(mc, OSD_MI_VIEW_DETAILS);
             fprintf(stderr, "selftest: View > Details view: %s -> %s\n", before == UI_VIEW_ICON ? "icon" : "details",
                     ui_container_view(f->cont) == UI_VIEW_ICON ? "icon" : "details");
             ui_app_quit(app);
@@ -949,7 +949,7 @@ void win_frame(ui_surface *s, double now)
             struct menu_ctx *mc = calloc(1, sizeof *mc);
             mc->folder = f->id;
             mc->item = i;
-            menu_chosen(mc, WPS_MI_PROPERTIES);
+            menu_chosen(mc, OSD_MI_PROPERTIES);
             step++;
         } else if (step == 1 && props_open && props_open->nb) {
             nbs = ui_notebook_surface(props_open->nb);
@@ -1022,7 +1022,7 @@ void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: a collapsed: %s\n", rows);
             step++;
         } else if (step == 5 && t > 3300) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;   /* a change still being drawn: next frame */
             fprintf(stderr, "selftest: tree pixels against a fresh redraw: %zu differ\n", d);
             for (size_t i = 0; i < f->ntvis; i++)
@@ -1178,13 +1178,13 @@ void win_frame(ui_surface *s, double now)
             struct menu_ctx *mc = calloc(1, sizeof *mc);
             mc->folder = f->id;
             mc->item = SIZE_MAX;
-            menu_chosen(mc, WPS_MI_ARRANGE);
+            menu_chosen(mc, OSD_MI_ARRANGE);
             step++;
         } else if (step == 2 && t > 2500) {
             fprintf(stderr, "selftest: after Arrange:%s\n", line);
             step++;
         } else if (step == 3 && t > 2800) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -1257,7 +1257,7 @@ void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: a plain link to T opened T: %d window(s)\n", nT);
             step++;
         } else if (step == 6) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -1365,7 +1365,7 @@ void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: b.txt with a lock file: in use %d\n", bi != SIZE_MAX && ib.in_use);
             step++;
         } else if (step == 4) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -1390,7 +1390,7 @@ void win_frame(ui_surface *s, double now)
         ui_key_event del = { .sym = XKB_KEY_Delete }, sdel = { .sym = XKB_KEY_Delete, .mods = UI_MOD_SHIFT },
                      ret = { .sym = XKB_KEY_Return };
         char p[PATH_MAX + 64];
-        const char *dh = getenv("WPS_SELFTEST_TRASH");
+        const char *dh = getenv("OSD_SELFTEST_TRASH");
         if (step == 0 && ai != SIZE_MAX && si != SIZE_MAX) {
             ui_container_select_none(f->cont);
             ui_container_select(f->cont, ai);
@@ -1422,7 +1422,7 @@ void win_frame(ui_surface *s, double now)
                     bi != SIZE_MAX, access(q, F_OK) == 0, access(p, F_OK) == 0, f->error);
             step++;
         } else if (step == 3) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -1447,17 +1447,17 @@ void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 1 && t > 300) {
             fprintf(stderr, "selftest: after Close: desktop still open %d\n", !f->closing);
-            if (getenv("WPS_SHELL_SHOT")) {   /* a picture of it (with WPS_UI_NO_LAYER=1: all on one surface) */
+            if (getenv("OSD_SHELL_SHOT")) {   /* a picture of it (with OSD_UI_NO_LAYER=1: all on one surface) */
                 cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ui_surface_width(s), (int)ui_surface_height(s));
                 cairo_t *icr = cairo_create(img);
                 win_draw(s, icr, (ui_rect){ 0, 0, ui_surface_width(s), ui_surface_height(s) });
                 cairo_destroy(icr);
-                cairo_surface_write_to_png(img, getenv("WPS_SHELL_SHOT"));
+                cairo_surface_write_to_png(img, getenv("OSD_SHELL_SHOT"));
                 cairo_surface_destroy(img);
             }
             step++;
         } else if (step == 2) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             static double last;
             (void)last;
             if (d == SIZE_MAX) return;
@@ -1545,7 +1545,7 @@ void win_frame(ui_surface *s, double now)
             struct menu_ctx *mc = calloc(1, sizeof *mc);
             mc->folder = f->id;
             mc->item = li;
-            menu_chosen(mc, WPS_MI_CREATE_ANOTHER);
+            menu_chosen(mc, OSD_MI_CREATE_ANOTHER);
             step++;
             t0 = now;
         } else if (step == 4 && t > 1500) {
@@ -1557,10 +1557,10 @@ void win_frame(ui_surface *s, double now)
             if (ri != SIZE_MAX) ui_surface_send_key(s, &esc);
             step++;
         } else if (step == 5) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
-            const char *shot = getenv("WPS_SHELL_SHOT");   /* the templates window (with WPS_UI_NO_LAYER=1) */
+            const char *shot = getenv("OSD_SHELL_SHOT");   /* the templates window (with OSD_UI_NO_LAYER=1) */
             if (shot) {
                 cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ui_surface_width(tw->win), (int)ui_surface_height(tw->win));
                 cairo_t *icr = cairo_create(img);
@@ -1591,7 +1591,7 @@ void win_frame(ui_surface *s, double now)
                 ui_container_select(f->cont, (size_t)keep);
                 ui_container_set_cursor(f->cont, (size_t)keep);
             }
-            setenv("WPS_SELFTEST_KEPT", kept, 1);
+            setenv("OSD_SELFTEST_KEPT", kept, 1);
             reloads = 0;
             int adds = getenv("FOLLOW_ADD") ? atoi(getenv("FOLLOW_ADD")) : 40;   /* a burst, for timing */
             for (int i = 0; i < adds; i++) { snprintf(p, sizeof p, "%s/new-%04d", f->path, i); FILE *x = fopen(p, "w"); if (x) fclose(x); }
@@ -1618,14 +1618,14 @@ void win_frame(ui_surface *s, double now)
                 snprintf(p, sizeof p, "%s/%s", f->path, n);
                 if (access(p, F_OK) != 0) wrong++;
             }
-            const char *kept = getenv("WPS_SELFTEST_KEPT");
+            const char *kept = getenv("OSD_SELFTEST_KEPT");
             ssize_t k = kept && *kept ? model_find(&f->m, kept) : -1;
             fprintf(stderr, "selftest: on disk %zu, in the window %zu (%zu names read, %zu not on disk); full re-reads %d; "
                     "%s still selected %d\n", on_disk, f->m.total, loaded, wrong, reloads, kept ? kept : "?",
                     k >= 0 && ui_container_is_selected(f->cont, (size_t)k));
             step++;
         } else if (step == 2) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -1703,7 +1703,7 @@ void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 2 && t > 1500) {
             fprintf(stderr, "selftest: a.txt shown %d\n", model_find(&f->m, "a.txt") >= 0);
-            const char *shot = getenv("WPS_SHELL_SHOT");   /* the window in the dark scheme (WPS_UI_NO_LAYER=1) */
+            const char *shot = getenv("OSD_SHELL_SHOT");   /* the window in the dark scheme (OSD_UI_NO_LAYER=1) */
             if (shot) {
                 cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ui_surface_width(s), (int)ui_surface_height(s));
                 cairo_t *icr = cairo_create(img);
@@ -1714,7 +1714,7 @@ void win_frame(ui_surface *s, double now)
             }
             step++;
         } else if (step == 3) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw: %zu differ\n", d);
             ui_app_quit(app);
@@ -1830,10 +1830,10 @@ void win_frame(ui_surface *s, double now)
                     ui_frame_hit(s, tw - 12, ty) == UI_HIT_SYSMENU ? "the system menu" : "something else");
             step++;
         } else if (step == 2) {
-            size_t d = ui_surface_verify(s, getenv("WPS_VERIFY_PNG"));   /* WPS_VERIFY_PNG=prefix saves a mismatch */
+            size_t d = ui_surface_verify(s, getenv("OSD_VERIFY_PNG"));   /* OSD_VERIFY_PNG=prefix saves a mismatch */
             if (d == SIZE_MAX) return;
             fprintf(stderr, "selftest: pixels against a fresh redraw (inside the shadow): %zu differ\n", d);
-            if (getenv("WPS_SHELL_SHOT")) fprintf(stderr, "selftest: buffer saved %d\n", ui_surface_snapshot(s, getenv("WPS_SHELL_SHOT")));
+            if (getenv("OSD_SHELL_SHOT")) fprintf(stderr, "selftest: buffer saved %d\n", ui_surface_snapshot(s, getenv("OSD_SHELL_SHOT")));
             ui_app_quit(app);
             step++;
         }
@@ -1848,8 +1848,8 @@ void win_frame(ui_surface *s, double now)
         double t = now - t0;
         const char *mouse = NULL, *pal = NULL;
         for (int i = 0; i < 4; i++) {
-            if (!strcmp(setup_cls[i], "WPMouse")) mouse = setup_ids[i];
-            if (!strcmp(setup_cls[i], "WPSchemePalette")) pal = setup_ids[i];
+            if (!strcmp(setup_cls[i], "OsdMouse")) mouse = setup_ids[i];
+            if (!strcmp(setup_cls[i], "OsdSchemePalette")) pal = setup_ids[i];
         }
         char v[256];
         #define GGET(schema, key) (snprintf(v, sizeof v, "gsettings get %s %s", schema, key), \
@@ -1955,8 +1955,8 @@ void win_frame(ui_surface *s, double now)
             LROWS();
             fprintf(stderr, "selftest: LaunchPad (%zu): %s\n", launchpad_count(), rows);
             char shot[PATH_MAX];
-            if (getenv("WPS_SHELL_SHOT")) {
-                snprintf(shot, sizeof shot, "%s-launchpad.png", getenv("WPS_SHELL_SHOT"));
+            if (getenv("OSD_SHELL_SHOT")) {
+                snprintf(shot, sizeof shot, "%s-launchpad.png", getenv("OSD_SHELL_SHOT"));
                 launchpad_snapshot(shot);
             }
             size_t tb = SIZE_MAX;
@@ -1982,9 +1982,9 @@ void win_frame(ui_surface *s, double now)
             while (dd && (de = readdir(dd))) drawers += de->d_name[0] != '.';
             if (dd) closedir(dd);
             fprintf(stderr, "selftest: drawers made: %d\n", drawers);
-            if (getenv("WPS_SHELL_SHOT")) {
+            if (getenv("OSD_SHELL_SHOT")) {
                 char shot[PATH_MAX];
-                snprintf(shot, sizeof shot, "%s-launchpad2.png", getenv("WPS_SHELL_SHOT"));
+                snprintf(shot, sizeof shot, "%s-launchpad2.png", getenv("OSD_SHELL_SHOT"));
                 launchpad_snapshot(shot);
             }
             step++;
@@ -2015,7 +2015,7 @@ void win_frame(ui_surface *s, double now)
                 for (int k = 0; k < moves; k++) { at += stepf; ui_container_scroll_to_fraction(f->cont, at); }
                 return;
             }
-            size_t d = ui_surface_verify(f->win, bad ? NULL : getenv("WPS_VERIFY_PNG"));
+            size_t d = ui_surface_verify(f->win, bad ? NULL : getenv("OSD_VERIFY_PNG"));
             if (d == SIZE_MAX && now - tv < 600) return;
             if (d != SIZE_MAX) { checks++; if (d > 200) bad++; }
             tv = now;
@@ -2053,8 +2053,8 @@ void win_frame(ui_surface *s, double now)
                 return;
             }
             char vp[PATH_MAX];
-            snprintf(vp, sizeof vp, "%s-%zu", getenv("WPS_VERIFY_PNG") ? getenv("WPS_VERIFY_PNG") : "", bad);
-            size_t d = ui_surface_verify(ps, getenv("PICK_DEBUG") && bad < 6 ? vp : bad ? NULL : getenv("WPS_VERIFY_PNG"));   /* (PICK_DEBUG: the first six saved) */
+            snprintf(vp, sizeof vp, "%s-%zu", getenv("OSD_VERIFY_PNG") ? getenv("OSD_VERIFY_PNG") : "", bad);
+            size_t d = ui_surface_verify(ps, getenv("PICK_DEBUG") && bad < 6 ? vp : bad ? NULL : getenv("OSD_VERIFY_PNG"));   /* (PICK_DEBUG: the first six saved) */
             if (d == SIZE_MAX && now - tv < 600) return;   /* still being drawn */
             if (d && d != SIZE_MAX && getenv("PICK_DEBUG")) fprintf(stderr, "selftest: pickscroll-debug: at %.4f: %zu differ\n", at, d);
             /* (a few pixels: a title's anti-aliasing where two strips meet) */
@@ -2069,7 +2069,7 @@ void win_frame(ui_surface *s, double now)
         return;
     }
     if (st && !strcmp(st, "iconlib")) {
-        /* The picker's icon library (WPS_ICON_LIBRARY), chosen as a user
+        /* The picker's icon library (OSD_ICON_LIBRARY), chosen as a user
          * does: by the button, then back to the themes and again. */
         static double t0;
         static int step;
@@ -2081,7 +2081,7 @@ void win_frame(ui_surface *s, double now)
         else if (step == 1 && t > 500) { iconpick_source(true); step++; t0 = now; }
         else if (step == 2 && t > 1500) {
             fprintf(stderr, "selftest: library: %zu icons\n", iconpick_count());
-            if (getenv("WPS_SHELL_SHOT")) iconpick_snapshot(getenv("WPS_SHELL_SHOT"));
+            if (getenv("OSD_SHELL_SHOT")) iconpick_snapshot(getenv("OSD_SHELL_SHOT"));
             iconpick_source(false); step++; t0 = now;
         } else if (step == 3 && t > 1500) { iconpick_source(true); step++; t0 = now; }
         else if (step == 4 && t > 1500) {
@@ -2106,7 +2106,7 @@ void win_frame(ui_surface *s, double now)
         ssize_t row = model_find(&f->m, "a.txt");
         const char *icon = row >= 0 && row_ptr(&f->m, (size_t)row)->icon ? row_ptr(&f->m, (size_t)row)->icon : "";
         char shot[PATH_MAX];
-        const char *sh = getenv("WPS_SHELL_SHOT");
+        const char *sh = getenv("OSD_SHELL_SHOT");
         if (step == 0 && t > 500) { open_properties(target); step++; t0 = now; }
         else if (step == 1 && p && p->nb && t > 800) {
             ui_value v = { .text = "/usr/share/icons/Adwaita/scalable/places/folder-music.svg" };   /* as dropped */
@@ -2216,9 +2216,9 @@ void win_frame(ui_surface *s, double now)
             step++;
             t0 = now;
         } else if (step == 11 && t > 400) {
-            if (getenv("WPS_SHELL_SHOT")) {
+            if (getenv("OSD_SHELL_SHOT")) {
                 char shot[PATH_MAX];
-                snprintf(shot, sizeof shot, "%s-preedit.png", getenv("WPS_SHELL_SHOT"));
+                snprintf(shot, sizeof shot, "%s-preedit.png", getenv("OSD_SHELL_SHOT"));
                 findwin_snapshot(shot);
             }
             ui_text_input_inject(app, "日本", NULL);
@@ -2234,7 +2234,7 @@ void win_frame(ui_surface *s, double now)
             for (size_t i = 0; findwin_result(i); i++)
                 snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i ? ", " : "", findwin_result(i) + pl);
             fprintf(stderr, "selftest: find '%s'%s: %zu: %s\n", typed[step - 1], step == 3 ? " (folders)" : "", findwin_count(), rows);
-            if (step == 2 && getenv("WPS_SHELL_SHOT")) findwin_snapshot(getenv("WPS_SHELL_SHOT"));
+            if (step == 2 && getenv("OSD_SHELL_SHOT")) findwin_snapshot(getenv("OSD_SHELL_SHOT"));
             if (step == 1) findwin_type(typed[1]);
             else if (step == 3) {
                 /* an input method: 日本 composed (preedit), then committed */
@@ -2274,8 +2274,8 @@ void win_frame(ui_surface *s, double now)
             ROWS(false);
             fprintf(stderr, "selftest: Window List (%zu): %s\n", winlist_count(false), rows);
             char shot[PATH_MAX];
-            if (getenv("WPS_SHELL_SHOT")) {
-                snprintf(shot, sizeof shot, "%s-list.png", getenv("WPS_SHELL_SHOT"));
+            if (getenv("OSD_SHELL_SHOT")) {
+                snprintf(shot, sizeof shot, "%s-list.png", getenv("OSD_SHELL_SHOT"));
                 winlist_snapshot(false, shot);
             }
             fprintf(stderr, "selftest: minimize Projects: sent %d\n", winlist_command("minimize", "Projects"));
@@ -2289,8 +2289,8 @@ void win_frame(ui_surface *s, double now)
             ROWS(true);
             fprintf(stderr, "selftest: Minimized Window Viewer (%zu): %s\n", winlist_count(true), rows);
             char shot[PATH_MAX];
-            if (getenv("WPS_SHELL_SHOT")) {
-                snprintf(shot, sizeof shot, "%s-minimized.png", getenv("WPS_SHELL_SHOT"));
+            if (getenv("OSD_SHELL_SHOT")) {
+                snprintf(shot, sizeof shot, "%s-minimized.png", getenv("OSD_SHELL_SHOT"));
                 winlist_snapshot(true, shot);
             }
             fprintf(stderr, "selftest: restore it: sent %d\n", winlist_command("activate", "Projects"));
@@ -2313,13 +2313,13 @@ void win_frame(ui_surface *s, double now)
             winlist_state("Projects", &mn, &mx);
             fprintf(stderr, "selftest: after restoring: minimized %d maximized %d\n", mn, mx);
             /* another program (run.sh APP=), ended unasked */
-            const char *other = getenv("WPS_SELFTEST_TERMINATE");
+            const char *other = getenv("OSD_SELFTEST_TERMINATE");
             if (other && !*other) other = NULL;
             if (other) fprintf(stderr, "selftest: terminate %s: sent %d\n", other, winlist_command("terminate", other));
             step++;
             t0 = now;
         } else if (step == 7 && t > 2000) {
-            const char *other = getenv("WPS_SELFTEST_TERMINATE");
+            const char *other = getenv("OSD_SELFTEST_TERMINATE");
             if (other && !*other) other = NULL;
             bool mn, mx;
             if (other) fprintf(stderr, "selftest: after terminating: %s %s\n", other, winlist_state(other, &mn, &mx) ? "still there" : "gone");
@@ -2350,7 +2350,7 @@ void win_frame(ui_surface *s, double now)
             char *sl = strrchr(exe, '/');
             if (sl) *sl = 0;
             snprintf(client, sizeof client, "%s/tests/ssd-client Grouped 3060a0; true", exe);   /* (a child of the shell, not it) */
-            const char *disp = getenv("WPS_SELFTEST_DISPLAY");
+            const char *disp = getenv("OSD_SELFTEST_DISPLAY");
             char env_disp[128];
             snprintf(env_disp, sizeof env_disp, "WAYLAND_DISPLAY=%s", disp && *disp ? disp : "wps-hl");
             char *argv[] = { "env", env_disp, "sh", "-c", client, NULL };
@@ -2408,8 +2408,8 @@ void win_frame(ui_surface *s, double now)
         f->bench_from = n;
     }
     /* Every 30 frames, check the picture against a full redraw. */
-    if (getenv("WPS_SHELL_VERIFY") && ++f->frames_seen % 30 == 0) {
-        size_t d = ui_surface_verify(s, f->verify_failed ? NULL : getenv("WPS_SHELL_VERIFY"));
+    if (getenv("OSD_SHELL_VERIFY") && ++f->frames_seen % 30 == 0) {
+        size_t d = ui_surface_verify(s, f->verify_failed ? NULL : getenv("OSD_SHELL_VERIFY"));
         if (d != SIZE_MAX) {
             f->verified++;
             if (d) { f->verify_failed++; f->verify_diff += d; }

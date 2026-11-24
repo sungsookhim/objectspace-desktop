@@ -79,7 +79,7 @@ Requires:       make
 
 %description devel
 What a WPS plug-in is built with: the headers it includes, the built-in
-classes' interfaces (.wpi), wpoc (the class compiler), and a sample plug-in
+classes' interfaces (.osdi), osdc (the class compiler), and a sample plug-in
 (%{_datadir}/wps/sdk/sample). wpsctl plugin new NAME makes a skeleton;
 see %{_datadir}/wps/sdk/README.md.
 

@@ -65,7 +65,7 @@ static bool sysfs_portable(unsigned maj, unsigned min)
     return false;
 }
 
-static bool listed(const wps_env *env, const char *file, const char *uuid)
+static bool listed(const osd_env *env, const char *file, const char *uuid)
 {
     char path[PATH_MAX + 32], line[128];
     snprintf(path, sizeof path, "%s/%s", env->config_dir, file);
@@ -80,7 +80,7 @@ static bool listed(const wps_env *env, const char *file, const char *uuid)
     return hit;
 }
 
-int wps_volumes_scan(wps_volumes *out, const wps_env *env)
+int osd_volumes_scan(osd_volumes *out, const osd_env *env)
 {
     out->v = NULL;
     out->n = 0;
@@ -101,11 +101,11 @@ int wps_volumes_scan(wps_volumes *out, const wps_env *env)
         unescape(root);
         if (out->n == cap) {
             cap = cap ? cap * 2 : 16;
-            wps_volume *nv = realloc(out->v, cap * sizeof *nv);
+            osd_volume *nv = realloc(out->v, cap * sizeof *nv);
             if (!nv) break;
             out->v = nv;
         }
-        wps_volume *v = &out->v[out->n++];
+        osd_volume *v = &out->v[out->n++];
         memset(v, 0, sizeof *v);
         snprintf(v->mnt, sizeof v->mnt, "%s", mnt);
         snprintf(v->fstype, sizeof v->fstype, "%s", fstype);
@@ -127,21 +127,21 @@ int wps_volumes_scan(wps_volumes *out, const wps_env *env)
     }
     fclose(f);
     /* Never the volume that holds our own state. */
-    const wps_volume *home = wps_volumes_of_path(out, env->state_dir);
-    if (home) ((wps_volume *)home)->portable = false;
+    const osd_volume *home = osd_volumes_of_path(out, env->state_dir);
+    if (home) ((osd_volume *)home)->portable = false;
     return 0;
 }
 
-void wps_volumes_free(wps_volumes *vs)
+void osd_volumes_free(osd_volumes *vs)
 {
     free(vs->v);
     vs->v = NULL;
     vs->n = 0;
 }
 
-const wps_volume *wps_volumes_of_path(const wps_volumes *vs, const char *path)
+const osd_volume *osd_volumes_of_path(const osd_volumes *vs, const char *path)
 {
-    const wps_volume *best = NULL;
+    const osd_volume *best = NULL;
     size_t bestlen = 0;
     for (size_t i = 0; i < vs->n; i++) {
         size_t l = strlen(vs->v[i].mnt);
@@ -153,14 +153,14 @@ const wps_volume *wps_volumes_of_path(const wps_volumes *vs, const char *path)
     return best;
 }
 
-const wps_volume *wps_volumes_by_uuid(const wps_volumes *vs, const char *uuid)
+const osd_volume *osd_volumes_by_uuid(const osd_volumes *vs, const char *uuid)
 {
     for (size_t i = 0; i < vs->n; i++)
         if (strcmp(vs->v[i].uuid, uuid) == 0) return &vs->v[i];
     return NULL;
 }
 
-const char *wps_volume_relpath(const wps_volume *v, const char *path)
+const char *osd_volume_relpath(const osd_volume *v, const char *path)
 {
     if (strcmp(v->mnt, "/") == 0) return path[0] == '/' ? path + 1 : path;
     size_t l = strlen(v->mnt);

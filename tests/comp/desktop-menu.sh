@@ -5,7 +5,7 @@
 # screen, in a second run).
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-dmenu-XXXX")
-ENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1 WPS_DEBUG_EVENTS=1"
+ENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_DEBUG_EVENTS=1"
 # A right click at (600, 300) opens the menu there (1280x800): System
 # setup at y 543, Lockup now 565, Shut down... 587 (New at 360).
 cat > "$S/one" <<EOS
@@ -26,9 +26,9 @@ cat > "$S/two" <<EOS
 6.7 shot $S/lock.png
 7.5 quit
 EOS
-env -u WPS_SESSION DESKENV="$ENV" SECS=10 tests/comp/run.sh "$S/one" true > "$S/one.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=10 tests/comp/run.sh "$S/one" true > "$S/one.txt" 2>&1
 T1=$(sed -n 's/^T=//p' "$S/one.txt")
-env -u WPS_SESSION DESKENV="$ENV" SECS=10 tests/comp/run.sh "$S/two" true > "$S/two.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=10 tests/comp/run.sh "$S/two" true > "$S/two.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/two.txt")
 # A window open beside the click (the test client at 436,146): the menu
 # is above it, not below (the desktop's menus were under every window).
@@ -37,7 +37,7 @@ cat > "$S/three" <<EOS
 4 shot $S/over.png
 4.5 quit
 EOS
-env -u WPS_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/three" "'$PWD/build/tests/ssd-client' Framed 3060a0" > "$S/three.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/three" "'$PWD/build/tests/ssd-client' Framed 3060a0" > "$S/three.txt" 2>&1
 # Properties asked for again, its notebook behind a folder window: it
 # comes to the front (Properties at y 460 of a menu opened at 150,400).
 cat > "$S/four" <<EOS
@@ -49,14 +49,14 @@ cat > "$S/four" <<EOS
 7.7 windows
 8 quit
 EOS
-env -u WPS_SESSION DESKENV="$ENV" SECS=11 tests/comp/run.sh "$S/four" true > "$S/four.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=11 tests/comp/run.sh "$S/four" true > "$S/four.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # a dialog's title bar (the active window's colour) at the screen's middle
 titlebar() { python3 -c "from PIL import Image; r,g,b = Image.open('$1').convert('RGB').getpixel((500, 225)); exit(0 if b > 100 and r < 60 else 1)"; }
 check "Properties again: its open notebook comes to the front" "grep \"window '\" '$S/four.txt' | grep -q \"Properties' .* active\""
 check "the menu is above other windows" "python3 -c \"from PIL import Image; r,g,b = Image.open('$S/over.png').convert('RGB').getpixel((500, 300)); exit(0 if abs(r - g) < 8 and abs(g - b) < 8 and r > 150 else 1)\""
-check "System setup opens the System Setup folder (WPS_SETUP_DIR: setup)" "grep -q \"window 'setup - \" '$T1/comp.log'"
+check "System setup opens the System Setup folder (OSD_SETUP_DIR: setup)" "grep -q \"window 'setup - \" '$T1/comp.log'"
 check "Shut down... asks (its dialog shown)" "titlebar '$S/shutdown.png'"
 check "Escape cancels it" "! grep -q 'session.end' '$T2/shell.log'"
 check "Lockup now: session.lock from the desktop" "grep -q 'session.lock' '$T2/shell.log'"

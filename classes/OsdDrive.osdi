@@ -1,0 +1,28 @@
+# A volume (v0.2-design 5), known by its file system's UUID: opening it
+# mounts it if needed and opens its top folder; its menu mounts,
+# unmounts, ejects, powers off, unlocks and locks.
+class OsdDrive : OsdAbstract
+version 1.0
+include "osd_drive_hook.h"
+data {
+    char *uuid;
+}
+override osdUnInitData
+override osdSaveState
+override osdRestoreProperties
+override osdModifyPopupMenu
+method osdQueryDriveInfo(string which) -> string
+method osdQueryDevice() -> string
+method osdQueryFsType() -> string
+method osdQuerySize() -> string
+method osdQueryFree() -> string
+method osdQueryMount() -> string
+property device : info page Drive label Device get osdQueryDevice first
+property fstype : info page Drive label "File system" get osdQueryFsType first
+property size : info page Drive label Size get osdQuerySize first
+property free : info page Drive label Free get osdQueryFree first
+property mount : info page Drive label "Mounted at" get osdQueryMount first
+property uuid : info page Drive label UUID get osdQueryUUID first
+method osdQueryUUID() -> string
+method osdSetUUID(string uuid) -> bool
+classoverride osdclsQueryTitle

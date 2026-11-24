@@ -255,7 +255,7 @@ static void class_chosen(void *arg, int64_t id)
 static void props_class(void *ctx, ui_surface *s, double x, double y, uint32_t serial)
 {
     struct props *p = ctx;
-    const char *mime = p->target[0] == '/' && strcmp(p->cls, "WPFolder") && !p->makes ? mime_of_file(p->target) : NULL;
+    const char *mime = p->target[0] == '/' && strcmp(p->cls, "OsdFolder") && !p->makes ? mime_of_file(p->target) : NULL;
     if (mime && (!strncmp(mime, "inode/", 6) || !strchr(mime, '/'))) mime = NULL;
     snprintf(class_menu_targets[0], sizeof class_menu_targets[0], "class:%s", p->cls);
     if (!mime) { open_properties(class_menu_targets[0]); return; }

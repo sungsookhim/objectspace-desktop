@@ -10,28 +10,28 @@ static void layout_work(void *arg)
     size_t found = 0;
     while (d && found < j->n && (de = readdir(d))) {
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
-        char p[PATH_MAX + NAME_MAX + 2], id[WPS_ID_LEN + 1];
+        char p[PATH_MAX + NAME_MAX + 2], id[OSD_ID_LEN + 1];
         snprintf(p, sizeof p, "%s/%s", j->folder, de->d_name);
-        if (!wps_attr_get_id(p, id)) continue;
+        if (!osd_attr_get_id(p, id)) continue;
         for (size_t i = 0; i < j->n; i++)
             if (!j->names[i] && !strcmp(j->ids[i], id)) { j->names[i] = strdup(de->d_name); found++; break; }
     }
     if (d) closedir(d);
     /* Central objects of this folder are named "\x01vobj:<id>". */
-    char fid[WPS_ID_LEN + 1];
-    if (found < j->n && wps_attr_get_id(j->folder, fid)) {
+    char fid[OSD_ID_LEN + 1];
+    if (found < j->n && osd_attr_get_id(j->folder, fid)) {
         for (size_t i = 0; i < j->n; i++) {
             if (j->names[i]) continue;
-            char loc[WPS_ID_LEN + 8];
+            char loc[OSD_ID_LEN + 8];
             snprintf(loc, sizeof loc, "vobj:%s", j->ids[i]);
-            wps_loaded ld;
-            wps_load(loc, false, &ld);
+            osd_loaded ld;
+            osd_load(loc, false, &ld);
             if (!ld.err && !strcmp(ld.folder_id, fid)) {
-                char nm[WPS_ID_LEN + 8];
+                char nm[OSD_ID_LEN + 8];
                 snprintf(nm, sizeof nm, "\x01vobj:%s", j->ids[i]);
                 j->names[i] = strdup(nm);
             }
-            wps_loaded_free(&ld);
+            osd_loaded_free(&ld);
         }
     }
 }
@@ -77,11 +77,11 @@ static void layout_done(void *arg)
     free(j);
 }
 
-void do_layout(struct req *r, wpo_object *o)
+void do_layout(struct req *r, osdo_object *o)
 {
-    if (!wpo_is_a(o, WPFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
-    wps_state *st = WPObject_data(o)->state;
-    wps_cstate *cs = st ? wps_state_class(&st, "WPFolder", false) : NULL;
+    if (!osdo_is_a(o, OsdFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
+    osd_state *st = OsdObject_data(o)->state;
+    osd_cstate *cs = st ? osd_state_class(&st, "OsdFolder", false) : NULL;
     struct layout_job *j = calloc(1, sizeof *j);
     j->c = r->c; r->c->refs++;
     j->id = r->id;
@@ -92,22 +92,22 @@ void do_layout(struct req *r, wpo_object *o)
     j->vals = calloc(n ? n : 1, sizeof *j->vals);
     j->names = calloc(n ? n : 1, sizeof *j->names);
     for (size_t i = 0; cs && i < cs->props.n; i++) {
-        const wps_prop *p = &cs->props.p[i];
+        const osd_prop *p = &cs->props.p[i];
         if (strncmp(p->key, "pos:", 4)) continue;
         snprintf(j->ids[j->n], sizeof j->ids[0], "%s", p->key + 4);
         j->vals[j->n++] = strndup((const char *)p->val, p->len);
     }
     if (!j->n) { layout_done(j); return; }   /* nothing placed: no need to read the folder */
-    wpo_defer(loop, "layout", layout_work, layout_done, j);
+    osdo_defer(loop, "layout", layout_work, layout_done, j);
 }
 
 /* {op:"arrange", target:FOLDER}: forget the stored positions; the GUI
  * arranges the icons (and may place them again). */
-void do_arrange(struct req *r, wpo_object *o)
+void do_arrange(struct req *r, osdo_object *o)
 {
-    if (!wpo_is_a(o, WPFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
-    wps_state *st = WPObject_data(o)->state;
-    wps_cstate *cs = st ? wps_state_class(&st, "WPFolder", false) : NULL;
+    if (!osdo_is_a(o, OsdFolderClass)) { reply_error(r->c, r->id, "bad request", "not a folder"); return; }
+    osd_state *st = OsdObject_data(o)->state;
+    osd_cstate *cs = st ? osd_state_class(&st, "OsdFolder", false) : NULL;
     char **keys = NULL;
     size_t n = 0;
     for (size_t i = 0; cs && i < cs->props.n; i++)
@@ -116,32 +116,32 @@ void do_arrange(struct req *r, wpo_object *o)
             keys = realloc(keys, (n + 1) * sizeof *keys);
             keys[n++] = strdup(cs->props.p[i].key);
         }
-    for (size_t i = 0; i < n; i++) { wps_state_remove(o, "WPFolder", keys[i]); free(keys[i]); }
+    for (size_t i = 0; i < n; i++) { osd_state_remove(o, "OsdFolder", keys[i]); free(keys[i]); }
     free(keys);
-    if (n) { WPObject_wpSaveDeferred(o); WPObject_wpObjectChanged(o); }
-    wpo_value v = wpo_v_int((int64_t)n);
+    if (n) { OsdObject_osdSaveDeferred(o); OsdObject_osdObjectChanged(o); }
+    osdo_value v = osdo_v_int((int64_t)n);
     reply_ok_object(r, o, &v);
 }
 
 static void place_work(void *arg)
 {
     struct place_job *j = arg;
-    wps_load(j->folder, false, &j->fld);
-    for (size_t i = 0; i < j->n; i++) wps_load(j->targets[i], true, &j->items[i]);
+    osd_load(j->folder, false, &j->fld);
+    for (size_t i = 0; i < j->n; i++) osd_load(j->targets[i], true, &j->items[i]);
 }
 
 static void place_done(void *arg)
 {
     struct place_job *j = arg;
-    wpo_object *f = j->fld.err ? NULL : wps_object_from_loaded(&j->fld);
+    osdo_object *f = j->fld.err ? NULL : osd_object_from_loaded(&j->fld);
     if (!j->c) {   /* placing items a job dropped: nobody waits for a reply */
-        for (size_t i = 0; f && wpo_is_a(f, WPFolderClass) && i < j->n; i++) {
-            wpo_object *o = j->items[i].err ? NULL : wps_object_from_loaded(&j->items[i]);
-            if (o) WPFolder_wpSetIconPos(f, o, j->x[i], j->y[i]);
+        for (size_t i = 0; f && osdo_is_a(f, OsdFolderClass) && i < j->n; i++) {
+            osdo_object *o = j->items[i].err ? NULL : osd_object_from_loaded(&j->items[i]);
+            if (o) OsdFolder_osdSetIconPos(f, o, j->x[i], j->y[i]);
         }
-        if (f && wpo_is_a(f, WPFolderClass)) on_layout_changed(j->folder);
+        if (f && osdo_is_a(f, OsdFolderClass)) on_layout_changed(j->folder);
     } else if (!j->c->dead) {
-        if (!f || !wpo_is_a(f, WPFolderClass)) reply_error(j->c, j->id, "failed", "the folder cannot be loaded");
+        if (!f || !osdo_is_a(f, OsdFolderClass)) reply_error(j->c, j->id, "failed", "the folder cannot be loaded");
         else {
             cbuf b;
             cb_init(&b);
@@ -151,18 +151,18 @@ static void place_done(void *arg)
             cb_text(&b, "result");
             cb_array(&b, j->n);
             for (size_t i = 0; i < j->n; i++) {
-                wpo_object *o = j->items[i].err ? NULL : wps_object_from_loaded(&j->items[i]);
-                bool ok = o && WPFolder_wpSetIconPos(f, o, j->x[i], j->y[i]);
-                if (ok && j->lock && j->lock[i] >= 0) ok = WPFolder_wpSetIconLock(f, o, j->lock[i] == 1);
-                if (ok) cb_text(&b, WPObject_data(o)->id);
+                osdo_object *o = j->items[i].err ? NULL : osd_object_from_loaded(&j->items[i]);
+                bool ok = o && OsdFolder_osdSetIconPos(f, o, j->x[i], j->y[i]);
+                if (ok && j->lock && j->lock[i] >= 0) ok = OsdFolder_osdSetIconLock(f, o, j->lock[i] == 1);
+                if (ok) cb_text(&b, OsdObject_data(o)->id);
                 else cb_null(&b);
             }
             send_frame(j->c, &b);
             cb_free(&b);
         }
     }
-    wps_loaded_free(&j->fld);
-    for (size_t i = 0; i < j->n; i++) { wps_loaded_free(&j->items[i]); free(j->targets[i]); }
+    osd_loaded_free(&j->fld);
+    for (size_t i = 0; i < j->n; i++) { osd_loaded_free(&j->items[i]); free(j->targets[i]); }
     free(j->items);
     free(j->targets);
     free(j->x);
@@ -187,7 +187,7 @@ void job_placed(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n
         j->y[i] = y[i];
     }
     j->n = n;
-    wpo_defer(loop, "place dropped items", place_work, place_done, j);
+    osdo_defer(loop, "place dropped items", place_work, place_done, j);
 }
 
 void start_place(struct client *c, int64_t id, const cv *msg)
@@ -217,53 +217,53 @@ void start_place(struct client *c, int64_t id, const cv *msg)
         j->lock[j->n] = lk && lk->k == CV_BOOL ? lk->b : -1;
         j->n++;
     }
-    wpo_defer(loop, "place icons", place_work, place_done, j);
+    osdo_defer(loop, "place icons", place_work, place_done, j);
 }
 
 void vmove_work(void *arg)
 {
     struct vmove_job *j = arg;
-    wps_loaded ld, dst, from;
-    wps_load(j->target, false, &ld);
+    osd_loaded ld, dst, from;
+    osd_load(j->target, false, &ld);
     if (j->del) {
         if (ld.err || !ld.central) j->err = ENOENT;
         else {
-            char fid[WPS_ID_LEN + 8];
+            char fid[OSD_ID_LEN + 8];
             snprintf(fid, sizeof fid, "id:%s", ld.folder_id);
-            wps_load(fid, false, &from);
+            osd_load(fid, false, &from);
             if (!from.err) snprintf(j->from_folder, sizeof j->from_folder, "%s", from.path);
-            wps_loaded_free(&from);
-            j->err = wps_central_delete(ld.id);
+            osd_loaded_free(&from);
+            j->err = osd_central_delete(ld.id);
         }
-        wps_loaded_free(&ld);
+        osd_loaded_free(&ld);
         return;
     }
-    wps_load(j->dest, true, &dst);
+    osd_load(j->dest, true, &dst);
     if (ld.err || !ld.central) j->err = ENOENT;
     else if (dst.err || !S_ISDIR(dst.st.st_mode) || !dst.id[0]) j->err = ENOTDIR;
     else {
-        char fid[WPS_ID_LEN + 8];
+        char fid[OSD_ID_LEN + 8];
         snprintf(fid, sizeof fid, "id:%s", ld.folder_id);
-        wps_load(fid, false, &from);
+        osd_load(fid, false, &from);
         if (!from.err) snprintf(j->from_folder, sizeof j->from_folder, "%s", from.path);
-        wps_loaded_free(&from);
-        j->err = wps_central_move(ld.id, dst.vol, dst.id, j->copy, j->new_id);
+        osd_loaded_free(&from);
+        j->err = osd_central_move(ld.id, dst.vol, dst.id, j->copy, j->new_id);
         if (!j->err && j->trash) {   /* where it was, for Restore */
-            char loc[WPS_ID_LEN + 8], key[PATH_MAX + 128];
+            char loc[OSD_ID_LEN + 8], key[PATH_MAX + 128];
             snprintf(loc, sizeof loc, "vobj:%s", j->new_id);
-            wps_db_key(key, sizeof key, loc, "WPS", "origin");
-            wps_db_put(db, dst.vol, key, 's', ld.folder_id, WPS_ID_LEN);
+            osd_db_key(key, sizeof key, loc, "WPS", "origin");
+            osd_db_put(db, dst.vol, key, 's', ld.folder_id, OSD_ID_LEN);
         }
     }
-    wps_loaded_free(&ld);
-    wps_loaded_free(&dst);
+    osd_loaded_free(&ld);
+    osd_loaded_free(&dst);
 }
 
 void vmove_done(void *arg)
 {
     struct vmove_job *j = arg;
     if (!j->err && j->del) {
-        wps_central_forget(j->target + 5);
+        osd_central_forget(j->target + 5);
         if (j->from_folder[0]) on_central_change(j->from_folder, j->target + 5, 'd');
     } else if (!j->err) {
         if (!j->copy && j->from_folder[0]) on_central_change(j->from_folder, j->target + 5, 'd');
@@ -272,7 +272,7 @@ void vmove_done(void *arg)
     if (!j->c->dead) {
         if (j->err) reply_error(j->c, j->id, "failed", strerror(j->err));
         else {
-            char a[WPS_ID_LEN + 8];
+            char a[OSD_ID_LEN + 8];
             snprintf(a, sizeof a, "vobj:%s", j->del ? j->target + 5 : j->new_id);
             struct simple s = { .c = j->c, .id = j->id };
             j->c->refs++;
@@ -304,25 +304,25 @@ static void rename_work(void *arg)
         if (errno == EACCES || errno == EPERM || errno == EROFS) j->as_title = true;
         else { j->err = errno; return; }
     }
-    wps_load(j->as_title ? j->path : j->newpath, false, &j->ld);
+    osd_load(j->as_title ? j->path : j->newpath, false, &j->ld);
 }
 
 static void rename_done(void *arg)
 {
     struct rename_job *j = arg;
     if (!j->c->dead) {
-        wpo_object *o = j->err || j->ld.err ? NULL : wps_object_from_loaded(&j->ld);
+        osdo_object *o = j->err || j->ld.err ? NULL : osd_object_from_loaded(&j->ld);
         if (!o && j->err == EEXIST) reply_error(j->c, j->id, "exists", "an object with that name is already there");
         else if (!o) reply_error(j->c, j->id, "failed", strerror(j->err ? j->err : j->ld.err));
         else {
-            if (j->as_title || strchr(j->name, '\n')) WPObject_wpSetTitle(o, j->name);
-            else if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);   /* the title follows the name */
+            if (j->as_title || strchr(j->name, '\n')) OsdObject_osdSetTitle(o, j->name);
+            else if (OsdObject_data(o)->title) OsdObject_osdSetTitle(o, NULL);   /* the title follows the name */
             struct req fake = { .c = j->c, .id = j->id };
-            wpo_value v = wpo_v_bool(!j->as_title);   /* result: was the file renamed? */
+            osdo_value v = osdo_v_bool(!j->as_title);   /* result: was the file renamed? */
             reply_ok_object(&fake, o, &v);
         }
     }
-    wps_loaded_free(&j->ld);
+    osd_loaded_free(&j->ld);
     client_unref(j->c);
     free(j);
 }
@@ -339,13 +339,13 @@ static bool own_folder(const char *path)
 {
     if (!path || !*path) return false;
     if (known_desktop[0] && !strcmp(path, known_desktop)) return true;
-    if (wps_templates_dir()[0] && !strcmp(path, wps_templates_dir())) return true;
-    return wps_folder(path);
+    if (osd_templates_dir()[0] && !strcmp(path, osd_templates_dir())) return true;
+    return osd_folder(path);
 }
 
 /* The folders wpsd finds by their paths (the desktop and Templates are
  * the user's: user-dirs.dirs says where they are). */
-bool wps_folder(const char *path)
+bool osd_folder(const char *path)
 {
     if (!path || !*path) return false;
     char d[7][PATH_MAX + 8];
@@ -353,24 +353,24 @@ bool wps_folder(const char *path)
     computer_dirs(d[1], sizeof d[1], d[2], sizeof d[2]);
     data_dir("Programs", d[3], sizeof d[3]);
     setup_dir(d[4], sizeof d[4]);
-    wps_trash_home(d[5], sizeof d[5]);
+    osd_trash_home(d[5], sizeof d[5]);
     strncat(d[5], "/files", sizeof d[5] - strlen(d[5]) - 1);
     autostart_dir(d[6], sizeof d[6]);
     for (int i = 0; i < 7; i++) if (!strcmp(path, d[i])) return true;
     return false;
 }
 
-void do_rename(struct req *r, wpo_object *o)
+void do_rename(struct req *r, osdo_object *o)
 {
     const char *name = cv_text(&r->msg, "name");
     if (!name || !*name || strchr(name, '/') || !strcmp(name, ".") || !strcmp(name, "..") || strlen(name) > NAME_MAX) {
         reply_error(r->c, r->id, "bad request", "a name must be non-empty, without '/', and not . or ..");
         return;
     }
-    if (!wpo_is_a(o, WPFileSystemClass) || own_folder(r->tgt.path)) {
+    if (!osdo_is_a(o, OsdFileSystemClass) || own_folder(r->tgt.path)) {
         /* programs and abstract objects, and WPS's own folders (found by
          * their paths: renamed, they would be lost): the title */
-        WPObject_wpSetTitle(o, name);
+        OsdObject_osdSetTitle(o, name);
         reply_ok_object(r, o, NULL);
         return;
     }
@@ -379,26 +379,26 @@ void do_rename(struct req *r, wpo_object *o)
     j->id = r->id;
     snprintf(j->path, sizeof j->path, "%s", r->tgt.path);
     snprintf(j->name, sizeof j->name, "%s", name);
-    wpo_defer(loop, "rename", rename_work, rename_done, j);
+    osdo_defer(loop, "rename", rename_work, rename_done, j);
 }
 
-static void tmpl_flushed(void *arg) { wpo_defer(loop, "from template", tmpl_work, tmpl_done, arg); }
+static void tmpl_flushed(void *arg) { osdo_defer(loop, "from template", tmpl_work, tmpl_done, arg); }
 
-void do_from_template(struct req *r, wpo_object *o)
+void do_from_template(struct req *r, osdo_object *o)
 {
     const char *folder = cv_text(&r->msg, "folder"), *title = cv_text(&r->msg, "title");
     /* A template: marked as one, or anything in the templates folder. */
     char *makes = NULL;
-    wps_state_get_str(o, "WPS", "makes", &makes);
-    bool tpl = WPObject_data(o)->is_template || (makes && *makes) || (r->tgt.path[0] && wps_in_templates(r->tgt.path));
+    osd_state_get_str(o, "WPS", "makes", &makes);
+    bool tpl = OsdObject_data(o)->is_template || (makes && *makes) || (r->tgt.path[0] && osd_in_templates(r->tgt.path));
     if (!tpl) { free(makes); reply_error(r->c, r->id, "bad request", "not a template"); return; }
     if (!folder) { free(makes); reply_error(r->c, r->id, "bad request", "from_template needs a folder"); return; }
-    char *t = WPObject_wpQueryTitle(o);
+    char *t = OsdObject_osdQueryTitle(o);
     if (makes && *makes) {
         /* A built-in template (Folder, Data File, Program): a new, empty
          * object of the class it makes, titled like the template. */
-        wpo_class *mc = wpo_find_class(makes);
-        if (!mc || mc->is_meta || !wpo_subclass_of(mc, WPObjectClass) || wpo_subclass_of(mc, WPShadowClass))
+        osdo_class *mc = osdo_find_class(makes);
+        if (!mc || mc->is_meta || !osdo_subclass_of(mc, OsdObjectClass) || osdo_subclass_of(mc, OsdShadowClass))
             reply_error(r->c, r->id, "failed", "the template makes an unknown kind of object");
         else
             start_create(r->c, r->id, folder, makes, title && *title ? title : t ? t : "New", NULL);
@@ -419,41 +419,41 @@ void do_from_template(struct req *r, wpo_object *o)
     snprintf(j->folder, sizeof j->folder, "%s", folder);
     snprintf(j->title, sizeof j->title, "%s", title && *title ? title : t ? t : "New");
     free(t);
-    wps_objects_flush(tmpl_flushed, j);   /* the template's latest settings saved first: the copy has them */
+    osd_objects_flush(tmpl_flushed, j);   /* the template's latest settings saved first: the copy has them */
 }
 
 static void create_work(void *arg)
 {
     struct create_req *r = arg;
-    wpo_class *c = wpo_find_class(r->cls);   /* the registry is read-only after start-up */
-    if (wpo_subclass_of(c, WPAbstractClass) && !wpo_subclass_of(c, WPProgramClass)) {
-        wps_loaded fld;
-        wps_load(r->folder, true, &fld);
-        bool central = !fld.err && fld.id[0] && !wps_folder_keeps_files(&fld);
+    osdo_class *c = osdo_find_class(r->cls);   /* the registry is read-only after start-up */
+    if (osdo_subclass_of(c, OsdAbstractClass) && !osdo_subclass_of(c, OsdProgramClass)) {
+        osd_loaded fld;
+        osd_load(r->folder, true, &fld);
+        bool central = !fld.err && fld.id[0] && !osd_folder_keeps_files(&fld);
         if (central) {
-            char id[WPS_ID_LEN + 1];
-            r->err = wps_central_create(fld.vol, fld.id, r->cls, r->title, NULL, id);
+            char id[OSD_ID_LEN + 1];
+            r->err = osd_central_create(fld.vol, fld.id, r->cls, r->title, NULL, id);
             if (!r->err) {
                 snprintf(r->path, sizeof r->path, "vobj:%s", id);
-                wps_load(r->path, false, &r->ld);
+                osd_load(r->path, false, &r->ld);
                 r->central = true;
             }
         }
-        wps_loaded_free(&fld);
+        osd_loaded_free(&fld);
         if (central) return;
     }
     for (int n = 1; n < 100; n++) {
-        wps_object_filename(r->folder, r->cls, r->title, n, r->path, sizeof r->path);
+        osd_object_filename(r->folder, r->cls, r->title, n, r->path, sizeof r->path);
         int e;
-        if (wpo_subclass_of(c, WPFolderClass)) e = mkdir(r->path, 0777) == 0 ? 0 : errno;
-        else if (wpo_subclass_of(c, WPDataFileClass)) {
+        if (osdo_subclass_of(c, OsdFolderClass)) e = mkdir(r->path, 0777) == 0 ? 0 : errno;
+        else if (osdo_subclass_of(c, OsdDataFileClass)) {
             int fd = open(r->path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
             e = fd >= 0 ? 0 : errno;
             if (fd >= 0) close(fd);
         } else {
-            e = wps_object_file_create(r->path, r->cls, r->title);
+            e = osd_object_file_create(r->path, r->cls, r->title);
         }
-        if (e == 0) { wps_load(r->path, false, &r->ld); return; }
+        if (e == 0) { osd_load(r->path, false, &r->ld); return; }
         if (e != EEXIST) { r->err = e; return; }
     }
     r->err = EEXIST;
@@ -463,22 +463,22 @@ static void create_done(void *arg)
 {
     struct create_req *r = arg;
     if (!r->c->dead) {
-        wpo_object *o = r->err || r->ld.err ? NULL : wps_object_from_loaded(&r->ld);
+        osdo_object *o = r->err || r->ld.err ? NULL : osd_object_from_loaded(&r->ld);
         if (!o) {
             reply_error(r->c, r->id, "failed", strerror(r->err ? r->err : r->ld.err));
         } else {
             /* A file or folder is titled by its name (renaming its icon renames
              * it): a title of its own would hide a numbered name, "Folder (2)". */
-            if (r->title[0] && !wpo_is_a(o, WPFileSystemClass)) WPObject_wpSetTitle(o, r->title);
-            if (r->command[0] && wpo_is_a(o, WPProgramClass)) WPProgram_wpSetCommand(o, r->command);
-            if (r->central && wps_on_central_change) wps_on_central_change(r->folder, r->path + 5, 'c');
-            char *sound = fire_event_for(r->c, o, wps_object_path(o), "object.create");   /* its actions (When made) */
+            if (r->title[0] && !osdo_is_a(o, OsdFileSystemClass)) OsdObject_osdSetTitle(o, r->title);
+            if (r->command[0] && osdo_is_a(o, OsdProgramClass)) OsdProgram_osdSetCommand(o, r->command);
+            if (r->central && osd_on_central_change) osd_on_central_change(r->folder, r->path + 5, 'c');
+            char *sound = fire_event_for(r->c, o, osd_object_path(o), "object.create");   /* its actions (When made) */
             struct req fake = { .c = r->c, .id = r->id };
             reply_ok_object_sound(&fake, o, NULL, sound);
             free(sound);
         }
     }
-    wps_loaded_free(&r->ld);
+    osd_loaded_free(&r->ld);
     client_unref(r->c);
     free(r);
 }
@@ -493,7 +493,7 @@ void start_create(struct client *c, int64_t id, const char *folder, const char *
     snprintf(r->cls, sizeof r->cls, "%s", cls);
     snprintf(r->title, sizeof r->title, "%s", title ? title : "");
     snprintf(r->command, sizeof r->command, "%s", command ? command : "");
-    wpo_defer(loop, "create object", create_work, create_done, r);
+    osdo_defer(loop, "create object", create_work, create_done, r);
 }
 
 /* ---- the built-in templates (Folder, Data File, Program), made once in
@@ -502,34 +502,34 @@ void start_create(struct client *c, int64_t id, const char *folder, const char *
 void builtin_templates_work(void *arg)
 {
     (void)arg;
-    const char *td = wps_templates_dir();
+    const char *td = osd_templates_dir();
     if (!td[0]) return;
     if (mkdir(td, 0755) != 0 && errno != EEXIST) return;
-    wps_loaded fl;
-    wps_load(td, true, &fl);
-    if (fl.err || !fl.id[0]) { wps_loaded_free(&fl); return; }
-    char loc[WPS_ID_LEN + 16], key[PATH_MAX + 128];
+    osd_loaded fl;
+    osd_load(td, true, &fl);
+    if (fl.err || !fl.id[0]) { osd_loaded_free(&fl); return; }
+    char loc[OSD_ID_LEN + 16], key[PATH_MAX + 128];
     snprintf(loc, sizeof loc, "templates:%s", fl.id);
-    wps_props done;
-    wps_props_init(&done);
+    osd_props done;
+    osd_props_init(&done);
     int64_t v = 0;
-    bool made = wps_db_get_class(db, fl.vol, loc, "WPS", &done) > 0 && wps_props_int(&done, "builtin", &v) && v;
-    wps_props_free(&done);
+    bool made = osd_db_get_class(db, fl.vol, loc, "WPS", &done) > 0 && osd_props_int(&done, "builtin", &v) && v;
+    osd_props_free(&done);
     if (!made) {
-        static const char *const builtins[][2] = { { "WPFolder", "Folder" }, { "WPDataFile", "Data File" }, { "WPProgram", "Program" } };
+        static const char *const builtins[][2] = { { "OsdFolder", "Folder" }, { "OsdDataFile", "Data File" }, { "OsdProgram", "Program" } };
         for (size_t i = 0; i < 3; i++) {
-            char id[WPS_ID_LEN + 1], vl[64];
-            if (wps_central_create(fl.vol, fl.id, "WPAbstract", builtins[i][1], NULL, id)) continue;
+            char id[OSD_ID_LEN + 1], vl[64];
+            if (osd_central_create(fl.vol, fl.id, "OsdAbstract", builtins[i][1], NULL, id)) continue;
             snprintf(vl, sizeof vl, "vobj:%s", id);
-            wps_db_key(key, sizeof key, vl, "WPS", "makes");
-            wps_db_put(db, fl.vol, key, 's', builtins[i][0], (uint32_t)strlen(builtins[i][0]));
+            osd_db_key(key, sizeof key, vl, "WPS", "makes");
+            osd_db_put(db, fl.vol, key, 's', builtins[i][0], (uint32_t)strlen(builtins[i][0]));
             unsigned char one[8] = { 1 };
-            wps_db_key(key, sizeof key, vl, "WPObject", "template");
-            wps_db_put(db, fl.vol, key, 'i', one, 8);
+            osd_db_key(key, sizeof key, vl, "OsdObject", "template");
+            osd_db_put(db, fl.vol, key, 'i', one, 8);
         }
         unsigned char one[8] = { 1 };
-        wps_db_key(key, sizeof key, loc, "WPS", "builtin");
-        wps_db_put(db, fl.vol, key, 'i', one, 8);
+        osd_db_key(key, sizeof key, loc, "WPS", "builtin");
+        osd_db_put(db, fl.vol, key, 'i', one, 8);
     }
-    wps_loaded_free(&fl);
+    osd_loaded_free(&fl);
 }

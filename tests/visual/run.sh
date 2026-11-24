@@ -41,9 +41,9 @@ EOS
     PRE="mkdir -p \"\$T/desk/Projects/Reports\"; echo a > \"\$T/desk/Projects/plan.txt\"; echo b > \"\$T/desk/Projects/notes.md\"
          printf '#!/bin/sh\n' > \"\$T/desk/Projects/build.sh\"; chmod +x \"\$T/desk/Projects/build.sh\"
          cp '$REPO/data/icons/'*.png \"\$T/desk/Projects/\" 2>/dev/null || true
-         a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"WPSchemePalette\"][\"address\"])')
+         a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdSchemePalette\"][\"address\"])')
          '$W' settings_set \"\$a\" scheme='$scheme' > /dev/null" \
-    DESKENV="WPS_WARPCENTER=1 WPS_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER= TZ=UTC" SECS=16 \
+    DESKENV="OSD_WARPCENTER=1 OSD_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER= TZ=UTC" SECS=16 \
         tests/comp/run.sh "$S/script" "sleep 30" > "$S/$tag.txt" 2>&1
     for f in desktop desktop-menu folder object-menu notebook notebook-background; do
         [ -s "$OUT/$tag-$f.png" ] || { echo "missing: $tag-$f.png"; fails=$((fails + 1)); }

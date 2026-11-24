@@ -3,7 +3,7 @@
  * Plug-in isolation; decided 2026-11-18: never in-process).
  *
  * For each plug-in package found (any .so file in <config>/plugins, in
- * /usr/lib/wps/plugins, or in the folders of $WPS_PLUGIN_DIRS), wpsd starts a host and registers a
+ * /usr/lib/wps/plugins, or in the folders of $OSD_PLUGIN_DIRS), wpsd starts a host and registers a
  * proxy for each class it reports. Inside wpsd a proxy behaves like its
  * parent class; methods the plug-in introduces or overrides are run in the
  * host when called through the service API, asynchronously and with a
@@ -11,38 +11,38 @@
  * repeated misses or a crash restart the host. Class replacements the
  * plug-in asks for are applied in wpsd too.
  */
-#ifndef WPS_PLUGINS_H
-#define WPS_PLUGINS_H
+#ifndef OSD_PLUGINS_H
+#define OSD_PLUGINS_H
 
 #include <stdbool.h>
 #include <sys/types.h>
 
 #include "cbor.h"
 #include "env.h"
-#include "wpo.h"
-#include "wpo_loop.h"
+#include "osdo.h"
+#include "osdo_loop.h"
 
-void wps_plugins_init(wpo_loop *loop, const wps_env *env);
-void wps_plugins_shutdown(void);
+void osd_plugins_init(osdo_loop *loop, const osd_env *env);
+void osd_plugins_shutdown(void);
 
 /* Whether `pid` is a plug-in host this service started (and reaps). */
-bool wps_plugins_is_host(pid_t pid);
+bool osd_plugins_is_host(pid_t pid);
 
 /* Is `method` on `o` implemented by a plug-in (so it must go remote)? */
-bool wps_plugin_routes(wpo_object *o, const char *method);
+bool osd_plugin_routes(osdo_object *o, const char *method);
 
 /* Call it in the plug-in's host. `done` runs on the loop thread with the
  * result, or with NULL if the deadline passed or the host failed (the
  * caller then uses the parent's behaviour). Changes the method made to the
  * object's settings are applied before `done`. */
-typedef void (*wps_remote_fn)(void *arg, const cv *result);
-void wps_plugin_call(wpo_object *o, const char *path, const char *method, const cv *args,
-                     int deadline_ms, wps_remote_fn done, void *arg);
+typedef void (*osd_remote_fn)(void *arg, const cv *result);
+void osd_plugin_call(osdo_object *o, const char *path, const char *method, const cv *args,
+                     int deadline_ms, osd_remote_fn done, void *arg);
 
-/* After wpo_shutdown: free the proxy class definitions. */
-void wps_plugins_free_defs(void);
+/* After osdo_shutdown: free the proxy class definitions. */
+void osd_plugins_free_defs(void);
 
 /* Status for the stats request. */
-void wps_plugins_status(cbuf *out);
+void osd_plugins_status(cbuf *out);
 
 #endif

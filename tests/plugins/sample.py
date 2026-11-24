@@ -1,4 +1,4 @@
-"""The SDK's sample plug-in (sdk/sample/WPImageFile) in a private wpsd (run
+"""The SDK's sample plug-in (sdk/sample/OsdImageFile) in a private wpsd (run
 by tests/plugins/run.sh): a class for a file type, its declared property,
 its own menu item handled in its host."""
 import os
@@ -20,7 +20,7 @@ def check(what, ok, more=""):
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())
@@ -34,10 +34,10 @@ check("the sample's host is up", any(p.get("ready") for p in st if isinstance(p,
 png = DESK + "/photo.png"
 open(png, "wb").write(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR")
 r = c.request(op="resolve", target=png).get("result") or {}
-check("a PNG is an Image (WPImageFile: its types)", r.get("class") == "WPImageFile" and r.get("class_title") == "Image", r)
+check("a PNG is an Image (OsdImageFile: its types)", r.get("class") == "OsdImageFile" and r.get("class_title") == "Image", r)
 txt = DESK + "/notes.txt"
 open(txt, "w").write("hi")
-check("a text file is not", (c.request(op="resolve", target=txt).get("result") or {}).get("class") == "WPDataFile")
+check("a text file is not", (c.request(op="resolve", target=txt).get("result") or {}).get("class") == "OsdDataFile")
 
 pages = c.request(op="settings", target=png).get("result") or []
 img = [p for p in pages if p["title"] == "Image"]
@@ -52,10 +52,10 @@ r = c.request(op="menu_select", target=png, item=7001)
 time.sleep(0.3)
 check("chosen: its host handles it (Rating 5)", r.get("ok") and c.request(op="get", target=png, name="rating").get("result") == "5", r)
 
-r = c.request(op="set", target="class:WPImageFile", setup="rating=4")
+r = c.request(op="set", target="class:OsdImageFile", setup="rating=4")
 png2 = DESK + "/other.png"
 open(png2, "wb").write(b"\x89PNG\r\n\x1a\n")
-check("all Images: rating 4 (class:WPImageFile)", r.get("ok") and c.request(op="get", target=png2, name="rating").get("result") == "4", r)
+check("all Images: rating 4 (class:OsdImageFile)", r.get("ok") and c.request(op="get", target=png2, name="rating").get("result") == "4", r)
 
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

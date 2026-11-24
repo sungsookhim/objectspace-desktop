@@ -19,7 +19,7 @@
 #include "ui_internal.h"
 
 static ui_app *the_app;
-static bool debug;           /* WPS_DEBUG_IM: what the input method does, on stderr */
+static bool debug;           /* OSD_DEBUG_IM: what the input method does, on stderr */
 
 static void entry_freed(ui_entry *e)
 {
@@ -212,9 +212,9 @@ void ui_textinput_bind(ui_app *a, struct wl_registry *r, uint32_t name, uint32_t
 void ui_textinput_seat(ui_app *a)
 {
     the_app = a;
-    debug = getenv("WPS_DEBUG_IM") != NULL;
+    debug = getenv("OSD_DEBUG_IM") != NULL;
     ui_entry_free_hook = entry_freed;
-    if (!a->ti_manager || !a->seat || getenv("WPS_UI_NO_IM")) return;
+    if (!a->ti_manager || !a->seat || getenv("OSD_UI_NO_IM")) return;
     a->ti = zwp_text_input_manager_v3_get_text_input(a->ti_manager, a->seat);
     zwp_text_input_v3_add_listener(a->ti, &ti_listener, a);
 }

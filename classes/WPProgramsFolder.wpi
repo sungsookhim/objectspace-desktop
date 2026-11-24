@@ -1,6 +1,0 @@
-# Programs (v0.2-design 6): category folders with shadows of the installed
-# programs, kept in step by wpsd (service/programs.c); the user's own
-# objects in it are left alone.
-class WPProgramsFolder : WPFolder
-version 1.0
-classoverride wpclsQueryTitle

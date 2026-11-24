@@ -16,8 +16,8 @@ static bool op_ping(struct client *c, int64_t id, const char *op, cv *msg)
     cb_text(&b, "id"); cb_int(&b, id);
     cb_text(&b, "ok"); cb_bool(&b, true);
     cb_text(&b, "result"); cb_text(&b, "pong");
-    cb_text(&b, "version"); cb_text(&b, WPS_VERSION);
-    cb_text(&b, "protocol"); cb_int(&b, WPS_PROTOCOL);
+    cb_text(&b, "version"); cb_text(&b, OSD_VERSION);
+    cb_text(&b, "protocol"); cb_int(&b, OSD_PROTOCOL);
     send_frame(c, &b);
     cb_free(&b);
     return false;
@@ -36,8 +36,8 @@ static bool op_describe(struct client *c, int64_t id, const char *op, cv *msg)
 static bool op_apps(struct client *c, int64_t id, const char *op, cv *msg)
 {
     (void)op; (void)msg;
-    wps_app *a = malloc(1024 * sizeof *a);
-    int n = a ? wps_apps_all(a, 1024) : 0;
+    osd_app *a = malloc(1024 * sizeof *a);
+    int n = a ? osd_apps_all(a, 1024) : 0;
     cbuf b;
     cb_init(&b);
     cb_map(&b, 3);
@@ -63,8 +63,8 @@ static bool op_flush(struct client *c, int64_t id, const char *op, cv *msg)
     (void)msg;
     struct simple *s = calloc(1, sizeof *s);
     s->c = c; s->id = id; c->refs++;
-    if (op[0] == 'f') wps_objects_flush(flushed, s);
-    else if (op[1] == 'h') { work_area_save_all(); wps_objects_flush(shutdown_flushed, s); }   /* (as at a signal) */
+    if (op[0] == 'f') osd_objects_flush(flushed, s);
+    else if (op[1] == 'h') { work_area_save_all(); osd_objects_flush(shutdown_flushed, s); }   /* (as at a signal) */
     else start_volume_job(s);
     return false;
 }
@@ -81,14 +81,14 @@ static bool op_find(struct client *c, int64_t id, const char *op, cv *msg)
         reply_error(c, id, "bad request", "find needs an absolute folder and a sane limit");
         return false;
     }
-    wps_find_kind k = !kind || !strcmp(kind, "any") ? WPS_FIND_ANY : !strcmp(kind, "folder") ? WPS_FIND_FOLDER :
-                      !strcmp(kind, "file") ? WPS_FIND_FILE : !strcmp(kind, "program") ? WPS_FIND_PROGRAM : (wps_find_kind)-1;
+    osd_find_kind k = !kind || !strcmp(kind, "any") ? OSD_FIND_ANY : !strcmp(kind, "folder") ? OSD_FIND_FOLDER :
+                      !strcmp(kind, "file") ? OSD_FIND_FILE : !strcmp(kind, "program") ? OSD_FIND_PROGRAM : (osd_find_kind)-1;
     if ((int)k < 0) {
         reply_error(c, id, "bad request", "find: kind is any, folder, file or program");
         return false;
     }
     c->refs++;   /* until the last batch */
-    int64_t fid = wps_find_start(folder, name ? name : "", sub && sub->k == CV_BOOL && sub->b, k, (size_t)limit, found, c);
+    int64_t fid = osd_find_start(folder, name ? name : "", sub && sub->k == CV_BOOL && sub->b, k, (size_t)limit, found, c);
     cbuf b;
     cb_init(&b);
     cb_map(&b, 3);
@@ -106,7 +106,7 @@ static bool op_find_cancel(struct client *c, int64_t id, const char *op, cv *msg
     (void)op;
     int64_t fid = 0;
     cv_int(msg, "find", &fid);
-    if (wps_find_cancel(fid)) {
+    if (osd_find_cancel(fid)) {
         struct simple *s = calloc(1, sizeof *s);
         s->c = c; s->id = id; c->refs++;
         reply_simple_ok(s, "cancelled");
@@ -134,7 +134,7 @@ static bool op_list(struct client *c, int64_t id, const char *op, cv *msg)
     r->id = id;
     snprintf(r->folder, sizeof r->folder, "%s", folder);
     const cv *hid = cv_get(msg, "hidden");   /* (false: without dot names) */
-    wps_listing_request_v(folder, cv_text(msg, "filter"), hid && hid->k == CV_BOOL && !hid->b, (size_t)off, (size_t)cnt,
+    osd_listing_request_v(folder, cv_text(msg, "filter"), hid && hid->k == CV_BOOL && !hid->b, (size_t)off, (size_t)cnt,
                           det && det->k == CV_BOOL && det->b, list_reply, r);
     return false;
 }
@@ -145,8 +145,8 @@ static bool op_create(struct client *c, int64_t id, const char *op, cv *msg)
     (void)op;
     const char *folder = cv_text(msg, "folder"), *clsname = cv_text(msg, "class");
     const char *title = cv_text(msg, "title"), *command = cv_text(msg, "command");
-    wpo_class *cls = clsname ? wpo_find_class(clsname) : NULL;
-    if (!folder || !cls || cls->is_meta || !wpo_subclass_of(cls, WPObjectClass) || wpo_subclass_of(cls, WPShadowClass)) {
+    osdo_class *cls = clsname ? osdo_find_class(clsname) : NULL;
+    if (!folder || !cls || cls->is_meta || !osdo_subclass_of(cls, OsdObjectClass) || osdo_subclass_of(cls, OsdShadowClass)) {
         reply_error(c, id, "bad request", "create needs a folder and an object class (shadows: use shadow)");
         return false;
     }
@@ -163,8 +163,8 @@ static bool op_shadow(struct client *c, int64_t id, const char *op, cv *msg)
     struct simple *s = calloc(1, sizeof *s);
     s->c = c; s->id = id; c->refs++;
     /* An ID of an object we hold: use where it is now. */
-    sobj *known = strncmp(t, "id:", 3) == 0 ? wps_sobj_by_id(t + 3) : NULL;
-    wps_shadow_create(known ? known->path : t, f, shadow_made, s);
+    sobj *known = strncmp(t, "id:", 3) == 0 ? osd_sobj_by_id(t + 3) : NULL;
+    osd_shadow_create(known ? known->path : t, f, shadow_made, s);
     return false;
 }
 
@@ -174,7 +174,7 @@ static bool op_scan(struct client *c, int64_t id, const char *op, cv *msg)
     (void)op; (void)msg;
     struct simple *s = calloc(1, sizeof *s);
     s->c = c; s->id = id; c->refs++;
-    wps_tracker_scan(scanned, s);
+    osd_tracker_scan(scanned, s);
     return false;
 }
 
@@ -184,7 +184,7 @@ static bool op_stats(struct client *c, int64_t id, const char *op, cv *msg)
     (void)op; (void)msg;
     struct stats_job *j = calloc(1, sizeof *j);
     j->c = c; j->id = id; c->refs++;
-    wpo_defer(loop, "stats", stats_work, stats_done, j);
+    osdo_defer(loop, "stats", stats_work, stats_done, j);
     return false;
 }
 
@@ -204,7 +204,7 @@ static bool op_drive(struct client *c, int64_t id, const char *op, cv *msg)
         snprintf(q->action, sizeof q->action, "%s", action);
         q->pass = pass ? strdup(pass) : NULL;
         if (strlen(target) >= sizeof q->uuid) { drive_done(q, EINVAL, "bad target", NULL); return false; }
-        wpo_defer(loop, "drive target", drive_target_work, drive_target_done, q);
+        osdo_defer(loop, "drive target", drive_target_work, drive_target_done, q);
     }
     return false;
 }
@@ -213,14 +213,14 @@ static bool op_drive(struct client *c, int64_t id, const char *op, cv *msg)
 static bool op_drives(struct client *c, int64_t id, const char *op, cv *msg)
 {
     (void)op; (void)msg;
-    wps_drive_info *ds = NULL;
-    size_t n = wps_udisks_list(&ds);
+    osd_drive_info *ds = NULL;
+    size_t n = osd_udisks_list(&ds);
     cbuf b;
     cb_init(&b);
     cb_map(&b, 4);
     cb_text(&b, "id"); cb_int(&b, id);
     cb_text(&b, "ok"); cb_bool(&b, true);
-    cb_text(&b, "udisks"); cb_bool(&b, wps_udisks_available());
+    cb_text(&b, "udisks"); cb_bool(&b, osd_udisks_available());
     cb_text(&b, "result"); cb_array(&b, n);
     for (size_t i = 0; i < n; i++) put_drive(&b, &ds[i]);
     send_frame(c, &b);
@@ -238,7 +238,7 @@ static bool op_restore(struct client *c, int64_t id, const char *op, cv *msg)
     j->c = c; c->refs++;
     j->id = id;
     snprintf(j->path, sizeof j->path, "%s", t ? t : "");
-    wpo_defer(loop, "restore", restore_work, restore_done, j);
+    osdo_defer(loop, "restore", restore_work, restore_done, j);
     return false;
 }
 
@@ -249,9 +249,9 @@ static bool op_empty_trash(struct client *c, int64_t id, const char *op, cv *msg
     struct empty_job *j = calloc(1, sizeof *j);
     j->c = c; c->refs++;
     j->id = id;
-    wps_trash_home(j->files, sizeof j->files);
+    osd_trash_home(j->files, sizeof j->files);
     strncat(j->files, "/files", sizeof j->files - strlen(j->files) - 1);
-    wpo_defer(loop, "empty trash", empty_work, empty_done, j);
+    osdo_defer(loop, "empty trash", empty_work, empty_done, j);
     return false;
 }
 
@@ -264,9 +264,9 @@ static bool op_startup_add(struct client *c, int64_t id, const char *op, cv *msg
     struct startup_job *j = calloc(1, sizeof *j);
     j->c = c; c->refs++;
     j->id = id;
-    sobj *known = strncmp(t, "id:", 3) == 0 ? wps_sobj_by_id(t + 3) : NULL;
+    sobj *known = strncmp(t, "id:", 3) == 0 ? osd_sobj_by_id(t + 3) : NULL;
     snprintf(j->target, sizeof j->target, "%s", known ? known->path : t);
-    wpo_defer(loop, "startup", startup_work, startup_done, j);
+    osdo_defer(loop, "startup", startup_work, startup_done, j);
     return false;
 }
 
@@ -274,7 +274,7 @@ static bool op_startup_add(struct client *c, int64_t id, const char *op, cv *msg
 static bool op_msg_add(struct client *c, int64_t id, const char *op, cv *msg)
 {
     (void)op;
-    int64_t mid = wps_messages_add(msg);
+    int64_t mid = osd_messages_add(msg);
     reply_int(c, id, mid);
     messages_broadcast(mid);
     return false;
@@ -392,8 +392,8 @@ static bool op_msg_list(struct client *c, int64_t id, const char *op, cv *msg)
     cb_text(&b, "ok"); cb_bool(&b, true);
     cb_text(&b, "result");
     cb_map(&b, 2);
-    cb_text(&b, "unread"); cb_uint(&b, wps_messages_unread());
-    cb_text(&b, "messages"); wps_messages_encode(&b);
+    cb_text(&b, "unread"); cb_uint(&b, osd_messages_unread());
+    cb_text(&b, "messages"); osd_messages_encode(&b);
     send_frame(c, &b);
     cb_free(&b);
     return false;
@@ -405,13 +405,13 @@ static bool op_msg_set(struct client *c, int64_t id, const char *op, cv *msg)
     const cv *all = cv_get(msg, "all"), *rd = cv_get(msg, "read"), *cl = cv_get(msg, "closed");
     bool everything = all && all->k == CV_BOOL && all->b;
     size_t n;
-    if (op[4] == 'd') n = wps_messages_delete(cv_get(msg, "ids"), everything);
-    else if (op[4] == 's') n = wps_messages_set(cv_get(msg, "ids"), everything, rd && rd->k == CV_BOOL ? rd->b : -1,
+    if (op[4] == 'd') n = osd_messages_delete(cv_get(msg, "ids"), everything);
+    else if (op[4] == 's') n = osd_messages_set(cv_get(msg, "ids"), everything, rd && rd->k == CV_BOOL ? rd->b : -1,
                                                cl && cl->k == CV_BOOL ? cl->b : -1);
     else {
         int64_t nid = 0;
         cv_int(msg, "nid", &nid);
-        n = wps_messages_closed(nid, cv_text(msg, "sender"));
+        n = osd_messages_closed(nid, cv_text(msg, "sender"));
     }
     reply_int(c, id, (int64_t)n);
     if (n) messages_broadcast(0);
@@ -429,7 +429,7 @@ static bool op_first_start(struct client *c, int64_t id, const char *op, cv *msg
     if (d && d[0] == '/') snprintf(j->desk, sizeof j->desk, "%s", d);
     char real[PATH_MAX];   /* (renamed by its title only from now on) */
     if (d && d[0] == '/') snprintf(known_desktop, sizeof known_desktop, "%s", realpath(d, real) ? real : d);
-    wpo_defer(loop, "first start", first_start_work, first_start_done, j);
+    osdo_defer(loop, "first start", first_start_work, first_start_done, j);
     return false;
 }
 
@@ -454,7 +454,7 @@ static bool op_setup(struct client *c, int64_t id, const char *op, cv *msg)
     struct setup_req *r = calloc(1, sizeof *r);
     r->c = c; c->refs++;
     r->id = id;
-    wpo_defer(loop, "settings objects", setup_req_work, setup_req_done, r);
+    osdo_defer(loop, "settings objects", setup_req_work, setup_req_done, r);
     return false;
 }
 
@@ -463,10 +463,10 @@ static bool op_setup(struct client *c, int64_t id, const char *op, cv *msg)
 /* A central object's actions before it goes (on:object.trash, .delete). */
 static void fire_central(struct client *c, const char *target, const char *event)
 {
-    wps_loaded ld;
-    wps_load(target, false, &ld);
-    wpo_object *o = ld.err ? NULL : wps_object_from_loaded(&ld);   /* (borrowed) */
-    wps_loaded_free(&ld);
+    osd_loaded ld;
+    osd_load(target, false, &ld);
+    osdo_object *o = ld.err ? NULL : osd_object_from_loaded(&ld);   /* (borrowed) */
+    osd_loaded_free(&ld);
     if (o) free(fire_event_for(c, o, NULL, event));
 }
 
@@ -474,7 +474,7 @@ static bool op_vtrash(struct client *c, int64_t id, const char *op, cv *msg)
 {
     (void)op;
     const char *t = cv_text(msg, "target");
-    if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN) {
+    if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + OSD_ID_LEN) {
         reply_error(c, id, "bad request", "vtrash needs a central object (vobj:ID)");
         return false;
     }
@@ -486,10 +486,10 @@ static bool op_vtrash(struct client *c, int64_t id, const char *op, cv *msg)
     j->trash = true;
     snprintf(j->target, sizeof j->target, "%s", t);
     fire_central(c, t, "object.trash");
-    wps_trash_home(j->dest, sizeof j->dest);
+    osd_trash_home(j->dest, sizeof j->dest);
     strncat(j->dest, "/files", sizeof j->dest - strlen(j->dest) - 1);
-    wps_mkdirs(j->dest, 0700);
-    wpo_defer(loop, "trash central object", vmove_work, vmove_done, j);
+    osd_mkdirs(j->dest, 0700);
+    osdo_defer(loop, "trash central object", vmove_work, vmove_done, j);
     return false;
 }
 
@@ -498,7 +498,7 @@ static bool op_vdelete(struct client *c, int64_t id, const char *op, cv *msg)
 {
     (void)op;
     const char *t = cv_text(msg, "target");
-    if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN) {
+    if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + OSD_ID_LEN) {
         reply_error(c, id, "bad request", "vdelete needs a central object (vobj:ID)");
         return false;
     }
@@ -510,7 +510,7 @@ static bool op_vdelete(struct client *c, int64_t id, const char *op, cv *msg)
     j->del = true;
     snprintf(j->target, sizeof j->target, "%s", t);
     fire_central(c, t, "object.delete");
-    wpo_defer(loop, "delete central object", vmove_work, vmove_done, j);
+    osdo_defer(loop, "delete central object", vmove_work, vmove_done, j);
     return false;
 }
 
@@ -520,12 +520,12 @@ static bool op_vmove(struct client *c, int64_t id, const char *op, cv *msg)
     (void)op;
     const char *t = cv_text(msg, "target"), *dest = cv_text(msg, "folder");
     const cv *cp = cv_get(msg, "copy");
-    if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + WPS_ID_LEN || !dest) {
+    if (!t || strncmp(t, "vobj:", 5) || strlen(t) != 5 + OSD_ID_LEN || !dest) {
         reply_error(c, id, "bad request", "vmove needs a central object (vobj:ID) and a folder");
         return false;
     }
     char why[600];
-    if ((!cp || cp->k != CV_BOOL || !cp->b) && wps_is_trash_files_dir(dest) && no_delete_of(t, why, sizeof why)) {
+    if ((!cp || cp->k != CV_BOOL || !cp->b) && osd_is_trash_files_dir(dest) && no_delete_of(t, why, sizeof why)) {
         reply_error(c, id, "protected", why);
         return false;
     }
@@ -535,7 +535,7 @@ static bool op_vmove(struct client *c, int64_t id, const char *op, cv *msg)
     snprintf(j->target, sizeof j->target, "%s", t);
     snprintf(j->dest, sizeof j->dest, "%s", dest);
     j->copy = cp && cp->k == CV_BOOL && cp->b;
-    wpo_defer(loop, "move central object", vmove_work, vmove_done, j);
+    osdo_defer(loop, "move central object", vmove_work, vmove_done, j);
     return false;
 }
 
@@ -558,7 +558,7 @@ static bool op_subscribe(struct client *c, int64_t id, const char *op, cv *msg)
     strlist(cv_get(msg, "folders"), &x->folders, &x->nfolders);
     const cv *j = cv_get(msg, "jobs");
     x->jobs = j && j->k == CV_BOOL && j->b;
-    for (size_t i = 0; i < x->nfolders; i++) wps_tracker_watch(x->folders[i]);   /* in view now */
+    for (size_t i = 0; i < x->nfolders; i++) osd_tracker_watch(x->folders[i]);   /* in view now */
     x->next = subs;
     subs = x;
     reply_int(c, id, x->id);
@@ -600,7 +600,7 @@ static bool op_resolve(struct client *c, int64_t id, const char *op, cv *msg)
     r->msg = *msg;     /* takes ownership */
     r->op = cv_text(&r->msg, "op");
     /* An ID of an object we already hold: use where it is now. */
-    sobj *known = strncmp(target, "id:", 3) == 0 ? wps_sobj_by_id(target + 3) : NULL;
+    sobj *known = strncmp(target, "id:", 3) == 0 ? osd_sobj_by_id(target + 3) : NULL;
     snprintf(r->target, sizeof r->target, "%s", known ? known->path : target);
     const cv *args = cv_get(&r->msg, "args");
     for (size_t i = 0; args && args->k == CV_ARRAY && i < args->n; i++) {
@@ -608,7 +608,7 @@ static bool op_resolve(struct client *c, int64_t id, const char *op, cv *msg)
         if (p && r->nobj < MAX_ARGS) snprintf(r->objpath[r->nobj++], PATH_MAX, "%s", p);
     }
     r->objs = calloc((size_t)r->nobj + 1, sizeof *r->objs);
-    wpo_defer(loop, op, prepare_work, prepare_done, r);
+    osdo_defer(loop, op, prepare_work, prepare_done, r);
     return true;   /* the request keeps msg */
 }
 
@@ -734,7 +734,7 @@ void on_accept(int fd, short rev, void *arg)
     c->next = clients;
     if (clients) clients->prev = c;
     clients = c;
-    wpo_loop_watch_fd(loop, cfd, POLLIN, client_io, c);
+    osdo_loop_watch_fd(loop, cfd, POLLIN, client_io, c);
 }
 
 void on_signal(int fd, short rev, void *arg)
@@ -745,7 +745,7 @@ void on_signal(int fd, short rev, void *arg)
     (void)r;
     log_msg("signal %u: writing pending changes and stopping", si.ssi_signo);
     work_area_save_all();   /* (logout: what the work areas had open, kept with the rest) */
-    wps_objects_flush(quit_after_flush, NULL);
+    osd_objects_flush(quit_after_flush, NULL);
 }
 
 void on_watchdog(const char *label, double ms, void *user)

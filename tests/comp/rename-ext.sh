@@ -29,7 +29,7 @@ typed() { echo "$1" | sed 's/./& /g' | awk -v t="$2" '{ for (i = 1; i <= NF; i++
     echo "13.8 key Escape"
     echo "15 quit"
 } > "$S/script"
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=18 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=18 tests/comp/run.sh "$S/script" \
     "sleep 6.8; ls \"\$T/desk\" > \"\$T/after-keep.txt\"; sleep 4; ls \"\$T/desk\" > \"\$T/after-use.txt\"; sleep 4; ls \"\$T/desk\" > \"\$T/after-cancel.txt\"; sleep 5" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0

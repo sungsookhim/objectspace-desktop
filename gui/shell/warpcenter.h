@@ -12,8 +12,8 @@
  * Messages list), the keyboard (the input source; click: the next one,
  * as Super+Space) and the clock (click: a month's calendar).
  */
-#ifndef WPS_WARPCENTER_H
-#define WPS_WARPCENTER_H
+#ifndef OSD_WARPCENTER_H
+#define OSD_WARPCENTER_H
 
 #include <stdbool.h>
 

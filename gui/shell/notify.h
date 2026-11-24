@@ -1,7 +1,7 @@
 /*
  * The WPS session's notification service (v0.2-design 9): the desktop
  * process owns org.freedesktop.Notifications on the session bus (sd-bus;
- * only in the WPS session, or with WPS_NOTIFY=1: GNOME has its own).
+ * only in the WPS session, or with OSD_NOTIFY=1: GNOME has its own).
  *
  * Notify shows a pop-up near the WarpCenter (a window org.wps.Notice the
  * compositor puts in the usable area's corner by the bar): icon, summary,
@@ -14,8 +14,8 @@
  * leaves the bus. "Do not disturb" keeps the pop-ups away; the messages
  * are still kept and counted.
  */
-#ifndef WPS_NOTIFY_H
-#define WPS_NOTIFY_H
+#ifndef OSD_NOTIFY_H
+#define OSD_NOTIFY_H
 
 #include <stdbool.h>
 #include <stdint.h>

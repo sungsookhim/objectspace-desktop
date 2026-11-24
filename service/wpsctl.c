@@ -26,7 +26,7 @@
  *
  * TARGET is a path or "id:<ID>". Arguments: true, false, integers, decimal
  * numbers, @PATH or @id:ID for an object, =TEXT to force text, anything
- * else is text. The socket is $WPS_SOCKET, else $WPS_RUNTIME_DIR/wps.sock,
+ * else is text. The socket is $OSD_SOCKET, else $OSD_RUNTIME_DIR/wps.sock,
  * else $XDG_RUNTIME_DIR/wps.sock.
  */
 #define _GNU_SOURCE
@@ -78,8 +78,8 @@ static int usage(void)
 static int connect_socket(void)
 {
     char path[PATH_MAX];
-    const char *s = getenv("WPS_SOCKET");
-    const char *rt = getenv("WPS_RUNTIME_DIR");
+    const char *s = getenv("OSD_SOCKET");
+    const char *rt = getenv("OSD_RUNTIME_DIR");
     if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
     else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
@@ -179,27 +179,27 @@ static int icon_cmd(int argc, char **argv)
 }
 
 /* wpsctl plugin new NAME [PARENT]: a folder NAME with a plug-in's skeleton
- * (the SDK's sample, sdk/sample: its .wpi, its C and its Makefile). */
+ * (the SDK's sample, sdk/sample: its .osdi, its C and its Makefile). */
 static const char plugin_makefile[] =
     "# A WPS plug-in, built with the SDK (the wps-devel package): make, then\n"
     "# make install (your own plug-ins: ~/.config/wps/plugins), and log in again.\n"
-    "# (wpsctl plugin new NAME makes one like this; WPS_SDK and WPS_INC say\n"
-    "# where the SDK is, for a checkout: make WPS_SDK=... WPS_INC=...)\n"
-    "NAME    ?= WPImageFile\n"
+    "# (wpsctl plugin new NAME makes one like this; OSD_SDK and OSD_INC say\n"
+    "# where the SDK is, for a checkout: make OSD_SDK=... OSD_INC=...)\n"
+    "NAME    ?= OsdImageFile\n"
     "SO      ?= $(shell echo $(NAME) | tr A-Z a-z).so\n"
-    "WPS_SDK ?= /usr/share/wps/sdk\n"
-    "WPS_INC ?= /usr/include/wps\n"
+    "OSD_SDK ?= /usr/share/wps/sdk\n"
+    "OSD_INC ?= /usr/include/wps\n"
     "CC      ?= cc\n"
     "PYTHON  ?= python3\n"
     "\n"
     "all: $(SO)\n"
     "\n"
-    "gen/$(NAME).reg.c: $(NAME).wpi\n"
+    "gen/$(NAME).reg.c: $(NAME).osdi\n"
     "\tmkdir -p gen\n"
-    "\t$(PYTHON) $(WPS_SDK)/wpoc.py -I $(WPS_SDK)/classes -o gen $(NAME).wpi\n"
+    "\t$(PYTHON) $(OSD_SDK)/osdc.py -I $(OSD_SDK)/classes -o gen $(NAME).osdi\n"
     "\n"
     "$(SO): $(NAME).c gen/$(NAME).reg.c\n"
-    "\t$(CC) -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fPIC -shared -I$(WPS_INC) -Igen -o $@ $(NAME).c gen/$(NAME).reg.c\n"
+    "\t$(CC) -O2 -g -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fPIC -shared -I$(OSD_INC) -Igen -o $@ $(NAME).c gen/$(NAME).reg.c\n"
     "\n"
     "install: $(SO)\n"
     "\tinstall -d $(HOME)/.config/wps/plugins\n"
@@ -223,40 +223,40 @@ static int write_file(const char *dir, const char *name, const char *text)
 static int plugin_cmd(int argc, char **argv)
 {
     if (argc < 4 || argc > 5 || strcmp(argv[2], "new")) return usage();
-    const char *name = argv[3], *parent = argc == 5 ? argv[4] : "WPDataFile";
+    const char *name = argv[3], *parent = argc == 5 ? argv[4] : "OsdDataFile";
     bool ok = (name[0] >= 'A' && name[0] <= 'Z') || (name[0] >= 'a' && name[0] <= 'z');
     for (const char *c = name; ok && *c; c++) ok = isalnum((unsigned char)*c) || *c == '_';
     if (!ok || strlen(name) > 60) { fprintf(stderr, "wpsctl: a class name is letters, digits and _\n"); return 2; }
     if (mkdir(name, 0755) != 0) { fprintf(stderr, "wpsctl: %s: %s\n", name, strerror(errno)); return 1; }
-    char wpi[2048], c[4096], *mk = malloc(sizeof plugin_makefile + 128);
-    snprintf(wpi, sizeof wpi,
-             "# %s: a WPS plug-in class (sdk/README.md; the grammar: wpoc.py).\n"
+    char osdi[2048], c[4096], *mk = malloc(sizeof plugin_makefile + 128);
+    snprintf(osdi, sizeof osdi,
+             "# %s: a WPS plug-in class (sdk/README.md; the grammar: osdc.py).\n"
              "class %s : %s\n"
              "version 1.0\n"
              "# a property WPS keeps for you (its notebook's %s page, setup strings, Class...)\n"
              "property note : text page %s label Note\n"
-             "classoverride wpclsQueryTitle\n", name, name, parent, name, name);
+             "classoverride osdclsQueryTitle\n", name, name, parent, name, name);
     snprintf(c, sizeof c,
-             "/* %s (%s.wpi): make, then make install, and log in again. */\n"
+             "/* %s (%s.osdi): make, then make install, and log in again. */\n"
              "#include \"%s.h\"\n\n"
-             "#include \"wps_classes.h\"\n"
-             "#include \"wps_state.h\"\n\n"
-             "char *%s__wpclsQueryTitle(wpo_object *self)\n"
-             "{\n    (void)self;\n    return wps_strdup(\"%s\");\n}\n\n"
-             "wpo_status wpo_plugin_init(uint32_t abi)\n"
-             "{\n    if (abi != WPO_ABI_VERSION) return WPO_EVERSION;\n    return %s_register();\n}\n",
+             "#include \"osd_classes.h\"\n"
+             "#include \"osd_state.h\"\n\n"
+             "char *%s__osdclsQueryTitle(osdo_object *self)\n"
+             "{\n    (void)self;\n    return osd_strdup(\"%s\");\n}\n\n"
+             "osdo_status osdo_plugin_init(uint32_t abi)\n"
+             "{\n    if (abi != OSDO_ABI_VERSION) return OSDO_EVERSION;\n    return %s_register();\n}\n",
              name, name, name, name, name, name);
     /* its Makefile: the sample's, for this name */
-    const char *at = strstr(plugin_makefile, "NAME    ?= WPImageFile");
+    const char *at = strstr(plugin_makefile, "NAME    ?= OsdImageFile");
     snprintf(mk, sizeof plugin_makefile + 128, "%.*sNAME    ?= %s%s", (int)(at - plugin_makefile), plugin_makefile, name,
-             at + strlen("NAME    ?= WPImageFile"));
+             at + strlen("NAME    ?= OsdImageFile"));
     char f1[128], f2[128];
-    snprintf(f1, sizeof f1, "%s.wpi", name);
+    snprintf(f1, sizeof f1, "%s.osdi", name);
     snprintf(f2, sizeof f2, "%s.c", name);
-    int e = write_file(name, f1, wpi) | write_file(name, f2, c) | write_file(name, "Makefile", mk);
+    int e = write_file(name, f1, osdi) | write_file(name, f2, c) | write_file(name, "Makefile", mk);
     free(mk);
     if (e) return 1;
-    printf("%s/: %s.wpi, %s.c, Makefile - cd %s && make && make install\n", name, name, name, name);
+    printf("%s/: %s.osdi, %s.c, Makefile - cd %s && make && make install\n", name, name, name, name);
     return 0;
 }
 
@@ -264,7 +264,7 @@ int main(int argc, char **argv)
 {
     if (argc >= 2 && !strcmp(argv[1], "icon")) return icon_cmd(argc, argv);
     if (argc >= 2 && !strcmp(argv[1], "plugin")) return plugin_cmd(argc, argv);
-    if (argc == 2 && !strcmp(argv[1], "--version")) { printf("wpsctl %s\n", WPS_VERSION); return 0; }
+    if (argc == 2 && !strcmp(argv[1], "--version")) { printf("wpsctl %s\n", OSD_VERSION); return 0; }
     if (argc < 2) return usage();
     const char *op = argv[1];
     cbuf b;

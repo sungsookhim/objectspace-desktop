@@ -18,7 +18,7 @@ def check(what, ok, more=""):
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())
@@ -113,9 +113,9 @@ it = wait_list(SYS, lambda it: "My Storages" in it)
 check("System holds My Storages", "My Storages" in it, sorted(it))
 check("My Storages has its own icon", (it.get("My Storages", {}).get("icon") or "") == "theme:computer", it.get("My Storages"))
 r = c.request(op="resolve", target=SYS + "/Storages")["result"]
-check("Computer is a WPComputer", r.get("class") == "WPComputer", r.get("class"))
+check("Computer is a OsdComputer", r.get("class") == "OsdComputer", r.get("class"))
 r = c.request(op="resolve", target=SYS + "/Storages/Drives")["result"]
-check("Drives is a WPDrives", r.get("class") == "WPDrives", r.get("class"))
+check("Drives is a OsdDrives", r.get("class") == "OsdDrives", r.get("class"))
 it = wait_list(SYS + "/Storages", lambda it: "Root" in it)
 check("Computer: Drives and Root", "Drives" in it and "Root" in it, sorted(it))
 check("Root's icon: the root drive, lit", (it.get("Root", {}).get("icon") or "") == "theme:drive-root", it.get("Root"))

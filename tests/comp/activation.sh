@@ -15,7 +15,7 @@ EOS
 # (a-tool.sh where Projects was; its Program page's type: window, no terminal)
 PRE="rm -rf \"\$T/desk/Projects\"; cp '$S/tool' \"\$T/desk/a-tool.sh\"; chmod +x \"\$T/desk/a-tool.sh\";
      '$W' settings_set \"\$T/desk/a-tool.sh\" prog_type=1 > /dev/null 2>&1" \
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=8 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=8 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

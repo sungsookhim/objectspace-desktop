@@ -55,7 +55,7 @@ Sets properties with a setup string. The path may also be
 (every file of a type).
 .TP
 .B create
-Makes an object of a class (WPFolder, WPDataFile, ...) in a folder and
+Makes an object of a class (OsdFolder, OsdDataFile, ...) in a folder and
 prints its path.
 .TP
 .B shadow
@@ -76,17 +76,17 @@ chosen; exits with 1 if it was closed without a choice.
 .TP
 .B folder
 Prints the folder the script or Command Prompt was started from
-.RB ( $WPS_FOLDER ).
+.RB ( $OSD_FOLDER ).
 .TP
 .B selection
 Prints the paths of the objects selected in the active folder window
 (else on the desktop).
 .SH ENVIRONMENT
 .TP
-.B WPS_FOLDER
+.B OSD_FOLDER
 Set by Command prompt here: the folder.
 .TP
-.BR WPS_OBJECT ", " WPS_PATH ", " WPS_EVENT
+.BR OSD_OBJECT ", " OSD_PATH ", " OSD_EVENT
 Set for programs an object's actions start.
 .SH SEE ALSO
 .BR wpsctl (1),

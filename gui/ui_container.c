@@ -1947,7 +1947,7 @@ ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void 
     c->rep_fd = -1;
     c->col_shown = 15;
     c->sort_col = c->head_down = c->col_drag = -1;
-    if (!getenv("WPS_UI_NO_LAYER")) c->layer = ui_layer_new(s, layer_draw, c);
+    if (!getenv("OSD_UI_NO_LAYER")) c->layer = ui_layer_new(s, layer_draw, c);
     return c;
 }
 

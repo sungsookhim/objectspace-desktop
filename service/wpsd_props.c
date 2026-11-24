@@ -12,17 +12,17 @@
 #define _GNU_SOURCE
 #include "wpsd.h"
 #include "defaults.h"
-#include "wps_props.h"
+#include "osd_props.h"
 
 /* ---- the chain (object-properties-design.md 2.2): an object's own value,
  * then its type's (type:image/png, type:image/\*), then its class's and
  * each class's above it up to the one declaring the property
- * (class:WPFolder, ...), then the declared default. */
+ * (class:OsdFolder, ...), then the declared default. */
 
 #define MAX_SCOPES 24
 
 /* The scopes above an object (or a scope) for property p, nearest first. */
-static size_t scopes_for(const wpo_class *cls, const char *mime, const wpo_property_def *p, char out[][160])
+static size_t scopes_for(const osdo_class *cls, const char *mime, const osdo_property_def *p, char out[][160])
 {
     size_t n = 0;
     if (mime && *mime) {
@@ -30,11 +30,11 @@ static size_t scopes_for(const wpo_class *cls, const char *mime, const wpo_prope
         const char *sl = strchr(mime, '/');
         if (sl && strcmp(sl, "/*")) snprintf(out[n++], 160, "type:%.*s/*", (int)(sl - mime), mime);
     }
-    for (const wpo_class *c = cls; c && n < MAX_SCOPES; c = c->parent) {
+    for (const osdo_class *c = cls; c && n < MAX_SCOPES; c = c->parent) {
         snprintf(out[n++], 160, "class:%s", c->name);
         bool declares = false;
         for (size_t i = 0; i < c->nprops && !declares; i++) declares = &c->props[i] == p || !strcmp(c->props[i].name, p->name);
-        if (declares && !(c->parent && wpo_find_property(c->parent, p->name, NULL))) break;
+        if (declares && !(c->parent && osdo_find_property(c->parent, p->name, NULL))) break;
     }
     return n;
 }
@@ -42,7 +42,7 @@ static size_t scopes_for(const wpo_class *cls, const char *mime, const wpo_prope
 static char *first_in(char sc[][160], size_t n, size_t from, const char *store, const char *name, char *origin, size_t on)
 {
     for (size_t i = from; i < n; i++) {
-        char *v = wps_defaults_get(sc[i], store, name);
+        char *v = osd_defaults_get(sc[i], store, name);
         if (v) {
             if (origin && on) snprintf(origin, on, "%s", sc[i]);
             return v;
@@ -51,16 +51,16 @@ static char *first_in(char sc[][160], size_t n, size_t from, const char *store, 
     return NULL;
 }
 
-static char *mime_of(wpo_object *self)
+static char *mime_of(osdo_object *self)
 {
-    wpo_value r = wpo_v_void();
-    if (wpo_send(self, "wpQueryMimeType", NULL, 0, &r) != WPO_OK || r.type != 's') { wpo_value_clear(&r); return NULL; }
+    osdo_value r = osdo_v_void();
+    if (osdo_send(self, "osdQueryMimeType", NULL, 0, &r) != OSDO_OK || r.type != 's') { osdo_value_clear(&r); return NULL; }
     char *m = r.u.s ? strdup(r.u.s) : NULL;
-    wpo_value_clear(&r);
+    osdo_value_clear(&r);
     return m;
 }
 
-static char *chain_value(wpo_object *self, const wpo_property_def *p, const char *store, char *origin, size_t on)
+static char *chain_value(osdo_object *self, const osdo_property_def *p, const char *store, char *origin, size_t on)
 {
     char sc[MAX_SCOPES][160];
     char *mime = mime_of(self);
@@ -74,21 +74,21 @@ void props_broadcast(const char *scope) { defaults_broadcast(scope); }
 
 static bool scope_set_hook(const char *scope, const char *store, const char *prop, const char *value)
 {
-    if (wps_defaults_set(scope, store, prop, value)) return false;
+    if (osd_defaults_set(scope, store, prop, value)) return false;
     defaults_broadcast(scope);
     return true;
 }
 
 void props_init(void)
 {
-    wps_loaded l;
-    wps_load(env.config_dir, false, &l);
-    wps_defaults_init(db, l.err ? "" : l.vol);
-    wps_loaded_free(&l);
-    wps_prop_inherit = chain_value;
-    wps_scope_get = wps_defaults_get;
-    wps_scope_set = scope_set_hook;
-    wps_scheme_titles = scheme_titles;
+    osd_loaded l;
+    osd_load(env.config_dir, false, &l);
+    osd_defaults_init(db, l.err ? "" : l.vol);
+    osd_loaded_free(&l);
+    osd_prop_inherit = chain_value;
+    osd_scope_get = osd_defaults_get;
+    osd_scope_set = scope_set_hook;
+    osd_scheme_titles = scheme_titles;
     backing_init();
 }
 
@@ -133,7 +133,7 @@ static const char *next_pair(const char *s, char *k, size_t nk, char *v, size_t 
     return s;
 }
 
-static void put_prop_value(cbuf *b, const wpo_property_def *p, const char *v, const char *origin)
+static void put_prop_value(cbuf *b, const osdo_property_def *p, const char *v, const char *origin)
 {
     cb_map(b, 7);
     cb_text(b, "name"); cb_text(b, p->name);
@@ -145,38 +145,38 @@ static void put_prop_value(cbuf *b, const wpo_property_def *p, const char *v, co
     cb_text(b, "origin"); cb_text(b, origin);
 }
 
-static void put_prop(cbuf *b, wpo_object *o, const wpo_property_def *p)
+static void put_prop(cbuf *b, osdo_object *o, const osdo_property_def *p)
 {
     char origin[160];
-    char *v = wps_prop_get_origin(o, p->name, origin, sizeof origin);
-    char *ch = wps_prop_choices(o, p);
-    wpo_property_def q = *p;   /* (its options now) */
+    char *v = osd_prop_get_origin(o, p->name, origin, sizeof origin);
+    char *ch = osd_prop_choices(o, p);
+    osdo_property_def q = *p;   /* (its options now) */
     q.choices = ch;
     put_prop_value(b, &q, v, origin);
     free(v);
     free(ch);
 }
 
-bool apply_setup(wpo_object *o, const char *setup, char *err, size_t en)
+bool apply_setup(osdo_object *o, const char *setup, char *err, size_t en)
 {
     char k[128], v[4096];
     bool ok;
     for (const char *s = setup; (s = next_pair(s, k, sizeof k, v, sizeof v, &ok));) {
         if (!ok) { snprintf(err, en, "setup strings are key=value;key=value"); return false; }
-        if (!wpo_find_property(o->cls, k, NULL)) { snprintf(err, en, "%s: no such property", k); return false; }
-        if (!WPObject_wpSetProperty(o, k, v)) { snprintf(err, en, "%s: the value was refused", k); return false; }
-        if ((!strcmp(k, "sort_key") || !strcmp(k, "sort_desc")) && wpo_is_a(o, WPFileSystemClass))
-            wps_listing_invalidate(WPFileSystem_data(o)->path);
+        if (!osdo_find_property(o->cls, k, NULL)) { snprintf(err, en, "%s: no such property", k); return false; }
+        if (!OsdObject_osdSetProperty(o, k, v)) { snprintf(err, en, "%s: the value was refused", k); return false; }
+        if ((!strcmp(k, "sort_key") || !strcmp(k, "sort_desc")) && osdo_is_a(o, OsdFileSystemClass))
+            osd_listing_invalidate(OsdFileSystem_data(o)->path);
     }
     return true;
 }
 
-void do_props(struct req *r, wpo_object *o)
+void do_props(struct req *r, osdo_object *o)
 {
     int64_t ex;
     if (!strcmp(r->op, "get")) {
         const char *name = cv_text(&r->msg, "name");
-        char *v = name ? WPObject_wpQueryProperty(o, name) : NULL;
+        char *v = name ? OsdObject_osdQueryProperty(o, name) : NULL;
         if (!v) { reply_error(r->c, r->id, "not found", "no such property"); return; }
         cbuf b;
         cb_init(&b);
@@ -192,7 +192,7 @@ void do_props(struct req *r, wpo_object *o)
     if (!strcmp(r->op, "set")) {
         const char *setup = cv_text(&r->msg, "setup");
         if (!setup) { reply_error(r->c, r->id, "bad request", "set needs a setup string"); return; }
-        if (cv_int(&r->msg, "expect", &ex) && (uint64_t)ex != WPObject_data(o)->changes) {
+        if (cv_int(&r->msg, "expect", &ex) && (uint64_t)ex != OsdObject_data(o)->changes) {
             reply_error(r->c, r->id, "conflict", "conflict");
             return;
         }
@@ -208,7 +208,7 @@ void do_props(struct req *r, wpo_object *o)
         for (const char *q = names; q && *q;) {
             const char *e = strchr(q, ';');
             snprintf(nm, sizeof nm, "%.*s", (int)(e ? e - q : (long)strlen(q)), q);
-            if (*nm && !wps_prop_reset(o, nm)) {
+            if (*nm && !osd_prop_reset(o, nm)) {
                 char msg[200];
                 snprintf(msg, sizeof msg, "%s: no value of its own to remove", nm);
                 reply_error(r->c, r->id, "bad request", msg);
@@ -220,13 +220,13 @@ void do_props(struct req *r, wpo_object *o)
         return;
     }
     /* props: every declared property, the root class's first */
-    const wpo_class *chain[64];
+    const osdo_class *chain[64];
     size_t nc = 0;
-    for (const wpo_class *c = o->cls; c && nc < 64; c = c->parent) chain[nc++] = c;
+    for (const osdo_class *c = o->cls; c && nc < 64; c = c->parent) chain[nc++] = c;
     size_t count = 0;
     for (size_t k = nc; k-- > 0;)
         for (size_t i = 0; i < chain[k]->nprops; i++)
-            count += wpo_find_property(o->cls, chain[k]->props[i].name, NULL) == &chain[k]->props[i];
+            count += osdo_find_property(o->cls, chain[k]->props[i].name, NULL) == &chain[k]->props[i];
     cbuf b;
     cb_init(&b);
     cb_map(&b, 3);
@@ -236,8 +236,8 @@ void do_props(struct req *r, wpo_object *o)
     cb_array(&b, count);
     for (size_t k = nc; k-- > 0;)
         for (size_t i = 0; i < chain[k]->nprops; i++) {
-            const wpo_property_def *p = &chain[k]->props[i];
-            if (wpo_find_property(o->cls, p->name, NULL) == p) put_prop(&b, o, p);
+            const osdo_property_def *p = &chain[k]->props[i];
+            if (osdo_find_property(o->cls, p->name, NULL) == p) put_prop(&b, o, p);
         }
     send_frame(r->c, &b);
     cb_free(&b);
@@ -260,13 +260,13 @@ static void reply_text(struct client *c, int64_t id, const char *v)
 
 /* A backed property for a scope: mimeapps for one type (not a kind like
  * image/\*, nor a class: no one type). */
-static bool scope_backed(const wpo_property_def *p, const char *target)
+static bool scope_backed(const osdo_property_def *p, const char *target)
 {
     return p->backing && !strcmp(p->backing, "mimeapps") && !strncmp(target, "type:", 5) && !strstr(target, "/*");
 }
 
 /* its value: the scope's own, else the scopes above it, else the default */
-static char *scope_value(const wpo_class *cls, const char *target, const wpo_property_def *p, const char *store, char *origin, size_t on)
+static char *scope_value(const osdo_class *cls, const char *target, const osdo_property_def *p, const char *store, char *origin, size_t on)
 {
     if (p->backing) {   /* where Linux keeps it */
         snprintf(origin, on, "backing");
@@ -283,41 +283,41 @@ static char *scope_value(const wpo_class *cls, const char *target, const wpo_pro
 
 /* A scope's notebook: the pages of what all of its objects can share (not
  * an object's own, like its title, nor information). */
-struct scope_ctx { const wpo_class *cls; const char *target; };
+struct scope_ctx { const osdo_class *cls; const char *target; };
 
-static bool shared_prop(const wpo_property_def *p)
+static bool shared_prop(const osdo_property_def *p)
 {
-    return !p->get && !(p->flags & (WPO_P_READONLY | WPO_P_NOFIELD)) && strcmp(p->type, "info");
+    return !p->get && !(p->flags & (OSDO_P_READONLY | OSDO_P_NOFIELD)) && strcmp(p->type, "info");
 }
 
 /* What a scope offers: its shared settings, a backed one only where it applies. */
-static bool scope_has(const wpo_property_def *p, const char *target)
+static bool scope_has(const osdo_property_def *p, const char *target)
 {
     return p && shared_prop(p) && (!p->backing || scope_backed(p, target));
 }
 
 /* A choice's options for a scope (a type's programs: mimeapps). Caller frees. */
-static char *scope_choices(const wpo_property_def *p, const char *target)
+static char *scope_choices(const osdo_property_def *p, const char *target)
 {
     if (scope_backed(p, target)) return mimeapps_options(target + 5);
     return p->choices ? strdup(p->choices) : NULL;
 }
 
-static char *scope_canonical(const wpo_property_def *p, const char *target, const char *v)
+static char *scope_canonical(const osdo_property_def *p, const char *target, const char *v)
 {
-    wpo_property_def q = *p;
+    osdo_property_def q = *p;
     char *ch = scope_choices(p, target);
     q.choices = ch;
-    char *r = wps_prop_canonical(&q, v);
+    char *r = osd_prop_canonical(&q, v);
     free(ch);
     return r;
 }
 
 /* Stores (value NULL: removes) a scope's value: in Linux's place for a backed one. 0 or -1. */
-static int scope_store(const wpo_class *cls, const char *target, const wpo_property_def *p, const char *value)
+static int scope_store(const osdo_class *cls, const char *target, const osdo_property_def *p, const char *value)
 {
     if (p->backing) return value && scope_backed(p, target) && mimeapps_set(target + 5, value) ? 0 : -1;
-    return wps_defaults_set(target, wps_prop_store(cls, p->name), p->name, value);
+    return osd_defaults_set(target, osd_prop_store(cls, p->name), p->name, value);
 }
 
 static void scope_origin(void *ctx, const char *key, bool *own, char *from, size_t fn)
@@ -325,15 +325,15 @@ static void scope_origin(void *ctx, const char *key, bool *own, char *from, size
     struct scope_ctx *x = ctx;
     *own = false;
     from[0] = 0;
-    const wpo_property_def *p = wpo_find_property(x->cls, key, NULL);
+    const osdo_property_def *p = osdo_find_property(x->cls, key, NULL);
     if (!p) return;
     char origin[160];
-    free(scope_value(x->cls, x->target, p, wps_prop_store(x->cls, key), origin, sizeof origin));
+    free(scope_value(x->cls, x->target, p, osd_prop_store(x->cls, key), origin, sizeof origin));
     if (!strcmp(origin, x->target)) { *own = true; return; }
     if (!strcmp(origin, "backing")) { snprintf(from, fn, "shared with GNOME"); return; }
     if (!strncmp(origin, "class:", 6)) {
-        wpo_class *c = wpo_find_class(origin + 6);
-        char *t = c ? WPObject_wpclsQueryTitle(c) : NULL;
+        osdo_class *c = osdo_find_class(origin + 6);
+        char *t = c ? OsdObject_osdclsQueryTitle(c) : NULL;
         snprintf(from, fn, "%s default", t && *t ? t : origin + 6);
         free(t);
     } else if (!strncmp(origin, "type:", 5)) {
@@ -341,27 +341,27 @@ static void scope_origin(void *ctx, const char *key, bool *own, char *from, size
     }
 }
 
-static char *scope_pages(const wpo_class *cls, const char *target)
+static char *scope_pages(const osdo_class *cls, const char *target)
 {
-    const wpo_class *chain[64];
+    const osdo_class *chain[64];
     size_t nc = 0;
-    for (const wpo_class *k = cls; k && nc < 64; k = k->parent) chain[nc++] = k;
+    for (const osdo_class *k = cls; k && nc < 64; k = k->parent) chain[nc++] = k;
     char *out = strdup("");
     const char *page = NULL;
     char origin[160];
     for (int pass = 0; pass < 3; pass++)   /* pages marked first, the others, those marked last (Actions) */
     for (size_t j = nc; j-- > 0;)
         for (size_t i = 0; i < chain[j]->nprops; i++) {
-            const wpo_property_def *d = &chain[j]->props[i];
-            if (chain[j]->parent && wpo_find_property(chain[j]->parent, d->name, NULL)) continue;   /* where first declared */
-            const wpo_property_def *p = wpo_find_property(cls, d->name, NULL);
+            const osdo_property_def *d = &chain[j]->props[i];
+            if (chain[j]->parent && osdo_find_property(chain[j]->parent, d->name, NULL)) continue;   /* where first declared */
+            const osdo_property_def *p = osdo_find_property(cls, d->name, NULL);
             if (!scope_has(p, target)) continue;
-            if (((p->flags & WPO_P_FIRST) ? 0 : (p->flags & WPO_P_LAST) ? 2 : 1) != pass) continue;
-            char *v = scope_value(cls, target, p, wps_prop_store(cls, p->name), origin, sizeof origin);
+            if (((p->flags & OSDO_P_FIRST) ? 0 : (p->flags & OSDO_P_LAST) ? 2 : 1) != pass) continue;
+            char *v = scope_value(cls, target, p, osd_prop_store(cls, p->name), origin, sizeof origin);
             char *ch = scope_choices(p, target);
             char shown[32];
             const char *fv = v ? v : "";
-            if (!strcmp(p->type, "choice")) { snprintf(shown, sizeof shown, "%d", wps_option_index(ch, fv)); fv = shown; }
+            if (!strcmp(p->type, "choice")) { snprintf(shown, sizeof shown, "%d", osd_option_index(ch, fv)); fv = shown; }
             const char *pg = p->page ? p->page : "General";
             size_t l = strlen(pg) + strlen(p->name) + strlen(p->label ? p->label : "") + strlen(fv) + strlen(ch ? ch : "") + 64;
             char *line = malloc(l);
@@ -382,13 +382,13 @@ static char *scope_pages(const wpo_class *cls, const char *target)
     return out;
 }
 
-static void reply_scope_settings(struct client *c, int64_t id, const wpo_class *cls, const char *target)
+static void reply_scope_settings(struct client *c, int64_t id, const osdo_class *cls, const char *target)
 {
     char *t = scope_pages(cls, target);
     struct scope_ctx x = { cls, target };
     char title[200];
     if (!strncmp(target, "class:", 6)) {
-        char *ct = WPObject_wpclsQueryTitle((wpo_class *)cls);
+        char *ct = OsdObject_osdclsQueryTitle((osdo_class *)cls);
         snprintf(title, sizeof title, "All of class %s", ct && *ct ? ct : cls->name);
         free(ct);
     } else {
@@ -413,12 +413,12 @@ static void reply_scope_settings(struct client *c, int64_t id, const wpo_class *
 
 bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char *target)
 {
-    const wpo_class *cls = NULL;
+    const osdo_class *cls = NULL;
     if (!strncmp(target, "class:", 6)) {
-        wpo_class *k = wpo_find_class(target + 6);
-        if (k && !k->is_meta && wpo_subclass_of(k, WPObjectClass)) cls = k;
+        osdo_class *k = osdo_find_class(target + 6);
+        if (k && !k->is_meta && osdo_subclass_of(k, OsdObjectClass)) cls = k;
     } else if (strchr(target + 5, '/')) {
-        cls = WPDataFileClass;   /* files of a type */
+        cls = OsdDataFileClass;   /* files of a type */
     }
     if (!cls) { reply_error(c, id, "not found", "no such class or type"); return false; }
     char origin[160], m[256];
@@ -428,7 +428,7 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
         const cv *values = cv_get(msg, "values");
         for (size_t k = 0; values && values->k == CV_MAP && k < values->n; k++) {
             const cv *key = &values->items[2 * k], *val = &values->items[2 * k + 1];
-            const wpo_property_def *p = key->k == CV_TEXT ? wpo_find_property(cls, key->s, NULL) : NULL;
+            const osdo_property_def *p = key->k == CV_TEXT ? osdo_find_property(cls, key->s, NULL) : NULL;
             if (!scope_has(p, target)) { reply_error(c, id, "bad request", "no such setting"); return false; }
             char num[32];
             const char *txt = val->k == CV_TEXT ? val->s : NULL;
@@ -446,9 +446,9 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
     }
     if (!strcmp(op, "get")) {
         const char *name = cv_text(msg, "name");
-        const wpo_property_def *p = name ? wpo_find_property(cls, name, NULL) : NULL;
+        const osdo_property_def *p = name ? osdo_find_property(cls, name, NULL) : NULL;
         if (!p || p->get || (p->backing && !scope_backed(p, target))) { reply_error(c, id, "not found", "no such property for all objects of it"); return false; }
-        char *v = scope_value(cls, target, p, wps_prop_store(cls, name), origin, sizeof origin);
+        char *v = scope_value(cls, target, p, osd_prop_store(cls, name), origin, sizeof origin);
         reply_text(c, id, v);
         free(v);
         return false;
@@ -469,8 +469,8 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
                 q = e ? e + 1 : NULL;
                 if (!*k) continue;
             }
-            const wpo_property_def *p = wpo_find_property(cls, k, NULL);
-            if (!p || p->get || (p->flags & WPO_P_READONLY) || !strcmp(p->type, "info") || (p->backing && (!scope_backed(p, target) || !strcmp(op, "reset")))) {
+            const osdo_property_def *p = osdo_find_property(cls, k, NULL);
+            if (!p || p->get || (p->flags & OSDO_P_READONLY) || !strcmp(p->type, "info") || (p->backing && (!scope_backed(p, target) || !strcmp(op, "reset")))) {
                 snprintf(m, sizeof m, "%s: not a setting for all objects of it", k);
                 reply_error(c, id, "bad request", m);
                 return false;
@@ -490,14 +490,14 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
         return false;
     }
     if (!strcmp(op, "props")) {
-        const wpo_class *chain[64];
+        const osdo_class *chain[64];
         size_t nc = 0;
-        for (const wpo_class *k = cls; k && nc < 64; k = k->parent) chain[nc++] = k;
+        for (const osdo_class *k = cls; k && nc < 64; k = k->parent) chain[nc++] = k;
         size_t count = 0;
         for (size_t j = nc; j-- > 0;)
             for (size_t i = 0; i < chain[j]->nprops; i++) {
-                const wpo_property_def *p = &chain[j]->props[i];
-                count += wpo_find_property(cls, p->name, NULL) == p && !p->get && strcmp(p->type, "info") && (!p->backing || scope_backed(p, target));
+                const osdo_property_def *p = &chain[j]->props[i];
+                count += osdo_find_property(cls, p->name, NULL) == p && !p->get && strcmp(p->type, "info") && (!p->backing || scope_backed(p, target));
             }
         cbuf b;
         cb_init(&b);
@@ -508,10 +508,10 @@ bool do_scope(struct client *c, int64_t id, const char *op, cv *msg, const char 
         cb_array(&b, count);
         for (size_t j = nc; j-- > 0;)
             for (size_t i = 0; i < chain[j]->nprops; i++) {
-                const wpo_property_def *p = &chain[j]->props[i];
-                if (wpo_find_property(cls, p->name, NULL) != p || p->get || !strcmp(p->type, "info") || (p->backing && !scope_backed(p, target))) continue;
-                char *v = scope_value(cls, target, p, wps_prop_store(cls, p->name), origin, sizeof origin);
-                wpo_property_def q = *p;
+                const osdo_property_def *p = &chain[j]->props[i];
+                if (osdo_find_property(cls, p->name, NULL) != p || p->get || !strcmp(p->type, "info") || (p->backing && !scope_backed(p, target))) continue;
+                char *v = scope_value(cls, target, p, osd_prop_store(cls, p->name), origin, sizeof origin);
+                osdo_property_def q = *p;
                 char *ch = scope_choices(p, target);
                 q.choices = ch;
                 put_prop_value(&b, &q, v, !strcmp(origin, target) ? "object" : origin);

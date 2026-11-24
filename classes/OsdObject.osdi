@@ -1,0 +1,68 @@
+# The root of all WPS objects.
+class OsdObject
+version 1.1
+include "osd_state.h"
+data {
+    char *title;        /* NULL: the class decides (see osdQueryTitle) */
+    char *icon;         /* its own icon, a PNG (WPS keeps a copy); NULL: its kind's */
+    char id[37];        /* object ID; empty until assigned (lazily, by the service) */
+    uint32_t dirty;     /* state changed since the last save */
+    uint64_t changes;   /* in-memory change counter, for optimistic client writes */
+    bool is_template;
+    osd_state *state;   /* stored properties, per class (see osd_state.h) */
+}
+override osdInitData
+override osdUnInitData
+method osdQueryTitle() -> string
+method osdSetTitle(string title) -> bool
+# The object's own icon: the path of a PNG, or "" for its kind's again.
+method osdQueryIcon() -> string
+method osdSetIcon(string path) -> bool
+method osdQueryHandle() -> string
+# Menus and settings pages are data, built as text by each class and
+# parsed by the service into structures for clients (design: Menus and
+# settings pages as data):
+#   menu item:      id<TAB>label[<TAB>parent-id[<TAB>flags]]   flags: disabled,checked
+#   settings page:  page<TAB>title
+#   settings field: field<TAB>key<TAB>type<TAB>label<TAB>value<TAB>setter[<TAB>choices]
+#                   type: text, number, checkbox, choice, icon (a PNG's path); setter: a method name
+method osdModifyPopupMenu(string menu) -> string
+method osdMenuItemSelected(int item) -> bool
+method osdSaveDeferred() -> void
+method osdObjectChanged() -> void
+# Persistence. The service reads and writes storage on workers; these run on
+# the loop thread and only move values between fields and the state bag.
+method osdAddSettingsPages(string pages) -> string
+# Events (object-properties-design.md 2.4) and what is done on them: the
+# on:EVENT properties (its own, its type's, its class's, ...; none: the
+# Sound object's sound for it). Kinds, several with "|": sound:FILE,
+# run:COMMAND (with OSD_OBJECT, OSD_PATH, OSD_EVENT, OSD_CLASS), call:METHOD
+# ARGS, set:SETUP, none (silence).
+event object.open, object.create, object.trash, object.delete
+# Its General and Icon pages.
+property title : text page General label Title get osdQueryTitle set osdSetTitle
+property template : checkbox page General label Template get osdQueryTemplate set osdSetTemplate
+property no_delete : checkbox page General label "Prevent delete"
+property icon : icon page Icon label "Base icon" get osdQueryIcon set osdSetIcon
+# Its open icon (0.4 step 3; OS/2's animation icon): shown while it is open
+# (a folder's window, a program running); "": the theme's, or the in-use look.
+property icon_open : icon page Icon label "Open icon"
+# The in-use hatching over the open icon too (it stands out on a busy
+# background or among many icons; without an open icon it is always shown).
+property open_hatch : checkbox page Icon label "Hatched while open"
+property on:object.open : text page Actions label "When opened" last
+property on:object.create : text page Actions label "When made" last
+property on:object.trash : text page Actions label "When put in the Trash Can" last
+property on:object.delete : text page Actions label "When deleted" last
+# Declared properties (object-properties-design.md 2.1; their `property`
+# lines in each class's .osdi): a value as text (NULL: no such property),
+# set from text (false: refused), and all of them as "name\tvalue" lines.
+method osdQueryProperty(string name) -> string
+method osdSetProperty(string name, string value) -> bool
+method osdListProperties() -> string
+# Templates: a template object is copied, settings and all, to make new ones.
+method osdQueryTemplate() -> bool
+method osdSetTemplate(bool on) -> bool
+method osdSaveState() -> bool
+method osdRestoreProperties() -> void
+classmethod osdclsQueryTitle() -> string

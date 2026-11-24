@@ -41,7 +41,7 @@ PRE="mkdir -p \"\$T/away\" \"\$T/zfolder\"; echo z > \"\$T/away/z.txt\"; ln -s \
      printf '[Desktop Entry]\nType=Application\nName=One\nExec=$C One 3060a0\n' > \"\$T/desk/Projects/one.desktop\"
      printf '[Desktop Entry]\nType=Application\nName=Two\nExec=$C Two a03060\n' > \"\$T/desk/Projects/two.desktop\"
      '$W' settings_set \"\$T/desk/Projects\" 'work_area=1' > /dev/null" \
-    env -u WPS_SESSION DESKENV="WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=24 tests/comp/run.sh "$S/one" \
+    env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=24 tests/comp/run.sh "$S/one" \
     "sleep 2; '$W' shadow \"\$T/zfolder\" \"\$T/desk/Projects\" > /dev/null; sleep 60" > "$S/one.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/one.txt")
 cp "$T/wpsd.log" "$S/wpsd1.log"   # (the second run writes its own)
@@ -59,9 +59,9 @@ cat > "$S/three" <<EOS
 8.6 windows
 9 quit
 EOS
-KEEP_T=$T PRE="a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"WPSystem\"][\"address\"])')
+KEEP_T=$T PRE="a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdSystem\"][\"address\"])')
      '$W' settings_set \"\$a\" 'restore_windows=0' > /dev/null" \
-    env -u WPS_SESSION DESKENV="WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/three" "sleep 60" > "$S/three.txt" 2>&1
+    env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/three" "sleep 60" > "$S/three.txt" 2>&1
 # Each "windows" answer: its lines after its "windows now:".
 cat > "$S/blocks.py" <<'EOP'
 import sys

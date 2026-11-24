@@ -4,8 +4,8 @@
  * /usr/share/pixmaps, or a full path. SVGs are made into PNGs by glycin
  * (icons_preview), off the UI thread; changed() runs when one is ready.
  */
-#ifndef WPS_APPICONS_H
-#define WPS_APPICONS_H
+#ifndef OSD_APPICONS_H
+#define OSD_APPICONS_H
 
 #include <cairo.h>
 

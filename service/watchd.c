@@ -175,7 +175,7 @@ static bool reg_path(struct reg *r, char *out, size_t n)
     if (!f) return false;
     int mfd = fs_open(f);
     if (mfd < 0) {
-        if (getenv("WPS_TRACE")) printf("wps-watchd: fs_open(%s) failed: %s\n", f->mnt, strerror(errno));
+        if (getenv("OSD_TRACE")) printf("wps-watchd: fs_open(%s) failed: %s\n", f->mnt, strerror(errno));
         return false;
     }
     _Alignas(struct file_handle) unsigned char buf[sizeof(struct file_handle) + HSZ];
@@ -187,7 +187,7 @@ static bool reg_path(struct reg *r, char *out, size_t n)
     int e = errno;
     close(mfd);
     if (fd < 0) {
-        if (getenv("WPS_TRACE")) printf("wps-watchd: open_by_handle_at via %s failed: %s\n", f->mnt, strerror(e));
+        if (getenv("OSD_TRACE")) printf("wps-watchd: open_by_handle_at via %s failed: %s\n", f->mnt, strerror(e));
         return false;
     }
     char lp[64];
@@ -214,7 +214,7 @@ static bool reg_valid(struct reg *r)
     char path[PATH_MAX] = "";
     bool found = reg_path(r, path, sizeof path);
     bool ok = found && client_can_open(r->c, path, r->isdir);
-    if (getenv("WPS_TRACE")) printf("wps-watchd: recheck reg %d: found=%d path=%s ok=%d\n", r->idx, found, path, ok);
+    if (getenv("OSD_TRACE")) printf("wps-watchd: recheck reg %d: found=%d path=%s ok=%d\n", r->idx, found, path, ok);
     r->gen = access_gen;
     r->ok = ok;
     if (ok) return true;
@@ -450,7 +450,7 @@ static void route(struct fanotify_event_metadata *m)
         access_gen++;
     char ms[160];
     mask_str(m->mask, ms, sizeof ms);
-    if (getenv("WPS_TRACE"))
+    if (getenv("OSD_TRACE"))
         printf("wps-watchd: event %s self=%d dir=%d old=%d new=%d\n", ms, self.present, dir.present, old.present, nw.present);
     for (int s = 0; s < MAX_CLIENTS; s++) {
         struct client *c = clients[s];

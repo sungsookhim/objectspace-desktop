@@ -51,10 +51,12 @@ STAGES = {
         # methods wpQueryTitle, wpclsNew (and Class_wpQueryTitle)
         (B + r"wp(cls)?(?=[A-Z])", r"osd\1"),
         (B + r"wpcls" + E, "osdcls"),
+        (B + r"osdimagefile" + E, "osdimagefile"),   # (the SDK sample's plug-in, its class in lower case)
         # C names: wps_*, WPS_* (macros, header guards, menu IDs, the environment)
         (B + r"wps_", "osd_"),
         (B + r"WPS_", "OSD_"),
         (r"(?<=_)WPS_", "OSD_"),
+        (r"(?<=-D)WPS_", "OSD_"),   # (compiler flags: -DOSD_VERSION)
         (r"(?<=_)wps" + E, "osd"),
         (r"(?<=_)wpsd" + E, "osdd"),
     ],

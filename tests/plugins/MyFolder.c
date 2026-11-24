@@ -1,20 +1,20 @@
-/* Plug-in: adds a menu item to every folder once it replaces WPFolder. */
+/* Plug-in: adds a menu item to every folder once it replaces OsdFolder. */
 #include "MyFolder.h"
 
 #include <stdlib.h>
 
-#include "wps_classes.h"
+#include "osd_classes.h"
 
-char *MyFolder__wpModifyPopupMenu(wpo_object *self, const char *menu)
+char *MyFolder__osdModifyPopupMenu(osdo_object *self, const char *menu)
 {
-    char *base = MyFolder_parent_wpModifyPopupMenu(self, menu);
-    char *r = wps_concat(base, "90\tMy Plug-in Item\n");
+    char *base = MyFolder_parent_osdModifyPopupMenu(self, menu);
+    char *r = osd_concat(base, "90\tMy Plug-in Item\n");
     free(base);
     return r;
 }
 
-wpo_status wpo_plugin_init(uint32_t abi)
+osdo_status osdo_plugin_init(uint32_t abi)
 {
-    if (abi != WPO_ABI_VERSION) return WPO_EVERSION;
+    if (abi != OSDO_ABI_VERSION) return OSDO_EVERSION;
     return MyFolder_register();
 }

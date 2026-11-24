@@ -26,7 +26,7 @@ EOS
 W="$REPO/build/wpsctl"
 order() { echo "'$W' list \"\$T/desk/Projects\" | python3 -c 'import json,sys; print(\" \".join(i[\"name\"] for i in json.load(sys.stdin)[\"result\"][\"items\"]))' >> \"\$T/order.log\""; }
 PRE='cd "$T/desk/Projects" && head -c 300 /dev/zero > b.txt && head -c 100 /dev/zero > a.png && head -c 200 /dev/zero > c.md && mkdir z m' \
-DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=16 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 5.5; $(order); sleep 1.5; $(order); sleep 1.5; $(order); sleep 3;
      '$W' settings_set \"\$T/desk/Projects\" col_type=false > /dev/null; sleep 0.5;
      '$W' settings \"\$T/desk/Projects\" > \"\$T/settings.log\"" > "$S/out.txt" 2>&1

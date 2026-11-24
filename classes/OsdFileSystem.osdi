@@ -1,0 +1,11 @@
+# Anything with a directory entry.
+class OsdFileSystem : OsdObject
+version 1.0
+data {
+    char *path;
+}
+override osdUnInitData
+override osdQueryTitle
+method osdQueryPath() -> string
+method osdSetPath(string path) -> bool
+classoverride osdclsQueryTitle

@@ -212,7 +212,7 @@ static void idle_check(void *data, uint64_t expirations)
 bool sound_init(void)
 {
     if (ready) return true;
-    if (getenv("WPS_NO_SOUND")) return false;
+    if (getenv("OSD_NO_SOUND")) return false;
     pw_init(NULL, NULL);
     tloop = pw_thread_loop_new("wps-sound", NULL);
     if (!tloop) return false;

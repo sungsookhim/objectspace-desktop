@@ -16,7 +16,7 @@
 
 CC      ?= cc
 # The version (VERSION), in every program (--version, wpsd's ping).
-WPS_VERSION := $(shell cat VERSION 2>/dev/null || echo unknown)
+OSD_VERSION := $(shell cat VERSION 2>/dev/null || echo unknown)
 # Where make install puts things (v0.2-design.md 11.1); run from the tree,
 # the programs find each other in build/ as before.
 PREFIX     ?= /usr/local
@@ -29,13 +29,13 @@ MANDIR     ?= $(DATADIR)/man
 SYSCONFDIR ?= /etc
 USERUNITDIR   ?= $(PREFIX)/lib/systemd/user
 SYSTEMUNITDIR ?= $(PREFIX)/lib/systemd/system
-VFLAGS  := -DWPS_VERSION='"$(WPS_VERSION)"' -DWPS_PROTOCOL=3 -DWPS_PLUGINDIR='"$(LIBDIR)/wps/plugins"' -DWPS_ICONDIR='"$(DATADIR)/wps/icons"'
+VFLAGS  := -DOSD_VERSION='"$(OSD_VERSION)"' -DOSD_PROTOCOL=3 -DOSD_PLUGINDIR='"$(LIBDIR)/wps/plugins"' -DOSD_ICONDIR='"$(DATADIR)/wps/icons"'
 PYTHON  ?= python3
 B       := build
 GEN     := $(B)/gen
 CFLAGS  ?= -O1 -g
 CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation
-# Checked static calls (wpo_slot verifies the class) in these builds.
+# Checked static calls (osdo_slot verifies the class) in these builds.
 CFLAGS  += -DWPO_CHECKED $(VFLAGS)
 # AddressSanitizer and UBSan when their runtimes are installed (Fedora:
 # libasan, libubsan); otherwise a plain build. Override with SAN=.
@@ -43,9 +43,9 @@ SAN     ?= $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=address,u
              -o /dev/null 2>/dev/null && echo -fsanitize=address,undefined -fno-omit-frame-pointer)
 INC     := -Iruntime/include -Iclasses -Iservice -I$(GEN)
 
-RUNTIME := runtime/src/wpo.c runtime/src/wpo_loop_posix.c runtime/src/wpo_plugin_posix.c
-WPI     := $(wildcard classes/*.wpi)
-CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GEN)/%.reg.c,$(WPI))
+RUNTIME := runtime/src/osdo.c runtime/src/osdo_loop_posix.c runtime/src/osdo_plugin_posix.c
+OSDI     := $(wildcard classes/*.osdi)
+CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.osdi,$(GEN)/%.reg.c,$(OSDI))
 
 # Test class TBase: version 1.1 is "installed"; plug-ins are built against
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
@@ -53,15 +53,15 @@ TV      := $(B)/tests
 
 all: $(B)/wpsd $(B)/wpsctl $(B)/wps $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor $(TV)/test_launch $(TV)/test_magic $(TV)/test_ui_damage plugins
 
-$(GEN)/.stamp: $(WPI) tools/wpoc.py
-	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
+$(GEN)/.stamp: $(OSDI) tools/osdc.py
+	$(PYTHON) tools/osdc.py -I classes -o $(GEN) $(OSDI)
 	@touch $@
 
 $(GEN)/%.reg.c: $(GEN)/.stamp ;
 
-$(B)/gen-%/.stamp: tests/versions/%/TBase.wpi tests/plugins/TChild.wpi tools/wpoc.py
-	$(PYTHON) tools/wpoc.py -o $(B)/gen-$* $<
-	$(PYTHON) tools/wpoc.py -I tests/versions/$* -o $(B)/gen-$*/plugin tests/plugins/TChild.wpi
+$(B)/gen-%/.stamp: tests/versions/%/TBase.osdi tests/plugins/TChild.osdi tools/osdc.py
+	$(PYTHON) tools/osdc.py -o $(B)/gen-$* $<
+	$(PYTHON) tools/osdc.py -I tests/versions/$* -o $(B)/gen-$*/plugin tests/plugins/TChild.osdi
 	@touch $@
 
 $(TV)/test_runtime: tests/test_runtime.c $(RUNTIME) $(GEN)/.stamp $(B)/gen-v11/.stamp tests/TBase_v11.c $(CLASSES) $(wildcard classes/*.h)
@@ -69,9 +69,9 @@ $(TV)/test_runtime: tests/test_runtime.c $(RUNTIME) $(GEN)/.stamp $(B)/gen-v11/.
 	$(CC) $(CFLAGS) $(SAN) $(INC) -I$(B)/gen-v11 -rdynamic -o $@ tests/test_runtime.c $(RUNTIME) \
 	    $(CLASSES) tests/TBase_v11.c $(B)/gen-v11/TBase.reg.c -ldl -lpthread
 
-$(TV)/test_loop: tests/test_loop.c runtime/src/wpo_loop_posix.c runtime/include/wpo_loop.h
+$(TV)/test_loop: tests/test_loop.c runtime/src/osdo_loop_posix.c runtime/include/osdo_loop.h
 	@mkdir -p $(TV)
-	$(CC) $(CFLAGS) $(SAN) $(INC) -o $@ tests/test_loop.c runtime/src/wpo_loop_posix.c -lpthread
+	$(CC) $(CFLAGS) $(SAN) $(INC) -o $@ tests/test_loop.c runtime/src/osdo_loop_posix.c -lpthread
 
 $(TV)/test_attrs: tests/test_attrs.c service/attrs.c service/attrs.h
 	@mkdir -p $(TV)
@@ -85,13 +85,13 @@ $(TV)/test_ui_damage: tests/test_ui_damage.c gui/ui_damage.c gui/ui_damage.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Igui -Itests -o $@ tests/test_ui_damage.c gui/ui_damage.c
 
-$(TV)/test_magic: tests/test_magic.c classes/wps_magic.c classes/wps_magic.h
+$(TV)/test_magic: tests/test_magic.c classes/osd_magic.c classes/osd_magic.h
 	@mkdir -p $(TV)
-	$(CC) $(CFLAGS) $(SAN) $(INC) -Itests -o $@ tests/test_magic.c classes/wps_magic.c
+	$(CC) $(CFLAGS) $(SAN) $(INC) -Itests -o $@ tests/test_magic.c classes/osd_magic.c
 
-$(TV)/test_launch: tests/test_launch.c service/launch.c service/launch.h classes/wps_magic.c
+$(TV)/test_launch: tests/test_launch.c service/launch.c service/launch.h classes/osd_magic.c
 	@mkdir -p $(TV)
-	$(CC) $(CFLAGS) $(SAN) $(INC) -Itests -o $@ tests/test_launch.c service/launch.c classes/wps_magic.c
+	$(CC) $(CFLAGS) $(SAN) $(INC) -Itests -o $@ tests/test_launch.c service/launch.c classes/osd_magic.c
 
 $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
@@ -121,26 +121,26 @@ $(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h gui/shell/wpsicon.c 
 	@mkdir -p $(B)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Igui/shell $$(pkg-config --cflags cairo zlib librsvg-2.0) -o $@ service/wpsctl.c service/cbor.c gui/shell/wpsicon.c $(LDFLAGS) $$(pkg-config --libs cairo zlib librsvg-2.0)
 
-# M5: a plug-in for wps-plughost, and one built against a newer WPFolder
+# M5: a plug-in for wps-plughost, and one built against a newer OsdFolder
 # (1.1) than the one installed, which must be refused.
 M5PLUG := $(TV)/m5plugins/testfolder.so $(TV)/m5future/future.so
 
-$(TV)/m5plugins/testfolder.so: tests/plugins/TestFolder.c tests/plugins/TestFolder.wpi $(GEN)/.stamp
+$(TV)/m5plugins/testfolder.so: tests/plugins/TestFolder.c tests/plugins/TestFolder.osdi $(GEN)/.stamp
 	@mkdir -p $(TV)/m5plugins $(B)/gen-testfolder
-	$(PYTHON) tools/wpoc.py -I classes -o $(B)/gen-testfolder tests/plugins/TestFolder.wpi
+	$(PYTHON) tools/osdc.py -I classes -o $(B)/gen-testfolder tests/plugins/TestFolder.osdi
 	$(CC) $(CFLAGS) $(SAN) -fPIC -shared $(INC) -I$(B)/gen-testfolder \
 	    -o $@ tests/plugins/TestFolder.c $(B)/gen-testfolder/TestFolder.reg.c
 
-$(TV)/m5future/future.so: tests/plugins/TestFolder.c tests/plugins/TestFolder.wpi $(GEN)/.stamp
+$(TV)/m5future/future.so: tests/plugins/TestFolder.c tests/plugins/TestFolder.osdi $(GEN)/.stamp
 	@mkdir -p $(TV)/m5future $(B)/gen-future/classes $(B)/gen-future/out
-	cp classes/*.wpi $(B)/gen-future/classes/
-	sed -i 's/^version 1.0$$/version 1.1/' $(B)/gen-future/classes/WPFolder.wpi
-	$(PYTHON) tools/wpoc.py -I $(B)/gen-future/classes -o $(B)/gen-future/out $(B)/gen-future/classes/*.wpi tests/plugins/TestFolder.wpi
+	cp classes/*.osdi $(B)/gen-future/classes/
+	sed -i 's/^version 1.0$$/version 1.1/' $(B)/gen-future/classes/OsdFolder.osdi
+	$(PYTHON) tools/osdc.py -I $(B)/gen-future/classes -o $(B)/gen-future/out $(B)/gen-future/classes/*.osdi tests/plugins/TestFolder.osdi
 	$(CC) $(CFLAGS) $(SAN) -fPIC -shared -Iruntime/include -Iclasses -Iservice -I$(B)/gen-future/out \
 	    -o $@ tests/plugins/TestFolder.c $(B)/gen-future/out/TestFolder.reg.c
 
 PLUGINS := $(M5PLUG) $(TV)/plugins/tchild_v10.so $(TV)/plugins/tchild_v12.so $(TV)/plugins/tchild_v20.so \
-           $(TV)/plugins/myfolder.so $(TV)/sample/wpimagefile.so
+           $(TV)/plugins/myfolder.so $(TV)/sample/osdimagefile.so
 plugins: $(PLUGINS)
 
 $(TV)/plugins/tchild_%.so: tests/plugins/TChild.c $(B)/gen-%/.stamp
@@ -149,15 +149,15 @@ $(TV)/plugins/tchild_%.so: tests/plugins/TChild.c $(B)/gen-%/.stamp
 	    -o $@ tests/plugins/TChild.c $(B)/gen-$*/plugin/TChild.reg.c
 
 # The SDK's sample plug-in (sdk/sample), as its users build it.
-$(TV)/sample/wpimagefile.so: sdk/sample/WPImageFile.c sdk/sample/WPImageFile.wpi $(GEN)/.stamp
+$(TV)/sample/osdimagefile.so: sdk/sample/OsdImageFile.c sdk/sample/OsdImageFile.osdi $(GEN)/.stamp
 	@mkdir -p $(TV)/sample $(B)/gen-sample
-	$(PYTHON) tools/wpoc.py -I classes -o $(B)/gen-sample sdk/sample/WPImageFile.wpi
+	$(PYTHON) tools/osdc.py -I classes -o $(B)/gen-sample sdk/sample/OsdImageFile.osdi
 	$(CC) $(CFLAGS) $(SAN) -fPIC -shared $(INC) -I$(B)/gen-sample \
-	    -o $@ sdk/sample/WPImageFile.c $(B)/gen-sample/WPImageFile.reg.c
+	    -o $@ sdk/sample/OsdImageFile.c $(B)/gen-sample/OsdImageFile.reg.c
 
-$(TV)/plugins/myfolder.so: tests/plugins/MyFolder.c tests/plugins/MyFolder.wpi $(GEN)/.stamp
+$(TV)/plugins/myfolder.so: tests/plugins/MyFolder.c tests/plugins/MyFolder.osdi $(GEN)/.stamp
 	@mkdir -p $(TV)/plugins $(B)/gen-myfolder
-	$(PYTHON) tools/wpoc.py -I classes -o $(B)/gen-myfolder tests/plugins/MyFolder.wpi
+	$(PYTHON) tools/osdc.py -I classes -o $(B)/gen-myfolder tests/plugins/MyFolder.osdi
 	$(CC) $(CFLAGS) $(SAN) -fPIC -shared $(INC) -I$(B)/gen-myfolder \
 	    -o $@ tests/plugins/MyFolder.c $(B)/gen-myfolder/MyFolder.reg.c
 
@@ -191,12 +191,12 @@ TSAN_OK   := $(shell echo 'int main(void){return 0;}' | $(CC) -fsanitize=thread 
 
 check: test
 	@mkdir -p $(TV)
-	$(CC) -std=c11 -Wall -Wextra -pedantic -Werror -Iruntime/include -c runtime/src/wpo.c -o $(TV)/wpo_c11.o
-	@extra=$$(nm -u $(TV)/wpo_c11.o | awk '{print $$2}' | grep -vxE '$(subst $(eval) ,|,$(CORE_LIBC))'); \
+	$(CC) -std=c11 -Wall -Wextra -pedantic -Werror -Iruntime/include -c runtime/src/osdo.c -o $(TV)/osdo_c11.o
+	@extra=$$(nm -u $(TV)/osdo_c11.o | awk '{print $$2}' | grep -vxE '$(subst $(eval) ,|,$(CORE_LIBC))'); \
 	 if [ -n "$$extra" ]; then echo "core uses more than the C library subset: $$extra"; exit 1; fi; \
 	 echo "core: strict C11, C library subset only"
 ifeq ($(TSAN_OK),yes)
-	$(CC) -O1 -g -std=gnu11 -fsanitize=thread $(INC) -o $(TV)/test_loop_tsan tests/test_loop.c runtime/src/wpo_loop_posix.c -lpthread
+	$(CC) -O1 -g -std=gnu11 -fsanitize=thread $(INC) -o $(TV)/test_loop_tsan tests/test_loop.c runtime/src/osdo_loop_posix.c -lpthread
 	$(TV)/test_loop_tsan
 else
 	@echo "ThreadSanitizer not installed (Fedora: libtsan); loop race check skipped"
@@ -275,9 +275,9 @@ g0: $(G0)/folderview $(G0)/soundlat
 # The GUI: libwpsui (gui/ui_*.c) and wps-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
 UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_menupaint.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_ibus.c gui/ui_a11y.c
-SHELLSRC := gui/shell/wps-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/session.c gui/shell/warpcenter.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/colorpal.c gui/shell/workarea.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/wpsicon.c classes/wps_magic.c classes/wps_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
+SHELLSRC := gui/shell/wps-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/session.c gui/shell/warpcenter.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/colorpal.c gui/shell/workarea.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/wpsicon.c classes/osd_magic.c classes/osd_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon libsystemd
-UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/wps_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
+UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/osd_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
 UIFLAGS = -Igui -Igui/shell -Iservice -Iclasses -I$(G0) $(shell pkg-config --cflags $(UIPKG))
 UILIBS  = $(shell pkg-config --libs $(UIPKG)) -lpthread -lm
 # Sounds: PipeWire, and libsndfile when installed (Ogg, FLAC; else WAV only).
@@ -426,20 +426,20 @@ install: $(INSTALLED) icons install-sdk
 	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/
 	glib-compile-schemas $(DESTDIR)$(EXTDIR)/schemas
 	install -d $(DESTDIR)$(MANDIR)/man1
-	for m in data/man/*.1; do sed -e 's|@VERSION@|$(WPS_VERSION)|' \
+	for m in data/man/*.1; do sed -e 's|@VERSION@|$(OSD_VERSION)|' \
 	    -e "s|@DATE@|$$(date -u -d @$${SOURCE_DATE_EPOCH:-$$(git log -1 --format=%ct 2>/dev/null || date +%s)} +%Y-%m-%d)|" \
 	    $$m > $(DESTDIR)$(MANDIR)/man1/$$(basename $$m); done
 
 # The plug-in SDK (the wps-devel package; sdk/README.md): the headers a
-# plug-in includes, the built-in classes' interfaces, wpoc and the sample.
+# plug-in includes, the built-in classes' interfaces, osdc and the sample.
 install-sdk: $(GEN)/.stamp
 	install -d $(DESTDIR)$(INCLUDEDIR)/wps $(DESTDIR)$(DATADIR)/wps/sdk/classes $(DESTDIR)$(DATADIR)/wps/sdk/sample
-	install -m 644 runtime/include/wpo.h classes/wps_classes.h classes/wps_state.h classes/wps_props.h \
+	install -m 644 runtime/include/osdo.h classes/osd_classes.h classes/osd_state.h classes/osd_props.h \
 	    service/attrs.h $(GEN)/*.h $(DESTDIR)$(INCLUDEDIR)/wps/
-	install -m 644 classes/*.wpi $(DESTDIR)$(DATADIR)/wps/sdk/classes/
-	install -m 755 tools/wpoc.py $(DESTDIR)$(DATADIR)/wps/sdk/
+	install -m 644 classes/*.osdi $(DESTDIR)$(DATADIR)/wps/sdk/classes/
+	install -m 755 tools/osdc.py $(DESTDIR)$(DATADIR)/wps/sdk/
 	install -m 644 sdk/README.md $(DESTDIR)$(DATADIR)/wps/sdk/
-	install -m 644 sdk/sample/WPImageFile.wpi sdk/sample/WPImageFile.c sdk/sample/Makefile $(DESTDIR)$(DATADIR)/wps/sdk/sample/
+	install -m 644 sdk/sample/OsdImageFile.osdi sdk/sample/OsdImageFile.c sdk/sample/Makefile $(DESTDIR)$(DATADIR)/wps/sdk/sample/
 .PHONY: install-sdk
 
 # make install into a scratch root, then a headless session from it
@@ -464,8 +464,8 @@ clean:
 # build/wps.spec), make srpm, make rpm (rpmbuild in build/rpm). The RPM's
 # version is VERSION with "-" as "~" (0.2.0-dev sorts before 0.2.0); its
 # release 1 for a release, the commit count for a development build.
-RPMVER  := $(subst -,~,$(WPS_VERSION))
-RPMREL  := $(if $(findstring -,$(WPS_VERSION)),$(shell git rev-list --count HEAD 2>/dev/null || echo 0),1)
+RPMVER  := $(subst -,~,$(OSD_VERSION))
+RPMREL  := $(if $(findstring -,$(OSD_VERSION)),$(shell git rev-list --count HEAD 2>/dev/null || echo 0),1)
 DIST    := wps-$(RPMVER)
 RPMTOP  := $(abspath $(B))/rpm
 dist:

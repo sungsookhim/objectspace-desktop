@@ -1,9 +1,0 @@
-# The Scheme Palette: the colour scheme.
-class WPSchemePalette : WPSetup
-version 1.0
-classoverride wpclsQueryTitle
-# Its settings (stored as text in the WPSetup state, as before).
-# The schemes to choose from: the Schemes folder's (Classic, Dark, High
-# contrast and the user's own; the service's list).
-method wpQuerySchemes() -> string
-property scheme : choice "classic,dark,high contrast" = "classic" page "Scheme" label "Scheme" store WPSetup text options wpQuerySchemes

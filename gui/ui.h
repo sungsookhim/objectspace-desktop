@@ -9,8 +9,8 @@
  * Coordinates are logical pixels (doubles, but widgets keep them whole so
  * moves are exact at any integer scale).
  */
-#ifndef WPS_UI_H
-#define WPS_UI_H
+#ifndef OSD_UI_H
+#define OSD_UI_H
 
 #include <cairo.h>
 #include <stdbool.h>
@@ -82,8 +82,8 @@ bool ui_scheme_use(const char *name);
 bool ui_scheme_set_option(const char *key, const char *value);
 /* The frame border: "visible" (4 px), "thin" (1 px) or "none". */
 void ui_scheme_set_border(const char *mode);
-/* "classic" (default), "dark"; WPS_UI_SCHEME, WPS_UI_CORNER_RADIUS and
- * WPS_UI_BUTTONS=hover override until the scheme objects exist (G3). */
+/* "classic" (default), "dark"; OSD_UI_SCHEME, OSD_UI_CORNER_RADIUS and
+ * OSD_UI_BUTTONS=hover override until the scheme objects exist (G3). */
 void ui_scheme_init(void);
 void ui_set_color(cairo_t *cr, ui_color c);
 
@@ -222,7 +222,7 @@ bool ui_drag_start(ui_surface *origin, uint32_t serial, const char *const *mimes
 
 /* Run fn(arg) on the UI thread, from any thread. */
 void ui_app_post(ui_app *a, void (*fn)(void *), void *arg);
-int ui_app_scale_override(void);       /* WPS_UI_SCALE, or 0 */
+int ui_app_scale_override(void);       /* OSD_UI_SCALE, or 0 */
 double ui_now_ms(void);
 /* The serial of the last input event (for a menu or popup opened by a key). */
 uint32_t ui_app_input_serial(ui_app *a);

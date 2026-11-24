@@ -1,8 +1,0 @@
-# The Font Palette (OS/2's): font samples ("12.Helvetica"), dragged onto
-# folder windows, the desktop, the WarpCenter and title bars
-# (v0.3-design 10). It opens as the palette window.
-class WPFontPalette : WPSetup
-version 1.0
-classoverride wpclsQueryTitle
-# Its settings (stored as text in the WPSetup state, as before).
-property fonts : text = "8.Sans;9.Sans;10.Sans;12.Sans;14.Sans;10.Sans Bold;10.Serif;12.Serif;14.Serif Bold;10.Monospace;12.Monospace;18.Sans" page "Fonts" label "Samples (separated by ;)" store WPSetup text

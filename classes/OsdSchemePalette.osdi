@@ -1,0 +1,9 @@
+# The Scheme Palette: the colour scheme.
+class OsdSchemePalette : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle
+# Its settings (stored as text in the OsdSetup state, as before).
+# The schemes to choose from: the Schemes folder's (Classic, Dark, High
+# contrast and the user's own; the service's list).
+method osdQuerySchemes() -> string
+property scheme : choice "classic,dark,high contrast" = "classic" page "Scheme" label "Scheme" store OsdSetup text options osdQuerySchemes

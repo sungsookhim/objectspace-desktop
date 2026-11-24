@@ -4,7 +4,7 @@
  * A sync reads the entries and the record of what was made on a worker,
  * decides, removes the shadows of programs gone (or moved to another
  * category), then makes the new shadows on the loop thread
- * (wps_shadow_create) and writes the record when the last is made. One
+ * (osd_shadow_create) and writes the record when the last is made. One
  * sync at a time; a change during one starts another after it.
  */
 #define _GNU_SOURCE
@@ -28,7 +28,7 @@
 #include "shadows.h"
 #include "listing.h"
 
-static wpo_loop *loop;
+static osdo_loop *loop;
 static char folder[PATH_MAX], record[PATH_MAX];
 static bool syncing, again, waiting;
 static int ino = -1;
@@ -43,7 +43,7 @@ static const char *const cat_map[][2] = {
     { "Utility", "Accessories" },
 };
 
-const char *wps_program_category(const char *categories)
+const char *osd_program_category(const char *categories)
 {
     char buf[1024];
     snprintf(buf, sizeof buf, "%s", categories ? categories : "");
@@ -65,7 +65,7 @@ struct sync {
     struct made *m;
     size_t nm;
     /* to do on the loop thread */
-    struct { char folder[PATH_MAX], id[WPS_ID_LEN + 1]; } *removed;
+    struct { char folder[PATH_MAX], id[OSD_ID_LEN + 1]; } *removed;
     size_t nremoved;
     size_t *create;          /* entries to make shadows of */
     size_t ncreate, pending;
@@ -125,7 +125,7 @@ static bool read_entry(const char *path, char *cat, size_t cn)
     const char *desks[8];
     size_t nd = 0;
     char xd[256];
-    const char *e = getenv("WPS_PROGRAMS_DESKTOP");
+    const char *e = getenv("OSD_PROGRAMS_DESKTOP");
     if (!e) e = getenv("XDG_CURRENT_DESKTOP");
     snprintf(xd, sizeof xd, "%s", e && *e ? e : "GNOME");
     char *save = NULL;
@@ -134,7 +134,7 @@ static bool read_entry(const char *path, char *cat, size_t cn)
     if (only[0] && !in_list(only, desks, nd)) return false;
     if (not[0] && in_list(not, desks, nd)) return false;
     if (tryexec[0] && !on_path(tryexec)) return false;
-    snprintf(cat, cn, "%s", wps_program_category(cats));
+    snprintf(cat, cn, "%s", osd_program_category(cats));
     return true;
 }
 
@@ -237,10 +237,10 @@ static bool link_exists(const char *link)
 {
     if (!link[0]) return false;
     if (link[0] == '/') return access(link, F_OK) == 0;
-    wps_loaded ld;
-    wps_load(link, false, &ld);
+    osd_loaded ld;
+    osd_load(link, false, &ld);
     bool ok = !ld.err;
-    wps_loaded_free(&ld);
+    osd_loaded_free(&ld);
     return ok;
 }
 
@@ -266,10 +266,10 @@ static void sync_work(void *arg)
         /* gone, hidden, or now another category or entry: its shadow goes */
         if (exists) {
             if (!strncmp(m->link, "vobj:", 5)) {
-                if (wps_central_delete(m->link + 5) == 0) {
+                if (osd_central_delete(m->link + 5) == 0) {
                     s->removed = realloc(s->removed, (s->nremoved + 1) * sizeof *s->removed);
                     snprintf(s->removed[s->nremoved].folder, PATH_MAX, "%s/%s", folder, m->cat);
-                    snprintf(s->removed[s->nremoved].id, WPS_ID_LEN + 1, "%s", m->link + 5);
+                    snprintf(s->removed[s->nremoved].id, OSD_ID_LEN + 1, "%s", m->link + 5);
                     s->nremoved++;
                 }
             } else unlink(m->link);
@@ -308,7 +308,7 @@ static void sync_finish(struct sync *s)
     write_record(s);
     sync_free(s);
     syncing = false;
-    if (again) { again = false; wps_programs_sync(); }
+    if (again) { again = false; osd_programs_sync(); }
 }
 
 struct one { struct sync *s; size_t entry; };
@@ -337,10 +337,10 @@ static void made_one(void *arg, const char *link, const char *error)
 static void sync_done(void *arg)
 {
     struct sync *s = arg;
-    if (s->ncreate) wps_listing_invalidate(folder);   /* category folders made (perhaps just after it was read) */
+    if (s->ncreate) osd_listing_invalidate(folder);   /* category folders made (perhaps just after it was read) */
     for (size_t i = 0; i < s->nremoved; i++) {
-        wps_central_forget(s->removed[i].id);
-        if (wps_on_central_change) wps_on_central_change(s->removed[i].folder, s->removed[i].id, 'd');
+        osd_central_forget(s->removed[i].id);
+        if (osd_on_central_change) osd_on_central_change(s->removed[i].folder, s->removed[i].id, 'd');
     }
     if (!s->ncreate) { sync_finish(s); return; }
     s->pending = s->ncreate;
@@ -351,24 +351,24 @@ static void sync_done(void *arg)
         struct one *o = calloc(1, sizeof *o);
         o->s = s;
         o->entry = s->create[k];
-        wps_shadow_create(en->path, cf, made_one, o);
+        osd_shadow_create(en->path, cf, made_one, o);
     }
 }
 
-void wps_programs_sync(void)
+void osd_programs_sync(void)
 {
     if (!loop) return;
     struct stat st;
     if (stat(folder, &st) != 0 || !S_ISDIR(st.st_mode)) return;   /* not made (yet), or removed by the user */
     if (syncing) { again = true; return; }
     syncing = true;
-    wpo_defer(loop, "programs", sync_work, sync_done, calloc(1, sizeof(struct sync)));
+    osdo_defer(loop, "programs", sync_work, sync_done, calloc(1, sizeof(struct sync)));
 }
 
 /* -------------------------------------------------------- watching */
 
 static void settle_work(void *arg) { (void)arg; usleep(1000 * 1000); }   /* a package installs many files */
-static void settle_done(void *arg) { (void)arg; waiting = false; wps_programs_sync(); }
+static void settle_done(void *arg) { (void)arg; waiting = false; osd_programs_sync(); }
 
 static void watch_dirs(void)
 {
@@ -383,27 +383,27 @@ static void on_inotify(int fd, short rev, void *arg)
     (void)rev; (void)arg;
     char buf[8192];
     while (read(fd, buf, sizeof buf) > 0) {}
-    if (!waiting) { waiting = true; wpo_defer(loop, "programs settle", settle_work, settle_done, NULL); }
+    if (!waiting) { waiting = true; osdo_defer(loop, "programs settle", settle_work, settle_done, NULL); }
 }
 
-void wps_programs_init(wpo_loop *l, const char *programs_folder, const char *state_dir)
+void osd_programs_init(osdo_loop *l, const char *programs_folder, const char *state_dir)
 {
     loop = l;
     snprintf(folder, sizeof folder, "%s", programs_folder);
     snprintf(record, sizeof record, "%s/programs-made", state_dir);
     /* the user's own application folder, so it can be watched */
     char dirs[16][PATH_MAX];
-    if (app_dirs(dirs, 16)) wps_mkdirs(dirs[0], 0755);
+    if (app_dirs(dirs, 16)) osd_mkdirs(dirs[0], 0755);
     ino = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (ino >= 0) {
         watch_dirs();
-        wpo_loop_watch_fd(loop, ino, POLLIN, on_inotify, NULL);
+        osdo_loop_watch_fd(loop, ino, POLLIN, on_inotify, NULL);
     }
-    wps_programs_sync();
+    osd_programs_sync();
 }
 
-void wps_programs_shutdown(void)
+void osd_programs_shutdown(void)
 {
-    if (ino >= 0) { wpo_loop_unwatch_fd(loop, ino); close(ino); ino = -1; }
+    if (ino >= 0) { osdo_loop_unwatch_fd(loop, ino); close(ino); ino = -1; }
     loop = NULL;
 }

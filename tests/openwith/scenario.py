@@ -54,7 +54,7 @@ def check(what, ok, more=""):
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())
@@ -129,7 +129,7 @@ check("... and Open on a picture offers it", ("편집기", False) in cascade("pi
 check("... the system's entry untouched", "MimeType=text/plain;\n" in open(ED).read())
 
 setup = c.request(op="setup").get("result") or {}
-sysaddr = ((setup.get("objects") or {}).get("WPSystem") or {}).get("address")
+sysaddr = ((setup.get("objects") or {}).get("OsdSystem") or {}).get("address")
 r = c.request(op="settings_set", target=sysaddr, values={"terminal_command": T + "/faketerm --run"})
 check("the System object: a terminal command", r.get("ok"), (sysaddr, r))
 r = c.request(op="settings_set", target=ED, values={"program_type": 2, "close_on_exit": False, "cwd": T + "/work"})

@@ -3,8 +3,8 @@
  * desktop's menu (v0.3-design 2): through the compositor's link in the WPS
  * session, the GNOME Shell extension inside GNOME (winlist_ext).
  */
-#ifndef WPS_SESSION_H
-#define WPS_SESSION_H
+#ifndef OSD_SESSION_H
+#define OSD_SESSION_H
 
 #include <stdbool.h>
 

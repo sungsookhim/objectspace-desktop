@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
-#ifndef WPS_PLUGINDIR
-#define WPS_PLUGINDIR "/usr/lib/wps/plugins"
+#ifndef OSD_PLUGINDIR
+#define OSD_PLUGINDIR "/usr/lib/wps/plugins"
 #endif
 #include "plugins.h"
 
@@ -19,20 +19,20 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "WPObject.h"
-#include "wps_state.h"
+#include "OsdObject.h"
+#include "osd_state.h"
 
 #define MAX_HOSTS 32
 #define MISSES_BEFORE_RESTART 3
 
-static wpo_loop *loop;
-static const wps_env *env;
+static osdo_loop *loop;
+static const osd_env *env;
 
 struct pcall {
     struct pcall *next;
     int64_t id;
-    wpo_object *o;            /* referenced while the call is out */
-    wps_remote_fn done;
+    osdo_object *o;            /* referenced while the call is out */
+    osd_remote_fn done;
     void *arg;
     double deadline;
 };
@@ -56,7 +56,7 @@ struct host {
 
 static struct host hosts[MAX_HOSTS];
 /* Proxy class definitions: the runtime points into them until it shuts down. */
-static wpo_class_def **defs_kept;
+static osdo_class_def **defs_kept;
 static size_t ndefs_kept;
 static int nhosts;
 static int64_t next_call = 1;
@@ -71,30 +71,30 @@ static double now_ms(void)
 
 /* --------------------------------------------------------- proxy classes */
 
-static wpo_status apply_unavailable(wpo_fn fn, wpo_object *self, const wpo_value *a, wpo_value *ret)
+static osdo_status apply_unavailable(osdo_fn fn, osdo_object *self, const osdo_value *a, osdo_value *ret)
 {
     (void)fn; (void)self; (void)a;
-    *ret = wpo_v_void();
-    return WPO_ENOMETHOD;   /* only reachable through the plug-in's host */
+    *ret = osdo_v_void();
+    return OSDO_ENOMETHOD;   /* only reachable through the plug-in's host */
 }
 
 static void impl_unavailable(void) {}
 
-/* A proxy class's title (its plug-in's wpclsQueryTitle, said in its hello). */
+/* A proxy class's title (its plug-in's osdclsQueryTitle, said in its hello). */
 static struct { char *cls, *title; } *titles;
 static size_t ntitles;
 
-static char *proxy_cls_title(wpo_object *self)
+static char *proxy_cls_title(osdo_object *self)
 {
-    const wpo_class *k = (const wpo_class *)self;
+    const osdo_class *k = (const osdo_class *)self;
     for (size_t i = 0; i < ntitles; i++)
         if (!strcmp(titles[i].cls, k->name)) return strdup(titles[i].title);
     return strdup(k->name);
 }
 
-static const wpo_override_def proxy_coverrides[] = { { "wpclsQueryTitle", (wpo_fn)proxy_cls_title } };
+static const osdo_override_def proxy_coverrides[] = { { "osdclsQueryTitle", (osdo_fn)proxy_cls_title } };
 
-bool wps_plugins_is_host(pid_t pid)
+bool osd_plugins_is_host(pid_t pid)
 {
     for (int h = 0; h < nhosts; h++)
         if (hosts[h].pid == pid) return true;
@@ -114,7 +114,7 @@ static struct host *host_of_class(const char *cls)
 static void register_proxy(struct host *h, const cv *c)
 {
     const char *name = cv_text(c, "name"), *parent = cv_text(c, "parent");
-    wpo_class *pc = parent ? wpo_find_class(parent) : NULL;
+    osdo_class *pc = parent ? osdo_find_class(parent) : NULL;
     if (!name || !pc) return;
     const cv *ms = cv_get(c, "methods"), *ov = cv_get(c, "overrides");
     for (size_t i = 0; ov && ov->k == CV_ARRAY && i < ov->n; i++) {
@@ -131,15 +131,15 @@ static void register_proxy(struct host *h, const cv *c)
     }
     h->classes = realloc(h->classes, (h->nclasses + 1) * sizeof *h->classes);
     h->classes[h->nclasses++] = strdup(name);
-    if (wpo_find_class(name)) return;   /* a restarted host: already registered */
+    if (osdo_find_class(name)) return;   /* a restarted host: already registered */
 
     size_t nm = ms && ms->k == CV_ARRAY ? ms->n : 0;
-    wpo_method_def *defs = calloc(nm + 1, sizeof *defs);
+    osdo_method_def *defs = calloc(nm + 1, sizeof *defs);
     for (size_t i = 0; i < nm; i++) {
         defs[i].name = strdup(cv_text(&ms->items[i], "name"));
         defs[i].sig = strdup(cv_text(&ms->items[i], "sig"));
         defs[i].apply = apply_unavailable;
-        defs[i].impl = (wpo_fn)impl_unavailable;
+        defs[i].impl = (osdo_fn)impl_unavailable;
     }
     /* its properties, events and file types: the proxy declares them, so
      * pages, get, set, props, the chain and actions work in wpsd (a
@@ -147,11 +147,11 @@ static void register_proxy(struct host *h, const cv *c)
      * left out) */
     const cv *ps = cv_get(c, "props"), *es = cv_get(c, "events"), *ts = cv_get(c, "types");
     size_t np = ps && ps->k == CV_ARRAY ? ps->n : 0, ne = es && es->k == CV_ARRAY ? es->n : 0, nt = ts && ts->k == CV_ARRAY ? ts->n : 0;
-    wpo_property_def *props = calloc(np + 1, sizeof *props);
+    osdo_property_def *props = calloc(np + 1, sizeof *props);
     for (size_t i = 0; i < np; i++) {
         const cv *q = &ps->items[i];
         #define DUP(f) (cv_text(q, #f) ? strdup(cv_text(q, #f)) : NULL)
-        props[i] = (wpo_property_def){ DUP(name), DUP(type), DUP(def), DUP(page), DUP(label), DUP(choices), NULL, NULL, NULL,
+        props[i] = (osdo_property_def){ DUP(name), DUP(type), DUP(def), DUP(page), DUP(label), DUP(choices), NULL, NULL, NULL,
                                        DUP(store), NULL, DUP(backing), 0 };
         #undef DUP
         int64_t fl = 0;
@@ -162,7 +162,7 @@ static void register_proxy(struct host *h, const cv *c)
     const char **events = calloc(ne + 1, sizeof *events), **types = calloc(nt + 1, sizeof *types);
     for (size_t i = 0; i < ne; i++) events[i] = strdup(es->items[i].k == CV_TEXT ? es->items[i].s : "");
     for (size_t i = 0; i < nt; i++) types[i] = strdup(ts->items[i].k == CV_TEXT ? ts->items[i].s : "");
-    wpo_class_def *def = calloc(1, sizeof *def);
+    osdo_class_def *def = calloc(1, sizeof *def);
     def->props = props;
     def->nprops = np;
     def->events = events;
@@ -186,9 +186,9 @@ static void register_proxy(struct host *h, const cv *c)
     }
     defs_kept = realloc(defs_kept, (ndefs_kept + 1) * sizeof *defs_kept);
     defs_kept[ndefs_kept++] = def;
-    wpo_class *out;
-    wpo_status st = wpo_register_class(def, &out);
-    if (st != WPO_OK) snprintf(h->error, sizeof h->error, "proxy for %s: %s", name, wpo_strerror(st));
+    osdo_class *out;
+    osdo_status st = osdo_register_class(def, &out);
+    if (st != OSDO_OK) snprintf(h->error, sizeof h->error, "proxy for %s: %s", name, osdo_strerror(st));
 }
 
 /* ------------------------------------------------------------- hosts */
@@ -201,7 +201,7 @@ static void fail_calls(struct host *h)
         struct pcall *c = h->calls;
         h->calls = c->next;
         c->done(c->arg, NULL);
-        wpo_unref(c->o);
+        osdo_unref(c->o);
         free(c);
     }
 }
@@ -211,7 +211,7 @@ static void host_start(struct host *h)
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv) < 0) return;
     char exe[PATH_MAX], data[PATH_MAX + NAME_MAX + 16];
-    const char *hp = getenv("WPS_PLUGHOST");
+    const char *hp = getenv("OSD_PLUGHOST");
     if (hp && *hp) snprintf(exe, sizeof exe, "%s", hp);
     else {
         ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 32);
@@ -220,7 +220,7 @@ static void host_start(struct host *h)
         snprintf(slash ? slash + 1 : exe, 32, "wps-plughost");
     }
     snprintf(data, sizeof data, "%s/plugins/%s", env->state_dir, h->name);
-    wps_mkdirs(data, 0700);   /* the only place the sandboxed host may write */
+    osd_mkdirs(data, 0700);   /* the only place the sandboxed host may write */
     pid_t pid = fork();
     if (pid == 0) {
         dup2(sv[1], 3);   /* clears CLOEXEC on the copy */
@@ -233,13 +233,13 @@ static void host_start(struct host *h)
     h->fd = sv[0];
     h->ready = false;
     h->misses = 0;
-    wpo_loop_watch_fd(loop, h->fd, POLLIN, on_host, h);
+    osdo_loop_watch_fd(loop, h->fd, POLLIN, on_host, h);
 }
 
 static void host_stop(struct host *h)
 {
     if (h->fd >= 0) {
-        wpo_loop_unwatch_fd(loop, h->fd);
+        osdo_loop_unwatch_fd(loop, h->fd);
         close(h->fd);
         h->fd = -1;
     }
@@ -264,7 +264,7 @@ static void host_restart(struct host *h, const char *why)
     host_start(h);
 }
 
-static void apply_changes(wpo_object *o, const cv *changes)
+static void apply_changes(osdo_object *o, const cv *changes)
 {
     bool any = false;
     for (size_t i = 0; changes && changes->k == CV_MAP && i < changes->n; i++) {
@@ -273,17 +273,17 @@ static void apply_changes(wpo_object *o, const cv *changes)
         for (size_t k = 0; k < kv->n; k++) {
             const cv *key = &kv->items[2 * k], *val = &kv->items[2 * k + 1];
             if (key->k != CV_TEXT) continue;
-            if (val->k == CV_TEXT) wps_state_put_str(o, cn->s, key->s, val->s);
-            else if (val->k == CV_INT) wps_state_put_int(o, cn->s, key->s, val->i);
-            else if (val->k == CV_BOOL) wps_state_put_int(o, cn->s, key->s, val->b);
-            else if (val->k == CV_NULL) wps_state_remove(o, cn->s, key->s);
+            if (val->k == CV_TEXT) osd_state_put_str(o, cn->s, key->s, val->s);
+            else if (val->k == CV_INT) osd_state_put_int(o, cn->s, key->s, val->i);
+            else if (val->k == CV_BOOL) osd_state_put_int(o, cn->s, key->s, val->b);
+            else if (val->k == CV_NULL) osd_state_remove(o, cn->s, key->s);
             any = true;
         }
     }
     if (any) {
-        WPObject_wpRestoreProperties(o);   /* the fields follow the new values */
-        WPObject_wpSaveDeferred(o);
-        WPObject_wpObjectChanged(o);
+        OsdObject_osdRestoreProperties(o);   /* the fields follow the new values */
+        OsdObject_osdSaveDeferred(o);
+        OsdObject_osdObjectChanged(o);
     }
 }
 
@@ -312,7 +312,7 @@ static void on_host(int fd, short rev, void *arg)
             const cv *cs = cv_get(&m, "classes"), *rs = cv_get(&m, "replaces");
             for (size_t i = 0; cs && cs->k == CV_ARRAY && i < cs->n; i++) register_proxy(h, &cs->items[i]);
             for (size_t i = 0; rs && rs->k == CV_ARRAY && i < rs->n; i++)
-                wpo_replace_class(cv_text(&rs->items[i], "original"), cv_text(&rs->items[i], "replacement"));
+                osdo_replace_class(cv_text(&rs->items[i], "original"), cv_text(&rs->items[i], "replacement"));
             h->ready = true;
             fprintf(stderr, "wpsd: plug-in %s ready (%zu classes; %s)\n", h->name, h->nclasses, h->sandbox);
         }
@@ -331,7 +331,7 @@ static void on_host(int fd, short rev, void *arg)
                     } else {
                         c->done(c->arg, NULL);
                     }
-                    wpo_unref(c->o);
+                    osdo_unref(c->o);
                     free(c);
                     break;
                 }
@@ -356,7 +356,7 @@ static void on_timer(int fd, short rev, void *arg)
             if (c->deadline > now) { pp = &c->next; continue; }
             *pp = c->next;
             c->done(c->arg, NULL);
-            wpo_unref(c->o);
+            osdo_unref(c->o);
             free(c);
             missed = true;
         }
@@ -366,9 +366,9 @@ static void on_timer(int fd, short rev, void *arg)
 
 /* ------------------------------------------------------------- calls */
 
-bool wps_plugin_routes(wpo_object *o, const char *method)
+bool osd_plugin_routes(osdo_object *o, const char *method)
 {
-    for (wpo_class *c = o->cls; c; c = c->parent) {
+    for (osdo_class *c = o->cls; c; c = c->parent) {
         struct host *h = host_of_class(c->name);
         if (!h) continue;
         char key[256];
@@ -379,7 +379,7 @@ bool wps_plugin_routes(wpo_object *o, const char *method)
     return false;
 }
 
-static void put_prop(cbuf *b, const wps_prop *p)
+static void put_prop(cbuf *b, const osd_prop *p)
 {
     if (p->type == 's') cb_textn(b, (const char *)p->val, p->len);
     else if (p->type == 'i' && p->len == 8) {
@@ -401,13 +401,13 @@ static void put_cv(cbuf *b, const cv *v)
     }
 }
 
-void wps_plugin_call(wpo_object *o, const char *path, const char *method, const cv *args,
-                     int deadline_ms, wps_remote_fn done, void *arg)
+void osd_plugin_call(osdo_object *o, const char *path, const char *method, const cv *args,
+                     int deadline_ms, osd_remote_fn done, void *arg)
 {
     /* The host serving the most derived plug-in class that implements it. */
     struct host *h = NULL;
     const char *cls = NULL;
-    for (wpo_class *c = o->cls; c && !h; c = c->parent) {
+    for (osdo_class *c = o->cls; c && !h; c = c->parent) {
         struct host *x = host_of_class(c->name);
         if (!x) continue;
         char key[256];
@@ -418,15 +418,15 @@ void wps_plugin_call(wpo_object *o, const char *path, const char *method, const 
     if (!h || !h->ready) { done(arg, NULL); return; }
     struct pcall *pc = calloc(1, sizeof *pc);
     pc->id = next_call++;
-    pc->o = wpo_ref(o);
+    pc->o = osdo_ref(o);
     pc->done = done;
     pc->arg = arg;
     pc->deadline = now_ms() + deadline_ms;
     pc->next = h->calls;
     h->calls = pc;
 
-    WPObject_wpSaveState(o);   /* the bag holds the current values */
-    wps_state *bag = WPObject_data(o)->state;
+    OsdObject_osdSaveState(o);   /* the bag holds the current values */
+    osd_state *bag = OsdObject_data(o)->state;
     cbuf b;
     cb_init(&b);
     cb_map(&b, 5);
@@ -440,7 +440,7 @@ void wps_plugin_call(wpo_object *o, const char *path, const char *method, const 
     cb_text(&b, "object");
     cb_map(&b, 3);
     cb_text(&b, "path"); path ? cb_text(&b, path) : cb_null(&b);
-    cb_text(&b, "id"); cb_text(&b, WPObject_data(o)->id);
+    cb_text(&b, "id"); cb_text(&b, OsdObject_data(o)->id);
     cb_text(&b, "props");
     cb_map(&b, bag ? bag->n : 0);
     for (size_t c = 0; bag && c < bag->n; c++) {
@@ -453,7 +453,7 @@ void wps_plugin_call(wpo_object *o, const char *path, const char *method, const 
     }
     if (b.oom || send(h->fd, b.d, b.n, MSG_DONTWAIT | MSG_NOSIGNAL) < 0) {
         h->calls = pc->next;
-        wpo_unref(pc->o);
+        osdo_unref(pc->o);
         free(pc);
         done(arg, NULL);
     }
@@ -479,11 +479,11 @@ static void scan_dir(const char *dir)
     if (d) closedir(d);
 }
 
-void wps_plugins_init(wpo_loop *l, const wps_env *e)
+void osd_plugins_init(osdo_loop *l, const osd_env *e)
 {
     loop = l;
     env = e;
-    const char *dirs = getenv("WPS_PLUGIN_DIRS");
+    const char *dirs = getenv("OSD_PLUGIN_DIRS");
     if (dirs) {
         char *copy = strdup(dirs), *save = NULL;
         for (char *t = strtok_r(copy, ":", &save); t; t = strtok_r(NULL, ":", &save)) scan_dir(t);
@@ -492,15 +492,15 @@ void wps_plugins_init(wpo_loop *l, const wps_env *e)
         char p[PATH_MAX + 16];
         snprintf(p, sizeof p, "%s/plugins", env->config_dir);
         scan_dir(p);
-        scan_dir(WPS_PLUGINDIR);   /* the installed ones (make install: $(LIBDIR)/wps/plugins) */
+        scan_dir(OSD_PLUGINDIR);   /* the installed ones (make install: $(LIBDIR)/wps/plugins) */
     }
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     struct itimerspec its = { .it_interval = { 0, 100 * 1000 * 1000 }, .it_value = { 0, 100 * 1000 * 1000 } };
     timerfd_settime(timer_fd, 0, &its, NULL);
-    wpo_loop_watch_fd(loop, timer_fd, POLLIN, on_timer, NULL);
+    osdo_loop_watch_fd(loop, timer_fd, POLLIN, on_timer, NULL);
 }
 
-void wps_plugins_shutdown(void)
+void osd_plugins_shutdown(void)
 {
     for (int i = 0; i < nhosts; i++) {
         host_stop(&hosts[i]);
@@ -513,7 +513,7 @@ void wps_plugins_shutdown(void)
     if (timer_fd >= 0) close(timer_fd);
 }
 
-void wps_plugins_status(cbuf *b)
+void osd_plugins_status(cbuf *b)
 {
     cb_array(b, (size_t)nhosts);
     for (int i = 0; i < nhosts; i++) {
@@ -528,17 +528,17 @@ void wps_plugins_status(cbuf *b)
     }
 }
 
-void wps_plugins_free_defs(void)
+void osd_plugins_free_defs(void)
 {
     for (size_t i = 0; i < ndefs_kept; i++) {
-        wpo_class_def *d = defs_kept[i];
+        osdo_class_def *d = defs_kept[i];
         for (size_t m = 0; m < d->nmethods; m++) {
             free((char *)d->methods[m].name);
             free((char *)d->methods[m].sig);
         }
         free((void *)d->methods);
         for (size_t k = 0; k < d->nprops; k++) {
-            const wpo_property_def *p = &d->props[k];
+            const osdo_property_def *p = &d->props[k];
             free((char *)p->name); free((char *)p->type); free((char *)p->def); free((char *)p->page);
             free((char *)p->label); free((char *)p->choices); free((char *)p->store); free((char *)p->backing);
         }

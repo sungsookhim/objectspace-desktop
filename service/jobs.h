@@ -21,51 +21,51 @@
  *     interrupted and can be resumed (already copied items are skipped);
  *     at logout running jobs pause and resume at the next start.
  */
-#ifndef WPS_JOBS_H
-#define WPS_JOBS_H
+#ifndef OSD_JOBS_H
+#define OSD_JOBS_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "cbor.h"
 #include "db.h"
-#include "wpo_loop.h"
+#include "osdo_loop.h"
 
 /* `owner` (the user's WPS identity) makes temporary names unique between
  * users writing into the same folder. */
-void wps_jobs_init(wpo_loop *loop, wps_db *db, const char *owner);
+void osd_jobs_init(osdo_loop *loop, osd_db *db, const char *owner);
 /* Pause running jobs for logout and wait for their threads (bounded). */
-void wps_jobs_shutdown(bool logout);
+void osd_jobs_shutdown(bool logout);
 
 /* Selections. Returns the selection ID, or -1. `names` may be NULL. */
-int64_t wps_select(const char *folder, bool all, const char *const *names, size_t n);
+int64_t osd_select(const char *folder, bool all, const char *const *names, size_t n);
 
 /* Each path of a selection (its folder's entries but the excepted ones, for
  * "all"), until `fn` returns false; false if the selection is not known or
  * `fn` stopped it. */
-bool wps_selection_each(int64_t selection, bool (*fn)(const char *path, void *user), void *user);
+bool osd_selection_each(int64_t selection, bool (*fn)(const char *path, void *user), void *user);
 
 /* Start a move or copy of a selection into `dest`. Returns the job ID, or
  * -1 with a message. */
-int64_t wps_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen);
+int64_t osd_job_start(const char *kind, int64_t selection, const char *dest, char *err, size_t errlen);
 /* Where the items should sit in `dest` (a drop point): by item name. Set
- * right after wps_job_start. When the job ends, wps_on_job_placed gets the
+ * right after osd_job_start. When the job ends, osd_on_job_placed gets the
  * final paths (after any renaming) with their positions (loop thread). */
-void wps_job_set_positions(int64_t id, const char *const *names, const int64_t *x, const int64_t *y, size_t n);
-extern void (*wps_on_job_placed)(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
+void osd_job_set_positions(int64_t id, const char *const *names, const int64_t *x, const int64_t *y, size_t n);
+extern void (*osd_on_job_placed)(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
 
 /* Job control. Return false if there is no such job (or the action does
  * not apply). decision: "skip" or "rename". */
-bool wps_job_cancel(int64_t id);
-bool wps_job_pause(int64_t id);
-bool wps_job_resume(int64_t id);
-bool wps_job_decide(int64_t id, const char *decision, bool all);
+bool osd_job_cancel(int64_t id);
+bool osd_job_pause(int64_t id);
+bool osd_job_resume(int64_t id);
+bool osd_job_decide(int64_t id, const char *decision, bool all);
 
 /* Called on the loop thread when a job changes state or makes progress
  * (at most about four times a second per job). */
-extern void (*wps_on_job)(int64_t id);
+extern void (*osd_on_job)(int64_t id);
 
 /* Encode a job's status (or all jobs, id < 0) as a CBOR value. */
-bool wps_job_status(int64_t id, cbuf *out);
+bool osd_job_status(int64_t id, cbuf *out);
 
 #endif

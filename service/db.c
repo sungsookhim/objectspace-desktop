@@ -15,12 +15,12 @@
 #define MAX_VOLS 32
 
 struct attached {
-    char vol[WPS_VOLID_MAX];
+    char vol[OSD_VOLID_MAX];
     sqlite3 *h;
     bool writable;
 };
 
-struct wps_db {
+struct osd_db {
     pthread_mutex_t mu;
     sqlite3 *h;
     char writer[128];
@@ -83,7 +83,7 @@ static uint64_t meta_clock(sqlite3 *h)
     return c;
 }
 
-static void save_clock(wps_db *db)
+static void save_clock(osd_db *db)
 {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db->h, "INSERT OR REPLACE INTO meta(k,v) VALUES('clock',?)", -1, &s, NULL) == SQLITE_OK) {
@@ -122,12 +122,12 @@ static int upgrade_step(sqlite3 *h, int64_t from)
 static int upgrade(sqlite3 *h, const char *path, bool backup, char *err, size_t errlen)
 {
     int64_t v = db_version(h);
-    if (v > WPS_DB_VERSION) {
+    if (v > OSD_DB_VERSION) {
         snprintf(err, errlen, "%s was made by a newer WPS (database version %lld; this one reads up to %d)", path,
-                 (long long)v, WPS_DB_VERSION);
+                 (long long)v, OSD_DB_VERSION);
         return -1;
     }
-    if (v == WPS_DB_VERSION) return 0;
+    if (v == OSD_DB_VERSION) return 0;
     if (backup) {
         char bak[PATH_MAX + 32], sql[PATH_MAX + 64];
         snprintf(bak, sizeof bak, "%s.v%lld.bak", path, (long long)v);
@@ -137,7 +137,7 @@ static int upgrade(sqlite3 *h, const char *path, bool backup, char *err, size_t 
         sqlite3_free(q);
         if (exec(h, sql) < 0) { snprintf(err, errlen, "%s: cannot keep a copy before upgrading it", path); return -1; }
     }
-    for (; v < WPS_DB_VERSION; v++) {
+    for (; v < OSD_DB_VERSION; v++) {
         exec(h, "BEGIN IMMEDIATE");
         char sql[64];
         snprintf(sql, sizeof sql, "PRAGMA user_version=%lld", (long long)v + 1);
@@ -151,7 +151,7 @@ static int upgrade(sqlite3 *h, const char *path, bool backup, char *err, size_t 
     return 0;
 }
 
-int64_t wps_db_version(wps_db *db) { return db_version(db->h); }
+int64_t osd_db_version(osd_db *db) { return db_version(db->h); }
 
 static sqlite3 *open_handle(const char *path, bool create, bool wal, char *err, size_t errlen)
 {
@@ -173,9 +173,9 @@ static sqlite3 *open_handle(const char *path, bool create, bool wal, char *err, 
     return h;
 }
 
-wps_db *wps_db_open(const char *path, const char *writer, char *err, size_t errlen)
+osd_db *osd_db_open(const char *path, const char *writer, char *err, size_t errlen)
 {
-    wps_db *db = calloc(1, sizeof *db);
+    osd_db *db = calloc(1, sizeof *db);
     if (!db) return NULL;
     pthread_mutex_init(&db->mu, NULL);
     snprintf(db->writer, sizeof db->writer, "%s", writer);
@@ -198,7 +198,7 @@ wps_db *wps_db_open(const char *path, const char *writer, char *err, size_t errl
     return db;
 }
 
-void wps_db_close(wps_db *db)
+void osd_db_close(osd_db *db)
 {
     if (!db) return;
     for (int i = 0; i < MAX_VOLS; i++)
@@ -208,13 +208,13 @@ void wps_db_close(wps_db *db)
     free(db);
 }
 
-void wps_db_key(char *out, size_t n, const char *locator, const char *cls, const char *prop)
+void osd_db_key(char *out, size_t n, const char *locator, const char *cls, const char *prop)
 {
-    if (prop) snprintf(out, n, "%s%c%s%c%s", locator, WPS_KEY_SEP, cls, WPS_KEY_SEP, prop);
-    else snprintf(out, n, "%s%c%s%c", locator, WPS_KEY_SEP, cls, WPS_KEY_SEP);
+    if (prop) snprintf(out, n, "%s%c%s%c%s", locator, OSD_KEY_SEP, cls, OSD_KEY_SEP, prop);
+    else snprintf(out, n, "%s%c%s%c", locator, OSD_KEY_SEP, cls, OSD_KEY_SEP);
 }
 
-static struct attached *find_vol(wps_db *db, const char *vol)
+static struct attached *find_vol(osd_db *db, const char *vol)
 {
     for (int i = 0; i < MAX_VOLS; i++)
         if (db->vols[i].h && strcmp(db->vols[i].vol, vol) == 0) return &db->vols[i];
@@ -286,7 +286,7 @@ static void upsert(sqlite3 *h, const char *vol, const struct row *r, int pushed,
     sqlite3_finalize(s);
 }
 
-static void record_conflict(wps_db *db, const char *vol, const struct row *loser, const struct row *winner)
+static void record_conflict(osd_db *db, const char *vol, const struct row *loser, const struct row *winner)
 {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db->h, "INSERT INTO conflicts(vol,key,type,value,rev,writer,lost_to_rev,lost_to_writer)"
@@ -310,7 +310,7 @@ static bool same_value(const struct row *a, const struct row *b)
 }
 
 /* Look up the main row for (vol,key), with its merge base. */
-static bool main_row(wps_db *db, const char *vol, const char *key, struct row *r, int *pushed,
+static bool main_row(osd_db *db, const char *vol, const char *key, struct row *r, int *pushed,
                      int64_t *base_rev, char *base_writer, size_t bwn)
 {
     sqlite3_stmt *s;
@@ -330,7 +330,7 @@ static bool main_row(wps_db *db, const char *vol, const char *key, struct row *r
     return found;
 }
 
-static void pull(wps_db *db, struct attached *a, wps_sync_stats *st)
+static void pull(osd_db *db, struct attached *a, osd_sync_stats *st)
 {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(a->h, "SELECT key,type,value,rev,writer,deleted FROM state WHERE vol=?", -1, &s, NULL) != SQLITE_OK)
@@ -369,7 +369,7 @@ static void pull(wps_db *db, struct attached *a, wps_sync_stats *st)
 
 /* Push unpushed rows of this volume; caller holds the lock and a write
  * transaction on the main database. */
-static void push(wps_db *db, struct attached *a, wps_sync_stats *st)
+static void push(osd_db *db, struct attached *a, osd_sync_stats *st)
 {
     if (!a->writable) return;
     sqlite3_stmt *s;
@@ -409,10 +409,10 @@ static void push(wps_db *db, struct attached *a, wps_sync_stats *st)
     }
 }
 
-int wps_db_attach_volume(wps_db *db, const char *vol, const char *voldb_path, bool writable,
-                         wps_sync_stats *st, char *err, size_t errlen)
+int osd_db_attach_volume(osd_db *db, const char *vol, const char *voldb_path, bool writable,
+                         osd_sync_stats *st, char *err, size_t errlen)
 {
-    wps_sync_stats dummy;
+    osd_sync_stats dummy;
     if (!st) st = &dummy;
     memset(st, 0, sizeof *st);
     pthread_mutex_lock(&db->mu);
@@ -440,8 +440,8 @@ int wps_db_attach_volume(wps_db *db, const char *vol, const char *voldb_path, bo
     if (!a->h) { pthread_mutex_unlock(&db->mu); return -1; }
     /* a disk written by a newer WPS: left alone (read-only ones are only
      * read, and are brought up by a writer that can) */
-    if (db_version(a->h) > WPS_DB_VERSION || (writable && upgrade(a->h, voldb_path, false, err, errlen) < 0)) {
-        if (db_version(a->h) > WPS_DB_VERSION)
+    if (db_version(a->h) > OSD_DB_VERSION || (writable && upgrade(a->h, voldb_path, false, err, errlen) < 0)) {
+        if (db_version(a->h) > OSD_DB_VERSION)
             snprintf(err, errlen, "%s was made by a newer WPS (database version %lld)", voldb_path, (long long)db_version(a->h));
         sqlite3_close(a->h);
         a->h = NULL;
@@ -461,7 +461,7 @@ int wps_db_attach_volume(wps_db *db, const char *vol, const char *voldb_path, bo
     return 0;
 }
 
-void wps_db_detach_volume(wps_db *db, const char *vol)
+void osd_db_detach_volume(osd_db *db, const char *vol)
 {
     pthread_mutex_lock(&db->mu);
     struct attached *a = find_vol(db, vol);
@@ -472,7 +472,7 @@ void wps_db_detach_volume(wps_db *db, const char *vol)
     pthread_mutex_unlock(&db->mu);
 }
 
-bool wps_db_volume_attached(wps_db *db, const char *vol)
+bool osd_db_volume_attached(osd_db *db, const char *vol)
 {
     pthread_mutex_lock(&db->mu);
     bool r = find_vol(db, vol) != NULL;
@@ -482,7 +482,7 @@ bool wps_db_volume_attached(wps_db *db, const char *vol)
 
 /* ------------------------------------------------------------ properties */
 
-static int write_row(wps_db *db, const char *vol, const char *key, const char *type,
+static int write_row(osd_db *db, const char *vol, const char *key, const char *type,
                      const void *val, uint32_t len, int deleted)
 {
     pthread_mutex_lock(&db->mu);
@@ -498,23 +498,23 @@ static int write_row(wps_db *db, const char *vol, const char *key, const char *t
     return rc;
 }
 
-int wps_db_put(wps_db *db, const char *vol, const char *key, char type, const void *val, uint32_t len)
+int osd_db_put(osd_db *db, const char *vol, const char *key, char type, const void *val, uint32_t len)
 {
     char t[2] = { type, 0 };
     return write_row(db, vol, key, t, val, len, 0);
 }
 
-int wps_db_delete(wps_db *db, const char *vol, const char *key)
+int osd_db_delete(osd_db *db, const char *vol, const char *key)
 {
     return write_row(db, vol, key, "-", "", 0, 1);
 }
 
-int wps_db_get_class(wps_db *db, const char *vol, const char *locator, const char *cls, wps_props *out)
+int osd_db_get_class(osd_db *db, const char *vol, const char *locator, const char *cls, osd_props *out)
 {
     char prefix[512];
-    wps_db_key(prefix, sizeof prefix, locator, cls, NULL);
+    osd_db_key(prefix, sizeof prefix, locator, cls, NULL);
     size_t pl = strlen(prefix);
-    wps_props_init(out);
+    osd_props_init(out);
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
     int n = -1;
@@ -527,7 +527,7 @@ int wps_db_get_class(wps_db *db, const char *vol, const char *locator, const cha
         while (sqlite3_step(s) == SQLITE_ROW) {
             const char *key = (const char *)sqlite3_column_text(s, 0) + pl;
             const char *type = (const char *)sqlite3_column_text(s, 1);
-            wps_props_set(out, key, type[0], sqlite3_column_blob(s, 2), (uint32_t)sqlite3_column_bytes(s, 2));
+            osd_props_set(out, key, type[0], sqlite3_column_blob(s, 2), (uint32_t)sqlite3_column_bytes(s, 2));
             n++;
         }
         sqlite3_finalize(s);
@@ -536,10 +536,10 @@ int wps_db_get_class(wps_db *db, const char *vol, const char *locator, const cha
     return n;
 }
 
-int wps_db_get_locator(wps_db *db, const char *vol, const char *locator, wps_db_prop_fn fn, void *user)
+int osd_db_get_locator(osd_db *db, const char *vol, const char *locator, osd_db_prop_fn fn, void *user)
 {
     char prefix[512];
-    snprintf(prefix, sizeof prefix, "%s%c", locator, WPS_KEY_SEP);
+    snprintf(prefix, sizeof prefix, "%s%c", locator, OSD_KEY_SEP);
     size_t pl = strlen(prefix);
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -553,7 +553,7 @@ int wps_db_get_locator(wps_db *db, const char *vol, const char *locator, wps_db_
         while (sqlite3_step(s) == SQLITE_ROW) {
             char cls[128];
             const char *rest = (const char *)sqlite3_column_text(s, 0) + pl;
-            const char *sep = strchr(rest, WPS_KEY_SEP);
+            const char *sep = strchr(rest, OSD_KEY_SEP);
             if (!sep || (size_t)(sep - rest) >= sizeof cls) continue;
             memcpy(cls, rest, (size_t)(sep - rest));
             cls[sep - rest] = 0;
@@ -569,7 +569,7 @@ int wps_db_get_locator(wps_db *db, const char *vol, const char *locator, wps_db_
 
 /* --------------------------------------------------------------- misc */
 
-int64_t wps_db_count(wps_db *db, const char *table, const char *vol)
+int64_t osd_db_count(osd_db *db, const char *table, const char *vol)
 {
     char sql[200];
     if (strcmp(table, "state") == 0) snprintf(sql, sizeof sql, "SELECT count(*) FROM state WHERE deleted=0%s", vol ? " AND vol=?" : "");
@@ -587,7 +587,7 @@ int64_t wps_db_count(wps_db *db, const char *table, const char *vol)
     return n;
 }
 
-int64_t wps_db_unpushed(wps_db *db, const char *vol)
+int64_t osd_db_unpushed(osd_db *db, const char *vol)
 {
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -601,7 +601,7 @@ int64_t wps_db_unpushed(wps_db *db, const char *vol)
     return n;
 }
 
-uint64_t wps_db_clock(wps_db *db)
+uint64_t osd_db_clock(osd_db *db)
 {
     pthread_mutex_lock(&db->mu);
     uint64_t c = db->clock;
@@ -609,7 +609,7 @@ uint64_t wps_db_clock(wps_db *db)
     return c;
 }
 
-int wps_db_set_location(wps_db *db, const char *id, const char *vol, const char *relpath)
+int osd_db_set_location(osd_db *db, const char *id, const char *vol, const char *relpath)
 {
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -625,7 +625,7 @@ int wps_db_set_location(wps_db *db, const char *id, const char *vol, const char 
     return rc;
 }
 
-int wps_db_get_location(wps_db *db, const char *id, char *vol, size_t vn, char *relpath, size_t rn)
+int osd_db_get_location(osd_db *db, const char *id, char *vol, size_t vn, char *relpath, size_t rn)
 {
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -643,7 +643,7 @@ int wps_db_get_location(wps_db *db, const char *id, char *vol, size_t vn, char *
     return rc;
 }
 
-int wps_db_locations(wps_db *db, wps_db_loc_fn fn, void *user)
+int osd_db_locations(osd_db *db, osd_db_loc_fn fn, void *user)
 {
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -661,7 +661,7 @@ int wps_db_locations(wps_db *db, wps_db_loc_fn fn, void *user)
     return n;
 }
 
-int wps_db_location_forget(wps_db *db, const char *id)
+int osd_db_location_forget(osd_db *db, const char *id)
 {
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -677,7 +677,7 @@ int wps_db_location_forget(wps_db *db, const char *id)
 
 /* ---------------------------------------------------------------- shadows */
 
-int wps_db_shadow_put(wps_db *db, const char *link_vol, const char *link_rel, const char *target_id,
+int osd_db_shadow_put(osd_db *db, const char *link_vol, const char *link_rel, const char *target_id,
                       const char *target_vol, const char *target_rel)
 {
     pthread_mutex_lock(&db->mu);
@@ -696,7 +696,7 @@ int wps_db_shadow_put(wps_db *db, const char *link_vol, const char *link_rel, co
     return rc;
 }
 
-int wps_db_shadow_del(wps_db *db, const char *link_vol, const char *link_rel)
+int osd_db_shadow_del(osd_db *db, const char *link_vol, const char *link_rel)
 {
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -711,10 +711,10 @@ int wps_db_shadow_del(wps_db *db, const char *link_vol, const char *link_rel)
     return rc;
 }
 
-static int shadow_query(wps_db *db, const char *sql, const char *a, const char *b, wps_db_shadow_fn fn, void *user)
+static int shadow_query(osd_db *db, const char *sql, const char *a, const char *b, osd_db_shadow_fn fn, void *user)
 {
     /* Collect first: the callback may write to the database. */
-    struct srow { char lv[WPS_VOLID_MAX], lr[4096], id[64], tv[WPS_VOLID_MAX], tr[4096]; } *rows = NULL;
+    struct srow { char lv[OSD_VOLID_MAX], lr[4096], id[64], tv[OSD_VOLID_MAX], tr[4096]; } *rows = NULL;
     size_t n = 0, cap = 0;
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -738,12 +738,12 @@ static int shadow_query(wps_db *db, const char *sql, const char *a, const char *
     return (int)n;
 }
 
-int wps_db_shadows_for(wps_db *db, const char *target_id, wps_db_shadow_fn fn, void *user)
+int osd_db_shadows_for(osd_db *db, const char *target_id, osd_db_shadow_fn fn, void *user)
 {
     return shadow_query(db, "SELECT * FROM shadows WHERE target_id=?", target_id, NULL, fn, user);
 }
 
-int wps_db_shadows_under(wps_db *db, const char *target_vol, const char *rel_prefix, wps_db_shadow_fn fn, void *user)
+int osd_db_shadows_under(osd_db *db, const char *target_vol, const char *rel_prefix, osd_db_shadow_fn fn, void *user)
 {
     char like[4200];
     snprintf(like, sizeof like, "%s/%%", rel_prefix);
@@ -752,7 +752,7 @@ int wps_db_shadows_under(wps_db *db, const char *target_vol, const char *rel_pre
 
 /* ------------------------------------------------------------------- jobs */
 
-int wps_db_job_put(wps_db *db, int64_t id, const char *kind, const char *src, const char *sel, const char *dest,
+int osd_db_job_put(osd_db *db, int64_t id, const char *kind, const char *src, const char *sel, const char *dest,
                    const char *state, int64_t items_done, int64_t bytes_done)
 {
     pthread_mutex_lock(&db->mu);
@@ -775,7 +775,7 @@ int wps_db_job_put(wps_db *db, int64_t id, const char *kind, const char *src, co
     return rc;
 }
 
-int wps_db_jobs_list(wps_db *db, wps_db_job_fn fn, void *user)
+int osd_db_jobs_list(osd_db *db, osd_db_job_fn fn, void *user)
 {
     struct jrow { int64_t id, items, bytes; char *kind, *src, *sel, *dest, *state; } *rows = NULL;
     size_t n = 0, cap = 0;
@@ -810,11 +810,11 @@ int wps_db_jobs_list(wps_db *db, wps_db_job_fn fn, void *user)
 
 /* Rows "vobj:<id> US WPS US <prop>" (folder, class, target) whose value is
  * `value`: the central objects in a folder, or the shadows of a target. */
-static int vobjs_where(wps_db *db, const char *vol, const char *prop, const char *value,
+static int vobjs_where(osd_db *db, const char *vol, const char *prop, const char *value,
                        void (*fn)(const char *vol, const char *id, void *user), void *user)
 {
     char suffix[64];
-    snprintf(suffix, sizeof suffix, "%cWPS%c%s", WPS_KEY_SEP, WPS_KEY_SEP, prop);
+    snprintf(suffix, sizeof suffix, "%cWPS%c%s", OSD_KEY_SEP, OSD_KEY_SEP, prop);
     size_t sl = strlen(suffix);
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -825,20 +825,20 @@ static int vobjs_where(wps_db *db, const char *vol, const char *prop, const char
         n = 0;
         sqlite3_bind_blob(s, 1, value, (int)strlen(value), SQLITE_STATIC);
         if (vol) sqlite3_bind_text(s, 2, vol, -1, SQLITE_STATIC);
-        char (*ids)[WPS_ID_LEN + 1] = NULL;
-        char (*vols)[WPS_VOLID_MAX] = NULL;
+        char (*ids)[OSD_ID_LEN + 1] = NULL;
+        char (*vols)[OSD_VOLID_MAX] = NULL;
         size_t cap = 0, k = 0;
         while (sqlite3_step(s) == SQLITE_ROW) {
             const char *key = (const char *)sqlite3_column_text(s, 1);
             size_t kl = strlen(key);
-            if (kl != 5 + WPS_ID_LEN + sl || strcmp(key + kl - sl, suffix) != 0) continue;
+            if (kl != 5 + OSD_ID_LEN + sl || strcmp(key + kl - sl, suffix) != 0) continue;
             if (k == cap) {
                 cap = cap ? cap * 2 : 16;
                 ids = realloc(ids, cap * sizeof *ids);
                 vols = realloc(vols, cap * sizeof *vols);
             }
-            memcpy(ids[k], key + 5, WPS_ID_LEN);
-            ids[k][WPS_ID_LEN] = 0;
+            memcpy(ids[k], key + 5, OSD_ID_LEN);
+            ids[k][OSD_ID_LEN] = 0;
             snprintf(vols[k], sizeof vols[k], "%s", (const char *)sqlite3_column_text(s, 0));
             k++;
         }
@@ -853,22 +853,22 @@ static int vobjs_where(wps_db *db, const char *vol, const char *prop, const char
     return n;
 }
 
-int wps_db_vobjs_in(wps_db *db, const char *vol, const char *folder_id,
+int osd_db_vobjs_in(osd_db *db, const char *vol, const char *folder_id,
                     void (*fn)(const char *vol, const char *id, void *user), void *user)
 {
     return vobjs_where(db, vol, "folder", folder_id, fn, user);
 }
 
-int wps_db_vobjs_shadowing(wps_db *db, const char *target_id,
+int osd_db_vobjs_shadowing(osd_db *db, const char *target_id,
                            void (*fn)(const char *vol, const char *id, void *user), void *user)
 {
     return vobjs_where(db, NULL, "target", target_id, fn, user);
 }
 
-bool wps_db_vobj_vol(wps_db *db, const char *id, char *vol, size_t vn)
+bool osd_db_vobj_vol(osd_db *db, const char *id, char *vol, size_t vn)
 {
     char key[128];
-    snprintf(key, sizeof key, "vobj:%s%cWPS%cclass", id, WPS_KEY_SEP, WPS_KEY_SEP);
+    snprintf(key, sizeof key, "vobj:%s%cWPS%cclass", id, OSD_KEY_SEP, OSD_KEY_SEP);
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
     bool found = false;
@@ -897,7 +897,7 @@ static void collect_row(const char *cls, const char *prop, char type, const void
         r->lens = realloc(r->lens, r->cap * sizeof *r->lens);
     }
     char k[512];
-    snprintf(k, sizeof k, "%s%c%s", cls, WPS_KEY_SEP, prop);
+    snprintf(k, sizeof k, "%s%c%s", cls, OSD_KEY_SEP, prop);
     r->keys[r->n] = strdup(k);
     r->types[r->n] = type;
     r->vals[r->n] = malloc(len ? len : 1);
@@ -908,21 +908,21 @@ static void collect_row(const char *cls, const char *prop, char type, const void
 
 /* Copy every row of central object `id` on `vol` to `new_id` on `new_vol`
  * (a copy, or a move to another volume); then, if `remove`, delete the old. */
-int wps_db_vobj_copy(wps_db *db, const char *vol, const char *id, const char *new_vol, const char *new_id, bool remove)
+int osd_db_vobj_copy(osd_db *db, const char *vol, const char *id, const char *new_vol, const char *new_id, bool remove)
 {
     char loc[64], nloc[64], key[640];
     snprintf(loc, sizeof loc, "vobj:%s", id);
     snprintf(nloc, sizeof nloc, "vobj:%s", new_id);
     struct vobj_rows r = { 0 };
-    if (wps_db_get_locator(db, vol, loc, collect_row, &r) < 0) return -1;
+    if (osd_db_get_locator(db, vol, loc, collect_row, &r) < 0) return -1;
     for (size_t i = 0; i < r.n; i++) {
-        snprintf(key, sizeof key, "%s%c%s", nloc, WPS_KEY_SEP, r.keys[i]);
-        wps_db_put(db, new_vol, key, r.types[i], r.vals[i], r.lens[i]);
+        snprintf(key, sizeof key, "%s%c%s", nloc, OSD_KEY_SEP, r.keys[i]);
+        osd_db_put(db, new_vol, key, r.types[i], r.vals[i], r.lens[i]);
     }
     for (size_t i = 0; i < r.n; i++) {
         if (remove) {
-            snprintf(key, sizeof key, "%s%c%s", loc, WPS_KEY_SEP, r.keys[i]);
-            wps_db_delete(db, vol, key);
+            snprintf(key, sizeof key, "%s%c%s", loc, OSD_KEY_SEP, r.keys[i]);
+            osd_db_delete(db, vol, key);
         }
         free(r.keys[i]);
         free(r.vals[i]);
@@ -934,15 +934,15 @@ int wps_db_vobj_copy(wps_db *db, const char *vol, const char *id, const char *ne
     return 0;
 }
 
-int wps_db_vobj_delete(wps_db *db, const char *vol, const char *id)
+int osd_db_vobj_delete(osd_db *db, const char *vol, const char *id)
 {
     char loc[64], key[640];
     snprintf(loc, sizeof loc, "vobj:%s", id);
     struct vobj_rows r = { 0 };
-    if (wps_db_get_locator(db, vol, loc, collect_row, &r) < 0) return -1;
+    if (osd_db_get_locator(db, vol, loc, collect_row, &r) < 0) return -1;
     for (size_t i = 0; i < r.n; i++) {
-        snprintf(key, sizeof key, "%s%c%s", loc, WPS_KEY_SEP, r.keys[i]);
-        wps_db_delete(db, vol, key);
+        snprintf(key, sizeof key, "%s%c%s", loc, OSD_KEY_SEP, r.keys[i]);
+        osd_db_delete(db, vol, key);
         free(r.keys[i]);
         free(r.vals[i]);
     }

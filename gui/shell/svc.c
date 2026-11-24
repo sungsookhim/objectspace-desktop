@@ -131,7 +131,7 @@ bool svc_start(ui_app *a, char *err, size_t errlen)
 {
     app = a;
     char path[4096];
-    const char *s = getenv("WPS_SOCKET"), *rt = getenv("WPS_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
+    const char *s = getenv("OSD_SOCKET"), *rt = getenv("OSD_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
     else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
     else if (xr && *xr) snprintf(path, sizeof path, "%s/wps.sock", xr);

@@ -39,7 +39,7 @@ static void on_window_events(void *arg, int fd, short rev)
 
 int main(int argc, char **argv)
 {
-    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wps-shell %s\n", WPS_VERSION); return 0; }
+    if (argc > 1 && !strcmp(argv[1], "--version")) { printf("wps-shell %s\n", OSD_VERSION); return 0; }
     /* --events-stdin (anywhere: the extension adds it last) */
     bool events_stdin = false;
     for (int k = 1; k < argc; k++)
@@ -100,8 +100,8 @@ int main(int argc, char **argv)
     }
     if (!up) {
         fprintf(stderr, "wps-shell: %s\n", err);
-        fprintf(stderr, "wps-shell: start wpsd first (build/wpsd &), with the same WPS_RUNTIME_DIR%s%s\n",
-                getenv("WPS_RUNTIME_DIR") ? ": " : " (unset here)", getenv("WPS_RUNTIME_DIR") ? getenv("WPS_RUNTIME_DIR") : "");
+        fprintf(stderr, "wps-shell: start wpsd first (build/wpsd &), with the same OSD_RUNTIME_DIR%s%s\n",
+                getenv("OSD_RUNTIME_DIR") ? ": " : " (unset here)", getenv("OSD_RUNTIME_DIR") ? getenv("OSD_RUNTIME_DIR") : "");
         return 1;
     }
     svc_on_event(on_event, NULL);
@@ -110,7 +110,7 @@ int main(int argc, char **argv)
     svc_setup(got_setup, NULL);
     /* Settings shared with GNOME: every shell follows its font; the
      * desktop keeps the rest in step both ways. */
-    gnome_start(app, desk, gnome_set_wps, gnome_font);
+    gnome_start(app, desk, gnome_set_osd, gnome_font);
     if (desk) {
         /* the desktop process: Messages, and in the WPS session the
          * notification service */
@@ -118,11 +118,11 @@ int main(int argc, char **argv)
         notify_init(app);
         /* --desktop FOLDER: that folder as the desktop (tests) */
         struct folder *f = open_desktop(i < argc ? argv[i++] : NULL);
-        if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);
+        if (getenv("OSD_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);
     }
     for (int k = i; k < argc; k++) {
         struct folder *f = open_window(argv[k], opt_view, false);
-        if (getenv("WPS_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);   /* every window ticks */
+        if (getenv("OSD_SHELL_SELFTEST")) ui_surface_set_continuous(f->win, true);   /* every window ticks */
         if (k == i && opt_bench > 0) {
             f->bench_secs = opt_bench;
             f->bench_seed = 12345;

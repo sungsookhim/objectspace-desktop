@@ -11,44 +11,44 @@
  * out unless the pattern starts with a dot; symbolic links are not
  * followed into.
  */
-#ifndef WPS_FIND_H
-#define WPS_FIND_H
+#ifndef OSD_FIND_H
+#define OSD_FIND_H
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "wpo_loop.h"
+#include "osdo_loop.h"
 
-typedef enum { WPS_FIND_ANY, WPS_FIND_FOLDER, WPS_FIND_FILE, WPS_FIND_PROGRAM } wps_find_kind;
+typedef enum { OSD_FIND_ANY, OSD_FIND_FOLDER, OSD_FIND_FILE, OSD_FIND_PROGRAM } osd_find_kind;
 
 typedef struct {
     const char *path;
     const char *type;        /* "folder", "file", "link", "other" */
     int64_t size, mtime;
-} wps_found;
+} osd_found;
 
 /* A batch, on the loop thread. `done`: the last call (the search ended,
  * was cancelled, or reached its limit: `truncated`). `scanned`: entries
  * looked at so far. `err`: the folder could not be read (done). */
-typedef void (*wps_find_fn)(void *arg, int64_t find, const wps_found *items, size_t n, bool done, uint64_t scanned,
+typedef void (*osd_find_fn)(void *arg, int64_t find, const osd_found *items, size_t n, bool done, uint64_t scanned,
                             bool truncated, int err);
 
-void wps_find_init(wpo_loop *loop);
+void osd_find_init(osdo_loop *loop);
 /* Cancels the searches and waits for their threads. */
-void wps_find_shutdown(void);
+void osd_find_shutdown(void);
 
 /* Loop thread. Returns the search's ID (> 0); `fn` runs on the loop
  * thread for every batch, the last with done set, after which `arg` is
  * not used again. */
-int64_t wps_find_start(const char *folder, const char *pattern, bool subfolders, wps_find_kind kind, size_t limit,
-                       wps_find_fn fn, void *arg);
+int64_t osd_find_start(const char *folder, const char *pattern, bool subfolders, osd_find_kind kind, size_t limit,
+                       osd_find_fn fn, void *arg);
 
 /* Loop thread: stop a search; its last batch still comes (done). False if
  * there is no such search running. */
-bool wps_find_cancel(int64_t find);
+bool osd_find_cancel(int64_t find);
 
 /* The matching rule alone (tests). */
-bool wps_find_match(const char *name, const char *pattern);
+bool osd_find_match(const char *name, const char *pattern);
 
 #endif

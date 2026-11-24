@@ -8,7 +8,7 @@
  * Anthy, ...) is set as IBus's engine (`ibus engine`), and going back to
  * a layout sets IBus's engine for that layout, so keys pass as typed. The
  * WPS session starts IBus (tools/wps-session).
- * Without gsettings (headless tests, WPS_NO_GSETTINGS) XKB_DEFAULT_* or US.
+ * Without gsettings (headless tests, OSD_NO_GSETTINGS) XKB_DEFAULT_* or US.
  */
 #define _GNU_SOURCE
 #include <fcntl.h>
@@ -55,7 +55,7 @@ static void read_gnome(void)
 {
     char s[1024], o[512];
     km.from_gnome = false;
-    if (getenv("WPS_NO_GSETTINGS") || !gsettings_get("org.gnome.desktop.input-sources", "sources", s, sizeof s)) return;
+    if (getenv("OSD_NO_GSETTINGS") || !gsettings_get("org.gnome.desktop.input-sources", "sources", s, sizeof s)) return;
     km.layout[0] = km.variant[0] = 0;
     km.ngroups = 0;
     km.nsrc = 0;
@@ -272,14 +272,14 @@ void keymap_init(void)
 {
     read_gnome();
     static struct wl_event_source *t;
-    if (getenv("WPS_SESSION") && !getenv("WPS_NO_GSETTINGS")) {
+    if (getenv("OSD_SESSION") && !getenv("OSD_NO_GSETTINGS")) {
         t = wl_event_loop_add_timer(server.loop, first_engine, &t);
         wl_event_source_timer_update(t, 4000);
     }
     if (km.from_gnome)
         fprintf(stderr, "wps-compositor: keyboard: %s (GNOME's input sources)%s%s\n", km.layout,
                 km.options[0] ? " options " : "", km.options);
-    if (getenv("WPS_NO_GSETTINGS")) return;
+    if (getenv("OSD_NO_GSETTINGS")) return;
     int p[2];
     if (pipe2(p, O_CLOEXEC) < 0) return;
     pid_t parent = getpid();

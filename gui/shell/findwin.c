@@ -321,7 +321,7 @@ static void save_results(struct fw *w)
     const char *home = getenv("HOME");
     char dir[PATH_MAX];
     snprintf(dir, sizeof dir, "%s", desktop_dir[0] ? desktop_dir : home ? home : "/");
-    svc_create(dir, "WPFolder", title, folder_made, sv);
+    svc_create(dir, "OsdFolder", title, folder_made, sv);
 }
 
 static void menu_chosen(void *arg, int64_t item)

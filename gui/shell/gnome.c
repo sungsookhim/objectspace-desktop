@@ -17,9 +17,9 @@ extern char **environ;
 
 static ui_app *app;
 static bool both;
-static void (*wps_set)(const char *cls, const char *key, const char *value);
+static void (*osd_set)(const char *cls, const char *key, const char *value);
 static void (*font_changed)(void);
-static bool read_wps_once;    /* the objects' values have been read at least once */
+static bool read_osd_once;    /* the objects' values have been read at least once */
 
 /* GNOME's values we follow (text as gsettings prints it, unquoted). */
 static struct { const char *schema, *key; char val[256]; } g[] = {
@@ -46,7 +46,7 @@ const char *gnome_value(const char *key)
     return NULL;
 }
 
-static bool off(void) { return getenv("WPS_NO_GSETTINGS") != NULL; }
+static bool off(void) { return getenv("OSD_NO_GSETTINGS") != NULL; }
 
 bool gnome_get(const char *schema, const char *key, char *out, size_t n)
 {
@@ -106,19 +106,19 @@ static const char *scheme_of_gnome(void)
 }
 
 /* GNOME -> WPS: the objects take GNOME's values where they differ. */
-static void to_wps(void)
+static void to_osd(void)
 {
-    if (!both || !wps_set || !read_wps_once) return;
+    if (!both || !osd_set || !read_osd_once) return;
     const char *sch = scheme_of_gnome();
-    if (strcmp(w_scheme, sch)) { snprintf(w_scheme, sizeof w_scheme, "%s", sch); wps_set("WPSchemePalette", "scheme", sch); }
+    if (strcmp(w_scheme, sch)) { snprintf(w_scheme, sizeof w_scheme, "%s", sch); osd_set("OsdSchemePalette", "scheme", sch); }
     const char *lh = !strcmp(g[G_LEFT].val, "true") ? "1" : "0";
-    if (g[G_LEFT].val[0] && strcmp(w_left, lh)) { snprintf(w_left, sizeof w_left, "%s", lh); wps_set("WPMouse", "left_handed", lh); }
+    if (g[G_LEFT].val[0] && strcmp(w_left, lh)) { snprintf(w_left, sizeof w_left, "%s", lh); osd_set("OsdMouse", "left_handed", lh); }
     if (atoi(g[G_DOUBLE].val) > 0 && strcmp(w_double, g[G_DOUBLE].val)) {
         snprintf(w_double, sizeof w_double, "%s", g[G_DOUBLE].val);
-        wps_set("WPMouse", "double_click_ms", g[G_DOUBLE].val);
+        osd_set("OsdMouse", "double_click_ms", g[G_DOUBLE].val);
     }
     const char *es = !strcmp(g[G_SOUNDS].val, "false") ? "0" : "1";
-    if (g[G_SOUNDS].val[0] && strcmp(w_sounds, es)) { snprintf(w_sounds, sizeof w_sounds, "%s", es); wps_set("WPSound", "enabled", es); }
+    if (g[G_SOUNDS].val[0] && strcmp(w_sounds, es)) { snprintf(w_sounds, sizeof w_sounds, "%s", es); osd_set("OsdSound", "enabled", es); }
 }
 
 /* WPS -> GNOME. */
@@ -137,21 +137,21 @@ static void to_gnome(void)
     if (w_sounds[0]) gset(G_SOUNDS, !strcmp(w_sounds, "1") ? "true" : "false");
 }
 
-void gnome_wps_value(const char *cls, const char *key, const char *value)
+void gnome_osd_value(const char *cls, const char *key, const char *value)
 {
-    if (!strcmp(cls, "WPSchemePalette") && !strcmp(key, "scheme")) snprintf(w_scheme, sizeof w_scheme, "%s", value);
-    else if (!strcmp(cls, "WPMouse") && !strcmp(key, "left_handed")) snprintf(w_left, sizeof w_left, "%s", value);
-    else if (!strcmp(cls, "WPMouse") && !strcmp(key, "double_click_ms")) snprintf(w_double, sizeof w_double, "%s", value);
-    else if (!strcmp(cls, "WPSound") && !strcmp(key, "enabled")) snprintf(w_sounds, sizeof w_sounds, "%s", value);
+    if (!strcmp(cls, "OsdSchemePalette") && !strcmp(key, "scheme")) snprintf(w_scheme, sizeof w_scheme, "%s", value);
+    else if (!strcmp(cls, "OsdMouse") && !strcmp(key, "left_handed")) snprintf(w_left, sizeof w_left, "%s", value);
+    else if (!strcmp(cls, "OsdMouse") && !strcmp(key, "double_click_ms")) snprintf(w_double, sizeof w_double, "%s", value);
+    else if (!strcmp(cls, "OsdSound") && !strcmp(key, "enabled")) snprintf(w_sounds, sizeof w_sounds, "%s", value);
 }
 
-void gnome_wps_read(void)
+void gnome_osd_read(void)
 {
     if (off()) return;
-    if (!read_wps_once) {
+    if (!read_osd_once) {
         /* the first time: GNOME's values win */
-        read_wps_once = true;
-        to_wps();
+        read_osd_once = true;
+        to_osd();
         return;
     }
     to_gnome();
@@ -177,7 +177,7 @@ static void on_monitor(void *arg, int fd, short rev)
     }
     read_all();
     apply_font();
-    to_wps();
+    to_osd();
 }
 
 static void monitor(int i, const char *schema)
@@ -202,7 +202,7 @@ void gnome_start(ui_app *a, bool both_ways, void (*set)(const char *cls, const c
 {
     app = a;
     both = both_ways;
-    wps_set = set;
+    osd_set = set;
     font_changed = font;
     if (off()) return;
     read_all();

@@ -8,7 +8,7 @@
  *
  * usage: wps-shell [--details] [--bench SECONDS] FOLDER...
  *   --bench: scroll the first window by itself, print frame statistics as
- *   JSON, and exit (WPS_UI_SCALE and WPS_SHELL_SIZE=WxH help measure).
+ *   JSON, and exit (OSD_UI_SCALE and OSD_SHELL_SIZE=WxH help measure).
  */
 #define _GNU_SOURCE
 
@@ -423,7 +423,7 @@ char setup_ids[NSETUP][64];   /* the settings objects (see below) */
 char setup_cls[NSETUP][32];   /* their classes */
 
 
-/* WPS_DEBUG_TIMING: when the desktop's start-up steps happen. */
+/* OSD_DEBUG_TIMING: when the desktop's start-up steps happen. */
 double since_start(void)
 {
     static double t0;
@@ -485,7 +485,7 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
                 if (!dst->icon) dst->icon = strdup(!strcmp(ex, "text") ? "theme:program-text" : "theme:program");
             }
             const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
-            if (mk) dst->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
+            if (mk) dst->kind = !strcmp(mk, "OsdFolder") ? UI_KIND_FOLDER : !strcmp(mk, "OsdProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");
             if (dst->shadow || (dst->link && tt && strcmp(tt, "missing"))) {
                 /* drawn as what it points to */
@@ -716,7 +716,7 @@ void got_page(void *arg, const cv *reply)
     unsigned gen = pc->gen;
     free(pc);
     if (!f) return;
-    if (f->desktop && getenv("WPS_DEBUG_TIMING")) {
+    if (f->desktop && getenv("OSD_DEBUG_TIMING")) {
         const cv *res = reply ? cv_get(reply, "result") : NULL, *items = res ? cv_get(res, "items") : NULL;
         bool det = items && items->k == CV_ARRAY && items->n && cv_get(&items->items[0], "mtime");
         TIMING(f, "page: %zu items%s%s", items && items->k == CV_ARRAY ? items->n : 0, det ? " with details" : "", shadow ? " (re-read)" : "");
@@ -900,7 +900,7 @@ void on_event(void *arg, const cv *ev)
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (findwin_event(ev)) return;   /* a search's results (its own IDs) */
-    if (wps_command_event(ev)) return;   /* the wps command: ask, selection, show */
+    if (osd_command_event(ev)) return;   /* the wps command: ask, selection, show */
     if (!strcmp(name, "say")) {   /* wpsctl say: on the desktop (a script's: shown with the setting off too) */
         const cv *st = cv_get(ev, "stay");
         if (cv_text(ev, "text")) desktop_say(cv_text(ev, "text"), st && st->k == CV_BOOL && st->b);

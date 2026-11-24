@@ -18,8 +18,8 @@ cat > "$S/script" <<EOS
 13.5 shot $S/open.png
 14 quit
 EOS
-DESKENV="WPS_UI_SCALE=$K WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=17 tests/comp/run.sh "$S/script" \
-    "sleep 5; sys=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['WPSystem']['address'])\")
+DESKENV="OSD_UI_SCALE=$K OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=17 tests/comp/run.sh "$S/script" \
+    "sleep 5; sys=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSystem']['address'])\")
      '$W' set \"\$sys\" 'icon_set=Large' > \"\$T/set1.log\" 2>&1
      sleep 3; '$W' set \"\$sys\" 'icon_set=Small' > \"\$T/set2.log\" 2>&1
      '$W' props \"\$T/desk/Projects\" > \"\$T/props.log\" 2>&1" > "$S/out.txt" 2>&1

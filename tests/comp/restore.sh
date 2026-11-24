@@ -14,7 +14,7 @@ cat > "$S/one" <<EOS
 9 quit
 EOS
 printf '5 windows\n6 quit\n' > "$S/two"
-export DESKENV="WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1"
+export DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1"
 SECS=12 tests/comp/run.sh "$S/one" "sleep 1" > "$S/out1" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out1")
 fails=0

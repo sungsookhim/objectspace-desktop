@@ -1,0 +1,10 @@
+# The Messages object (v0.2-design 9): opening it shows the messages
+# programs and WPS sent (the desktop's list window); its settings are the
+# notification pop-ups' (Do not disturb, how long they stay).
+class OsdMessages : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle
+# Its settings (stored as text in the OsdSetup state, as before).
+property dnd : checkbox = "0" page "Messages" label "Do not disturb (messages are kept, not shown)" store OsdSetup text
+property popup_seconds : text = "6" page "Messages" label "Pop-ups stay (seconds)" store OsdSetup text
+property desktop_line : checkbox = "1" page "Messages" label "Show WPS's messages at the bottom of the desktop (Moved to the trash, errors)" store OsdSetup text

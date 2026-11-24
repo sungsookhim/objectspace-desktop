@@ -522,7 +522,7 @@ uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const cha
             return UI_DND_COPY;
         }
         const char *key = mods & UI_MOD_CTRL ? "title_color" : "bg_color";
-        svc_settings_set(mods & UI_MOD_SHIFT ? "class:WPFolder" : f->path, key, &v, -1, ignore_reply, NULL);
+        svc_settings_set(mods & UI_MOD_SHIFT ? "class:OsdFolder" : f->path, key, &v, -1, ignore_reply, NULL);
         if (f->desktop && !(mods & (UI_MOD_CTRL | UI_MOD_SHIFT)) && f->bg_gnome) {
             /* (GNOME's picture would hide it: the desktop's own background now) */
             cv off = { .k = CV_BOOL, .b = false };
@@ -608,7 +608,7 @@ uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const cha
         ui_menu_popup(s, items, 5, x, y, 0, ask_chosen, a);
         return UI_DND_COPY;   /* decided later in the menu: the source must not remove anything */
     }
-    if (getenv("WPS_DEBUG_DND"))
+    if (getenv("OSD_DEBUG_DND"))
         fprintf(stderr, "dnd: dropping as %s\n", how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
     raise_in(f, "object.drop", dest, how == DROP_SHADOW ? "shadow" : how == DROP_COPY ? "copy" : "move");
     drop_moves_templates = tpl_move && how == DROP_MOVE;
@@ -706,7 +706,7 @@ void create_another(struct folder *f, size_t i)
         if (!sl || sl == t) { free(a); return; }
         *sl = 0;
         snprintf(a->dir, sizeof a->dir, "%s", t);
-        snprintf(a->cls, sizeof a->cls, "WPFolder");
+        snprintf(a->cls, sizeof a->cls, "OsdFolder");
         snprintf(a->what, sizeof a->what, "folder");
         snprintf(a->name, sizeof a->name, "New Folder");
     } else {
@@ -722,17 +722,17 @@ void create_another(struct folder *f, size_t i)
             snprintf(a->what, sizeof a->what, "object from the template");
             snprintf(a->name, sizeof a->name, "%s", rw->title ? rw->title : rw->name);
         } else if (rw->kind == UI_KIND_FOLDER) {
-            snprintf(a->cls, sizeof a->cls, "WPFolder");
+            snprintf(a->cls, sizeof a->cls, "OsdFolder");
             snprintf(a->what, sizeof a->what, "folder");
             snprintf(a->name, sizeof a->name, "New Folder");
         } else if (nl > 8 && !strcmp(rw->name + nl - 8, ".desktop")) {
-            snprintf(a->cls, sizeof a->cls, "WPProgram");
+            snprintf(a->cls, sizeof a->cls, "OsdProgram");
             snprintf(a->what, sizeof a->what, "program");
             snprintf(a->name, sizeof a->name, "New Program");
         } else {
             /* a data file of the same type: the same extension */
             const char *dot = strrchr(rw->name, '.');
-            snprintf(a->cls, sizeof a->cls, "WPDataFile");
+            snprintf(a->cls, sizeof a->cls, "OsdDataFile");
             snprintf(a->what, sizeof a->what, "data file");
             snprintf(a->name, sizeof a->name, "New Data File%s", dot && dot != rw->name ? dot : "");
         }

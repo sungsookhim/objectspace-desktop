@@ -4,8 +4,8 @@
  * Enter) on one chooses it: chosen(owner, target, its desktop ID, always),
  * and the picker closes. Escape closes it unchosen.
  */
-#ifndef WPS_APPPICK_H
-#define WPS_APPPICK_H
+#ifndef OSD_APPPICK_H
+#define OSD_APPPICK_H
 
 #include <stdbool.h>
 #include <stddef.h>

@@ -1,0 +1,17 @@
+# OS/2's Drives, as Computer (v0.2-design 5): a folder in System holding
+# Drives and the root file system; its notebook shows the machine.
+class OsdComputer : OsdFolder
+version 1.0
+override osdModifyPopupMenu
+method osdQueryInfo(string which) -> string
+method osdQueryInfoHost() -> string
+method osdQueryInfoOS() -> string
+method osdQueryInfoKernel() -> string
+method osdQueryInfoCPU() -> string
+method osdQueryInfoMemory() -> string
+property host : info page Computer label Name get osdQueryInfoHost first
+property os : info page Computer label System get osdQueryInfoOS first
+property kernel : info page Computer label Kernel get osdQueryInfoKernel first
+property cpu : info page Computer label Processors get osdQueryInfoCPU first
+property memory : info page Computer label Memory get osdQueryInfoMemory first
+classoverride osdclsQueryTitle

@@ -22,7 +22,7 @@
 #include "icons.h"
 #include "objmenu.h"
 #include "tooltip.h"
-#include "wps_menu_ids.h"
+#include "osd_menu_ids.h"
 
 #define GRIP_W 12.0
 #define SEP_W 8.0
@@ -80,7 +80,7 @@ static struct {
     double r_x, r_y;
     uint32_t r_serial;
     ssize_t dragging;          /* the object button being dragged (from this bar), -1 none */
-    char drag_wps[PATH_MAX + 64], drag_uri[3 * PATH_MAX + 64];
+    char drag_osd[PATH_MAX + 64], drag_uri[3 * PATH_MAX + 64];
     /* the LaunchPad object's settings (OS/2's, v0.3-design 11) */
     bool vertical, small, text, float_top, close_drawer;
     bool drawers_left;         /* vertical: the drawer arrows (and drawers) on the left */
@@ -193,7 +193,7 @@ static size_t parse(const cv *reply, struct entry *out, size_t max)
         e->shadow = sh && sh->k == CV_BOOL && sh->b;
         e->link = ty && !strcmp(ty, "link");
         const char *mk = cv_text(it, "makes");
-        if (mk) e->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
+        if (mk) e->kind = !strcmp(mk, "OsdFolder") ? UI_KIND_FOLDER : !strcmp(mk, "OsdProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
         const char *oid = cv_text(it, "id");
         if (oid) snprintf(e->id, sizeof e->id, "%s", oid);
         const char *ic = cv_text(it, "icon");
@@ -858,7 +858,7 @@ static void convert_items(const cv *arr, ui_menu_item **out, size_t *n, size_t e
         int64_t id = 0;
         cv_int(it, "id", &id);
         /* the GUI's own actions on a folder window's icons stay there */
-        if (id == WPS_MI_DELETE || id == WPS_MI_CREATE_ANOTHER || id == WPS_MI_ARRANGE || id == WPS_MI_LOCK_POS) continue;
+        if (id == OSD_MI_DELETE || id == OSD_MI_CREATE_ANOTHER || id == OSD_MI_ARRANGE || id == OSD_MI_LOCK_POS) continue;
         const cv *en = cv_get(it, "enabled"), *ck = cv_get(it, "checked");
         ui_menu_item *o = &(*out)[(*n)++];
         o->id = id;
@@ -875,13 +875,13 @@ static void obj_menu_chosen(void *arg, int64_t id)
     size_t i = m->i;
     if (id >= 0 && i < lp.n) {
         struct entry e = lp.items[i];
-        if (id == WPS_MI_OPEN || id == WPS_MI_OPEN_ICON) open_entry(lp.dir, &e);
+        if (id == OSD_MI_OPEN || id == OSD_MI_OPEN_ICON) open_entry(lp.dir, &e);
         else if (id == LP_REMOVE) remove_entry(lp.dir, &e);
         else if (id == LP_FOLDER) lp.open_folder(lp.dir);
-        else if (id == WPS_MI_PROPERTIES) { if (lp.open_props) lp.open_props(e.target[0] == '/' && e.shadow ? e.target : m->addr); }
-        else if ((id == WPS_MI_OPEN_TREE || id == WPS_MI_OPEN_DETAILS) && e.kind == UI_KIND_FOLDER) open_entry(lp.dir, &e);
-        else if (id >= WPS_MI_OPEN_APP && id < WPS_MI_OPEN_APP + WPS_MI_OPEN_APPS) svc_open_with(m->addr, NULL, (int)(id - WPS_MI_OPEN_APP), false, opened, NULL);
-        else if (id >= WPS_MI_FIRST_CLASS) svc_menu_select(m->addr, id, opened, NULL);
+        else if (id == OSD_MI_PROPERTIES) { if (lp.open_props) lp.open_props(e.target[0] == '/' && e.shadow ? e.target : m->addr); }
+        else if ((id == OSD_MI_OPEN_TREE || id == OSD_MI_OPEN_DETAILS) && e.kind == UI_KIND_FOLDER) open_entry(lp.dir, &e);
+        else if (id >= OSD_MI_OPEN_APP && id < OSD_MI_OPEN_APP + OSD_MI_OPEN_APPS) svc_open_with(m->addr, NULL, (int)(id - OSD_MI_OPEN_APP), false, opened, NULL);
+        else if (id >= OSD_MI_FIRST_CLASS) svc_menu_select(m->addr, id, opened, NULL);
     }
     free(m);
 }
@@ -934,7 +934,7 @@ static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t se
 static void drag_send(void *ctx, const char *mime, int fd)
 {
     (void)ctx;
-    const char *d = !strcmp(mime, MIME_WPS) ? lp.drag_wps : lp.drag_uri;
+    const char *d = !strcmp(mime, MIME_WPS) ? lp.drag_osd : lp.drag_uri;
     ui_app_write_async(lp.app, fd, d, strlen(d));
 }
 
@@ -949,7 +949,7 @@ static void start_drag(ui_surface *s, size_t i, uint32_t serial)
     const struct entry *e = &lp.items[i];
     char a[PATH_MAX + 32];
     address(lp.dir, e, a, sizeof a);
-    snprintf(lp.drag_wps, sizeof lp.drag_wps, "%s\n", a);
+    snprintf(lp.drag_osd, sizeof lp.drag_osd, "%s\n", a);
     /* other programs get the file it stands for */
     const char *f = e->target[0] == '/' ? e->target : a[0] == '/' ? a : NULL;
     lp.drag_uri[0] = 0;
@@ -1228,7 +1228,7 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
     if (lp.s) return;
     lp.app = a;
     lp.open_folder = open_folder;
-    const char *d = getenv("WPS_LAUNCHPAD_DIR"), *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+    const char *d = getenv("OSD_LAUNCHPAD_DIR"), *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     if (d && *d) snprintf(lp.dir, sizeof lp.dir, "%s", d);
     else if (xdg && *xdg) snprintf(lp.dir, sizeof lp.dir, "%s/wps/LaunchPad", xdg);
     else snprintf(lp.dir, sizeof lp.dir, "%s/.local/share/wps/LaunchPad", home ? home : "");

@@ -3,8 +3,8 @@
  * the pointer rests on, after a moment (0.6 s), gone when it moves off,
  * presses or leaves. One at a time, for the LaunchPad and the WarpCenter.
  */
-#ifndef WPS_TOOLTIP_H
-#define WPS_TOOLTIP_H
+#ifndef OSD_TOOLTIP_H
+#define OSD_TOOLTIP_H
 
 #include <stdbool.h>
 

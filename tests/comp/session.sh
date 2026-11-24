@@ -6,7 +6,7 @@
 # exit by themselves: the time limit ends them); Lockup, in a second run, shows the lock screen.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sess-XXXX")
-ENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1 WPS_DEBUG_EVENTS=1"
+ENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_DEBUG_EVENTS=1"
 # The menu (1280x800): Lockup now at y 715, Log off... 737, Shut down... 759.
 cat > "$S/end" <<EOS
 2.5 click 30 785
@@ -25,9 +25,9 @@ cat > "$S/lock" <<EOS
 4.5 shot $S/lock.png
 5 quit
 EOS
-env -u WPS_SESSION WPS_COMP_DEBUG=1 DESKENV="$ENV" SECS=14 tests/comp/run.sh "$S/end" true > "$S/end.txt" 2>&1
+env -u OSD_SESSION OSD_COMP_DEBUG=1 DESKENV="$ENV" SECS=14 tests/comp/run.sh "$S/end" true > "$S/end.txt" 2>&1
 T1=$(sed -n 's/^T=//p' "$S/end.txt")
-env -u WPS_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/lock" true > "$S/lock.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=8 tests/comp/run.sh "$S/lock" true > "$S/lock.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/lock.txt")
 # The buttons after the window list (the owner's, as OS/2's): Lockup at
 # x 152, Find 180, Log off 212, Shut down 242 (y 785). Dialogs cancelled.
@@ -44,7 +44,7 @@ cat > "$S/buttons" <<EOS
 8 shot $S/b-lock.png
 8.5 quit
 EOS
-env -u WPS_SESSION DESKENV="$ENV" SECS=11 tests/comp/run.sh "$S/buttons" true > "$S/buttons.txt" 2>&1
+env -u OSD_SESSION DESKENV="$ENV" SECS=11 tests/comp/run.sh "$S/buttons" true > "$S/buttons.txt" 2>&1
 T3=$(sed -n 's/^T=//p' "$S/buttons.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

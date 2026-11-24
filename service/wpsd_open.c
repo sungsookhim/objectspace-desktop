@@ -4,7 +4,7 @@
 
 #include <pwd.h>
 
-void list_reply(void *arg, const wps_page *pg)
+void list_reply(void *arg, const osd_page *pg)
 {
     struct list_req *r = arg;
     if (!r->c->dead) {
@@ -25,7 +25,7 @@ void list_reply(void *arg, const wps_page *pg)
             cb_text(&b, "items");
             cb_array(&b, pg->n);
             for (size_t i = 0; i < pg->n; i++) {
-                const wps_entry *e = &pg->items[i];
+                const osd_entry *e = &pg->items[i];
                 const char *t = e->name[0] == '\x01' ? "object" : e->type == DT_DIR ? "folder" : e->type == DT_LNK ? "link" :
                                 e->type == DT_REG ? "file" : "other";
                 bool iu = false;
@@ -33,8 +33,8 @@ void list_reply(void *arg, const wps_page *pg)
                     /* In use: a lock file says so, or a program WPS started has it open. */
                     char fp[PATH_MAX + NAME_MAX + 2];
                     snprintf(fp, sizeof fp, "%s/%s", strcmp(r->folder, "/") ? r->folder : "", e->name);
-                    iu = e->locked || (e->name[0] != '\x01' && wps_launch_in_use(fp)) ||
-                         ((e->shadow || e->type == DT_LNK) && e->target_path[0] && wps_launch_in_use(e->target_path));
+                    iu = e->locked || (e->name[0] != '\x01' && osd_launch_in_use(fp)) ||
+                         ((e->shadow || e->type == DT_LNK) && e->target_path[0] && osd_launch_in_use(e->target_path));
                 }
                 bool link = e->detailed && !e->shadow && e->type == DT_LNK;
                 bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0], icon = e->detailed && e->icon[0];
@@ -125,7 +125,7 @@ static void ask_first(struct req *r, const char *cmd, uid_t owner)
     cb_free(&b);
 }
 
-void do_open(struct req *r, wpo_object *o)
+void do_open(struct req *r, osdo_object *o)
 {
     const cv *cf = cv_get(&r->msg, "confirm");
     bool confirmed = cf && cf->k == CV_BOOL && cf->b;
@@ -141,12 +141,12 @@ void do_open(struct req *r, wpo_object *o)
     const char *tracked;   /* what shows as in use while it runs */
     const char *path = r->tgt.path;
     const struct stat *st = &r->tgt.st;
-    wpo_object *orig = NULL;
+    osdo_object *orig = NULL;
     /* A shadow opens its original, wherever that is now. */
-    if (wpo_is_a(o, WPShadowClass)) {
-        orig = WPShadow_wpQueryTarget(o);
+    if (osdo_is_a(o, OsdShadowClass)) {
+        orig = OsdShadow_osdQueryTarget(o);
         if (!orig || r->shadow_target.err || (!r->shadow_target.path[0] && !r->shadow_target.central)) {
-            wpo_unref(orig);
+            osdo_unref(orig);
             reply_error(r->c, r->id, "unavailable", "the original is not available (on a volume that is not mounted, or gone)");
             return;
         }
@@ -155,22 +155,22 @@ void do_open(struct req *r, wpo_object *o)
         st = &r->shadow_target.st;
     }
     /* Command prompt here (0.4.1): the user's shell in the System's
-     * terminal (WPS Terminal by default), in the folder, $WPS_FOLDER set */
+     * terminal (WPS Terminal by default), in the folder, $OSD_FOLDER set */
     const cv *pr = cv_get(&r->msg, "prompt");
-    bool prompt = pr && pr->k == CV_BOOL && pr->b && wpo_is_a(o, WPFolderClass) && path[0];
+    bool prompt = pr && pr->k == CV_BOOL && pr->b && osdo_is_a(o, OsdFolderClass) && path[0];
     static char prompt_track[PATH_MAX + 16], prompt_env[PATH_MAX + 16], prompt_title[PATH_MAX + 32];
-    if (wpo_is_a(o, WPFolderClass) && !prompt) {
+    if (osdo_is_a(o, OsdFolderClass) && !prompt) {
         free(fire_event(o, path, "object.open", NULL, NULL, NULL, 0));   /* its actions (its window has its own sound) */
         reply_folder(r, path);
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
     }
     /* A plain file-system link opens what it points to, as that would. */
     struct stat ts;
     char real[PATH_MAX];
-    bool data = wpo_is_a(o, WPDataFileClass);
+    bool data = osdo_is_a(o, OsdDataFileClass);
     if (S_ISLNK(st->st_mode) && stat(path, &ts) == 0 && realpath(path, real)) {
-        if (S_ISDIR(ts.st_mode)) { reply_folder(r, real); wpo_unref(orig); return; }
+        if (S_ISDIR(ts.st_mode)) { reply_folder(r, real); osdo_unref(orig); return; }
         path = real;
         st = &ts;
         data = true;
@@ -183,30 +183,30 @@ void do_open(struct req *r, wpo_object *o)
         argv[1] = NULL;
         const char *bn = strrchr(path, '/');
         snprintf(prompt_title, sizeof prompt_title, "Command Prompt - %s", bn && bn[1] ? bn + 1 : path);
-        if (!wps_terminal_wrap(argv, 1, 64, prompt_title, false)) {
+        if (!osd_terminal_wrap(argv, 1, 64, prompt_title, false)) {
             reply_error(r->c, r->id, "failed", "no terminal program was found (System: Programs page)");
-            wpo_unref(orig);
+            osdo_unref(orig);
             return;
         }
         snprintf(cwd, sizeof cwd, "%s", path);
         snprintf(prompt_track, sizeof prompt_track, "\x01prompt:%s", path);   /* (tracked, not shown as in use) */
-        snprintf(prompt_env, sizeof prompt_env, "WPS_FOLDER=%s", path);
+        snprintf(prompt_env, sizeof prompt_env, "OSD_FOLDER=%s", path);
         what = argv[0];
         tracked = prompt_track;
-    } else if (!data && wpo_is_a(o, WPProgramClass)) {
-        const char *cmd = WPProgram_data(o)->command;
-        if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); wpo_unref(orig); return; }
-        if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, cmd, st->st_uid); wpo_unref(orig); return; }
-        int argc = wps_split_exec_files(cmd, nfiles ? files : NULL, nfiles, buf, sizeof buf, argv, 64);
-        if (argc == 0) { reply_error(r->c, r->id, "failed", "empty command"); wpo_unref(orig); return; }
+    } else if (!data && osdo_is_a(o, OsdProgramClass)) {
+        const char *cmd = OsdProgram_data(o)->command;
+        if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); osdo_unref(orig); return; }
+        if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, cmd, st->st_uid); osdo_unref(orig); return; }
+        int argc = osd_split_exec_files(cmd, nfiles ? files : NULL, nfiles, buf, sizeof buf, argv, 64);
+        if (argc == 0) { reply_error(r->c, r->id, "failed", "empty command"); osdo_unref(orig); return; }
         size_t pl = strlen(path);
         /* its Program page (v0.3-design 8): the type, Close window on
          * exit, the working directory */
         int64_t ptype = 0, close_exit = 1;
         char *wd = NULL;
-        wps_state_get_int(o, "WPProgram", "ptype", &ptype);
-        wps_state_get_int(o, "WPProgram", "close_on_exit", &close_exit);
-        wps_state_get_str(o, "WPProgram", "cwd", &wd);
+        osd_state_get_int(o, "OsdProgram", "ptype", &ptype);
+        osd_state_get_int(o, "OsdProgram", "close_on_exit", &close_exit);
+        osd_state_get_str(o, "OsdProgram", "cwd", &wd);
         if (wd && *wd) {
             const char *home = getenv("HOME");
             if (wd[0] == '~') snprintf(cwd, sizeof cwd, "%s%s", home ? home : "", wd + 1);
@@ -215,24 +215,24 @@ void do_open(struct req *r, wpo_object *o)
             if (stat(cwd, &ws) != 0 || !S_ISDIR(ws.st_mode)) cwd[0] = 0;   /* (gone: home, as without one) */
         }
         free(wd);
-        bool term = ptype == 2 || (ptype == 0 && pl > 8 && !strcmp(path + pl - 8, ".desktop") && wps_desktop_wants_terminal(path));
-        char *ttl = WPObject_wpQueryTitle(o);
-        int wrapped = term ? wps_terminal_wrap(argv, argc, 64, ttl, !close_exit) : argc;
+        bool term = ptype == 2 || (ptype == 0 && pl > 8 && !strcmp(path + pl - 8, ".desktop") && osd_desktop_wants_terminal(path));
+        char *ttl = OsdObject_osdQueryTitle(o);
+        int wrapped = term ? osd_terminal_wrap(argv, argc, 64, ttl, !close_exit) : argc;
         free(ttl);
         if (term) argc = wrapped;
         if (term && !wrapped) {
             reply_error(r->c, r->id, "failed", "it runs in a terminal, and no terminal program was found (System: Programs page)");
-            wpo_unref(orig);
+            osdo_unref(orig);
             return;
         }
         what = cmd;
         tracked = path;
     } else if (data) {
         tracked = path;
-        if (S_ISREG(st->st_mode) && wps_is_program_file(path)) {
+        if (S_ISREG(st->st_mode) && osd_is_program_file(path)) {
             /* An executable runs (as a program file does in OS/2), in its
              * own folder; one another user owns asks first. */
-            if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, path, st->st_uid); wpo_unref(orig); return; }
+            if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, path, st->st_uid); osdo_unref(orig); return; }
             argv[0] = (char *)path;
             int na = 1;
             for (size_t k = 0; k < nfiles && na < 60; k++) argv[na++] = (char *)files[k];   /* dropped on it */
@@ -240,19 +240,19 @@ void do_open(struct req *r, wpo_object *o)
             what = path;
             /* its Program page: in a window or a terminal (automatic: as
              * the file says), the terminal kept or not, where it runs */
-            char *pt = WPObject_wpQueryProperty(o, "prog_type"), *pc = WPObject_wpQueryProperty(o, "prog_close"),
-                 *pw = WPObject_wpQueryProperty(o, "prog_cwd");
-            bool term = pt && !strncmp(pt, "text", 4) ? true : pt && !strcmp(pt, "window") ? false : wps_program_needs_terminal(path);
+            char *pt = OsdObject_osdQueryProperty(o, "prog_type"), *pc = OsdObject_osdQueryProperty(o, "prog_close"),
+                 *pw = OsdObject_osdQueryProperty(o, "prog_cwd");
+            bool term = pt && !strncmp(pt, "text", 4) ? true : pt && !strcmp(pt, "window") ? false : osd_program_needs_terminal(path);
             bool keep = pc && (!strcmp(pc, "0") || !strcmp(pc, "false"));
             free(pt);
             free(pc);
             const char *bn = strrchr(path, '/');
-            int wrapped = term ? wps_terminal_wrap(argv, na, 64, bn ? bn + 1 : path, keep) : na;
+            int wrapped = term ? osd_terminal_wrap(argv, na, 64, bn ? bn + 1 : path, keep) : na;
             if (term) na = wrapped;
             if (term && !wrapped) {
                 free(pw);
                 reply_error(r->c, r->id, "failed", "a text-mode program, and no terminal program was found (System: Programs page)");
-                wpo_unref(orig);
+                osdo_unref(orig);
                 return;
             }
             snprintf(cwd, sizeof cwd, "%s", path);
@@ -272,29 +272,29 @@ void do_open(struct req *r, wpo_object *o)
              * Open cascade), made the type's default if asked */
             const char *app = cv_text(&r->msg, "app");
             int64_t k = -1;
-            wps_app *a = NULL;
-            if (!app && cv_int(&r->msg, "app_index", &k) && k >= 0 && k < WPS_MI_OPEN_APPS) {
-                a = malloc(WPS_MI_OPEN_APPS * sizeof *a);
-                int n = a ? wps_apps_for_file(path, NULL, 0, a, WPS_MI_OPEN_APPS) : 0;
+            osd_app *a = NULL;
+            if (!app && cv_int(&r->msg, "app_index", &k) && k >= 0 && k < OSD_MI_OPEN_APPS) {
+                a = malloc(OSD_MI_OPEN_APPS * sizeof *a);
+                int n = a ? osd_apps_for_file(path, NULL, 0, a, OSD_MI_OPEN_APPS) : 0;
                 if (k < n) app = a[k].id;
             }
             const cv *al = cv_get(&r->msg, "always");
             bool ok = app != NULL;
-            if (ok && al && al->k == CV_BOOL && al->b && !wps_app_set_default(path, app)) {
+            if (ok && al && al->k == CV_BOOL && al->b && !osd_app_set_default(path, app)) {
                 reply_error(r->c, r->id, "failed", "the default program for the type could not be stored (mimeapps.list)");
                 free(a);
-                wpo_unref(orig);
+                osdo_unref(orig);
                 return;
             }
-            if (!ok || wps_app_argv(app, path, buf, sizeof buf, argv, 64) <= 0) {
+            if (!ok || osd_app_argv(app, path, buf, sizeof buf, argv, 64) <= 0) {
                 reply_error(r->c, r->id, "failed", "that program cannot be started (not installed, or it runs in a terminal and there is none)");
                 free(a);
-                wpo_unref(orig);
+                osdo_unref(orig);
                 return;
             }
             free(a);
             what = argv[0];
-        } else if (wps_handler_argv(path, buf, sizeof buf, argv, 64) > 0) {
+        } else if (osd_handler_argv(path, buf, sizeof buf, argv, 64) > 0) {
             /* Its type's default application, started directly so that its
              * process stands for the open file (xdg-open hands over and exits). */
             what = argv[0];
@@ -304,37 +304,37 @@ void do_open(struct req *r, wpo_object *o)
             argv[2] = NULL;
             what = "xdg-open";
         }
-    } else if (wpo_is_a(o, WPLaunchPadClass) || wpo_is_a(o, WPWarpCenterClass)) {
+    } else if (osdo_is_a(o, OsdLaunchPadClass) || osdo_is_a(o, OsdWarpCenterClass)) {
         /* opened as the palette or the bar: the desktop shows it, or
          * brings it forward (never two) */
-        reply_view(r, wpo_is_a(o, WPLaunchPadClass) ? "launchpad" : "warpcenter");
-        wpo_unref(orig);
+        reply_view(r, osdo_is_a(o, OsdLaunchPadClass) ? "launchpad" : "warpcenter");
+        osdo_unref(orig);
         return;
-    } else if (wpo_is_a(o, WPColorPaletteClass)) {
+    } else if (osdo_is_a(o, OsdColorPaletteClass)) {
         reply_view(r, "colorpalette");
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
-    } else if (wpo_is_a(o, WPFontPaletteClass)) {
+    } else if (osdo_is_a(o, OsdFontPaletteClass)) {
         reply_view(r, "fontpalette");
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
-    } else if (wpo_is_a(o, WPMessagesClass)) {
+    } else if (osdo_is_a(o, OsdMessagesClass)) {
         reply_view(r, "messages");
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
-    } else if (wpo_is_a(o, WPRestoreDesktopClass)) {
+    } else if (osdo_is_a(o, OsdRestoreDesktopClass)) {
         reply_view(r, "restore-defaults");   /* the desktop asks, then sends restore_defaults */
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
-    } else if (wpo_is_a(o, WPMinWinViewerClass)) {
+    } else if (osdo_is_a(o, OsdMinWinViewerClass)) {
         reply_view(r, "minimized-windows");
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
-    } else if (wpo_is_a(o, WPDriveClass)) {
+    } else if (osdo_is_a(o, OsdDriveClass)) {
         /* a drive: its top folder, mounted first if need be */
-        const char *u = WPDrive_data(o)->uuid;
-        wps_drive_info d;
-        if (!u || !wps_udisks_find(u, &d)) reply_error(r->c, r->id, "not found", "the drive is not there (plugged out?)");
+        const char *u = OsdDrive_data(o)->uuid;
+        osd_drive_info d;
+        if (!u || !osd_udisks_find(u, &d)) reply_error(r->c, r->id, "not found", "the drive is not there (plugged out?)");
         else if (d.mount[0]) reply_folder(r, d.mount);
         else if (d.encrypted && !d.unlocked) reply_error(r->c, r->id, "locked", "the volume is locked: unlock it first");
         else {
@@ -342,13 +342,13 @@ void do_open(struct req *r, wpo_object *o)
             q->c = r->c; r->c->refs++;
             q->id = r->id;
             q->open = true;
-            wps_udisks_call(u, "mount", NULL, drive_done, q);
+            osd_udisks_call(u, "mount", NULL, drive_done, q);
         }
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
     } else {
         reply_error(r->c, r->id, "bad request", "this kind of object opens in the GUI");
-        wpo_unref(orig);
+        osdo_unref(orig);
         return;
     }
     /* On the asking GUI's display: a socket path that is this user's. */
@@ -398,13 +398,13 @@ void do_open(struct req *r, wpo_object *o)
     memcpy(envs2, envs, nenv * sizeof *envs);
     size_t nenv2 = nenv;
     if (prompt) envs2[nenv2++] = prompt_env;
-    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs2, nenv2);   /* as this user, in this user's session */
-    if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
+    pid_t pid = osd_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs2, nenv2);   /* as this user, in this user's session */
+    if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); osdo_unref(orig); return; }
     char wa[PATH_MAX];   /* opened from a work area (or a folder or shadow in it): its group's */
-    char *own_wa = prompt ? WPObject_wpQueryProperty(o, "work_area") : NULL;   /* (a prompt in the work area itself) */
+    char *own_wa = prompt ? OsdObject_osdQueryProperty(o, "work_area") : NULL;   /* (a prompt in the work area itself) */
     bool in_own = own_wa && (!strcmp(own_wa, "1") || !strcmp(own_wa, "true"));
     free(own_wa);
-    if (in_own) wps_launch_set_group(pid, path);
+    if (in_own) osd_launch_set_group(pid, path);
     else if (r->tgt.path[0] && work_area_of(r->tgt.path, wa, sizeof wa)) work_area_opened(wa, r->tgt.path, prompt ? "" : tracked, pid);
     /* its actions on opening (object-properties-design.md 2.4); the sound
      * the GUI plays: absent, the Sound object's; "" none */
@@ -422,7 +422,7 @@ void do_open(struct req *r, wpo_object *o)
     free(sound);
     send_frame(r->c, &b);
     cb_free(&b);
-    wpo_unref(orig);   /* after the reply: `what` may be the original's command */
+    osdo_unref(orig);   /* after the reply: `what` may be the original's command */
 }
 
 /* Copy the user.wps.* attributes of one open file to another, without
@@ -434,21 +434,21 @@ static void tmpl_attrs(int in, int out, bool top)
     ssize_t nl = flistxattr(in, names, sizeof names);
     for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
         const char *nm = names + o;
-        if (strncmp(nm, "user.wps.", 9) || !strcmp(nm, WPS_ATTR_ID)) continue;
+        if (strncmp(nm, "user.wps.", 9) || !strcmp(nm, OSD_ATTR_ID)) continue;
         unsigned char v[65536];
         ssize_t vl = fgetxattr(in, nm, v, sizeof v);
         if (vl < 0) continue;
-        if (top && !strcmp(nm, "user.wps.WPObject")) {
-            wps_props ps;
-            if (wps_props_decode(v, (size_t)vl, &ps) == 0) {
-                wps_props_remove(&ps, "template");
-                wps_props_remove(&ps, "title");   /* the copy is titled by its own name */
+        if (top && !strcmp(nm, "user.wps.OsdObject")) {
+            osd_props ps;
+            if (osd_props_decode(v, (size_t)vl, &ps) == 0) {
+                osd_props_remove(&ps, "template");
+                osd_props_remove(&ps, "title");   /* the copy is titled by its own name */
                 ps.counter = 0;
                 size_t el;
-                unsigned char *enc = wps_props_encode(&ps, &el);
+                unsigned char *enc = osd_props_encode(&ps, &el);
                 if (enc) fsetxattr(out, nm, enc, el, 0);
                 free(enc);
-                wps_props_free(&ps);
+                osd_props_free(&ps);
             }
         } else {
             fsetxattr(out, nm, v, (size_t)vl, 0);
@@ -518,7 +518,7 @@ void tmpl_work(void *arg)
         if (a >= 0) close(a);
         if (b >= 0) close(b);
         j->err = tmpl_copy_tree(j->src, j->path, 0);
-        if (!j->err) wps_load(j->path, false, &j->ld);
+        if (!j->err) osd_load(j->path, false, &j->ld);
         return;
     }
     const char *base = strrchr(j->src, '/') ? strrchr(j->src, '/') + 1 : j->src;
@@ -544,25 +544,25 @@ void tmpl_work(void *arg)
     tmpl_attrs(in, out, true);
     close(in);
     close(out);
-    if (!j->err) wps_load(j->path, false, &j->ld);
+    if (!j->err) osd_load(j->path, false, &j->ld);
 }
 
 void tmpl_done(void *arg)
 {
     struct tmpl_job *j = arg;
     if (!j->c->dead) {
-        wpo_object *o = j->err || j->ld.err ? NULL : wps_object_from_loaded(&j->ld);
+        osdo_object *o = j->err || j->ld.err ? NULL : osd_object_from_loaded(&j->ld);
         if (!o) reply_error(j->c, j->id, "failed", strerror(j->err ? j->err : j->ld.err));
         else {
             /* Titled by its name, like any file (see create_done). */
-            if (WPObject_data(o)->title) WPObject_wpSetTitle(o, NULL);
-            char *sound = fire_event_for(j->c, o, wps_object_path(o), "object.create");   /* its actions (When made) */
+            if (OsdObject_data(o)->title) OsdObject_osdSetTitle(o, NULL);
+            char *sound = fire_event_for(j->c, o, osd_object_path(o), "object.create");   /* its actions (When made) */
             struct req fake = { .c = j->c, .id = j->id };
             reply_ok_object_sound(&fake, o, NULL, sound);
             free(sound);
         }
     }
-    wps_loaded_free(&j->ld);
+    osd_loaded_free(&j->ld);
     client_unref(j->c);
     free(j);
 }

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-os.environ.setdefault("WPS_SUITE", "m4")
+os.environ.setdefault("OSD_SUITE", "m4")
 import harness  # noqa: E402
 from harness import *  # noqa: E402,F401,F403
 
@@ -34,7 +34,7 @@ def obj(svc, target):
 
 
 def tracked(svc, path, title):
-    svc.call(path, "wpSetTitle", title)
+    svc.call(path, "osdSetTitle", title)
     svc.ctl("flush")
     return obj(svc, path).get("id")
 
@@ -58,7 +58,7 @@ def link_of(path):
 def keep_files(svc, folder):
     """Shadow files are for folders set to keep objects as files (shadows are
     central by default, decided 2026-11-18); these scenarios test the files."""
-    svc.call(folder, "wpSetLocalObjects", "true")
+    svc.call(folder, "osdSetLocalObjects", "true")
     svc.ctl("flush")
 
 @scenario(3, "A shadow follows its target to another folder, and stays a shadow when it is moved itself")
@@ -83,9 +83,9 @@ def s3():
     sh2 = obj(me, moved)
     me.stop()
     t, t2 = sh.get("target") or {}, sh2.get("target") or {}
-    ok = r.get("ok") and link.name.endswith(".wpobj") and bool(ok_link) and sh.get("class") == "WPShadow" and \
+    ok = r.get("ok") and link.name.endswith(".wpobj") and bool(ok_link) and sh.get("class") == "OsdShadow" and \
         t.get("title") == "Report" and t.get("path") == str(d / "archive" / "report.txt") and \
-        sh2.get("class") == "WPShadow" and t2.get("path") == str(d / "archive" / "report.txt")
+        sh2.get("class") == "OsdShadow" and t2.get("path") == str(d / "archive" / "report.txt")
     return ok, [f"shadow created as {link.name!r} in desk/ (a WPS object file)", f"after the target moved its hint is {hint}",
                 f"resolves as {sh.get('class')} of {t.get('title')!r} at {t.get('path')}",
                 f"moved by mv into elsewhere/: still {sh2.get('class')} of {t2.get('title')!r}"]
@@ -230,11 +230,11 @@ def ini(path, key):
 def sa1():
     me = Service("me").start()
     d = fresh("ext4", "a1")
-    r = me.ctl("create", d, "WPProgram", "Text Editor", "gnome-text-editor %U")
+    r = me.ctl("create", d, "OsdProgram", "Text Editor", "gnome-text-editor %U")
     p = Path(r.get("result", {}).get("path", ""))
     me.ctl("flush")
-    me.call(p, "wpSetTitle", "Editor")
-    me.call(p, "wpSetCommand", "gedit %U")
+    me.call(p, "osdSetTitle", "Editor")
+    me.call(p, "osdSetCommand", "gedit %U")
     me.ctl("flush")
     name, exe = ini(p, "Name"), ini(p, "Exec")
     v = run(["desktop-file-validate", str(p)]) if shutil.which("desktop-file-validate") else None
@@ -242,10 +242,10 @@ def sa1():
     me.wipe_db()
     me.start()
     again = obj(me, p)
-    cmd = me.call(p, "wpQueryCommand").get("result")
+    cmd = me.call(p, "osdQueryCommand").get("result")
     me.stop()
     ok = r.get("ok") and p.suffix == ".desktop" and name == "Editor" and exe == "gedit %U" and \
-        again.get("class") == "WPProgram" and again.get("title") == "Editor" and cmd == "gedit %U" and \
+        again.get("class") == "OsdProgram" and again.get("title") == "Editor" and cmd == "gedit %U" and \
         (v is None or v.returncode == 0)
     return ok, [f"created {p.name!r}; Name={name!r} Exec={exe!r}",
                 f"desktop-file-validate: {'not installed' if v is None else 'ok' if v.returncode == 0 else v.stdout.strip()}",
@@ -256,21 +256,21 @@ def sa1():
 def sa2():
     me = Service("me").start()
     d = fresh("ext4", "a2")
-    r = me.ctl("create", d, "WPAbstract", "Team notes")
+    r = me.ctl("create", d, "OsdAbstract", "Team notes")
     p = Path(r.get("result", {}).get("path", ""))
     me.ctl("flush")
     content = p.read_text() if p.exists() else ""
-    (d / "printer.wpobj").write_text("[WPS Object]\nVersion=1\nClass=WPPrinter\n")
+    (d / "printer.wpobj").write_text("[WPS Object]\nVersion=1\nClass=OsdPrinter\n")
     pr = obj(me, d / "printer.wpobj")
     me.stop()
     me.start()
     again = obj(me, p)
     me.stop()
-    ok = r.get("ok") and p.suffix == ".wpobj" and "Class=WPAbstract" in content and \
-        again.get("title") == "Team notes" and pr.get("class") == "WPAbstract" and pr.get("class_not_installed") == "WPPrinter"
-    return ok, [f"created {p.name!r} containing Class=WPAbstract: {'Class=WPAbstract' in content}",
+    ok = r.get("ok") and p.suffix == ".wpobj" and "Class=OsdAbstract" in content and \
+        again.get("title") == "Team notes" and pr.get("class") == "OsdAbstract" and pr.get("class_not_installed") == "OsdPrinter"
+    return ok, [f"created {p.name!r} containing Class=OsdAbstract: {'Class=OsdAbstract' in content}",
                 f"after restart: {again.get('class')} {again.get('title')!r}",
-                f"printer.wpobj (WPPrinter not installed): {pr.get('class')}, class_not_installed={pr.get('class_not_installed')!r}"]
+                f"printer.wpobj (OsdPrinter not installed): {pr.get('class')}, class_not_installed={pr.get('class_not_installed')!r}"]
 
 
 @scenario("A3", "A shadow of a program object; creating never overwrites")
@@ -278,15 +278,15 @@ def sa3():
     me = Service("me").start()
     d = fresh("ext4", "a3")
     (d / "menu").mkdir()
-    p1 = Path(me.ctl("create", d, "WPProgram", "Terminal", "ptyxis").get("result", {}).get("path", ""))
-    p2 = Path(me.ctl("create", d, "WPProgram", "Terminal", "xterm").get("result", {}).get("path", ""))
+    p1 = Path(me.ctl("create", d, "OsdProgram", "Terminal", "ptyxis").get("result", {}).get("path", ""))
+    p2 = Path(me.ctl("create", d, "OsdProgram", "Terminal", "xterm").get("result", {}).get("path", ""))
     me.ctl("flush")
     keep_files(me, d / "menu")
     link = Path(me.ctl("shadow", p1, d / "menu").get("result", ""))
     sh = obj(me, link)
     me.stop()
     ok = p1.name == "Terminal.desktop" and p2.name == "Terminal (2).desktop" and ini(p1, "Exec") == "ptyxis" and \
-        sh.get("class") == "WPShadow" and (sh.get("target") or {}).get("class") == "WPProgram" and link.name.endswith(".wpobj")
+        sh.get("class") == "OsdShadow" and (sh.get("target") or {}).get("class") == "OsdProgram" and link.name.endswith(".wpobj")
     return ok, [f"first: {p1.name!r}, second: {p2.name!r} (Exec of the first still {ini(p1, 'Exec')!r})",
                 f"shadow in menu/ resolves to a {(sh.get('target') or {}).get('class')}"]
 
@@ -648,7 +648,7 @@ def main():
     helper = None
     if mode == "watchd":
         sock = WORK / "watchd.sock"
-        helper = subprocess.Popen(["sudo", "env", f"WPS_TRACE={os.environ.get('WPS_TRACE', '')}", str(BIN / "wps-watchd"), "-s", str(sock)],
+        helper = subprocess.Popen(["sudo", "env", f"OSD_TRACE={os.environ.get('OSD_TRACE', '')}", str(BIN / "wps-watchd"), "-s", str(sock)],
                                   stdout=open(OUT / "wps-watchd.log", "w"), stderr=subprocess.STDOUT)
         time.sleep(0.5)
         harness.WATCHD["socket"] = str(sock)

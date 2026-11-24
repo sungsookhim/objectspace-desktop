@@ -17,7 +17,7 @@ def check(what, ok, more=""):
 
 
 class Svc:
-    env = {"WPS_RUNTIME_DIR": os.environ["WPS_RUNTIME_DIR"]}
+    env = {"OSD_RUNTIME_DIR": os.environ["OSD_RUNTIME_DIR"]}
 
 
 c = harness.Conn(Svc())
@@ -75,11 +75,11 @@ if PART == "1":
     # the settings objects of step 7
     s = c.request(op="setup").get("result") or {}
     objs = s.get("objects", {})
-    for cls in ("WPLaunchPad", "WPWarpCenter", "WPMessages"):
+    for cls in ("OsdLaunchPad", "OsdWarpCenter", "OsdMessages"):
         check(cls + " object made", cls in objs, list(objs))
-    wc = objs.get("WPWarpCenter", {}).get("settings", {})
+    wc = objs.get("OsdWarpCenter", {}).get("settings", {})
     check("WarpCenter defaults", wc.get("edge") == "bottom" and wc.get("clock") == "24 hours" and wc.get("meters") == "1", wc)
-    m = objs.get("WPMessages", {})
+    m = objs.get("OsdMessages", {})
     check("Messages defaults", m.get("settings", {}).get("dnd") == "0", m)
     sysdir = os.environ["T"] + "/xdg/data/wps/System"
     titles = [it.get("title") for it in (c.request(op="list", target=sysdir, offset=0, count=100, details=True)
@@ -87,9 +87,9 @@ if PART == "1":
     check("LaunchPad, WarpCenter and Messages are in System", all(t in titles for t in ("LaunchPad", "WarpCenter", "Messages")), titles)
     o = c.request(op="open", target=m.get("address", ""))
     check("opening Messages answers its view", (o.get("result") or {}).get("view") == "messages", o)
-    r = c.request(op="settings_set", target=objs["WPWarpCenter"]["address"], values={"edge": "top"})
+    r = c.request(op="settings_set", target=objs["OsdWarpCenter"]["address"], values={"edge": "top"})
     s = c.request(op="setup").get("result") or {}
-    check("the WarpCenter's edge is set", s["objects"]["WPWarpCenter"]["settings"].get("edge") == "top", r)
+    check("the WarpCenter's edge is set", s["objects"]["OsdWarpCenter"]["settings"].get("edge") == "top", r)
 else:
     ms, unread = msgs()
     check("kept across a restart", [m["summary"] for m in ms] == ["Kept"] and unread == 1, ms)
@@ -98,7 +98,7 @@ else:
     ms, _ = msgs()
     check("IDs go on after a restart", ms[0]["id"] > ms[1]["id"], [m["id"] for m in ms])
     s = c.request(op="setup").get("result") or {}
-    check("settings kept across a restart", s["objects"]["WPWarpCenter"]["settings"].get("edge") == "top")
+    check("settings kept across a restart", s["objects"]["OsdWarpCenter"]["settings"].get("edge") == "top")
     n = len([1 for _ in s["objects"]])
     check("no settings object made twice", n == 9, list(s["objects"]))
 

@@ -158,11 +158,11 @@ static bool has_desktop(void)
     return false;
 }
 
-struct wps_ask { int64_t ask; char **labels; size_t n; };
+struct osd_ask { int64_t ask; char **labels; size_t n; };
 
 static void asked(void *ctx, int choice)
 {
-    struct wps_ask *a = ctx;
+    struct osd_ask *a = ctx;
     const char *v = choice >= 0 && (size_t)choice < a->n ? a->labels[choice] : "";
     svc_answer(a->ask, v, NULL, 0);
     for (size_t i = 0; i < a->n; i++) free(a->labels[i]);
@@ -170,7 +170,7 @@ static void asked(void *ctx, int choice)
     free(a);
 }
 
-bool wps_command_event(const cv *ev)
+bool osd_command_event(const cv *ev)
 {
     const char *name = cv_text(ev, "event");
     if (!name || (strcmp(name, "ask") && strcmp(name, "selection") && strcmp(name, "show"))) return false;
@@ -184,7 +184,7 @@ bool wps_command_event(const cv *ev)
     }
     if (!strcmp(name, "ask")) {
         const cv *bs = cv_get(ev, "buttons");
-        struct wps_ask *a = calloc(1, sizeof *a);
+        struct osd_ask *a = calloc(1, sizeof *a);
         size_t n = bs && bs->k == CV_ARRAY && bs->n ? bs->n : 1;
         if (n > 6) n = 6;
         a->ask = ask;

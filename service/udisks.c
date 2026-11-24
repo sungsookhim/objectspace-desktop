@@ -25,13 +25,13 @@
 #define UD "org.freedesktop.UDisks2"
 #define UD_PATH "/org/freedesktop/UDisks2"
 
-static wpo_loop *loop;
+static osdo_loop *loop;
 static void (*on_changed)(void);
 static pthread_t thread;
 static bool running, available;
 static int wake_fd = -1;
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
-static wps_drive_info *drives;
+static osd_drive_info *drives;
 static size_t ndrives;
 
 /* ------------------------------------------------------------ requests */
@@ -40,14 +40,14 @@ struct req {
     struct req *next;
     char uuid[80], action[16];
     char *pass;
-    wps_udisks_fn done;
+    osd_udisks_fn done;
     void *arg;
     /* the result */
     int err;
     char msg[256], mount[PATH_MAX];
     /* in flight */
     int stage;              /* 0: the unmount first (if mounted); 1: the drive's or container's call */
-    wps_drive_info d;
+    osd_drive_info d;
 };
 static struct req *queue;
 
@@ -63,7 +63,7 @@ static void finish(struct req *r, int err, const char *msg)
 {
     r->err = err;
     snprintf(r->msg, sizeof r->msg, "%s", msg ? msg : "");
-    wpo_loop_post(loop, WPO_Q_RESULTS, "udisks result", post_result_task, r);
+    osdo_loop_post(loop, OSDO_Q_RESULTS, "udisks result", post_result_task, r);
 }
 
 static void changed_task(void *arg) { (void)arg; if (on_changed) on_changed(); }
@@ -174,7 +174,7 @@ static bool hidden_mount(const char *mp)
     return !strcmp(mp, "/boot") || !strncmp(mp, "/boot/", 6);
 }
 
-static void build(struct raw *rs, size_t n, wps_drive_info **out, size_t *nout)
+static void build(struct raw *rs, size_t n, osd_drive_info **out, size_t *nout)
 {
     *out = NULL;
     *nout = 0;
@@ -184,7 +184,7 @@ static void build(struct raw *rs, size_t n, wps_drive_info **out, size_t *nout)
         if (r->backing[0] && strcmp(r->backing, "/")) continue;   /* a LUKS volume's open side: shown as the container */
         bool crypto = !strcmp(r->idusage, "crypto") || r->enc;
         if (!r->fs && !crypto) continue;   /* swap, LVM, raid members, empty */
-        wps_drive_info d;
+        osd_drive_info d;
         memset(&d, 0, sizeof d);
         snprintf(d.uuid, sizeof d.uuid, "%s", r->uuid);
         snprintf(d.object, sizeof d.object, "%s", r->path);
@@ -225,7 +225,7 @@ static void build(struct raw *rs, size_t n, wps_drive_info **out, size_t *nout)
     }
 }
 
-static int read_all(sd_bus *bus, wps_drive_info **out, size_t *nout)
+static int read_all(sd_bus *bus, osd_drive_info **out, size_t *nout)
 {
     sd_bus_error e = SD_BUS_ERROR_NULL;
     sd_bus_message *m = NULL;
@@ -272,7 +272,7 @@ static int read_all(sd_bus *bus, wps_drive_info **out, size_t *nout)
 }
 
 /* Without udisks2: the mounted block-device file systems (mountinfo). */
-static void read_mountinfo(wps_drive_info **out, size_t *nout)
+static void read_mountinfo(osd_drive_info **out, size_t *nout)
 {
     *out = NULL;
     *nout = 0;
@@ -296,7 +296,7 @@ static void read_mountinfo(wps_drive_info **out, size_t *nout)
         bool dup = false;
         for (size_t i = 0; i < *nout; i++) dup |= !strcmp((*out)[i].uuid, uuid);
         if (dup) continue;
-        wps_drive_info v;
+        osd_drive_info v;
         memset(&v, 0, sizeof v);
         snprintf(v.uuid, sizeof v.uuid, "%s", uuid);
         snprintf(v.device, sizeof v.device, "%s", src);
@@ -309,7 +309,7 @@ static void read_mountinfo(wps_drive_info **out, size_t *nout)
     if (f) fclose(f);
 }
 
-static void publish(wps_drive_info *list, size_t n)
+static void publish(osd_drive_info *list, size_t n)
 {
     pthread_mutex_lock(&mu);
     bool same = n == ndrives && (!n || !memcmp(list, drives, n * sizeof *list));
@@ -317,7 +317,7 @@ static void publish(wps_drive_info *list, size_t n)
     drives = list;
     ndrives = n;
     pthread_mutex_unlock(&mu);
-    if (!same) wpo_loop_post(loop, WPO_Q_EVENTS, "drives changed", changed_task, NULL);
+    if (!same) osdo_loop_post(loop, OSDO_Q_EVENTS, "drives changed", changed_task, NULL);
 }
 
 /* --------------------------------------------------------------- calls */
@@ -334,8 +334,8 @@ static int errno_of(const sd_bus_error *e)
 }
 
 static int start(sd_bus *bus, struct req *r);
-static int read_all(sd_bus *bus, wps_drive_info **out, size_t *nout);
-static void publish(wps_drive_info *list, size_t n);
+static int read_all(sd_bus *bus, osd_drive_info **out, size_t *nout);
+static void publish(osd_drive_info *list, size_t n);
 
 static int call_done(sd_bus_message *m, void *arg, sd_bus_error *ret)
 {
@@ -358,7 +358,7 @@ static int call_done(sd_bus_message *m, void *arg, sd_bus_error *ret)
     }
     /* the list as it is now, before the answer (an open after an unlock
      * must find it unlocked) */
-    wps_drive_info *list = NULL;
+    osd_drive_info *list = NULL;
     size_t n = 0;
     if (read_all(sd_bus_message_get_bus(m), &list, &n) >= 0) publish(list, n);
     finish(r, 0, NULL);
@@ -426,7 +426,7 @@ static int on_signal(sd_bus_message *m, void *arg, sd_bus_error *ret)
 static sd_bus *open_bus(void)
 {
     sd_bus *bus = NULL;
-    const char *addr = getenv("WPS_UDISKS_BUS");
+    const char *addr = getenv("OSD_UDISKS_BUS");
     if (addr && *addr) {
         if (sd_bus_new(&bus) < 0) return NULL;
         sd_bus_set_address(bus, addr);
@@ -442,7 +442,7 @@ static void *run(void *arg)
 {
     (void)arg;
     sd_bus *bus = open_bus();
-    wps_drive_info *list = NULL;
+    osd_drive_info *list = NULL;
     size_t n = 0;
     if (bus) sd_bus_match_signal(bus, NULL, UD, NULL, NULL, NULL, on_signal, NULL);
     if (bus && read_all(bus, &list, &n) >= 0) available = true;
@@ -496,7 +496,7 @@ static void *run(void *arg)
     return NULL;
 }
 
-void wps_udisks_init(wpo_loop *l, void (*changed)(void))
+void osd_udisks_init(osdo_loop *l, void (*changed)(void))
 {
     loop = l;
     on_changed = changed;
@@ -505,7 +505,7 @@ void wps_udisks_init(wpo_loop *l, void (*changed)(void))
     pthread_create(&thread, NULL, run, NULL);
 }
 
-void wps_udisks_shutdown(void)
+void osd_udisks_shutdown(void)
 {
     if (!running) return;
     running = false;
@@ -518,9 +518,9 @@ void wps_udisks_shutdown(void)
     ndrives = 0;
 }
 
-bool wps_udisks_available(void) { return available; }
+bool osd_udisks_available(void) { return available; }
 
-size_t wps_udisks_list(wps_drive_info **out)
+size_t osd_udisks_list(osd_drive_info **out)
 {
     pthread_mutex_lock(&mu);
     size_t n = ndrives;
@@ -530,7 +530,7 @@ size_t wps_udisks_list(wps_drive_info **out)
     return n;
 }
 
-bool wps_udisks_find(const char *uuid, wps_drive_info *out)
+bool osd_udisks_find(const char *uuid, osd_drive_info *out)
 {
     bool hit = false;
     pthread_mutex_lock(&mu);
@@ -540,7 +540,7 @@ bool wps_udisks_find(const char *uuid, wps_drive_info *out)
     return hit;
 }
 
-void wps_udisks_call(const char *uuid, const char *action, const char *pass, wps_udisks_fn done, void *arg)
+void osd_udisks_call(const char *uuid, const char *action, const char *pass, osd_udisks_fn done, void *arg)
 {
     struct req *r = calloc(1, sizeof *r);
     snprintf(r->uuid, sizeof r->uuid, "%s", uuid);
@@ -548,7 +548,7 @@ void wps_udisks_call(const char *uuid, const char *action, const char *pass, wps
     r->pass = pass ? strdup(pass) : NULL;
     r->done = done;
     r->arg = arg;
-    if (!wps_udisks_find(uuid, &r->d)) { finish(r, ENODEV, "the drive is not there"); return; }
+    if (!osd_udisks_find(uuid, &r->d)) { finish(r, ENODEV, "the drive is not there"); return; }
     if (!running) { finish(r, ENOTSUP, "udisks2 is not running"); return; }
     pthread_mutex_lock(&mu);
     r->next = queue;
@@ -558,7 +558,7 @@ void wps_udisks_call(const char *uuid, const char *action, const char *pass, wps
     if (write(wake_fd, &one, sizeof one) < 0) {}
 }
 
-void wps_drive_title(const wps_drive_info *d, char *out, size_t n)
+void osd_drive_title(const osd_drive_info *d, char *out, size_t n)
 {
     if (!strcmp(d->kind, "root")) { snprintf(out, n, "Root"); return; }
     if (d->label[0]) { snprintf(out, n, "%s", d->label); return; }

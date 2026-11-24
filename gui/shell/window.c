@@ -468,6 +468,6 @@ void win_close(ui_surface *s)
 }
 
 /* Benchmark: a fling, then jumps as if the scroll bar thumb were dragged. */
-/* WPS_SHELL_SELFTEST=menus: open, re-open and toggle menus in quick
+/* OSD_SHELL_SELFTEST=menus: open, re-open and toggle menus in quick
  * succession (the orders that broke Wayland's popup rules), then quit. */
 void selftest_chosen(void *arg, int64_t id) { (void)arg; (void)id; }

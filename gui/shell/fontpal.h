@@ -6,8 +6,8 @@
  * title bars'. A sample's menu: Edit font... (family, size, bold, italic),
  * and Use for menus, title bars, every folder, the WarpCenter.
  */
-#ifndef WPS_FONTPAL_H
-#define WPS_FONTPAL_H
+#ifndef OSD_FONTPAL_H
+#define OSD_FONTPAL_H
 
 #include <stdbool.h>
 #include <stddef.h>

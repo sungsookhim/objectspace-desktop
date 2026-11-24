@@ -16,8 +16,8 @@
  * Only when the WarpCenter is open; not when another watcher has the name
  * (GNOME's AppIndicator extension).
  */
-#ifndef WPS_TRAY_H
-#define WPS_TRAY_H
+#ifndef OSD_TRAY_H
+#define OSD_TRAY_H
 
 #include <cairo.h>
 #include <stdbool.h>

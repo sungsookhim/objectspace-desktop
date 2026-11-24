@@ -1,7 +1,7 @@
 /*
  * File types for drops on programs (gui/shell): a file's type from its
  * name (shared-mime-info's glob table; no match: its contents, as the
- * service has it, classes/wps_magic.c; a folder: inode/directory), and whether a program
+ * service has it, classes/osd_magic.c; a folder: inode/directory), and whether a program
  * opens it - the types its desktop entry lists (MimeType=), a file's type
  * counting as each type it is a kind of (subclasses: text/x-csrc is
  * text/plain; aliases followed). A program with no list takes files only
@@ -9,7 +9,7 @@
  */
 #define _GNU_SOURCE
 #include "mime.h"
-#include "wps_magic.h"
+#include "osd_magic.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -86,7 +86,7 @@ const char *mime_of_file(const char *path)
     const char *name = strrchr(path, '/');
     const char *best = mime_of_name(name ? name + 1 : path);
     if (best) return best;
-    const char *sniffed = wps_mime_sniff(path);   /* as the service does (classes/wps_magic.c) */
+    const char *sniffed = osd_mime_sniff(path);   /* as the service does (classes/osd_magic.c) */
     return sniffed ? sniffed : "application/octet-stream";
 }
 

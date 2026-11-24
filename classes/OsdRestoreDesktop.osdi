@@ -1,0 +1,7 @@
+# Restore Desktop (0.2): opening it puts the default objects back where
+# they belong - System, Programs and the Trash Can on the desktop;
+# Templates, Startup, the Minimized Window Viewer and the settings objects
+# in System - after asking. `wpsctl restore-defaults` does the same.
+class OsdRestoreDesktop : OsdAbstract
+version 1.0
+classoverride osdclsQueryTitle

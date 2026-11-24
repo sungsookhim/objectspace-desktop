@@ -1,7 +1,7 @@
 /* Programs and files WPS starts, tracked while they run (see launch.h). */
 #define _GNU_SOURCE
 #include "launch.h"
-#include "wps_magic.h"
+#include "osd_magic.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -24,7 +24,7 @@
 #include <unistd.h>
 
 #include "plugins.h"
-#include "wps_classes.h"
+#include "osd_classes.h"
 
 /* ------------------------------------------------------------- tracking */
 
@@ -44,7 +44,7 @@ struct proc {
     char unit[96];     /* its scope (app-wps-*.scope), "" none */
 };
 
-static wpo_loop *loop;
+static osdo_loop *loop;
 static void (*on_changed)(const char *path, bool in_use);
 static struct use *uses;
 static struct proc *procs;
@@ -82,7 +82,7 @@ static bool track(pid_t pid, struct use *u, const char *group, const char *unit)
     u->procs++;
     p->next = procs;
     procs = p;
-    wpo_loop_watch_fd(loop, fd, POLLIN, on_exit_fd, p);
+    osdo_loop_watch_fd(loop, fd, POLLIN, on_exit_fd, p);
     return true;
 }
 
@@ -107,7 +107,7 @@ static void adopt(struct use *u, const char *group, const char *unit)
         for (char *s = buf, *e; *s; s = e) {
             long pid = strtol(s, &e, 10);
             if (e == s) break;
-            if (pid > 0 && !proc_of((pid_t)pid) && !wps_plugins_is_host((pid_t)pid)) track((pid_t)pid, u, group, unit);
+            if (pid > 0 && !proc_of((pid_t)pid) && !osd_plugins_is_host((pid_t)pid)) track((pid_t)pid, u, group, unit);
         }
     }
     closedir(d);
@@ -122,7 +122,7 @@ static void on_exit_fd(int fd, short rev, void *arg)
     /* Reaps it when it is our child (started here, or adopted). */
     waitid(P_PIDFD, (id_t)fd, &si, WEXITED | WNOHANG);
     adopt(p->u, p->group, p->unit);   /* before it stops counting: its orphans came to us (and its group) */
-    wpo_loop_unwatch_fd(loop, fd);
+    osdo_loop_unwatch_fd(loop, fd);
     close(fd);
     for (struct proc **pp = &procs; *pp; pp = &(*pp)->next)
         if (*pp == p) { *pp = p->next; break; }
@@ -132,20 +132,20 @@ static void on_exit_fd(int fd, short rev, void *arg)
     use_put(u);
 }
 
-void wps_launch_init(wpo_loop *l, void (*changed)(const char *path, bool in_use))
+void osd_launch_init(osdo_loop *l, void (*changed)(const char *path, bool in_use))
 {
     loop = l;
     on_changed = changed;
     prctl(PR_SET_CHILD_SUBREAPER, 1);
 }
 
-void wps_launch_shutdown(void)
+void osd_launch_shutdown(void)
 {
     /* Started programs keep running; the service just stops watching. */
     while (procs) {
         struct proc *p = procs;
         procs = p->next;
-        wpo_loop_unwatch_fd(loop, p->fd);
+        osdo_loop_unwatch_fd(loop, p->fd);
         close(p->fd);
         free(p->group);
         free(p);
@@ -290,7 +290,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     return pid;
 }
 
-pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11,
+pid_t osd_launch(char **argv, const char *path, const char *cwd, const char *display, const char *x11,
                  const char *const *envs, size_t nenvs)
 {
     pid_t pid = spawn(argv, cwd, display, x11, envs, nenvs);
@@ -313,7 +313,7 @@ pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *dis
     return pid;
 }
 
-void wps_launch_set_group(pid_t pid, const char *group)
+void osd_launch_set_group(pid_t pid, const char *group)
 {
     struct proc *p = proc_of(pid);
     if (!p) return;
@@ -321,20 +321,20 @@ void wps_launch_set_group(pid_t pid, const char *group)
     p->group = group && *group ? strdup(group) : NULL;
 }
 
-void wps_launch_group_each(const char *group, void (*fn)(pid_t pid, const char *unit, const char *path, void *arg), void *arg)
+void osd_launch_group_each(const char *group, void (*fn)(pid_t pid, const char *unit, const char *path, void *arg), void *arg)
 {
     for (struct proc *p = procs; p; p = p->next)
         if (p->group && !strcmp(p->group, group)) fn(p->pid, p->unit, p->u->path, arg);
 }
 
-bool wps_launch_in_use(const char *path)
+bool osd_launch_in_use(const char *path)
 {
     for (struct use *u = uses; u; u = u->next)
         if (!strcmp(u->path, path)) return true;
     return false;
 }
 
-void wps_launch_moved(const char *from, const char *to)
+void osd_launch_moved(const char *from, const char *to)
 {
     if (!from || !*from || !to || !*to) return;
     size_t fl = strlen(from);
@@ -361,7 +361,7 @@ void wps_launch_moved(const char *from, const char *to)
 
 /* ------------------------------------------------------------ Exec lines */
 
-int wps_split_exec_files(const char *exec, const char *const *files, size_t nfiles, char *buf, size_t n, char **argv, int max)
+int osd_split_exec_files(const char *exec, const char *const *files, size_t nfiles, char *buf, size_t n, char **argv, int max)
 {
     int argc = 0;
     size_t o = 0;
@@ -412,9 +412,9 @@ int wps_split_exec_files(const char *exec, const char *const *files, size_t nfil
     return argc;
 }
 
-int wps_split_exec(const char *exec, const char *file, char *buf, size_t n, char **argv, int max)
+int osd_split_exec(const char *exec, const char *file, char *buf, size_t n, char **argv, int max)
 {
-    return wps_split_exec_files(exec, file ? &file : NULL, file ? 1 : 0, buf, n, argv, max);
+    return osd_split_exec_files(exec, file ? &file : NULL, file ? 1 : 0, buf, n, argv, max);
 }
 
 /* ------------------------------------------------------- default handler */
@@ -582,7 +582,7 @@ static const char *const terminals[][5] = {
  * the default). */
 static char term_choice[64] = "WPS Terminal", term_cmd[1024];
 
-void wps_terminal_choose(const char *choice, const char *command)
+void osd_terminal_choose(const char *choice, const char *command)
 {
     snprintf(term_choice, sizeof term_choice, "%s", choice && *choice ? choice : "WPS Terminal");
     snprintf(term_cmd, sizeof term_cmd, "%s", command ? command : "");
@@ -590,7 +590,7 @@ void wps_terminal_choose(const char *choice, const char *command)
 
 /* WPS Terminal: beside this program (a build: build/), else on the PATH
  * (installed: wpsd in libexec, wps-terminal in bin). */
-static const char *wps_term_path(void)
+static const char *osd_term_path(void)
 {
     static char p[PATH_MAX];
     char exe[PATH_MAX];
@@ -606,18 +606,18 @@ static const char *wps_term_path(void)
 }
 
 /* WPS Terminal for text-mode programs: chosen (the default), found, and no
- * command of the user's (the System's, or WPS_TERMINAL) in its place. */
-static bool use_wps_terminal(void)
+ * command of the user's (the System's, or OSD_TERMINAL) in its place. */
+static bool use_osd_terminal(void)
 {
-    const char *env = getenv("WPS_TERMINAL");
-    return !term_cmd[0] && !(env && *env) && !strcasecmp(term_choice, "WPS Terminal") && wps_term_path();
+    const char *env = getenv("OSD_TERMINAL");
+    return !term_cmd[0] && !(env && *env) && !strcasecmp(term_choice, "WPS Terminal") && osd_term_path();
 }
 
-const char *wps_terminal_now(void)
+const char *osd_terminal_now(void)
 {
-    if (use_wps_terminal()) return wps_term_path();
+    if (use_osd_terminal()) return osd_term_path();
     if (term_cmd[0]) return term_cmd;
-    const char *env = getenv("WPS_TERMINAL");
+    const char *env = getenv("OSD_TERMINAL");
     if (env && *env) return env;
     for (size_t t = 0; t < sizeof terminals / sizeof *terminals; t++)
         if (!strcmp(term_choice, terminals[t][0]) && on_path(terminals[t][0])) return terminals[t][0];
@@ -626,16 +626,16 @@ const char *wps_terminal_now(void)
     return NULL;
 }
 
-int wps_terminal_wrap(char **argv, int argc, int max, const char *title, bool hold)
+int osd_terminal_wrap(char **argv, int argc, int max, const char *title, bool hold)
 {
     char *pre[16];
     int k = 0;
-    if (use_wps_terminal()) {
+    if (use_osd_terminal()) {
         /* WPS's own: the window lives as long as the program (or, held,
          * until Enter: its status shown), titled by the object */
         static char tbuf[256];
         snprintf(tbuf, sizeof tbuf, "%s", title && *title ? title : argv[0]);
-        pre[k++] = (char *)wps_term_path();
+        pre[k++] = (char *)osd_term_path();
         pre[k++] = "--title";
         pre[k++] = tbuf;
         if (hold) pre[k++] = "--hold";
@@ -645,13 +645,13 @@ int wps_terminal_wrap(char **argv, int argc, int max, const char *title, bool ho
         memcpy(argv, pre, (size_t)k * sizeof *argv);
         return argc + k;
     }
-    if (hold) argc = wps_hold_wrap(argv, argc, max);   /* (another terminal: through sh) */
-    const char *env = term_cmd[0] ? term_cmd : getenv("WPS_TERMINAL");
+    if (hold) argc = osd_hold_wrap(argv, argc, max);   /* (another terminal: through sh) */
+    const char *env = term_cmd[0] ? term_cmd : getenv("OSD_TERMINAL");
     static char envbuf[1024];
     if (env && *env) {
-        /* the user's command (the System object's, else WPS_TERMINAL): the
+        /* the user's command (the System object's, else OSD_TERMINAL): the
          * program's goes after these words */
-        k = wps_split_exec(env, NULL, envbuf, sizeof envbuf, pre, 16);
+        k = osd_split_exec(env, NULL, envbuf, sizeof envbuf, pre, 16);
     } else {
         /* the System object's choice if it is installed ("system default",
          * 0.4.0's "automatic": xdg-terminal-exec), else the first installed */
@@ -669,7 +669,7 @@ int wps_terminal_wrap(char **argv, int argc, int max, const char *title, bool ho
 
 /* Close window on exit off: the terminal waits for Enter after the
  * program ends (with any terminal: through sh). */
-int wps_hold_wrap(char **argv, int argc, int max)
+int osd_hold_wrap(char **argv, int argc, int max)
 {
     static const char script[] = "\"$@\"; s=$?; printf '\\n[%s ended (exit status %d). Press Enter to close this window.]' \"$1\" \"$s\"; read -r _";
     if (argc < 1 || argc + 4 >= max) return argc;
@@ -681,18 +681,18 @@ int wps_hold_wrap(char **argv, int argc, int max)
     return argc + 4;
 }
 
-bool wps_desktop_wants_terminal(const char *desktop);
+bool osd_desktop_wants_terminal(const char *desktop);
 
-int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max)
+int osd_handler_argv(const char *file, char *buf, size_t n, char **argv, int max)
 {
     const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
-    const char *mime = wps_mime_for_name(base);
-    if (!mime) mime = wps_mime_sniff(file);   /* the name says nothing: its contents (classes/wps_magic.c) */
+    const char *mime = osd_mime_for_name(base);
+    if (!mime) mime = osd_mime_sniff(file);   /* the name says nothing: its contents (classes/osd_magic.c) */
     char desktop[PATH_MAX], exec[4096];
     if (!mime || !default_app(mime, desktop, sizeof desktop)) return 0;
     if (!ini_get(desktop, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
-    int argc = wps_split_exec(exec, file, buf, n, argv, max);
-    if (argc > 0 && wps_desktop_wants_terminal(desktop)) argc = wps_terminal_wrap(argv, argc, max, NULL, false);
+    int argc = osd_split_exec(exec, file, buf, n, argv, max);
+    if (argc > 0 && osd_desktop_wants_terminal(desktop)) argc = osd_terminal_wrap(argv, argc, max, NULL, false);
     return argc;
 }
 
@@ -723,7 +723,7 @@ static bool ini_get_local(const char *file, const char *key, char *out, size_t n
 
 /* An application's entry read into `a` (id given); false if it is not
  * one to offer (hidden, no command, not an application). */
-static bool app_read(const char *id, const char *path, wps_app *a, bool listed_only)
+static bool app_read(const char *id, const char *path, osd_app *a, bool listed_only)
 {
     char v[4096];
     if (ini_get(path, "[Desktop Entry]", "Hidden", v, sizeof v) && !strcmp(v, "true")) return false;
@@ -739,14 +739,14 @@ static bool app_read(const char *id, const char *path, wps_app *a, bool listed_o
     return true;
 }
 
-static bool app_listed(const wps_app *out, int n, const char *id)
+static bool app_listed(const osd_app *out, int n, const char *id)
 {
     for (int i = 0; i < n; i++) if (!strcmp(out[i].id, id)) return true;
     return false;
 }
 
 /* Add the installed applications of a semicolon-separated list. */
-static int add_apps(const char *list, wps_app *out, int n, int max)
+static int add_apps(const char *list, osd_app *out, int n, int max)
 {
     char copy[4096], path[PATH_MAX];
     snprintf(copy, sizeof copy, "%s", list);
@@ -781,19 +781,19 @@ static bool mime_parent(const char *mime, char *out, size_t n)
 static const char *file_mime(const char *file)
 {
     const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
-    const char *mime = wps_mime_for_name(base);
-    if (!mime) mime = wps_mime_sniff(file);   /* the name says nothing: its contents (classes/wps_magic.c) */
+    const char *mime = osd_mime_for_name(base);
+    if (!mime) mime = osd_mime_sniff(file);   /* the name says nothing: its contents (classes/osd_magic.c) */
     return mime;
 }
 
-int wps_apps_for_file(const char *file, char *mime_out, size_t mn, wps_app *out, int max)
+int osd_apps_for_file(const char *file, char *mime_out, size_t mn, osd_app *out, int max)
 {
     const char *m0 = file_mime(file);
     if (mime_out) snprintf(mime_out, mn, "%s", m0 ? m0 : "");
-    return m0 ? wps_apps_for_mime(m0, out, max) : 0;
+    return m0 ? osd_apps_for_mime(m0, out, max) : 0;
 }
 
-int wps_apps_for_mime(const char *m0, wps_app *out, int max)
+int osd_apps_for_mime(const char *m0, osd_app *out, int max)
 {
     int n = 0;
     char desktop[PATH_MAX], id[256];
@@ -844,9 +844,9 @@ int wps_apps_for_mime(const char *m0, wps_app *out, int max)
     return n;
 }
 
-static int app_cmp(const void *a, const void *b) { return strcoll(((const wps_app *)a)->name, ((const wps_app *)b)->name); }
+static int app_cmp(const void *a, const void *b) { return strcoll(((const osd_app *)a)->name, ((const osd_app *)b)->name); }
 
-int wps_apps_all(wps_app *out, int max)
+int osd_apps_all(osd_app *out, int max)
 {
     char dirs[32][PATH_MAX];
     int nd = xdg_dirs(false, dirs, 32), n = 0;
@@ -862,7 +862,7 @@ int wps_apps_all(wps_app *out, int max)
             snprintf(p, sizeof p, "%s/%s", d, de->d_name);
             if (strlen(p) >= PATH_MAX) continue;
             /* (one the user's folder hides stays hidden: listed first, then skipped) */
-            wps_app a;
+            osd_app a;
             if (app_read(de->d_name, p, &a, true)) out[n++] = a;
             else {
                 memset(&out[n], 0, sizeof out[n]);
@@ -879,13 +879,13 @@ int wps_apps_all(wps_app *out, int max)
     return w;
 }
 
-int wps_app_argv(const char *id, const char *file, char *buf, size_t n, char **argv, int max)
+int osd_app_argv(const char *id, const char *file, char *buf, size_t n, char **argv, int max)
 {
     char path[PATH_MAX], exec[4096];
     if (strchr(id, '/') || !find_desktop(id, path, sizeof path)) return 0;
     if (!ini_get(path, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
-    int argc = wps_split_exec(exec, file, buf, n, argv, max);
-    if (argc > 0 && wps_desktop_wants_terminal(path)) argc = wps_terminal_wrap(argv, argc, max, NULL, false);
+    int argc = osd_split_exec(exec, file, buf, n, argv, max);
+    if (argc > 0 && osd_desktop_wants_terminal(path)) argc = osd_terminal_wrap(argv, argc, max, NULL, false);
     return argc;
 }
 
@@ -930,7 +930,7 @@ static bool ini_set(const char *file, const char *section, const char *key, cons
     return ok;
 }
 
-bool wps_app_types(const char *desktop, char *out, size_t n)
+bool osd_app_types(const char *desktop, char *out, size_t n)
 {
     const char *base = strrchr(desktop, '/') ? strrchr(desktop, '/') + 1 : desktop;
     char path[PATH_MAX];
@@ -939,7 +939,7 @@ bool wps_app_types(const char *desktop, char *out, size_t n)
     return ini_get(path, "[Desktop Entry]", "MimeType", out, n);
 }
 
-bool wps_app_set_types(const char *desktop, const char *types)
+bool osd_app_set_types(const char *desktop, const char *types)
 {
     if (strchr(types, '\n') || strchr(types, '\r')) return false;
     const char *base = strrchr(desktop, '/') ? strrchr(desktop, '/') + 1 : desktop;
@@ -969,13 +969,13 @@ bool wps_app_set_types(const char *desktop, const char *types)
     return ini_set(mine, "[Desktop Entry]", "MimeType", t);
 }
 
-bool wps_app_set_default(const char *file, const char *id)
+bool osd_app_set_default(const char *file, const char *id)
 {
     const char *mime = file_mime(file);
-    return mime && wps_app_set_default_mime(mime, id);
+    return mime && osd_app_set_default_mime(mime, id);
 }
 
-bool wps_app_set_default_mime(const char *mime, const char *id)
+bool osd_app_set_default_mime(const char *mime, const char *id)
 {
     char path[PATH_MAX];
     if (!mime || strchr(id, '/') || strchr(id, ';') || !find_desktop(id, path, sizeof path)) return false;
@@ -996,7 +996,7 @@ bool wps_app_set_default_mime(const char *mime, const char *id)
     return ini_set(f, "[Added Associations]", mime, added);
 }
 
-bool wps_is_program_file(const char *path)
+bool osd_is_program_file(const char *path)
 {
     if (access(path, X_OK) != 0) return false;
     int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
@@ -1007,7 +1007,7 @@ bool wps_is_program_file(const char *path)
     return (n == 4 && !memcmp(m, "\x7f" "ELF", 4)) || (n >= 2 && m[0] == '#' && m[1] == '!');
 }
 
-bool wps_desktop_wants_terminal(const char *desktop)
+bool osd_desktop_wants_terminal(const char *desktop)
 {
     char v[64];
     return ini_get(desktop, "[Desktop Entry]", "Terminal", v, sizeof v) && !strcmp(v, "true");
@@ -1060,7 +1060,7 @@ static bool elf_links_gui(const unsigned char *m, size_t sz)
     return false;
 }
 
-bool wps_program_needs_terminal(const char *path)
+bool osd_program_needs_terminal(const char *path)
 {
     int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOCTTY);
     if (fd < 0) return false;
@@ -1080,7 +1080,7 @@ bool wps_program_needs_terminal(const char *path)
 
 /* ------------------------------------------------------------ lock files */
 
-bool wps_is_lock_file(const char *name)
+bool osd_is_lock_file(const char *name)
 {
     size_t l = strlen(name);
     if (!strncmp(name, ".~lock.", 7) && l > 8 && name[l - 1] == '#') return true;   /* LibreOffice */
@@ -1090,12 +1090,12 @@ bool wps_is_lock_file(const char *name)
     return false;
 }
 
-bool wps_lock_file_present(const char *path)
+bool osd_lock_file_present(const char *path)
 {
     const char *slash = strrchr(path, '/');
     if (!slash || !slash[1]) return false;
     const char *name = slash + 1;
-    if (wps_is_lock_file(name)) return false;
+    if (osd_is_lock_file(name)) return false;
     int dl = (int)(slash - path);
     char p[PATH_MAX + 16];
     struct stat st;

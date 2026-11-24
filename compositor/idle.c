@@ -1,8 +1,8 @@
 /*
  * Idle: the screens go off after a while without input, the lock screen
  * follows (GNOME's settings: idle-delay, lock-enabled, lock-delay, given
- * by tools/wps-session as WPS_IDLE_DELAY, WPS_LOCK_ENABLED and
- * WPS_LOCK_DELAY, in seconds; 0 delay: never), and programs may hold the
+ * by tools/wps-session as OSD_IDLE_DELAY, OSD_LOCK_ENABLED and
+ * OSD_LOCK_DELAY, in seconds; 0 delay: never), and programs may hold the
  * screens on (idle-inhibit: video players, presentations) or hear of
  * idleness (ext-idle-notify). In the WPS session logind's requests are
  * followed too: lock the session (loginctl lock-session) and sleep (the
@@ -231,9 +231,9 @@ static int env_int(const char *name, int dflt)
 
 void idle_init(void)
 {
-    idle.idle_s = env_int("WPS_IDLE_DELAY", 300);     /* GNOME's default: 5 minutes */
-    bool lock = env_int("WPS_LOCK_ENABLED", 1) != 0;
-    idle.lock_s = lock ? env_int("WPS_LOCK_DELAY", 0) : -1;
+    idle.idle_s = env_int("OSD_IDLE_DELAY", 300);     /* GNOME's default: 5 minutes */
+    bool lock = env_int("OSD_LOCK_ENABLED", 1) != 0;
+    idle.lock_s = lock ? env_int("OSD_LOCK_DELAY", 0) : -1;
     idle.inhibit = wlr_idle_inhibit_v1_create(server.display);
     idle.new_inhibitor.notify = on_new_inhibitor;
     wl_signal_add(&idle.inhibit->events.new_inhibitor, &idle.new_inhibitor);

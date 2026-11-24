@@ -19,18 +19,18 @@ sleep 2.5
 \$W get "\$T/desk/Projects" sort_key > "\$S/get.txt" 2>&1
 \$W set "\$T/desk/notes.txt" 'title=My Notes' > "\$S/set.txt" 2>&1; echo \$? >> "\$S/set.txt"
 \$W get "\$T/desk/notes.txt" title > "\$S/title.txt" 2>&1
-\$W create "\$T/desk/Projects" WPFolder Reports > "\$S/create.txt" 2>&1
+\$W create "\$T/desk/Projects" OsdFolder Reports > "\$S/create.txt" 2>&1
 \$W shadow "\$T/desk/notes.txt" "\$T/desk/Projects" > "\$S/shadow.txt" 2>&1
 \$W say "from a script" > "\$S/say.txt" 2>&1; echo \$? >> "\$S/say.txt"
 sleep 1
 \$W selection > "\$S/selection.txt" 2>&1
 \$W ask "Go on?" Yes No > "\$S/ask.txt" 2>&1; echo \$? >> "\$S/ask.txt"
 \$W open "\$T/desk/Projects" > "\$S/open.txt" 2>&1
-WPS_FOLDER="\$T/desk" \$W folder > "\$S/folder.txt" 2>&1
+OSD_FOLDER="\$T/desk" \$W folder > "\$S/folder.txt" 2>&1
 \$W get "\$T/desk/nothing-here" title > "\$S/bad.txt" 2>&1; echo \$? >> "\$S/bad.txt"
 sleep 60
 EOS
-env -u WPS_SESSION DESKENV="WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/script" "sh '$S/cmd.sh'" > "$S/out.txt" 2>&1
+env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/script" "sh '$S/cmd.sh'" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
@@ -43,7 +43,7 @@ check "say (exit 0)" "[ \"\$(cat '$S/say.txt')\" = 0 ]"
 check "selection: the desktop's selected icon" "[ \"\$(cat '$S/selection.txt')\" = \"$T/desk/notes.txt\" ]"
 check "ask: the button chosen" "[ \"\$(head -1 '$S/ask.txt')\" = Yes ] && [ \"\$(tail -1 '$S/ask.txt')\" = 0 ]"
 check "open: a folder's window" "grep -q \"window 'Projects - Icon View'\" '$S/out.txt'"
-check "folder: WPS_FOLDER" "[ \"\$(cat '$S/folder.txt')\" = \"$T/desk\" ]"
+check "folder: OSD_FOLDER" "[ \"\$(cat '$S/folder.txt')\" = \"$T/desk\" ]"
 check "an error: a message, exit 1" "[ \"\$(tail -1 '$S/bad.txt')\" = 1 ] && grep -q '^wps: ' '$S/bad.txt'"
 [ $fails = 0 ] && rm -rf "$S" "$T" || echo "logs: $S $T"
 exit $fails

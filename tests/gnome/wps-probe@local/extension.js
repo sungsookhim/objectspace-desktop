@@ -231,7 +231,7 @@ export default class Probe {
         }
         if (GLib.getenv('PROBE_MODE') === 'shutdown') {
             // The LaunchPad's Shut down: its dialog, then Log off by keys
-            // (Right twice, Enter). WPS_DEBUG_COMMANDS (run.sh) makes the
+            // (Right twice, Enter). OSD_DEBUG_COMMANDS (run.sh) makes the
             // extension log the command rather than run it.
             const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
             const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);

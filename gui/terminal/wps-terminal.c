@@ -587,12 +587,12 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-    const char *title = NULL, *font = getenv("WPS_TERMINAL_FONT"), *cwd = NULL;
+    const char *title = NULL, *font = getenv("OSD_TERMINAL_FONT"), *cwd = NULL;
     int cols = 80, rows = 24;
     int i = 1;
     for (; i < argc; i++) {
         if (!strcmp(argv[i], "--")) { i++; break; }
-        if (!strcmp(argv[i], "--version")) { printf("wps-terminal %s\n", WPS_VERSION); return 0; }
+        if (!strcmp(argv[i], "--version")) { printf("wps-terminal %s\n", OSD_VERSION); return 0; }
         if (!strcmp(argv[i], "--hold")) T.hold = true;
         else if (!strcmp(argv[i], "--title") && i + 1 < argc) title = argv[++i];
         else if (!strcmp(argv[i], "--font") && i + 1 < argc) font = argv[++i];

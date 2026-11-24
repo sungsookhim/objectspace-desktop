@@ -1,6 +1,6 @@
 /* WPS Terminal's looks from WPS's settings objects (term_setup.c). */
-#ifndef WPS_TERM_SETUP_H
-#define WPS_TERM_SETUP_H
+#ifndef OSD_TERM_SETUP_H
+#define OSD_TERM_SETUP_H
 
 #include <stdbool.h>
 #include <stddef.h>

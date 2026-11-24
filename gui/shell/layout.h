@@ -1,6 +1,6 @@
 /* Icon view layout with icons placed anywhere (layout.c). */
-#ifndef WPS_SHELL_LAYOUT_H
-#define WPS_SHELL_LAYOUT_H
+#ifndef OSD_SHELL_LAYOUT_H
+#define OSD_SHELL_LAYOUT_H
 
 #include <stdbool.h>
 #include <stddef.h>

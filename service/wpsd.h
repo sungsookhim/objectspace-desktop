@@ -37,37 +37,37 @@
 #include "udisks.h"
 #include "programs.h"
 #include "launch.h"
-#include "wps_menu_ids.h"
+#include "osd_menu_ids.h"
 #include "listing.h"
 #include "find.h"
 #include "plugins.h"
 #include "shadows.h"
-#include "WPShadow.h"
-#include "WPProgram.h"
-#include "WPSystem.h"
-#include "WPScheme.h"
-#include "WPSetup.h"
-#include "WPFontPalette.h"
-#include "WPColorPalette.h"
-#include "WPFolder.h"
-#include "WPTrashCan.h"
-#include "WPDrive.h"
-#include "WPMinWinViewer.h"
-#include "WPRestoreDesktop.h"
-#include "WPMessages.h"
-#include "WPLaunchPad.h"
-#include "WPWarpCenter.h"
+#include "OsdShadow.h"
+#include "OsdProgram.h"
+#include "OsdSystem.h"
+#include "OsdScheme.h"
+#include "OsdSetup.h"
+#include "OsdFontPalette.h"
+#include "OsdColorPalette.h"
+#include "OsdFolder.h"
+#include "OsdTrashCan.h"
+#include "OsdDrive.h"
+#include "OsdMinWinViewer.h"
+#include "OsdRestoreDesktop.h"
+#include "OsdMessages.h"
+#include "OsdLaunchPad.h"
+#include "OsdWarpCenter.h"
 #include "messages.h"
 #include "startup.h"
-#include "wps_startup_hook.h"
-#include "WPDataFile.h"
-#include "wps_state.h"
+#include "osd_startup_hook.h"
+#include "OsdDataFile.h"
+#include "osd_state.h"
 #include "tracker.h"
 #include "volumes.h"
-#include "wpo.h"
-#include "wpo_loop.h"
-#include "wps_classes.h"
-#include "WPObject.h"
+#include "osdo.h"
+#include "osdo_loop.h"
+#include "osd_classes.h"
+#include "OsdObject.h"
 
 #define MAX_FRAME (1u << 20)
 #define MAX_ARGS 16
@@ -98,19 +98,19 @@ struct req {
     cv msg;
     const char *op;
     char target[PATH_MAX];
-    wps_loaded tgt;
-    wps_loaded shadow_target;    /* a shadow's target, when the target is a shadow */
+    osd_loaded tgt;
+    osd_loaded shadow_target;    /* a shadow's target, when the target is a shadow */
     char *remote_text;           /* a plug-in's answer, for menus (and its settings pages) */
     bool remote_done, remote_ok; /* a plug-in handled it (menu_select, a setter) */
     char *open_with;             /* a data file's Open With items, made on the worker (menu) */
     int nobj;
     char objpath[MAX_ARGS][PATH_MAX];
-    wps_loaded *objs;
+    osd_loaded *objs;
 };
 
 /* A method implemented by a plug-in: run in its host; reply when it
  * answers, or with the parent's behaviour if it misses its deadline. */
-struct remote_ctx { struct req *r; wpo_object *o; };
+struct remote_ctx { struct req *r; osdo_object *o; };
 
 struct simple { struct client *c; int64_t id; };
 
@@ -121,7 +121,7 @@ struct stats_job { struct client *c; int64_t id; int64_t rows, conflicts; };
 #define MAX_ATTACHED 32
 
 struct vol_job {
-    wps_volumes vs;
+    osd_volumes vs;
     struct simple *reply;     /* a "sync" request waiting, or NULL */
     char report[1024];
 };
@@ -139,7 +139,7 @@ struct sub {
     bool jobs;
 };
 
-struct shadow_ids { char ids[32][WPS_ID_LEN + 1]; int n; };
+struct shadow_ids { char ids[32][OSD_ID_LEN + 1]; int n; };
 
 struct field { char key[64], type[16], label[128], value[1024], setter[64], choices[256]; };
 
@@ -154,7 +154,7 @@ struct tmpl_job {
     int64_t id;
     char src[PATH_MAX], folder[PATH_MAX], title[256], path[PATH_MAX + 300];
     int err;
-    wps_loaded ld;
+    osd_loaded ld;
 };
 
 
@@ -169,7 +169,7 @@ struct layout_job {
     int64_t id;
     char folder[PATH_MAX];
     size_t n;
-    char (*ids)[WPS_ID_LEN + 1];
+    char (*ids)[OSD_ID_LEN + 1];
     char **vals;
     char **names;        /* found by the worker, per position */
 };
@@ -185,7 +185,7 @@ struct place_job {
     char **targets;
     int64_t *x, *y;
     int8_t *lock;        /* per item: -1 as it was, 0 unlock, 1 lock */
-    wps_loaded fld, *items;
+    osd_loaded fld, *items;
 };
 
 
@@ -197,7 +197,7 @@ struct vmove_job {
     char target[64], dest[PATH_MAX], from_folder[PATH_MAX];
     bool copy, del;         /* del: vdelete, the object is deleted */
     bool trash;             /* vtrash: into the Trash Can, its folder noted (restore) */
-    char new_id[WPS_ID_LEN + 1];
+    char new_id[OSD_ID_LEN + 1];
     int err;
 };
 
@@ -209,7 +209,7 @@ struct rename_job {
     char path[PATH_MAX], newpath[PATH_MAX + NAME_MAX + 2], name[NAME_MAX + 1];
     int err;
     bool as_title;          /* no permission to rename: keep it as a title */
-    wps_loaded ld;
+    osd_loaded ld;
 };
 
 /* ---- create: a new object of a class in a folder, never overwriting */
@@ -221,20 +221,20 @@ struct create_req {
     char path[PATH_MAX + 64];
     int err;
     bool central;
-    wps_loaded ld;
+    osd_loaded ld;
 };
 
 /* A drive's action through udisks2; for one that unmounts, the volume is
  * let go of first (wpsd's database on it closed), and taken up again if
  * the unmount fails. */
-struct drive_call { char uuid[80], action[16], mount[PATH_MAX], *pass; wps_udisks_fn done; void *arg; };
+struct drive_call { char uuid[80], action[16], mount[PATH_MAX], *pass; osd_udisks_fn done; void *arg; };
 
 /* ---- the Trash Can: putting an item back (v0.2-design 4) */
-struct restore_job { struct client *c; int64_t id; char path[PATH_MAX], out[PATH_MAX], from[PATH_MAX]; char new_id[WPS_ID_LEN + 1]; int err; };
+struct restore_job { struct client *c; int64_t id; char path[PATH_MAX], out[PATH_MAX], from[PATH_MAX]; char new_id[OSD_ID_LEN + 1]; int err; };
 
 /* ---- Empty trash: its central objects (trashed shadows) deleted, then a
  * delete job for its files */
-struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*gone)[WPS_ID_LEN + 1]; size_t ngone; };
+struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*gone)[OSD_ID_LEN + 1]; size_t ngone; };
 
 /* ---- the desktop's first start (v0.2-design 2): what a new desktop gets,
  * in versioned steps, each done once for the user (<config>/desktop-made:
@@ -257,21 +257,21 @@ struct first_start {
     int64_t id;
     char desk[PATH_MAX];
     int from;
-    char gone[8][WPS_ID_LEN + 1];   /* the desktop's shadows of System Setup, removed */
+    char gone[8][OSD_ID_LEN + 1];   /* the desktop's shadows of System Setup, removed */
     int ngone;
-    char viewer[WPS_ID_LEN + 1];    /* the Minimized Window Viewer, made */
-    char restorer[WPS_ID_LEN + 1];  /* Restore Desktop, made (step 8) */
+    char viewer[OSD_ID_LEN + 1];    /* the Minimized Window Viewer, made */
+    char restorer[OSD_ID_LEN + 1];  /* Restore Desktop, made (step 8) */
     char sys[PATH_MAX], autostart[PATH_MAX];
-    wps_loaded asld;                /* the autostart folder (titled Startup) */
-    wps_loaded sysld, compld;       /* step 10: System and Computer, titled */
+    osd_loaded asld;                /* the autostart folder (titled Startup) */
+    osd_loaded sysld, compld;       /* step 10: System and Computer, titled */
     char trash[PATH_MAX];           /* the Trash Can: the home trash's files folder */
     char programs[PATH_MAX];        /* Programs (step 6) */
-    char tpl_moved[8][WPS_ID_LEN + 1];   /* step 7: the desktop's Templates shadows */
-    char tpl_new[8][WPS_ID_LEN + 1];     /* each one's ID in System ("": deleted, one was there) */
+    char tpl_moved[8][OSD_ID_LEN + 1];   /* step 7: the desktop's Templates shadows */
+    char tpl_new[8][OSD_ID_LEN + 1];     /* each one's ID in System ("": deleted, one was there) */
     int ntpl;
     bool tpl_in_system;             /* System has one already */
     bool scan_sys;
-    wps_loaded tld;
+    osd_loaded tld;
 };
 
 /* The first start's shadows, made one after another: the desktop places
@@ -303,9 +303,9 @@ struct defaults_job {
     struct client *c;
     int64_t id;
     bool restore;
-    wps_loaded sysld, compld;   /* their titles, if made anew */
+    osd_loaded sysld, compld;   /* their titles, if made anew */
     char desk[PATH_MAX];
-    struct { char folder[PATH_MAX], id[WPS_ID_LEN + 1], old_folder[PATH_MAX], old_id[WPS_ID_LEN + 1]; } ev[24];
+    struct { char folder[PATH_MAX], id[OSD_ID_LEN + 1], old_folder[PATH_MAX], old_id[OSD_ID_LEN + 1]; } ev[24];
     int nev;
     const char *put_back[32];   /* titles, for the reply */
     int nput;
@@ -313,15 +313,15 @@ struct defaults_job {
     bool no_desktop;            /* none named, none known */
 };
 
-struct def_match { const char *tid, *cls; char found[WPS_ID_LEN + 1]; };
+struct def_match { const char *tid, *cls; char found[OSD_ID_LEN + 1]; };
 
 /* {op:"setup"} -> {folder, objects:{<class>:{address, settings:{key:value}}}} */
 struct setup_req {
     struct client *c;
     int64_t id;
     char folder[PATH_MAX];
-    wps_loaded ld[NSETUP];
-    wps_loaded sch[32];      /* the schemes */
+    osd_loaded ld[NSETUP];
+    osd_loaded sch[32];      /* the schemes */
     size_t nsch;
 };
 
@@ -340,14 +340,14 @@ struct op_def { const char *name; bool (*fn)(struct client *c, int64_t id, const
 
 #define DRIVES_PARKED "00000000-0000-4000-8000-0000000d15c0"
 
-struct drive_obj { char id[WPS_ID_LEN + 1], uuid[80], title[256], autotitle[256]; int where; bool seen; };
-struct drive_event { char folder[PATH_MAX]; char id[WPS_ID_LEN + 1]; char kind; };
+struct drive_obj { char id[OSD_ID_LEN + 1], uuid[80], title[256], autotitle[256]; int where; bool seen; };
+struct drive_event { char folder[PATH_MAX]; char id[OSD_ID_LEN + 1]; char kind; };
 
 struct drives_sync {
-    wps_drive_info *ds;
+    osd_drive_info *ds;
     size_t n;
     char comp[PATH_MAX], drives[PATH_MAX + 8];
-    char vol[WPS_VOLID_MAX], cid[WPS_ID_LEN + 1], did[WPS_ID_LEN + 1];
+    char vol[OSD_VOLID_MAX], cid[OSD_ID_LEN + 1], did[OSD_ID_LEN + 1];
     struct drive_obj *objs;
     size_t nobjs;
     int collecting;   /* where the objects being listed are: 0 Drives, 1 Computer, 2 parked */
@@ -358,9 +358,9 @@ struct drives_sync {
 
 /* ---- variables */
 
-extern wps_env env;
-extern wps_db *db;
-extern wpo_loop *loop;
+extern osd_env env;
+extern osd_db *db;
+extern osdo_loop *loop;
 extern bool quitting;
 extern struct client *clients;
 extern struct sub *subs;
@@ -369,7 +369,7 @@ extern char known_desktop[PATH_MAX];
 
 /* ---- functions */
 
-void do_props(struct req *r, wpo_object *o);   /* wpsd_props.c */
+void do_props(struct req *r, osdo_object *o);   /* wpsd_props.c */
 void props_init(void);
 /* wpsd_backing.c: properties Linux keeps; a type's programs (mimeapps). */
 void backing_init(void);
@@ -378,14 +378,14 @@ char *mimeapps_get(const char *mime);
 bool mimeapps_set(const char *mime, const char *name);
 /* A setup string ("key=value;...") applied to o, in order; false (and why
  * in err) at the first refused. */
-bool apply_setup(wpo_object *o, const char *setup, char *err, size_t en);
+bool apply_setup(osdo_object *o, const char *setup, char *err, size_t en);
 /* wpsd_actions.c: an event's actions on o (object-properties-design.md
  * 2.4) run; its sound returned: NULL if none is set (the Sound object's),
  * "" for none, else the sound. Caller frees. */
-char *fire_event(wpo_object *o, const char *path, const char *event, const char *display, const char *x11,
+char *fire_event(osdo_object *o, const char *path, const char *event, const char *display, const char *x11,
                  const char *const *envs, size_t nenvs);
 /* ... in the session client c last opened something in (NULL: none). */
-char *fire_event_for(struct client *c, wpo_object *o, const char *path, const char *event);
+char *fire_event_for(struct client *c, osdo_object *o, const char *path, const char *event);
 /* Prevent delete (its General page, no_delete): true if `target` (a path
  * or vobj:ID) has it on, with a message naming it in `why`. */
 bool no_delete_of(const char *target, char *why, size_t n);
@@ -404,10 +404,10 @@ void client_close(struct client *c);
 void client_flush(struct client *c);
 void send_frame(struct client *c, cbuf *b);
 void reply_error(struct client *c, int64_t id, const char *error, const char *message);
-void put_object(cbuf *b, wpo_object *o);
+void put_object(cbuf *b, osdo_object *o);
 void prepare_work(void *arg)    /* worker */;
-void reply_ok_object(struct req *r, wpo_object *o, const wpo_value *result);
-void reply_ok_object_sound(struct req *r, wpo_object *o, const wpo_value *result, const char *sound);
+void reply_ok_object(struct req *r, osdo_object *o, const osdo_value *result);
+void reply_ok_object_sound(struct req *r, osdo_object *o, const osdo_value *result, const char *sound);
 void prepare_done(void *arg)    /* loop */;
 void do_describe(struct client *c, int64_t id, const char *name);
 void reply_simple_ok(struct simple *s, const char *result);
@@ -423,8 +423,8 @@ void subs_drop_client(struct client *c);
 void event_head(cbuf *b, const char *name, int64_t sub, size_t extra);
 void messages_broadcast(int64_t added);
 void say_broadcast(const char *text, bool stay);   /* wpsctl say: a message on the desktop */
-void terminal_from_system(wpo_object *o);
-void on_object_changed(wpo_object *o);
+void terminal_from_system(osdo_object *o);
+void on_object_changed(osdo_object *o);
 void on_layout_changed(const char *folder);
 void on_central_change(const char *folder, const char *id, char kind);
 void on_fs_event(char kind, const char *from, const char *path);
@@ -433,46 +433,46 @@ void on_job(int64_t jid);
 void on_volumes_changed(const char *report);
 void strlist(const cv *a, char ***out, size_t *n);
 void put_menu(cbuf *b, const char *text, const char *parent);
-void put_settings(cbuf *b, wpo_object *o, const char *text, const char *icon_shown);
+void put_settings(cbuf *b, osdo_object *o, const char *text, const char *icon_shown);
 typedef void (*origin_fn)(void *ctx, const char *key, bool *own, char *from, size_t fn);
 void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin_fn of, void *ctx);
-char *call_text(wpo_object *o, const char *method, const char *arg);
-char *settings_text(wpo_object *o);
-const char *apply_settings(wpo_object *o, const cv *values, const char *pages_text);
-char *settings_text_with(wpo_object *o, char *t);
-bool settings_setter_of(wpo_object *o, const char *pages_text, const char *key, char *out, size_t n);
+char *call_text(osdo_object *o, const char *method, const char *arg);
+char *settings_text(osdo_object *o);
+const char *apply_settings(osdo_object *o, const cv *values, const char *pages_text);
+char *settings_text_with(osdo_object *o, char *t);
+bool settings_setter_of(osdo_object *o, const char *pages_text, const char *key, char *out, size_t n);
 void reply_value_cbor(struct client *c, int64_t id, cbuf *val);
 void reply_int(struct client *c, int64_t id, int64_t v);
 bool handle_jobs(struct client *c, int64_t id, const char *op, cv *msg);
-void list_reply(void *arg, const wps_page *pg);
-void do_open(struct req *r, wpo_object *o);
+void list_reply(void *arg, const osd_page *pg);
+void do_open(struct req *r, osdo_object *o);
 void tmpl_work(void *arg);
 void tmpl_done(void *arg);
-void do_layout(struct req *r, wpo_object *o);
-void do_arrange(struct req *r, wpo_object *o);
+void do_layout(struct req *r, osdo_object *o);
+void do_arrange(struct req *r, osdo_object *o);
 /* wpsd_workarea.c: Work Area folders (0.4 step 9) */
 bool work_area_of(const char *path, char *out, size_t n);   /* the nearest work area holding path */
 void work_area_opened(const char *group, const char *opened, const char *tracked, pid_t pid);
 void work_area_in_use(const char *path, bool in_use);
 void work_area_save_all(void);
 size_t desktop_broadcast(const char *kind, int64_t ask, const char *text, const cv *buttons);   /* wpsd_events.c */   /* at the end: each group's open objects kept on its folder */
-void do_work_area(struct req *r, wpo_object *o);
+void do_work_area(struct req *r, osdo_object *o);
 void job_placed(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
 void start_place(struct client *c, int64_t id, const cv *msg);
 void vmove_work(void *arg);
 void vmove_done(void *arg);
 bool is_desktop(const char *path);
-bool wps_folder(const char *path);
-void do_rename(struct req *r, wpo_object *o);
-void do_from_template(struct req *r, wpo_object *o);
+bool osd_folder(const char *path);
+void do_rename(struct req *r, osdo_object *o);
+void do_from_template(struct req *r, osdo_object *o);
 void start_create(struct client *c, int64_t id, const char *folder, const char *cls, const char *title, const char *command);
 void builtin_templates_work(void *arg);
-void put_drive(cbuf *b, const wps_drive_info *d);
-void drive_call(const char *uuid, const char *action, const char *pass, wps_udisks_fn done, void *arg);
+void put_drive(cbuf *b, const osd_drive_info *d);
+void drive_call(const char *uuid, const char *action, const char *pass, osd_udisks_fn done, void *arg);
 void drive_done(void *arg, int err, const char *msg, const char *mount);
 void drive_target_work(void *arg);
 void drive_target_done(void *arg);
-bool drive_query(const char *uuid, wps_drive_state *st, bool details);
+bool drive_query(const char *uuid, osd_drive_state *st, bool details);
 void restore_work(void *arg);
 void restore_done(void *arg);
 void empty_work(void *arg);
@@ -491,11 +491,11 @@ void setup_req_done(void *arg);
 void shadow_made(void *arg, const char *link, const char *error);
 void quit_after_flush(void *arg);
 void shutdown_flushed(void *arg);
-void found(void *arg, int64_t find, const wps_found *items, size_t n, bool done, uint64_t scanned, bool truncated, int err);
+void found(void *arg, int64_t find, const osd_found *items, size_t n, bool done, uint64_t scanned, bool truncated, int err);
 void startup_work(void *arg);
 void startup_done(void *arg);
-bool startup_query(wpo_object *o, bool *on);
-bool startup_set(wpo_object *o, bool on);
+bool startup_query(osdo_object *o, bool *on);
+bool startup_set(osdo_object *o, bool on);
 void client_io(int fd, short rev, void *arg);
 void on_accept(int fd, short rev, void *arg);
 void on_signal(int fd, short rev, void *arg);

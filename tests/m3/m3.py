@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-os.environ.setdefault("WPS_SUITE", "m3")
+os.environ.setdefault("OSD_SUITE", "m3")
 import harness  # noqa: E402
 from harness import *  # noqa: E402,F401,F403
 
@@ -39,7 +39,7 @@ def obj(svc, target):
 
 def tracked(svc, path, title):
     """Give a file an object with a title; return its ID."""
-    svc.call(path, "wpSetTitle", title)
+    svc.call(path, "osdSetTitle", title)
     svc.ctl("flush")
     return obj(svc, path).get("id")
 
@@ -217,7 +217,7 @@ def s11():
     time.sleep(0.6)
     na = wait_for(lambda: obj(me, d / "a.txt").get("id") not in (None, "", oid) and obj(me, d / "a.txt"))
     nb = obj(me, d / "b.txt")
-    split = run(["getfattr", "--only-values", "-n", "user.wps.WPObject", str(d / "a.txt")]).stdout
+    split = run(["getfattr", "--only-values", "-n", "user.wps.OsdObject", str(d / "a.txt")]).stdout
     me.stop()
     ok = na and na.get("id") != oid and nb.get("id") == oid and na.get("title") == "Linked" and "split" in split
     return ok, [f"b.txt keeps the original ID: {nb.get('id') == oid}",
@@ -276,7 +276,7 @@ def s15():
     before = stats(me)
     for i in range(20000):
         open(nm / f"m{i}.js", "w").close()
-    me.call(nm / "m1.js", "wpSetTitle", "should not stick")
+    me.call(nm / "m1.js", "osdSetTitle", "should not stick")
     me.ctl("flush")
     has_id = run(["getfattr", "-n", "user.wps.id", str(nm / "m1.js")]).returncode == 0
     after = stats(me)
@@ -292,12 +292,12 @@ def s26():
     a = Service("A", user=60001).start()
     d = fresh("ext4", "s26", user=60001)
     write_as(60001, d / "shared.txt", mode="0664")
-    a.call(d / "shared.txt", "wpSetTitle", "First")
+    a.call(d / "shared.txt", "osdSetTitle", "First")
     a.ctl("flush")
     holder = subprocess.Popen(["sudo", "setpriv", "--reuid=60002", "--regid=60000", "--groups=60000", "--",
                                "flock", "-x", str(d / "shared.txt"), "sleep", "6"])
     time.sleep(0.5)
-    a.call(d / "shared.txt", "wpSetTitle", "Second")
+    a.call(d / "shared.txt", "osdSetTitle", "Second")
     t0 = time.time()
     a.ctl("flush")
     pings = []
@@ -324,7 +324,7 @@ def s27():
     b = Service("B", user=60002).start()
     priv = fresh("ext4", "s27", user=60002, mode="0700")
     write_as(60002, priv / "secret.txt", mode="0600")
-    b.call(priv / "secret.txt", "wpSetTitle", "B's secret")
+    b.call(priv / "secret.txt", "osdSetTitle", "B's secret")
     b.ctl("flush")
     obj(a, MNT["ext4"])
     before = stats(a).get("events", 0)

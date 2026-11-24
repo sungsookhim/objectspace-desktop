@@ -7,8 +7,8 @@
  * the file's path), and the picker closes. Escape closes it unchosen.
  * "folder": folders only, and Use this folder chooses the one shown.
  */
-#ifndef WPS_FILEPICK_H
-#define WPS_FILEPICK_H
+#ifndef OSD_FILEPICK_H
+#define OSD_FILEPICK_H
 
 #include <stdbool.h>
 #include <stddef.h>

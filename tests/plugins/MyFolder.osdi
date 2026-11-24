@@ -1,0 +1,4 @@
+# A third-party folder class that replaces OsdFolder.
+class MyFolder : OsdFolder
+version 1.0
+override osdModifyPopupMenu

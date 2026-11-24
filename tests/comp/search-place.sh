@@ -17,7 +17,7 @@ cat > "$S/script" <<EOS
 9.8 quit
 EOS
 PRE="for i in \$(seq 300); do echo x > \"\$T/desk/Projects/f\$i.txt\"; done; '$W' settings_set \"\$T/desk/Projects\" search_place=1 > \"\$T/set.log\" 2>&1" \
-DESKENV="WPS_NO_LAUNCHPAD=1 WPS_NO_GSETTINGS=1 WPS_WALLPAPER=" SECS=12 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=12 tests/comp/run.sh "$S/script" \
     "sleep 6; '$W' settings_set \"\$T/desk/Projects\" search_place=2 >> \"\$T/set.log\" 2>&1; sleep 10" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0

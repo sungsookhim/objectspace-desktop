@@ -15,10 +15,10 @@
  * the rest in step both ways (following `gsettings monitor`): a value is
  * written only where it differs, so a change never echoes back. When the
  * desktop starts, GNOME's values win (other programs follow them already).
- * WPS_NO_GSETTINGS turns all of it off (tests).
+ * OSD_NO_GSETTINGS turns all of it off (tests).
  */
-#ifndef WPS_GNOME_H
-#define WPS_GNOME_H
+#ifndef OSD_GNOME_H
+#define OSD_GNOME_H
 
 #include <stdbool.h>
 
@@ -31,9 +31,9 @@ void gnome_start(ui_app *a, bool both_ways, void (*set)(const char *cls, const c
 void gnome_stop(void);
 
 /* The settings objects' values, as last read (call for every key, then
- * gnome_wps_read once). */
-void gnome_wps_value(const char *cls, const char *key, const char *value);
-void gnome_wps_read(void);
+ * gnome_osd_read once). */
+void gnome_osd_value(const char *cls, const char *key, const char *value);
+void gnome_osd_read(void);
 
 /* `gsettings get SCHEMA KEY`, unquoted ("uint32 " dropped), into out; false
  * if there is none. The one reader of GNOME's settings in wps-shell (the

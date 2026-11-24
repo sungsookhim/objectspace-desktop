@@ -8,8 +8,8 @@
  * made into a 128-pixel PNG there by glycin-thumbnailer, off the UI
  * thread; the source can then go.
  */
-#ifndef WPS_ICONS_H
-#define WPS_ICONS_H
+#ifndef OSD_ICONS_H
+#define OSD_ICONS_H
 
 #include <cairo.h>
 #include <stdbool.h>

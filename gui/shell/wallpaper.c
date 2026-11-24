@@ -91,7 +91,7 @@ static void read_settings(void)
         }
         return;
     }
-    const char *fixed = getenv("WPS_WALLPAPER");          /* tests: this picture, no GNOME settings */
+    const char *fixed = getenv("OSD_WALLPAPER");          /* tests: this picture, no GNOME settings */
     if (fixed) {
         if (*fixed) snprintf(want.uri, sizeof want.uri, "%s%s", fixed[0] == '/' ? "file://" : "", fixed);
         return;
@@ -373,7 +373,7 @@ void wallpaper_start(ui_app *a, void (*fn)(void *ctx), void *ctx)
     on_changed = fn;
     changed_ctx = ctx;
     read_settings();
-    if (!getenv("WPS_WALLPAPER")) {
+    if (!getenv("OSD_WALLPAPER")) {
         monitor(0, "org.gnome.desktop.background", NULL);
         monitor(1, "org.gnome.desktop.interface", "color-scheme");
     }

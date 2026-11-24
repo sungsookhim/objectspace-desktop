@@ -12,25 +12,25 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "wps_classes.h"
+#include "osd_classes.h"
 
-char *TestFolder__wpModifyPopupMenu(wpo_object *self, const char *menu)
+char *TestFolder__osdModifyPopupMenu(osdo_object *self, const char *menu)
 {
-    char *title = WPObject_wpQueryTitle(self);
+    char *title = OsdObject_osdQueryTitle(self);
     if (title && !strcmp(title, "SLOW")) sleep(60);   /* a hung plug-in */
     free(title);
-    char *base = TestFolder_parent_wpModifyPopupMenu(self, menu);
-    char *r = wps_concat(base, "90\tFrom the plug-in\n");
+    char *base = TestFolder_parent_osdModifyPopupMenu(self, menu);
+    char *r = osd_concat(base, "90\tFrom the plug-in\n");
     free(base);
     return r;
 }
 
-bool TestFolder__wpStamp(wpo_object *self)
+bool TestFolder__osdStamp(osdo_object *self)
 {
-    return WPObject_wpSetTitle(self, "Stamped by the plug-in");
+    return OsdObject_osdSetTitle(self, "Stamped by the plug-in");
 }
 
-char *TestFolder__wpSandboxProbe(wpo_object *self, const char *data_dir)
+char *TestFolder__osdSandboxProbe(osdo_object *self, const char *data_dir)
 {
     (void)self;
     char out[512], p[4096];
@@ -54,13 +54,13 @@ char *TestFolder__wpSandboxProbe(wpo_object *self, const char *data_dir)
     if (d >= 0) close(d);
     snprintf(out, sizeof out, "home=%s net=%s data=%s", he ? strerror(he) : "readable",
              ne ? strerror(ne) : "connected", de ? strerror(de) : "writable");
-    return wps_strdup(out);
+    return osd_strdup(out);
 }
 
-wpo_status wpo_plugin_init(uint32_t abi)
+osdo_status osdo_plugin_init(uint32_t abi)
 {
-    if (abi != WPO_ABI_VERSION) return WPO_EVERSION;
-    wpo_status st = TestFolder_register();
-    if (st == WPO_OK) st = wpo_replace_class("WPFolder", "TestFolder");
+    if (abi != OSDO_ABI_VERSION) return OSDO_EVERSION;
+    osdo_status st = TestFolder_register();
+    if (st == OSDO_OK) st = osdo_replace_class("OsdFolder", "TestFolder");
     return st;
 }

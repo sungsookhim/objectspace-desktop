@@ -4,7 +4,7 @@
  *   none              silence (the Sound object's sound not played)
  *   sound:FILE        a sound (a theme's name or a file), played by the GUI
  *   run:COMMAND       a command (sh -c), as the user's program, in its own
- *                     scope, with WPS_OBJECT, WPS_PATH, WPS_EVENT, WPS_CLASS
+ *                     scope, with OSD_OBJECT, OSD_PATH, OSD_EVENT, OSD_CLASS
  *   call:METHOD ARGS  a method of the object, its arguments separated by spaces
  *   set:SETUP         a setup string applied to the object
  * Run as the event happens, by the service (the owner's: run: is the user's
@@ -25,17 +25,17 @@ static void problem(const char *event, const char *path, const char *action, con
         { .k = CV_TEXT, .s = "urgency", .len = 7 }, { .k = CV_INT, .i = 1 },
     };
     cv m = { .k = CV_MAP, .items = items, .n = 4, .nitems = 8 };
-    messages_broadcast(wps_messages_add(&m));
+    messages_broadcast(osd_messages_add(&m));
 }
 
-static void run_command(wpo_object *o, const char *path, const char *event, const char *cmd, const char *display,
+static void run_command(osdo_object *o, const char *path, const char *event, const char *cmd, const char *display,
                         const char *x11, const char *const *envs, size_t nenvs)
 {
     char e_obj[64], e_path[PATH_MAX + 16], e_event[96], e_cls[96], cwd[PATH_MAX];
-    snprintf(e_obj, sizeof e_obj, "WPS_OBJECT=%s", wpo_is_a(o, WPObjectClass) ? WPObject_data(o)->id : "");
-    snprintf(e_path, sizeof e_path, "WPS_PATH=%s", path ? path : "");
-    snprintf(e_event, sizeof e_event, "WPS_EVENT=%s", event);
-    snprintf(e_cls, sizeof e_cls, "WPS_CLASS=%s", o->cls->name);
+    snprintf(e_obj, sizeof e_obj, "OSD_OBJECT=%s", osdo_is_a(o, OsdObjectClass) ? OsdObject_data(o)->id : "");
+    snprintf(e_path, sizeof e_path, "OSD_PATH=%s", path ? path : "");
+    snprintf(e_event, sizeof e_event, "OSD_EVENT=%s", event);
+    snprintf(e_cls, sizeof e_cls, "OSD_CLASS=%s", o->cls->name);
     const char *env[16];
     size_t n = 0;
     for (size_t i = 0; i < nenvs && n < 12; i++) env[n++] = envs[i];
@@ -53,34 +53,34 @@ static void run_command(wpo_object *o, const char *path, const char *event, cons
         else snprintf(cwd, sizeof cwd, "%s", home ? home : "/");
     }
     char *argv[] = { "/bin/sh", "-c", (char *)cmd, NULL };
-    if (wps_launch(argv, NULL, cwd, display, x11, env, n) < 0) {
+    if (osd_launch(argv, NULL, cwd, display, x11, env, n) < 0) {
         char a[600];
         snprintf(a, sizeof a, "run:%s", cmd);
         problem(event, path, a, strerror(errno));
     }
 }
 
-static void call_method(wpo_object *o, const char *path, const char *event, const char *spec)
+static void call_method(osdo_object *o, const char *path, const char *event, const char *spec)
 {
     char buf[1024], *args[8];
     snprintf(buf, sizeof buf, "%s", spec);
     size_t n = 0;
     char *method = strtok(buf, " ");
     for (char *a; n < 8 && (a = strtok(NULL, " "));) args[n++] = a;
-    const wpo_method_def *m = method ? wpo_method_info(o->cls, method) : NULL;
+    const osdo_method_def *m = method ? osdo_method_info(o->cls, method) : NULL;
     char a0[600];
     snprintf(a0, sizeof a0, "call:%s", spec);
     if (!m || strlen(m->sig) != n + 3) { problem(event, path, a0, "no such method, or another number of arguments"); return; }
-    wpo_value a[8], r = wpo_v_void();
+    osdo_value a[8], r = osdo_v_void();
     for (size_t i = 0; i < n; i++) {
         char t = m->sig[2 + i];
-        a[i] = t == 'b' ? wpo_v_bool(!strcmp(args[i], "1") || !strcmp(args[i], "true")) :
-               t == 'i' ? wpo_v_int(strtoll(args[i], NULL, 10)) :
-               t == 'd' ? wpo_v_double(strtod(args[i], NULL)) : wpo_v_string(args[i]);
+        a[i] = t == 'b' ? osdo_v_bool(!strcmp(args[i], "1") || !strcmp(args[i], "true")) :
+               t == 'i' ? osdo_v_int(strtoll(args[i], NULL, 10)) :
+               t == 'd' ? osdo_v_double(strtod(args[i], NULL)) : osdo_v_string(args[i]);
     }
-    if (wpo_send(o, method, a, n, &r) != WPO_OK || (r.type == 'b' && !r.u.b)) problem(event, path, a0, "refused");
-    for (size_t i = 0; i < n; i++) wpo_value_clear(&a[i]);
-    wpo_value_clear(&r);
+    if (osdo_send(o, method, a, n, &r) != OSDO_OK || (r.type == 'b' && !r.u.b)) problem(event, path, a0, "refused");
+    for (size_t i = 0; i < n; i++) osdo_value_clear(&a[i]);
+    osdo_value_clear(&r);
 }
 
 /* A client's desktop session (its display and settings, from its last
@@ -93,7 +93,7 @@ void client_note_session(struct client *c, const char *display, const char *x11,
     for (size_t i = 0; i < nenvs && c->nenvs < 8; i++) snprintf(c->envs[c->nenvs++], sizeof c->envs[0], "%s", envs[i]);
 }
 
-char *fire_event_for(struct client *c, wpo_object *o, const char *path, const char *event)
+char *fire_event_for(struct client *c, osdo_object *o, const char *path, const char *event)
 {
     const char *e[8];
     size_t n = 0;
@@ -101,13 +101,13 @@ char *fire_event_for(struct client *c, wpo_object *o, const char *path, const ch
     return fire_event(o, path, event, c && c->display[0] ? c->display : NULL, c && c->x11[0] ? c->x11 : NULL, e, n);
 }
 
-char *fire_event(wpo_object *o, const char *path, const char *event, const char *display, const char *x11,
+char *fire_event(osdo_object *o, const char *path, const char *event, const char *display, const char *x11,
                  const char *const *envs, size_t nenvs)
 {
-    if (!o || !wpo_is_a(o, WPObjectClass)) return NULL;
+    if (!o || !osdo_is_a(o, OsdObjectClass)) return NULL;
     char prop[128];
     snprintf(prop, sizeof prop, "on:%s", event);
-    char *v = WPObject_wpQueryProperty(o, prop);
+    char *v = OsdObject_osdQueryProperty(o, prop);
     if (!v || !*v) { free(v); return NULL; }
     char *sound = NULL;
     for (char *q = v, *a; (a = strsep(&q, "|"));) {

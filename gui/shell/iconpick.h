@@ -5,8 +5,8 @@
  * there), in an icon view with a search field. A double click (or Enter)
  * picks one: chosen(owner, key, the image's path), and the picker closes.
  */
-#ifndef WPS_ICONPICK_H
-#define WPS_ICONPICK_H
+#ifndef OSD_ICONPICK_H
+#define OSD_ICONPICK_H
 
 #include <stdbool.h>
 #include <stddef.h>

@@ -99,7 +99,7 @@ static void got_folder(void *arg, const cv *reply)
         k->link = link;
         k->kind = kind_for(ty, nm);
         const char *mk = cv_text(it, "makes"), *ic = cv_text(it, "icon");
-        if (mk) k->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
+        if (mk) k->kind = !strcmp(mk, "OsdFolder") ? UI_KIND_FOLDER : !strcmp(mk, "OsdProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
         if (ic) snprintf(k->icon, sizeof k->icon, "%s", ic);
         if (shadow || link) k->kind = tt && !strcmp(tt, "folder") ? UI_KIND_FOLDER : kind_for("file", tp && *tp ? tp : nm);
         if ((shadow || link) && tt && !strcmp(tt, "folder") && tp && *tp) {   /* opens as the folder it shows */

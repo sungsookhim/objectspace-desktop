@@ -15,8 +15,8 @@
  *      (pixel art stays sharp), else smoothly.
  * Never a fractional nearest-neighbour scale.
  */
-#ifndef WPS_WPSICON_H
-#define WPS_WPSICON_H
+#ifndef OSD_WPSICON_H
+#define OSD_WPSICON_H
 
 #include <cairo.h>
 #include <stdbool.h>

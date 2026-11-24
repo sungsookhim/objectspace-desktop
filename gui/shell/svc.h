@@ -4,8 +4,8 @@
  * replies and hands each to its callback on the UI thread. Requests are
  * pipelined (matched by ID), so a slow page never holds up a menu.
  */
-#ifndef WPS_SHELL_SVC_H
-#define WPS_SHELL_SVC_H
+#ifndef OSD_SHELL_SVC_H
+#define OSD_SHELL_SVC_H
 
 #include <stdbool.h>
 #include <stddef.h>
