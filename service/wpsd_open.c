@@ -39,7 +39,8 @@ void list_reply(void *arg, const wps_page *pg)
                 bool link = e->detailed && !e->shadow && e->type == DT_LNK;
                 bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0], icon = e->detailed && e->icon[0];
                 bool iopen = e->detailed && e->icon_open[0], hatch = e->detailed && e->open_hatch;
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon + iopen + hatch : 2);
+                bool ex = e->detailed && e->exec;
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon + iopen + hatch + ex : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -58,6 +59,7 @@ void list_reply(void *arg, const wps_page *pg)
                         cb_text(&b, "target_path"); cb_text(&b, e->target_path);
                     }
                     if (iu) { cb_text(&b, "in_use"); cb_bool(&b, true); }
+                    if (ex) { cb_text(&b, "exec"); cb_text(&b, e->exec == 2 ? "text" : "window"); }   /* a program file (0.4.1) */
                     if (tpl) { cb_text(&b, "template"); cb_bool(&b, true); }
                     if (makes) { cb_text(&b, "makes"); cb_text(&b, e->makes); }   /* a built-in template */
                     if (icon) { cb_text(&b, "icon"); cb_text(&b, e->icon); }       /* its own icon (a PNG) */

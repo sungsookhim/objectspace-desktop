@@ -479,6 +479,11 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
             dst->icon_open = io && *io ? strdup(io) : NULL;
             const cv *oh = cv_get(it, "open_hatch");
             dst->open_hatch = oh && oh->k == CV_BOOL && oh->b;
+            const char *ex = cv_text(it, "exec");   /* a program file (+x, ELF or #!): a program, the theme's (text mode: program-text) */
+            if (ex) {
+                dst->kind = UI_KIND_PROGRAM;
+                if (!dst->icon) dst->icon = strdup(!strcmp(ex, "text") ? "theme:program-text" : "theme:program");
+            }
             const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
             if (mk) dst->kind = !strcmp(mk, "WPFolder") ? UI_KIND_FOLDER : !strcmp(mk, "WPProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");

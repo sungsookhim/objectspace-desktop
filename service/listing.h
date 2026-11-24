@@ -40,6 +40,7 @@ typedef struct {
     char icon[PATH_MAX];     /* its own icon (a PNG), or its shadow's target's; "": its kind's */
     char icon_open[PATH_MAX];   /* its own open icon, or its shadow's target's; "": none */
     bool open_hatch;         /* hatched while open, over its open icon too */
+    unsigned char exec;      /* (0.4.1) a program file (+x, ELF or #!): 1 a window one, 2 text mode */
 } wps_entry;
 
 typedef struct {

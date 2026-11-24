@@ -10,7 +10,7 @@ W="$PWD/build/wpsctl"
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # the user's shell, for Command prompt here: says where it is, then waits
-printf '#!/bin/sh\necho "$PWD|$WPS_FOLDER" > "%s/prompt.txt"\nsleep 30\n' "$S" > "$S/shell.sh"
+printf '#!/bin/sh\necho "$PWD|$WPS_FOLDER" > "%s/prompt.txt"\ncommand -v wps > "%s/wps.txt"\nsleep 30\n' "$S" "$S" > "$S/shell.sh"
 chmod +x "$S/shell.sh"
 # Projects (its icon at 54,30) opens at 320,106: hello.sh at 372,176. The
 # Projects icon's menu: Command prompt here at 148,156. The terminals open
@@ -47,6 +47,7 @@ check "a script object runs in WPS Terminal, titled by it" "grep -q \"^0 hello.s
 check "its object is in use while it runs" "python3 -c \"import json,sys; d = json.load(open('$T/list.txt')); e = [x for x in d['result']['items'] if x['name'] == 'hello.sh']; sys.exit(0 if e and e[0].get('in_use') else 1)\""
 check "Command prompt here: the user's shell in WPS Terminal" "grep -q \"^0 Command Prompt - Projects shown\" '$S/blocks.txt'"
 check "... in the folder, WPS_FOLDER set" "[ \"\$(cat '$S/prompt.txt' 2>/dev/null)\" = \"\$T/desk/Projects|\$T/desk/Projects\" ]"
+check "... and WPS's commands on its PATH (wps)" "[ \"\$(cat '$S/wps.txt' 2>/dev/null)\" = '$PWD/build/wps' ]"
 check "both minimized with the work area" "[ \$(grep -c '^1 .* minimized' '$S/blocks.txt') = 2 ]"
 cp "$T/shell.log" "$S/shell1.log" 2>/dev/null
 rm -rf "$T"

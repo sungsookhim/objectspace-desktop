@@ -161,6 +161,32 @@ void wps_launch_shutdown(void)
 
 static char last_unit[96];   /* the scope spawn just made ("" none) */
 
+/* WPS's own commands for programs and scripts (wps, wpsctl, wps-terminal):
+ * a build's folder put first on the PATH when wpsd runs from one (an
+ * installed WPS has them in bin, on the PATH already). "" when not needed. */
+static const char *tools_path(void)
+{
+    static char env[8192];
+    static bool done;
+    if (done) return env;
+    done = true;
+    char exe[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    exe[n > 0 ? n : 0] = 0;
+    char *sl = strrchr(exe, '/');
+    if (!sl) return env;
+    *sl = 0;
+    char wps[PATH_MAX + 8];
+    snprintf(wps, sizeof wps, "%s/wps", exe);
+    if (access(wps, X_OK) != 0) return env;
+    const char *path = getenv("PATH");
+    char copy[8192];
+    snprintf(copy, sizeof copy, "%s", path ? path : "");
+    for (char *s = copy, *t; (t = strsep(&s, ":"));) if (!strcmp(t, exe)) return env;   /* (there already) */
+    snprintf(env, sizeof env, "PATH=%s%s%s", exe, path && *path ? ":" : "", path ? path : "");
+    return env;
+}
+
 static pid_t spawn(char **argv, const char *cwd, const char *display, const char *x11, const char *const *envs, size_t nenvs)
 {
     posix_spawnattr_t at;
@@ -183,8 +209,10 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     while (environ[ne]) ne++;
     /* (and its X display: the service may have started before XWayland,
      * and X programs need one) */
-    char **env = calloc(ne + 4 + nenvs, sizeof *env), wl[4200], xd[64];
+    char **env = calloc(ne + 5 + nenvs, sizeof *env), wl[4200], xd[64];
     size_t k = 0;
+    const char *tp = tools_path();   /* (a build's: wps and the others found by the program) */
+    if (env && *tp) env[k++] = (char *)tp;
     bool w = display && *display, x = x11 && *x11;
     if (env && w) {
         /* by its name when it is in the runtime folder, as the session
@@ -214,6 +242,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
             replaced = !strncmp(environ[i], envs[j], nl);
         }
         if (!replaced && !(w && !strncmp(environ[i], "WAYLAND_DISPLAY=", 16)) && !(x && !strncmp(environ[i], "DISPLAY=", 8)) &&
+            !(*tp && !strncmp(environ[i], "PATH=", 5)) &&
             !(gnome_only && !strncmp(environ[i], "XDG_CURRENT_DESKTOP=", 20)))
             env[k++] = environ[i];
     }

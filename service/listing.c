@@ -333,6 +333,10 @@ static void detail_work(void *arg)
             e->size = st.st_size;
             e->mtime = st.st_mtim.tv_sec;
             e->detailed = true;
+            /* a program: executable, and an ELF binary or a script (#!) by
+             * its first bytes (not +x alone: a FAT drive's files all are) */
+            if (S_ISREG(st.st_mode) && (st.st_mode & 0111) && wps_is_program_file(p))
+                e->exec = wps_program_needs_terminal(p) ? 2 : 1;
         }
         if (!wps_attr_get_id(p, e->id)) e->id[0] = 0;
         wps_props ps;

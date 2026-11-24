@@ -178,6 +178,105 @@ static bool selected(int row, int col)
     return true;
 }
 
+/* Block elements, box drawing and braille, drawn here to fill the cell
+ * edge to edge on whole pixels (a font's glyphs leave gaps between cells:
+ * btop's meters and graphs). False: the font draws it. */
+static uint32_t cp_of(const char *s)
+{
+    const unsigned char *u = (const unsigned char *)s;
+    if (u[0] >= 0xe0 && u[0] < 0xf0 && u[1] && u[2] && !u[3])
+        return (uint32_t)(u[0] & 0x0f) << 12 | (uint32_t)(u[1] & 0x3f) << 6 | (u[2] & 0x3f);
+    return 0;
+}
+
+/* Box drawing: each arm (up, right, down, left): 0 none, 1 light, 2 heavy, 3 double. */
+static const struct { uint16_t cp; unsigned char u, r, d, l; } boxes[] = {
+    { 0x2500, 0, 1, 0, 1 }, { 0x2501, 0, 2, 0, 2 }, { 0x2502, 1, 0, 1, 0 }, { 0x2503, 2, 0, 2, 0 },
+    { 0x2504, 0, 1, 0, 1 }, { 0x2505, 0, 2, 0, 2 }, { 0x2506, 1, 0, 1, 0 }, { 0x2507, 2, 0, 2, 0 },
+    { 0x2508, 0, 1, 0, 1 }, { 0x2509, 0, 2, 0, 2 }, { 0x250a, 1, 0, 1, 0 }, { 0x250b, 2, 0, 2, 0 },
+    { 0x250c, 0, 1, 1, 0 }, { 0x250f, 0, 2, 2, 0 }, { 0x2510, 0, 0, 1, 1 }, { 0x2513, 0, 0, 2, 2 },
+    { 0x2514, 1, 1, 0, 0 }, { 0x2517, 2, 2, 0, 0 }, { 0x2518, 1, 0, 0, 1 }, { 0x251b, 2, 0, 0, 2 },
+    { 0x251c, 1, 1, 1, 0 }, { 0x2523, 2, 2, 2, 0 }, { 0x2524, 1, 0, 1, 1 }, { 0x252b, 2, 0, 2, 2 },
+    { 0x252c, 0, 1, 1, 1 }, { 0x2533, 0, 2, 2, 2 }, { 0x2534, 1, 1, 0, 1 }, { 0x253b, 2, 2, 0, 2 },
+    { 0x253c, 1, 1, 1, 1 }, { 0x254b, 2, 2, 2, 2 }, { 0x254c, 0, 1, 0, 1 }, { 0x254d, 0, 2, 0, 2 },
+    { 0x254e, 1, 0, 1, 0 }, { 0x254f, 2, 0, 2, 0 },
+    { 0x2550, 0, 3, 0, 3 }, { 0x2551, 3, 0, 3, 0 }, { 0x2554, 0, 3, 3, 0 }, { 0x2557, 0, 0, 3, 3 },
+    { 0x255a, 3, 3, 0, 0 }, { 0x255d, 3, 0, 0, 3 }, { 0x2560, 3, 3, 3, 0 }, { 0x2563, 3, 0, 3, 3 },
+    { 0x2566, 0, 3, 3, 3 }, { 0x2569, 3, 3, 0, 3 }, { 0x256c, 3, 3, 3, 3 },
+    { 0x256d, 0, 1, 1, 0 }, { 0x256e, 0, 0, 1, 1 }, { 0x256f, 1, 0, 0, 1 }, { 0x2570, 1, 1, 0, 0 },   /* (rounded: square) */
+    { 0x2574, 0, 0, 0, 1 }, { 0x2575, 1, 0, 0, 0 }, { 0x2576, 0, 1, 0, 0 }, { 0x2577, 0, 0, 1, 0 },
+    { 0x2578, 0, 0, 0, 2 }, { 0x2579, 2, 0, 0, 0 }, { 0x257a, 0, 2, 0, 0 }, { 0x257b, 0, 0, 2, 0 },
+    { 0x257c, 0, 2, 0, 1 }, { 0x257d, 1, 0, 2, 0 }, { 0x257e, 0, 1, 0, 2 }, { 0x257f, 2, 0, 1, 0 },
+};
+
+static bool draw_special(cairo_t *cr, uint32_t cp, double x0, double y0, double x1, double y1, ui_color fg)
+{
+    double w = x1 - x0, h = y1 - y0;
+    if (cp >= 0x2580 && cp <= 0x259f) {   /* block elements */
+        double ex = round(w / 8), ey = round(h / 8);
+        ui_rect r[4];
+        int n = 0;
+        double mx = round(x0 + w / 2), my = round(y0 + h / 2);
+        if (cp == 0x2580) r[n++] = (ui_rect){ x0, y0, w, my - y0 };
+        else if (cp >= 0x2581 && cp <= 0x2588) { double t = round(h * (double)(cp - 0x2580) / 8); r[n++] = (ui_rect){ x0, y1 - t, w, t }; }
+        else if (cp >= 0x2589 && cp <= 0x258f) { double t = round(w * (double)(0x2590 - cp) / 8); r[n++] = (ui_rect){ x0, y0, t, h }; }
+        else if (cp == 0x2590) r[n++] = (ui_rect){ mx, y0, x1 - mx, h };
+        else if (cp >= 0x2591 && cp <= 0x2593) {   /* shades: the colour at 25, 50, 75% */
+            ui_color c = fg;
+            c.a = (double)(cp - 0x2590) / 4;
+            ui_fill(cr, (ui_rect){ x0, y0, w, h }, c);
+            return true;
+        }
+        else if (cp == 0x2594) r[n++] = (ui_rect){ x0, y0, w, ey ? ey : 1 };
+        else if (cp == 0x2595) r[n++] = (ui_rect){ x1 - (ex ? ex : 1), y0, ex ? ex : 1, h };
+        else {   /* quadrants: bits upper left 1, upper right 2, lower left 4, lower right 8 */
+            static const unsigned char q[] = { 4, 8, 1, 1 | 4 | 8, 1 | 8, 1 | 2 | 4, 1 | 2 | 8, 2, 2 | 4, 2 | 4 | 8 };
+            unsigned m = q[cp - 0x2596];
+            if (m & 1) r[n++] = (ui_rect){ x0, y0, mx - x0, my - y0 };
+            if (m & 2) r[n++] = (ui_rect){ mx, y0, x1 - mx, my - y0 };
+            if (m & 4) r[n++] = (ui_rect){ x0, my, mx - x0, y1 - my };
+            if (m & 8) r[n++] = (ui_rect){ mx, my, x1 - mx, y1 - my };
+        }
+        for (int i = 0; i < n; i++) ui_fill(cr, r[i], fg);
+        return true;
+    }
+    if (cp >= 0x2800 && cp <= 0x28ff) {   /* braille: a 2 x 4 grid of dots */
+        static const unsigned char bit[2][4] = { { 0, 1, 2, 6 }, { 3, 4, 5, 7 } };
+        unsigned m = cp - 0x2800;
+        double dw = fmax(1, round(w / 4)), dh = fmax(1, round(h / 8));
+        for (int c = 0; c < 2; c++)
+            for (int r = 0; r < 4; r++)
+                if (m & (1u << bit[c][r])) {
+                    double cx = round(x0 + w * (c * 2 + 1) / 4 - dw / 2), cy = round(y0 + h * (r * 2 + 1) / 8 - dh / 2);
+                    ui_fill(cr, (ui_rect){ cx, cy, dw, dh }, fg);
+                }
+        return true;
+    }
+    if (cp < 0x2500 || cp > 0x257f) return false;
+    for (size_t i = 0; i < sizeof boxes / sizeof *boxes; i++) {
+        if (boxes[i].cp != cp) continue;
+        double lt = fmax(1, round(w / 8)), hv = lt * 2;
+        double mx = round(x0 + w / 2), my = round(y0 + h / 2);
+        unsigned arm[4] = { boxes[i].u, boxes[i].r, boxes[i].d, boxes[i].l };
+        for (int k = 0; k < 4; k++) {
+            if (!arm[k]) continue;
+            double t = arm[k] == 2 ? hv : lt;
+            /* (a double arm: two lines a line apart) */
+            int lines = arm[k] == 3 ? 2 : 1;
+            for (int L = 0; L < lines; L++) {
+                double off = lines == 2 ? (L ? lt : -lt) * 1.5 : 0;
+                double cxl = round(mx - t / 2 + off), cyl = round(my - t / 2 + off);
+                if (k == 0) ui_fill(cr, (ui_rect){ cxl, y0, t, my + t / 2 - y0 }, fg);
+                else if (k == 2) ui_fill(cr, (ui_rect){ cxl, round(my - t / 2), t, y1 - round(my - t / 2) }, fg);
+                else if (k == 1) ui_fill(cr, (ui_rect){ round(mx - t / 2), cyl, x1 - round(mx - t / 2), t }, fg);
+                else ui_fill(cr, (ui_rect){ x0, cyl, mx + t / 2 - x0, t }, fg);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 static void draw_row(cairo_t *cr, ui_rect a, int vr)
 {
     int row = vr - T.view, cols = term_core_cols(T.core);
@@ -191,8 +290,13 @@ static void draw_row(cairo_t *cr, ui_rect a, int vr)
         ui_color fg = c.fg, bg = c.bg;
         bool bgd = c.bg_default;
         if (selected(row, col)) { fg = k->selection_text; bg = k->selection; bgd = false; }
-        if (!bgd) ui_fill(cr, (ui_rect){ x, y, w, T.ch }, bg);
-        if (c.text[0] && strcmp(c.text, " ")) {
+        /* whole pixels: neighbouring cells' backgrounds and blocks meet */
+        double px0 = round(x), px1 = round(a.x + (col + c.width) * T.cw);
+        if (!bgd) ui_fill(cr, (ui_rect){ px0, y, px1 - px0, T.ch }, bg);
+        uint32_t cp = cp_of(c.text);
+        if (cp && draw_special(cr, cp, px0, y, px1, y + T.ch, fg)) {
+            /* (drawn: a block, a box line, braille) */
+        } else if (c.text[0] && strcmp(c.text, " ")) {
             ui_set_color(cr, fg);
             ui_font f = c.bold ? T.bold : T.font;
             if (c.italic) {   /* (slanted: a monospace font's italic may not exist) */
