@@ -24,7 +24,7 @@ jobs:
           dnf -y install --setopt=install_weak_deps=False \
             gcc make git-core python3 python3-pillow python3-dbus python3-gobject-base findutils procps-ng diffutils which attr util-linux shadow-utils \
             glib2 pam-devel shared-mime-info xdg-user-dirs dbus-daemon dbus-tools \
-            xorg-x11-server-Xwayland google-noto-sans-fonts dejavu-sans-fonts dejavu-sans-mono-fonts \
+            xorg-x11-server-Xwayland google-noto-sans-vf-fonts google-noto-sans-mono-vf-fonts google-noto-sans-cjk-vf-fonts vim-enhanced htop \
             libasan libubsan libtsan \
             'pkgconfig(sqlite3)' 'pkgconfig(libsystemd)' 'pkgconfig(cairo)' 'pkgconfig(harfbuzz)' \
             'pkgconfig(freetype2)' 'pkgconfig(fontconfig)' 'pkgconfig(wayland-client)' \
@@ -42,6 +42,8 @@ jobs:
           for d in /tmp /var/tmp "$GITHUB_WORKSPACE"; do
             f=$(mktemp -p "$d"); if setfattr -n user.osd.test -v 1 "$f" 2>/dev/null; then echo "user xattrs: yes in $d ($(stat -f -c %T "$d"))"; else echo "user xattrs: NO in $d ($(stat -f -c %T "$d"))"; fi; rm -f "$f"
           done
+      - name: Fonts
+        run: fc-match sans-serif; fc-match monospace; fc-match 'Noto Sans CJK KR'
       - name: Build
         run: su tester -c "make -j$(nproc) && make gui -j$(nproc) && make session -j$(nproc)"
       - name: make check
