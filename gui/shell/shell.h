@@ -112,6 +112,7 @@ struct folder {
     int64_t bg_sub;
     char bg_image[PATH_MAX], bg_color[16], bg_img_path[PATH_MAX];
     char title_color[16];    /* its icons' titles' colour ("": the scheme's) */
+    char title_bar_color[16];   /* its active title bar's ("": the scheme's) */
     int bg_mode;
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */

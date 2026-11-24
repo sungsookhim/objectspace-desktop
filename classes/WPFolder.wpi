@@ -70,6 +70,7 @@ property icon_theme : choice = "WPS (flat)" page "Icon view" label "Icon theme" 
 property icon_set : choice "Small,Default,Large" = Default page "Icon view" label "Icon size"
 property icon_font : text page "Icon view" label "Icon font (e.g. 10.Sans; empty: the System's)" set wpSetIconFont
 property title_font : text page "Icon view" label "Title bar font (empty: all title bars')" set wpSetTitleFont
+property title_bar_color : color page "Icon view" label "Title bar colour (empty: the scheme's)"
 property title_color : color page "Icon view" label "Title colour (icons' titles)"
 property col_name : checkbox = 1 page "Details view" label "Real name"
 property col_type : checkbox = 1 page "Details view" label Type

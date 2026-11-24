@@ -12,7 +12,8 @@ static ui_frame_geom geom(ui_surface *s)
 {
     return (ui_frame_geom){ .w = s->w, .h = s->h, .frameless = s->frameless, .maximized = s->maximized,
                             .activated = s->activated, .pointer_inside = s->pointer_inside, .hover = s->hover,
-                            .pressed = s->pressed, .own_title_font = s->own_title_font, .title_font = s->title_font };
+                            .pressed = s->pressed, .own_title_font = s->own_title_font, .title_font = s->title_font,
+                            .own_title_color = s->own_title_color, .title_color = s->title_color };
 }
 
 void ui_window_set_title_font(ui_surface *s, bool own, ui_font f)
@@ -20,6 +21,15 @@ void ui_window_set_title_font(ui_surface *s, bool own, ui_font f)
     if (s->own_title_font == own && (!own || s->title_font == f)) return;
     s->own_title_font = own;
     s->title_font = f;
+    ui_frame_damage(s);
+}
+
+void ui_window_set_title_color(ui_surface *s, const ui_color *c)
+{
+    bool own = c != NULL;
+    if (s->own_title_color == own && (!own || !memcmp(c, &s->title_color, sizeof *c))) return;
+    s->own_title_color = own;
+    if (own) s->title_color = *c;
     ui_frame_damage(s);
 }
 

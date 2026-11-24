@@ -148,7 +148,7 @@ void ui_frame_geom_draw(const ui_frame_geom *s, cairo_t *cr, ui_rect clip, const
         ui_bevel(cr, (ui_rect){ bw() - 1, bw() - 1, s->w - 2 * bw() + 2, s->h - 2 * bw() + 2 }, false);
     }
     ui_rect t = title_rect(s);
-    ui_color tc = s->activated ? k->title_active : k->title_inactive;
+    ui_color tc = !s->activated ? k->title_inactive : s->own_title_color ? s->title_color : k->title_active;
     if (k->translucency == 1) {
         /* Translucent title bar: what is behind the window shows through. */
         tc.a = 0.8;

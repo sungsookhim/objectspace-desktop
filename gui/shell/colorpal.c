@@ -515,7 +515,7 @@ static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
     char msg[160];
-    if (nsamples) snprintf(msg, sizeof msg, "%s: drag it onto a folder (Ctrl: titles), a title bar or a colour field", samples[pal.sel]);
+    if (nsamples) snprintf(msg, sizeof msg, "%s: drag it onto a folder or its title bar (Ctrl: titles; Shift: all)", samples[pal.sel]);
     else snprintf(msg, sizeof msg, "No colours: add them in its Properties");
     ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
     cairo_restore(cr);

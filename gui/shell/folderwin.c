@@ -200,7 +200,7 @@ static void got_bg(void *arg, const cv *reply)
     f->bg_mode = 2;
     f->bg_gnome = true;
     f->icon_font[0] = f->title_font[0] = 0;
-    char title_color[16] = "";
+    char title_color[16] = "", bar_color[16] = "";
     int was_choice = f->sort_choice;
     bool was_desc = f->sort_desc, was_hidden = f->show_hidden, was_ext = f->show_ext;
     unsigned cols = 0;
@@ -231,6 +231,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "icon_layout")) free_l = strcmp(v, "grid") != 0;
         else if (!strcmp(key, "title_font")) snprintf(f->title_font, sizeof f->title_font, "%s", v);
         else if (!strcmp(key, "title_color")) snprintf(title_color, sizeof title_color, "%s", v);
+        else if (!strcmp(key, "title_bar_color")) snprintf(bar_color, sizeof bar_color, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
         else if (!strcmp(key, "show_ext")) f->show_ext = on;
         else if (!strcmp(key, "arrange_offered")) offered = on || !strcmp(v, "true");
@@ -274,6 +275,10 @@ static void got_bg(void *arg, const cv *reply)
     snprintf(f->title_color, sizeof f->title_color, "%s", has_tc ? title_color : "");
     ui_container_set_title_color(f->cont, has_tc ? &(ui_color){ tc[0], tc[1], tc[2], 1 } : NULL);
     ui_window_set_title_font(f->win, f->title_font[0] != 0, ui_font_named(f->title_font));   /* its own, as on OS/2 */
+    double bc[3];   /* its own active title bar colour (the Colour Palette dropped on it) */
+    bool has_bc = ui_parse_color(bar_color, bc);
+    snprintf(f->title_bar_color, sizeof f->title_bar_color, "%s", has_bc ? bar_color : "");
+    ui_window_set_title_color(f->win, has_bc ? &(ui_color){ bc[0], bc[1], bc[2], 1 } : NULL);
     layout_lock_all(f->lay, lock_all);
     f->lock_all = lock_all;
     if (whole != f->whole_titles) {   /* the Icon view page's Titles */

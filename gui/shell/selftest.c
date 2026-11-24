@@ -307,8 +307,8 @@ void win_frame(ui_surface *s, double now)
     if (st && !strcmp(st, "colors")) {
         /* The Colour Palette (0.4 step 7): a colour dropped on this
          * folder (its background), with Ctrl (its icons' titles), with
-         * Shift (every folder's), on its title bar (the scheme's active
-         * title bar); on its notebook's colour field; Edit colour...
+         * Shift (every folder's), on its title bar (its own; with Shift
+         * the scheme's active title bar); on its notebook's colour field; Edit colour...
          * <D> has a.txt. */
         static double t0;
         static int step;
@@ -334,12 +334,14 @@ void win_frame(ui_surface *s, double now)
             }
             fprintf(stderr, "selftest: colors: its background %s, its titles %s\n", f->bg_color, f->title_color);
             ui_surface_test_drop(s, 300, 300, UI_MIME_COLOR, "#800000", UI_MOD_SHIFT);   /* every folder's */
-            fprintf(stderr, "selftest: colors: on its title bar: %u\n", ui_surface_test_drop(s, 200, 12, UI_MIME_COLOR, "#008000", 0));
+            fprintf(stderr, "selftest: colors: on its title bar: %u\n", ui_surface_test_drop(s, 200, 12, UI_MIME_COLOR, "#800080", 0));
+            fprintf(stderr, "selftest: colors: with Shift: %u\n", ui_surface_test_drop(s, 200, 12, UI_MIME_COLOR, "#008000", UI_MOD_SHIFT));
             step++;
             t0 = now;
         } else if (step == 2 && t > 1500) {
             const ui_color c = ui_scheme_now.title_active;
-            fprintf(stderr, "selftest: colors: its own still %s; the scheme's active title bar #%02x%02x%02x\n", f->bg_color,
+            fprintf(stderr, "selftest: colors: its own still %s; its title bar %s; with Shift the scheme's active title bar #%02x%02x%02x\n",
+                    f->bg_color, f->title_bar_color,
                     (int)lround(c.r * 255), (int)lround(c.g * 255), (int)lround(c.b * 255));
             open_properties(f->path);
             svc_props("class:WPFolder", colors_class_read, NULL);

@@ -30,16 +30,16 @@ DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1 WPS_WALLPAPER=" 
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 # The page itself: the picture small beside its path (0.4 step 7), the
 # swatch the colour used (OS/2's teal, "default"); None takes the picture away; the palette (the colour
-# swatch at 554,293) gives a colour: green at 580,339.
+# swatch at 554,281) gives a colour: green at 580,327.
 cat > "$S/page" <<EOS
 3.5 click 600 300 right
 4.2 click 650 382
-5.5 click 782 165
+5.5 click 782 153
 6.0 shot $S/page.png
-6.2 click 879 233
-7 click 554 293
+6.2 click 879 221
+7 click 554 281
 7.8 shot $S/palette.png
-8 click 580 339
+8 click 580 327
 11 quit
 EOS
 DESKENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=14 tests/comp/run.sh "$S/page" \
@@ -53,8 +53,8 @@ check "the desktop: its own picture, stretched" "[ \"\$(px '$S/one.png' 100 650)
 check "a folder window: its colour" "[ \"\$(px '$S/one.png' 600 400)\" = '255 0 255' ]"
 check "its picture, centred in the list" "[ \"\$(px '$S/two.png' 631 336)\" = '20 20 220' ] && [ \"\$(px '$S/two.png' 340 140)\" = '255 0 255' ]"
 check "GNOME's background again (WPS_WALLPAPER empty: a colour, OS/2's teal)" "[ \"\$(px '$S/three.png' 100 650)\" = '0 128 128' ]"
-check "the picture's preview beside its path" "[ \"\$(px '$S/page.png' 558 232)\" = '9 9 9' ]"
-check "no colour: the swatch the one used (teal)" "[ \"\$(px '$S/page.png' 553 292)\" = '0 128 128' ]"
+check "the picture's preview beside its path" "[ \"\$(px '$S/page.png' 558 220)\" = '9 9 9' ]"
+check "no colour: the swatch the one used (teal)" "[ \"\$(px '$S/page.png' 553 280)\" = '0 128 128' ]"
 check "None: no picture" "grep -q '\"key\":\"bg_image\"[^}]*\"value\":\"\"' '$T2/after.log'"
 check "the palette: a colour picked" "grep -q '\"key\":\"bg_color\"[^}]*\"value\":\"#008000\"' '$T2/after.log'"
 check "a folder's page has no Use GNOME's background" "! grep -q bg_gnome '$T/page.log' && grep -q bg_image '$T/page.log'"

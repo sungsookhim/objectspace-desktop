@@ -323,6 +323,8 @@ typedef struct {
     ui_hit hover, pressed;     /* the part under the pointer, the button held */
     bool own_title_font;       /* its title in title_font, not all title bars' */
     ui_font title_font;
+    bool own_title_color;      /* its active title bar in title_color, not the scheme's */
+    ui_color title_color;
 } ui_frame_geom;
 ui_rect ui_frame_geom_client(const ui_frame_geom *g);
 ui_hit ui_frame_geom_hit(const ui_frame_geom *g, double x, double y);
@@ -338,6 +340,9 @@ void ui_frame_damage(ui_surface *s);                 /* title bar, e.g. on focus
 /* One window's title font (a folder's, from the Font Palette); `own`
  * false: all title bars' again. */
 void ui_window_set_title_font(ui_surface *s, bool own, ui_font f);
+/* One window's active title bar colour (a folder's, from the Colour
+ * Palette); NULL: the scheme's again. Inactive, it is the scheme's. */
+void ui_window_set_title_color(ui_surface *s, const ui_color *c);
 void ui_frame_system_menu(ui_surface *s, uint32_t serial);
 
 /* ------------------------------------------------------------------ menus */

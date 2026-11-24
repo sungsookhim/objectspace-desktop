@@ -473,6 +473,13 @@ int drop_how(uint32_t action, uint32_t start_action, unsigned mods)
     return 0;
 }
 
+/* The title bar's row, its buttons and system menu included. */
+static bool on_title_bar(ui_surface *s, double x, double y)
+{
+    ui_hit h = ui_frame_hit(s, x, y);
+    return h == UI_HIT_TITLE || h == UI_HIT_SYSMENU || h == UI_HIT_MIN || h == UI_HIT_MAX || h == UI_HIT_CLOSE;
+}
+
 uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
                      uint32_t start_action, unsigned mods)
 {
@@ -486,7 +493,7 @@ uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const cha
         char spec[128];
         snprintf(spec, sizeof spec, "%.*s", (int)strcspn(data, "\r\n"), data);
         if (!ui_font_valid(spec)) return 0;
-        bool title = !f->desktop && ui_frame_hit(s, x, y) == UI_HIT_TITLE;
+        bool title = !f->desktop && on_title_bar(s, x, y);
         if (title && (mods & UI_MOD_SHIFT)) font_apply("titles", spec);
         else if (title) {
             cv v = { .k = CV_TEXT, .s = spec, .len = strlen(spec) };
@@ -500,15 +507,20 @@ uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const cha
         return UI_DND_COPY;
     }
     if (!strcmp(mime, UI_MIME_COLOR)) {
-        /* the Colour Palette's (v0.4-design 9): onto a title bar, the
-         * scheme's active title bar; else the folder's background (Ctrl:
-         * its icons' titles), with Shift every folder's */
+        /* the Colour Palette's (v0.4-design 9): onto a title bar, its own
+         * active title bar's (with Shift, the scheme's: every window's);
+         * else the folder's background (Ctrl: its icons' titles), with
+         * Shift every folder's */
         char hex[8];
         double rgb[3];
         snprintf(hex, sizeof hex, "%.*s", (int)strcspn(data, "\r\n"), data);
         if (hex[0] != '#' || !ui_parse_color(hex, rgb)) return 0;
-        if (!f->desktop && ui_frame_hit(s, x, y) == UI_HIT_TITLE) { color_apply("title_active", hex); return UI_DND_COPY; }
         cv v = { .k = CV_TEXT, .s = hex, .len = strlen(hex) };
+        if (!f->desktop && on_title_bar(s, x, y)) {
+            if (mods & UI_MOD_SHIFT) color_apply("title_active", hex);
+            else svc_settings_set(f->path, "title_bar_color", &v, -1, ignore_reply, NULL);
+            return UI_DND_COPY;
+        }
         const char *key = mods & UI_MOD_CTRL ? "title_color" : "bg_color";
         svc_settings_set(mods & UI_MOD_SHIFT ? "class:WPFolder" : f->path, key, &v, -1, ignore_reply, NULL);
         if (f->desktop && !(mods & (UI_MOD_CTRL | UI_MOD_SHIFT)) && f->bg_gnome) {

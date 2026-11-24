@@ -48,6 +48,8 @@ struct ui_surface {
     bool frameless;          /* no frame at all (the desktop) */
     bool own_title_font;     /* its own title font (a folder's) */
     ui_font title_font;
+    bool own_title_color;    /* its own active title bar colour (a folder's) */
+    ui_color title_color;
     bool needs_draw, frame_pending, continuous;
     struct wl_callback *frame_cb;   /* destroyed with the surface */
     struct ui_buffer bufs[UI_BUFFERS];
