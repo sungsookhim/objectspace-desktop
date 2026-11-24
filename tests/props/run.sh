@@ -14,7 +14,9 @@ RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-props-XXXX")
 export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
 export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" OSD_TEMPLATES_DIR="$T/templates"
 export OSD_UDISKS_BUS="unix:path=$RT/none" OSD_PROGRAMS_DESKTOP=GNOME
-mkdir -p "$T/desk" "$T/xdg/config" "$T/xdg/data"
+mkdir -p "$T/desk" "$T/xdg/config" "$T/xdg/data/applications"
+# a program for text files of the test's own (a machine may have none: CI)
+printf '[Desktop Entry]\nType=Application\nName=Test Editor\nExec=true %%f\nMimeType=text/plain;\n' > "$T/xdg/data/applications/osd-test-editor.desktop"
 "$REPO/build/osdd" 2>> "$T/osdd.log" &
 WP=$!
 for i in $(seq 50); do "$REPO/build/osdctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
