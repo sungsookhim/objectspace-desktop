@@ -22,7 +22,7 @@ jobs:
       - name: Packages
         run: |
           dnf -y install --setopt=install_weak_deps=False \
-            gcc make git-core python3 python3-pillow findutils procps-ng diffutils which attr \
+            gcc make git-core python3 python3-pillow findutils procps-ng diffutils which attr util-linux shadow-utils \
             glib2 pam-devel shared-mime-info xdg-user-dirs dbus-daemon dbus-tools \
             xorg-x11-server-Xwayland google-noto-sans-fonts dejavu-sans-fonts dejavu-sans-mono-fonts \
             libasan libubsan libtsan \
