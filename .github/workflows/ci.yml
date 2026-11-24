@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# Continuous integration (0.5 step 6): on Fedora 45, as the RPM is built -
+# the build, the unit and service tests (make check), the widget set's tests
+# (gui-test), an install into a scratch root run headless (install-check),
+# and the compositor's headless tests (comp-test).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  fedora:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --privileged
+    env:
+      XDG_RUNTIME_DIR: /tmp/xdg-runtime
+    steps:
+      - name: Packages
+        run: |
+          dnf -y install --setopt=install_weak_deps=False \
+            gcc make git-core python3 python3-pillow findutils procps-ng diffutils which attr \
+            glib2 pam-devel shared-mime-info xdg-user-dirs dbus-daemon dbus-tools \
+            xorg-x11-server-Xwayland google-noto-sans-fonts dejavu-sans-fonts dejavu-sans-mono-fonts \
+            libasan libubsan libtsan \
+            'pkgconfig(sqlite3)' 'pkgconfig(libsystemd)' 'pkgconfig(cairo)' 'pkgconfig(harfbuzz)' \
+            'pkgconfig(freetype2)' 'pkgconfig(fontconfig)' 'pkgconfig(wayland-client)' \
+            'pkgconfig(wayland-cursor)' 'pkgconfig(wayland-server)' 'pkgconfig(wayland-protocols)' \
+            'pkgconfig(wayland-scanner)' 'pkgconfig(xkbcommon)' 'pkgconfig(wlroots-0.20)' \
+            'pkgconfig(pixman-1)' 'pkgconfig(libdrm)' 'pkgconfig(xcb)' 'pkgconfig(libpipewire-0.3)' \
+            'pkgconfig(sndfile)' 'pkgconfig(zlib)' 'pkgconfig(librsvg-2.0)' 'pkgconfig(vterm)'
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+          useradd -m tester
+          chown -R tester "$GITHUB_WORKSPACE" "$XDG_RUNTIME_DIR"
+      - name: Build
+        run: su tester -c "make -j$(nproc) && make gui -j$(nproc) && make session -j$(nproc)"
+      - name: make check
+        run: su tester -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR make check"
+      - name: gui-test
+        run: su tester -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR make gui-test"
+      - name: install-check
+        run: su tester -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR make install-check"
+      - name: comp-test
+        run: su tester -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR make comp-test"
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/tests/*.log
+          if-no-files-found: ignore
