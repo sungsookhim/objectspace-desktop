@@ -357,6 +357,66 @@ void win_frame(ui_surface *s, double now)
         }
         return;
     }
+    if (st && !strcmp(st, "notebooks")) {
+        /* Every notebook's pages fit (labels in full, nothing past the
+         * edges): each target of OSD_SHELL_NOTEBOOKS ("," between them,
+         * "." this folder, "./NAME" a file in it) opened, its pages shown one by one, checked and
+         * (OSD_SHELL_SHOT) saved as <shot>-<n>-<page>.png. */
+        static double t0;
+        static int step, page, which;
+        static char targets[8192];
+        static char *next, *cur;
+        if (!t0) {
+            if (!f->m.complete) return;
+            t0 = now;
+            const char *e = getenv("OSD_SHELL_NOTEBOOKS");
+            snprintf(targets, sizeof targets, "%s", e ? e : ".");
+            next = targets;
+        }
+        double t = now - t0;
+        ui_notebook *nb = cur && props_open && !strcmp(props_open->target, cur) ? props_open->nb : NULL;
+        if (step == 0) {   /* the next target */
+            cur = next && *next ? next : NULL;
+            if (!cur) { fprintf(stderr, "selftest: notebooks: done\n"); ui_app_quit(app); step = 9; return; }
+            char *sc = strchr(cur, ',');
+            if (sc) { *sc = 0; next = sc + 1; } else next = NULL;
+            static char rel[PATH_MAX];
+            if (!strcmp(cur, ".")) cur = f->path;
+            else if (!strncmp(cur, "./", 2)) { snprintf(rel, sizeof rel, "%s/%s", f->path, cur + 2); cur = rel; }
+            open_properties(cur);
+            page = 0;
+            which++;
+            step = 1;
+            t0 = now;
+        } else if (step == 1 && t > 400 && nb) {
+            if ((size_t)page >= ui_notebook_page_count(nb)) {
+                ui_notebook_close(nb);
+                step = 0;
+                t0 = now;
+                return;
+            }
+            ui_notebook_show_page(nb, (size_t)page);
+            step = 2;
+            t0 = now;
+        } else if (step == 1 && t > 5000) {
+            fprintf(stderr, "selftest: notebooks: %s: no notebook\n", cur);
+            step = 0;
+        } else if (step == 2 && t > 250 && nb) {
+            char why[300];
+            bool ok = ui_notebook_page_fits(nb, why, sizeof why);
+            fprintf(stderr, "selftest: notebooks: %s page %d: %s%s\n", cur, page, ok ? "fits" : "CUT ", why);
+            const char *shot = getenv("OSD_SHELL_SHOT");
+            if (shot) {
+                char p[PATH_MAX];
+                snprintf(p, sizeof p, "%s-%02d-%d.png", shot, which, page);
+                ui_surface_snapshot(ui_notebook_surface(nb), p);
+            }
+            page++;
+            step = 1;
+            t0 = now - 1000;
+        }
+        return;
+    }
     if (st && !strcmp(st, "colors")) {
         /* The Colour Palette (0.4 step 7): a colour dropped on this
          * folder (its background), with Ctrl (its icons' titles), with

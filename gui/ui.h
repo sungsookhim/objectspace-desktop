@@ -540,6 +540,10 @@ void ui_notebook_close(ui_notebook *nb);
 ui_surface *ui_notebook_surface(ui_notebook *nb);
 void ui_notebook_show_page(ui_notebook *nb, size_t page);
 size_t ui_notebook_page(ui_notebook *nb);     /* the page shown */
+size_t ui_notebook_page_count(ui_notebook *nb);
+/* Self-tests: whether the shown page's labels and controls fit in it
+ * (nothing cut, nothing past its edges); why not, in `why`. */
+bool ui_notebook_page_fits(ui_notebook *nb, char *why, size_t n);
 /* A text, file or colour field's new value, applied (Browse...'s choice). */
 bool ui_notebook_set_value(ui_notebook *nb, const char *key, const char *text);
 const char *ui_notebook_field_hint(ui_notebook *nb, const char *key);   /* a file field's choices[0], or "" */

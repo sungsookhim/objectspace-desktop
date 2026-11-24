@@ -19,7 +19,10 @@
 #define TAB_H (24 + GROW)
 #define ROW_H (30 + GROW)
 #define FIELD_H (24 + GROW)
-#define LABEL_W (170 * ui_dialog_wider())
+#define LABEL_W (170 * ui_dialog_wider())    /* the label column at least... */
+#define LABEL_MAX (330 * ui_dialog_wider())  /* ...and at most: longer labels wrap */
+#define CONTROL_MIN (280 * ui_dialog_wider())
+#define INFO_MAX (440 * ui_dialog_wider())   /* information text: wider than this wraps */
 #define MARGIN 14
 #define BUTTON_W (80 * ui_dialog_wider())
 #define BUTTON_H (24 + GROW)
@@ -181,21 +184,121 @@ static ui_rect page_rect(ui_notebook *nb)
 
 #define ICON_BOX 76           /* an icon field's picture */
 #define ICON_ROW (ICON_BOX + 12)
+#define ICON_HINT "or drop an image on the picture"
+/* an icon field's width: the picture, its buttons and the hint under them */
+static double icon_field_w(void) { return ICON_BOX + 14 + fmax(110 * ui_dialog_wider(), ui_text_width(UI_FONT_DIALOG, ICON_HINT) + 4); }
 
-static double row_h(const struct field *f) { return f->kind == UI_FIELD_ICON ? ICON_ROW : ROW_H; }
+/* Text in lines at most max_w wide, broken at spaces (a word wider than
+ * that: where it must, as a path); drawn from (x, baseline) when cr is
+ * given. Returns how many lines. */
+static int wrap_text(cairo_t *cr, const char *s, double x, double baseline, double max_w)
+{
+    if (!s || !*s) return 1;
+    double lh = ui_font_line_h(UI_FONT_DIALOG);
+    int lines = 0;
+    char buf[1024];
+    while (*s) {
+        while (*s == ' ') s++;
+        if (!*s) break;
+        size_t n = strlen(s), take = 0;
+        if (n < sizeof buf && ui_text_width(UI_FONT_DIALOG, s) <= max_w) take = n;   /* (the rest fits: most labels) */
+        else {
+            if (n >= sizeof buf) n = sizeof buf - 1;
+            /* the most words that fit... */
+            for (size_t i = 1; i < n; i++)
+                if (s[i] == ' ') {
+                    memcpy(buf, s, i);
+                    buf[i] = 0;
+                    if (ui_text_width(UI_FONT_DIALOG, buf) > max_w) break;
+                    take = i;
+                }
+            /* ...or a word wider than the line (a path): as much of it as fits */
+            if (!take) {
+                for (size_t i = 1; i <= n; i++) {
+                    if (i < n && (s[i] & 0xC0) == 0x80) continue;   /* (not inside a character) */
+                    memcpy(buf, s, i);
+                    buf[i] = 0;
+                    if (ui_text_width(UI_FONT_DIALOG, buf) > max_w) break;
+                    take = i;
+                }
+                if (!take) { take = 1; while (take < n && (s[take] & 0xC0) == 0x80) take++; }
+            }
+        }
+        memcpy(buf, s, take);
+        buf[take] = 0;
+        if (cr) ui_text_draw(cr, UI_FONT_DIALOG, x, baseline + lines * lh, buf, 0);
+        lines++;
+        s += take;
+    }
+    return lines ? lines : 1;
+}
+
+/* The label column: as wide as the notebook's widest label (and where
+ * its value comes from), within LABEL_W..LABEL_MAX. */
+static double label_w(const struct page *pages, size_t n)
+{
+    double w = LABEL_W;
+    for (size_t i = 0; i < n; i++)
+        for (size_t k = 0; k < pages[i].n; k++) {
+            const struct field *f = &pages[i].f[k];
+            double t = ui_text_width(UI_FONT_DIALOG, f->label ? f->label : "") + 14;
+            if (f->from) {
+                char fr[160];
+                snprintf(fr, sizeof fr, "(%s)", f->from);
+                t += ui_text_width(UI_FONT_DIALOG, fr) + 6;
+            }
+            if (t > w) w = t;
+        }
+    return ceil(fmin(w, LABEL_MAX));
+}
+
+/* A choice field: as wide as its longest choice */
+static double choice_w(const struct field *f)
+{
+    double w = 220;
+    for (size_t i = 0; i < f->nchoices; i++) w = fmax(w, ui_text_width(UI_FONT_DIALOG, f->choices[i]) + 40);
+    return ceil(w);
+}
+
+/* A row: taller when its label (or information text) takes more lines */
+static double row_h_in(const struct field *f, double lw, double cw)
+{
+    double base = f->kind == UI_FIELD_ICON ? ICON_ROW : ROW_H, lh = ui_font_line_h(UI_FONT_DIALOG);
+    int lines = wrap_text(NULL, f->label, 0, 0, lw - 8);
+    if (f->from) {   /* (shown below the label when it does not fit after it) */
+        char fr[160];
+        snprintf(fr, sizeof fr, "(%s)", f->from);
+        if (lines > 1 || ui_text_width(UI_FONT_DIALOG, f->label ? f->label : "") + 6 + ui_text_width(UI_FONT_DIALOG, fr) > lw - 8) lines++;
+    }
+    if (f->kind == UI_FIELD_INFO) {
+        int il = wrap_text(NULL, f->v.text, 0, 0, cw);
+        if (il > lines) lines = il;
+    }
+    return fmax(base, ROW_H + (lines - 1) * lh);
+}
+
+static double nb_label_w(ui_notebook *nb) { return label_w(nb->pages, nb->npages); }
+
+static double row_h(ui_notebook *nb, const struct field *f)
+{
+    ui_rect p = page_rect(nb);
+    double lw = nb_label_w(nb);
+    return row_h_in(f, lw, p.w - 2 * MARGIN - lw);
+}
 
 static ui_rect control_rect(ui_notebook *nb, size_t k)
 {
     ui_rect p = page_rect(nb);
-    double x = p.x + MARGIN + LABEL_W, w = p.w - 2 * MARGIN - LABEL_W;
+    double lw = nb_label_w(nb);
+    double x = p.x + MARGIN + lw, w = p.w - 2 * MARGIN - lw;
     struct page *pg = &nb->pages[nb->page];
     struct field *f = &pg->f[k];
     double y = p.y + MARGIN;
-    for (size_t i = 0; i < k; i++) y += row_h(&pg->f[i]);
+    for (size_t i = 0; i < k; i++) y += row_h(nb, &pg->f[i]);
     if (f->kind == UI_FIELD_CHECKBOX) w = FIELD_H;
     else if (f->kind == UI_FIELD_NUMBER) w = fmin(w, 140);
     else if (f->kind == UI_FIELD_COLOR) w = fmin(w, FIELD_H + 6 + 100);
-    else if (f->kind == UI_FIELD_CHOICE) w = fmin(w, 220);
+    else if (f->kind == UI_FIELD_CHOICE) w = fmin(w, choice_w(f));
     return (ui_rect){ x, y, w, f->kind == UI_FIELD_ICON ? ICON_BOX : FIELD_H };
 }
 
@@ -395,7 +498,7 @@ static void draw_icon_field(ui_notebook *nb, struct field *f, cairo_t *cr, ui_re
         ui_text_draw(cr, UI_FONT_DIALOG, bt.x + (bt.w - tw) / 2 + down, bt.y + bt.h / 2 + 5 + down, labels[i], bt.w - 4);
     }
     ui_set_color(cr, k->disabled_text);
-    ui_text_draw(cr, UI_FONT_DIALOG, icon_button(r, 0).x, r.y + ICON_BOX - 6, "or drop an image on the picture", r.w - ICON_BOX - 14);
+    ui_text_draw(cr, UI_FONT_DIALOG, icon_button(r, 0).x, r.y + ICON_BOX - 6, ICON_HINT, r.w - ICON_BOX - 14);
     if (focused) focus_ring(cr, b);
 }
 
@@ -451,12 +554,16 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_rect r = control_rect(nb, i);
         bool focused = nb->focus == (int)i;
         ui_set_color(cr, k->text);
-        double lw = ui_text_draw(cr, UI_FONT_DIALOG, p.x + MARGIN, r.y + base_off, f->label, LABEL_W - 8);
-        if (f->from && lw + 12 < LABEL_W - 8) {   /* where an inherited value comes from */
+        double lcol = nb_label_w(nb);
+        double lw = ui_text_width(UI_FONT_DIALOG, f->label ? f->label : "");
+        int ll = wrap_text(cr, f->label, p.x + MARGIN, r.y + base_off, lcol - 8);
+        if (f->from) {   /* where an inherited value comes from: after it, or below */
             char fr[160];
             snprintf(fr, sizeof fr, "(%s)", f->from);
             ui_set_color(cr, k->disabled_text);
-            ui_text_draw(cr, UI_FONT_DIALOG, p.x + MARGIN + lw + 6, r.y + base_off, fr, LABEL_W - 8 - lw - 6);
+            double fw = ui_text_width(UI_FONT_DIALOG, fr);
+            if (ll == 1 && lw + 6 + fw <= lcol - 8) ui_text_draw(cr, UI_FONT_DIALOG, p.x + MARGIN + lw + 6, r.y + base_off, fr, 0);
+            else ui_text_draw(cr, UI_FONT_DIALOG, p.x + MARGIN, r.y + base_off + ll * ui_font_line_h(UI_FONT_DIALOG), fr, lcol - 8);
         }
         switch (f->kind) {
         case UI_FIELD_TEXT:
@@ -465,7 +572,7 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             break;
         case UI_FIELD_INFO:
             ui_set_color(cr, k->text);
-            ui_text_draw(cr, UI_FONT_DIALOG, r.x, r.y + base_off, f->v.text ? f->v.text : "", r.w);
+            wrap_text(cr, f->v.text, r.x, r.y + base_off, r.w);
             break;
         case UI_FIELD_ICON:
             draw_icon_field(nb, f, cr, r, focused);
@@ -1243,17 +1350,33 @@ ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *
     nb->set = set;
     nb->closed = closed;
     nb->ctx = ctx;
-    double most = ROW_H;   /* the tallest page */
-    for (size_t i = 0; i < n; i++) {
+    /* wide enough for every tab (a class's pages, the Actions page), and
+     * for every label and control in full (labels past LABEL_MAX wrap) */
+    double w = 2 * ui_scheme_now.border + 2 * MARGIN + 8, least = ceil(520 * ui_dialog_wider());
+    for (size_t i = 0; i < n; i++) w += ui_text_width(UI_FONT_DIALOG, pages[i].title ? pages[i].title : "") + 28;
+    double lw = label_w(nb->pages, nb->npages), cw = CONTROL_MIN;
+    for (size_t i = 0; i < nb->npages; i++)
+        for (size_t k = 0; k < nb->pages[i].n; k++) {
+            const struct field *f = &nb->pages[i].f[k];
+            if (f->kind == UI_FIELD_CHOICE) cw = fmax(cw, choice_w(f));
+            else if (f->kind == UI_FIELD_ICON) cw = fmax(cw, icon_field_w());
+            else if (f->kind == UI_FIELD_FILE) cw = fmax(cw, BROWSE_W + NONE_W + PLAY_W + PV_W + 22 + 160);
+            else if (f->kind == UI_FIELD_INFO) cw = fmax(cw, fmin(INFO_MAX, ui_text_width(UI_FONT_DIALOG, f->v.text ? f->v.text : "") + 4));
+        }
+    /* (the page inside the frame: client - 2 (MARGIN - 4); fields inside it: - 2 MARGIN) */
+    double fields_w = 2 * ui_scheme_now.border + 2 * (MARGIN - 4) + 2 * MARGIN + lw + cw;
+    if (fields_w > w) w = fields_w;
+    if (least > w) w = least;
+    w = ceil(w);
+    double most = ROW_H;   /* the tallest page, at that width */
+    double ctl = w - 2 * ui_scheme_now.border - 2 * (MARGIN - 4) - 2 * MARGIN - lw;
+    for (size_t i = 0; i < nb->npages; i++) {
         double t = 0;
-        for (size_t k = 0; k < pages[i].nfields; k++) t += pages[i].fields[k].kind == UI_FIELD_ICON ? ICON_ROW : ROW_H;
+        for (size_t k = 0; k < nb->pages[i].n; k++) t += row_h_in(&nb->pages[i].f[k], lw, ctl);
         if (t > most) most = t;
     }
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 8 + TAB_H + 2 * MARGIN + most +
                BUTTON_H + 22 + STATUS_H + 20;
-    /* wide enough for every tab (a class's pages, the Actions page) */
-    double w = 2 * ui_scheme_now.border + 2 * MARGIN + 8, least = ceil(520 * ui_dialog_wider());
-    for (size_t i = 0; i < n; i++) w += ui_text_width(UI_FONT_DIALOG, pages[i].title ? pages[i].title : "") + 28;
     nb->win = ui_window_new(a, &nb_ops, nb, "io.github.sungsookhim.Objectspace.notebook", w > least ? ceil(w) : least, h < 280 ? 280 : h);
     ui_window_set_title(nb->win, title);
     return nb;
@@ -1301,6 +1424,32 @@ void ui_notebook_show_page(ui_notebook *nb, size_t page) { show_page(nb, page); 
 ui_surface *ui_notebook_surface(ui_notebook *nb) { return nb->win; }
 
 size_t ui_notebook_page(ui_notebook *nb) { return nb ? nb->page : 0; }
+
+size_t ui_notebook_page_count(ui_notebook *nb) { return nb ? nb->npages : 0; }
+
+bool ui_notebook_page_fits(ui_notebook *nb, char *why, size_t n)
+{
+    why[0] = 0;
+    if (!nb || !nb->npages) return true;
+    struct page *pg = &nb->pages[nb->page];
+    ui_rect p = page_rect(nb);
+    double lw = nb_label_w(nb), right = p.x + p.w - MARGIN + 0.5, lh = ui_font_line_h(UI_FONT_DIALOG);
+    for (size_t k = 0; k < pg->n; k++) {
+        struct field *f = &pg->f[k];
+        ui_rect r = control_rect(nb, k);
+        double rh = row_h(nb, f);
+        int ll = wrap_text(NULL, f->label, 0, 0, lw - 8);
+        const char *what = NULL;
+        if (r.x + r.w > right || (f->kind == UI_FIELD_ICON && r.w < icon_field_w() - 0.5)) what = "its control goes past the page's edge";
+        else if (r.y + rh > p.y + p.h + 0.5) what = "below the page's bottom";
+        else if ((ll - 1) * lh + ROW_H > rh + 0.5) what = "its label is taller than its row";
+        else if (f->kind == UI_FIELD_CHOICE)
+            for (size_t i = 0; i < f->nchoices && !what; i++)
+                if (ui_text_width(UI_FONT_DIALOG, f->choices[i]) > r.w - 30) what = "a choice is cut";
+        if (what) { snprintf(why, n, "%s: %s", f->label ? f->label : f->key, what); return false; }
+    }
+    return true;
+}
 
 static struct field *field_by_key(ui_notebook *nb, const char *key)
 {

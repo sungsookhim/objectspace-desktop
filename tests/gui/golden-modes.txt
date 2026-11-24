@@ -53,3 +53,4 @@ winlist	gnomerun	SELFTEST=winlist	-	stable
 group	gnomerun	SELFTEST=group	-	stable
 pickscroll	comp	-	-	stable
 folderscroll	comp	-	for i in $(seq 1 400); do echo x > "file $i.txt"; done	stable
+notebooks	comp	OSD_SHELL_NOTEBOOKS=./a.txt,./run.sh,.,class:OsdColorPalette,class:OsdCommandPrompt,class:OsdComputer,class:OsdDrive,class:OsdDrives,class:OsdFolder,class:OsdFontPalette,class:OsdLauncher,class:OsdMessages,class:OsdMinWinViewer,class:OsdMouse,class:OsdProgram,class:OsdProgramsFolder,class:OsdRestoreDesktop,class:OsdScheme,class:OsdSchemePalette,class:OsdShadow,class:OsdSound,class:OsdSystem,class:OsdTheBar,class:OsdTrashCan OSD_SHELL_SIZE=1260x780 SELFTEST_SECS=110	echo a > a.txt; printf "#!/bin/sh\\n" > run.sh; chmod +x run.sh	stable
