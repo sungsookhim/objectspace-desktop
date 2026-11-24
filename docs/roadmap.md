@@ -290,12 +290,12 @@ A to do, after 0.2 (with network file systems below).
       - **IBM's class names:** WPObject, WPFolder, WPDataFile... (the names of OS/2's SOM classes; 144 files) and the runtime's `wpo_` (78 files) take the new prefix; the method names (`wpQueryTitle`, ...) too.
       - **What the user reads:** menus, notebooks, dialogs and messages say no "OS/2" or "Warp"; the release notes and README describe the project as inspired by OS/2's Workplace Shell, with a trademark notice (OS/2 and Workplace Shell are IBM's; no affiliation).
       - **Code comments and the design documents** keep "as OS/2 did" where it explains why something is so (a description, not a name), trimmed where it says nothing.
-      - **Moving over:** an installed 0.4.1 is carried to the new names at the first start (attributes, folders, settings, the database's class names), as 0.2 to 0.3 was; or a clean break, since no one but the owner runs it yet (**?** the owner's).
+      - **A clean break** (the owner's, 2026-11-24): nothing carried over from 0.4.1. Every name to change, by importance, with the candidates: [v0.5-names.md](v0.5-names.md).
    2. **What is in the repository** (S-M):
       - Every source file says its license (an SPDX line, MIT); third parties' notices (the Wayland protocol files in `proto/`; the libraries linked, none copied in).
       - **The pictures:** every icon checked to be drawn here (the isometric set by `tools/icons/make_iso.py`; the Classic set, 0.2's pictures; the sounds, the theme's or none).
-      - **Internal documents:** the discussion notes (`docs/notes`), the AI review (`docs/reviews`), the step-by-step plans: kept as the project's history, moved under `docs/history`, or left out (**?** the owner's).
-      - **The history:** published whole (every commit, the old names in it), or the repository started fresh from 0.5's tree (**?** the owner's). Nothing private was found in it (no host names, addresses or keys; the owner's GitHub name and e-mail only, as now).
+      - **Internal documents kept as the project's history** (the owner's): the discussion notes, the AI review, the plans; the README and `docs/` say that up to 0.4.1 the project was private and named WPS, and that 0.5, the first public version, took its own name for that reason.
+      - **A new repository under the new name, with the old history in it** (the owner's); the old one stays private. Nothing private was found in the history (no host names, addresses or keys; the owner's GitHub name and e-mail only, as now).
    3. **For people who come to it** (M):
       - A README for strangers: what it is and is not, screenshots, installing, building from source, the status; a CONTRIBUTING guide (how to build, test, the code's style, the design documents' role), a code of conduct, a security policy (how to report), issue and pull request templates.
       - **Continuous integration:** GitHub Actions building on Fedora 45 and running the unit tests and the headless suites that need no GPU (`make check`, `gui-test`, the compositor's tests where the runner allows).
