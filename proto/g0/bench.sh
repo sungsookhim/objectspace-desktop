@@ -6,7 +6,7 @@ FOLDER=$1; SECS=${2:-20}
 S=${G0_STATE:-$(mktemp -d)}
 # The socket goes in the session's runtime folder: socket paths are limited
 # to 107 bytes, and the state folder may be deeper than that.
-export OSD_CONFIG_DIR=$S/config OSD_STATE_DIR=$S/state OSD_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp}/wps-g0 OSD_WATCHD_SOCKET=none
+export OSD_CONFIG_DIR=$S/config OSD_STATE_DIR=$S/state OSD_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp}/osd-g0 OSD_WATCHD_SOCKET=none
 mkdir -p "$OSD_RUNTIME_DIR"; chmod 700 "$OSD_RUNTIME_DIR"
 start() { build/osdd 2>> "$S/osdd.log" & sleep 1; }
 stop() { build/osdctl shutdown > /dev/null 2>&1; wait; }

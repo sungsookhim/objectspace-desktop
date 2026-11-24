@@ -526,7 +526,7 @@ static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
     ui_text_draw(cr, UI_FONT_DIALOG, st.x + 6, st.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1,
-                 "Drag a font onto a folder or its title bar (Shift: all of them), or the WarpCenter", st.w - 12);
+                 "Drag a font onto a folder or its title bar (Shift: all of them), or TheBar", st.w - 12);
     cairo_restore(cr);
 }
 
@@ -567,12 +567,12 @@ static void menu_chosen(void *ctx, int64_t id)
     case PM_MENUS: apply("menus", samples[i]); break;
     case PM_TITLES: apply("titles", samples[i]); break;
     case PM_FOLDERS: apply("folders", samples[i]); break;
-    case PM_WC: apply("warpcenter", samples[i]); break;
+    case PM_WC: apply("thebar", samples[i]); break;
     case PM_RESET:
         apply("menus", "");
         apply("titles", "");
         apply("folders", "");
-        apply("warpcenter", "");
+        apply("thebar", "");
         break;
     default: break;
     }
@@ -586,7 +586,7 @@ static void sample_menu(size_t i, double x, double y, uint32_t serial)
         { PM_MENUS, "Use for menus", true, false, NULL, 0 },
         { PM_TITLES, "Use for title bars", true, false, NULL, 0 },
         { PM_FOLDERS, "Use for every folder", true, false, NULL, 0 },
-        { PM_WC, "Use for the WarpCenter", true, false, NULL, 0 },
+        { PM_WC, "Use for TheBar", true, false, NULL, 0 },
         { -1, "-", false, false, NULL, 0 },
         { PM_RESET, "Interface font everywhere again", true, false, NULL, 0 },
     };

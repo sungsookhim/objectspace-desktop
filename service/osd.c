@@ -1,18 +1,18 @@
 /*
- * wps: WPS for scripts (docs/cli-design.md 2). Plain text out, one value a
+ * osd: Objectspace for scripts (docs/cli-design.md 2). Plain text out, one value a
  * line; exit status 0 on success, 1 otherwise (a message on stderr). The
  * same requests as osdctl's, without its JSON:
  *
- *   wps open PATH...                 as a double click would
- *   wps get PATH NAME                a property's value
- *   wps set PATH 'NAME=VALUE;...'    properties (class:OsdFolder, type:image/png too)
- *   wps create FOLDER CLASS TITLE    a new object; prints its path
- *   wps shadow PATH FOLDER           a shadow; prints its path
- *   wps say [--stay] TEXT            a message at the bottom of the desktop
- *   wps notify TITLE [TEXT]          a notification
- *   wps ask TEXT [BUTTON...]         a WPS dialog; prints the button chosen
- *   wps folder                       the folder it was started from ($OSD_FOLDER)
- *   wps selection                    the active folder window's selected objects
+ *   osd open PATH...                 as a double click would
+ *   osd get PATH NAME                a property's value
+ *   osd set PATH 'NAME=VALUE;...'    properties (class:OsdFolder, type:image/png too)
+ *   osd create FOLDER CLASS TITLE    a new object; prints its path
+ *   osd shadow PATH FOLDER           a shadow; prints its path
+ *   osd say [--stay] TEXT            a message at the bottom of the desktop
+ *   osd notify TITLE [TEXT]          a notification
+ *   osd ask TEXT [BUTTON...]         an Objectspace dialog; prints the button chosen
+ *   osd folder                       the folder it was started from ($OSD_FOLDER)
+ *   osd selection                    the active folder window's selected objects
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -43,7 +43,7 @@ static bool io(void *buf, size_t n, bool wr)
 
 static void die(const char *fmt, const char *a)
 {
-    fprintf(stderr, "wps: ");
+    fprintf(stderr, "osd: ");
     fprintf(stderr, fmt, a);
     fputc('\n', stderr);
     exit(1);
@@ -61,7 +61,7 @@ static void connect_osdd(void)
     if (strlen(path) >= sizeof sa.sun_path) die("socket path too long: %s", path);
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
     sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (sock < 0 || connect(sock, (struct sockaddr *)&sa, sizeof sa) != 0) die("WPS is not running (no %s)", path);
+    if (sock < 0 || connect(sock, (struct sockaddr *)&sa, sizeof sa) != 0) die("Objectspace is not running (no %s)", path);
 }
 
 /* One request (a map whose first pair is "op"), its reply's result. */
@@ -69,16 +69,16 @@ static cv reply;
 static const cv *request(cbuf *b)
 {
     unsigned char h[4] = { (unsigned char)(b->n >> 24), (unsigned char)(b->n >> 16), (unsigned char)(b->n >> 8), (unsigned char)b->n };
-    if (!io(h, 4, true) || !io(b->d, b->n, true)) die("%s", "lost the connection to WPS");
+    if (!io(h, 4, true) || !io(b->d, b->n, true)) die("%s", "lost the connection to Objectspace");
     cb_free(b);
     for (;;) {
-        if (!io(h, 4, false)) die("%s", "lost the connection to WPS");
+        if (!io(h, 4, false)) die("%s", "lost the connection to Objectspace");
         size_t n = (size_t)h[0] << 24 | (size_t)h[1] << 16 | (size_t)h[2] << 8 | h[3];
         unsigned char *buf = malloc(n ? n : 1);
-        if (!buf || !io(buf, n, false)) die("%s", "lost the connection to WPS");
+        if (!buf || !io(buf, n, false)) die("%s", "lost the connection to Objectspace");
         int rc = cv_decode(buf, n, &reply);
         free(buf);
-        if (rc) die("%s", "a reply WPS could not read");
+        if (rc) die("%s", "a reply Objectspace could not read");
         int64_t id;
         if (!cv_int(&reply, "id", &id) || id != 1) { cv_free(&reply); continue; }   /* (events) */
         const cv *ok = cv_get(&reply, "ok");
@@ -135,7 +135,7 @@ static int open_one(const char *target)
     if (x) { cb_text(&b, "x11"); cb_text(&b, x11); }
     const cv *res = request(&b);
     const char *folder = res && res->k == CV_MAP ? cv_text(res, "folder") : NULL;
-    if (res && res->k == CV_MAP && cv_get(res, "needs_confirmation")) die("%s: owned by another user; open it from its folder (WPS asks first)", t);
+    if (res && res->k == CV_MAP && cv_get(res, "needs_confirmation")) die("%s: owned by another user; open it from its folder (Objectspace asks first)", t);
     if (folder) {   /* a folder: its window, by the desktop */
         char f[PATH_MAX];
         snprintf(f, sizeof f, "%s", folder);
@@ -156,12 +156,12 @@ static int notify(const char *title, const char *text)
     int e = sd_bus_open_user(&bus);
     if (e >= 0) e = sd_bus_message_new_method_call(bus, &m, "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
                                                    "org.freedesktop.Notifications", "Notify");
-    if (e >= 0) e = sd_bus_message_append(m, "susss", "wps", 0u, "utilities-terminal", title, text ? text : "");
+    if (e >= 0) e = sd_bus_message_append(m, "susss", "osd", 0u, "utilities-terminal", title, text ? text : "");
     if (e >= 0) e = sd_bus_message_append(m, "as", 0);
     if (e >= 0) e = sd_bus_message_append(m, "a{sv}", 0);
     if (e >= 0) e = sd_bus_message_append(m, "i", -1);
     if (e >= 0) e = sd_bus_call(bus, m, 5000000, &err, &r);
-    if (e < 0) fprintf(stderr, "wps: no notification: %s\n", err.message ? err.message : strerror(-e));
+    if (e < 0) fprintf(stderr, "osd: no notification: %s\n", err.message ? err.message : strerror(-e));
     sd_bus_error_free(&err);
     sd_bus_message_unref(m);
     sd_bus_message_unref(r);
@@ -171,9 +171,9 @@ static int notify(const char *title, const char *text)
 
 static void usage(void)
 {
-    fputs("usage: wps open PATH... | get PATH NAME | set PATH 'NAME=VALUE;...' | create FOLDER CLASS TITLE\n"
-          "       wps shadow PATH FOLDER | say [--stay] TEXT | notify TITLE [TEXT] | ask TEXT [BUTTON...]\n"
-          "       wps folder | selection\n", stderr);
+    fputs("usage: osd open PATH... | get PATH NAME | set PATH 'NAME=VALUE;...' | create FOLDER CLASS TITLE\n"
+          "       osd shadow PATH FOLDER | say [--stay] TEXT | notify TITLE [TEXT] | ask TEXT [BUTTON...]\n"
+          "       osd folder | selection\n", stderr);
     exit(2);
 }
 
@@ -181,10 +181,10 @@ int main(int argc, char **argv)
 {
     if (argc < 2) usage();
     const char *cmd = argv[1];
-    if (!strcmp(cmd, "--version")) { printf("wps %s\n", OSD_VERSION); return 0; }
+    if (!strcmp(cmd, "--version")) { printf("osd %s\n", OSD_VERSION); return 0; }
     if (!strcmp(cmd, "folder")) {
         const char *f = getenv("OSD_FOLDER");
-        if (!f || !*f) { fprintf(stderr, "wps: not started from a folder (OSD_FOLDER is not set)\n"); return 1; }
+        if (!f || !*f) { fprintf(stderr, "osd: not started from a folder (OSD_FOLDER is not set)\n"); return 1; }
         puts(f);
         return 0;
     }

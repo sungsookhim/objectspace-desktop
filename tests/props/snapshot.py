@@ -61,7 +61,7 @@ open(DESK + "/build.sh", "w").write("#!/bin/sh\n")
 os.chmod(DESK + "/build.sh", 0o755)
 open(DESK + "/editor.desktop", "w").write("[Desktop Entry]\nType=Application\nName=Editor\nExec=true %f\nMimeType=text/plain;\n")
 c.request(op="first_start", desktop=DESK)
-# (its last step, Prevent delete on WPS's own objects, comes a moment after the reply)
+# (its last step, Prevent delete on Objectspace's own objects, comes a moment after the reply)
 for _ in range(50):
     r = c.request(op="get", target=T + "/xdg/data/objectspace/Programs", name="no_delete")
     if str(r.get("result")).lower() in ("1", "true"):
@@ -74,7 +74,7 @@ setup = c.request(op="setup").get("result") or {}
 n = 0
 seen = set()
 # the desktop and Projects, then the folders their shadows stand for that
-# WPS made (System, System Setup, My Storages, Templates, ...): two levels
+# Objectspace made (System, System Setup, My Storages, Templates, ...): two levels
 queue = [(DESK, 0), (DESK + "/Projects", 0), (T + "/xdg/data/objectspace", 0), (T + "/templates", 1), (T + "/xdg/data/objectspace/System/System Setup/Schemes", 1)]
 n += 1
 dump(n, "the desktop", DESK)

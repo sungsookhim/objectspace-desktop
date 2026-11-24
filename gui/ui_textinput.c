@@ -66,7 +66,7 @@ static void update(ui_app *a)
     if (want) {
         if (!a->ti_enabled || enabled_for != a->ti_entry) {
             zwp_text_input_v3_enable(a->ti);
-            if (debug) fprintf(stderr, "wps-ui: input method enabled\n");
+            if (debug) fprintf(stderr, "osd-ui: input method enabled\n");
         }
         enabled_for = a->ti_entry;
         zwp_text_input_v3_set_content_type(a->ti, ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
@@ -161,7 +161,7 @@ static void ti_done(void *d, struct zwp_text_input_v3 *t, uint32_t serial)
     ui_app *a = d;
     ui_surface *s = a->ti_surface;
     ui_entry *e = a->ti_entry;
-    if (debug) fprintf(stderr, "wps-ui: input method done: commit '%s' preedit '%s' delete %u,%u\n", a->ti_commit ? a->ti_commit : "",
+    if (debug) fprintf(stderr, "osd-ui: input method done: commit '%s' preedit '%s' delete %u,%u\n", a->ti_commit ? a->ti_commit : "",
                        a->ti_preedit ? a->ti_preedit : "", a->ti_del_before, a->ti_del_after);
     /* In the protocol's order: the preedit goes, text around the cursor is
      * deleted, the committed text is inserted, the new preedit shown. */

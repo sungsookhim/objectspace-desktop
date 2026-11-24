@@ -1,15 +1,15 @@
 /*
- * Shadows (design: Links; decided 2026-11-18: WPS object files).
+ * Shadows (design: Links; decided 2026-11-18: Objectspace object files).
  *
- * A shadow is a WPS object file, as in OS/2, where a shadow was a WPS
+ * A shadow is an Objectspace object file, as in OS/2, where a shadow was an Objectspace
  * object and not a file-system link:
  *
- *   <name>.osdobj      [WPS Object]
+ *   <name>.osdobj      [Objectspace Object]
  *                     Class=OsdShadow
  *                     Target=<the target's object ID>
  *                     TargetPath=<where the target was last seen>
  *
- * The ID makes it a shadow wherever the file is moved or copied, by WPS or
+ * The ID makes it a shadow wherever the file is moved or copied, by Objectspace or
  * by any other program; the path is a hint. Each service keeps an index
  * (the `shadows` table) of the shadow files it has seen: created, loaded,
  * listed, or appearing in a watched folder. When a target moves, the hint
@@ -25,7 +25,7 @@
 #include "objects.h"
 #include "osdo_loop.h"
 
-#define OSD_SHADOW_TMP ".wps-tmp-"   /* prefix of temporary names; never tracked */
+#define OSD_SHADOW_TMP ".osd-tmp-"   /* prefix of temporary names; never tracked */
 
 void osd_shadows_init(osdo_loop *loop, osd_db *db);
 

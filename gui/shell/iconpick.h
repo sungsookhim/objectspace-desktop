@@ -1,7 +1,7 @@
 /*
  * The icon picker (G4, the Icon page's Choose...): icons from the system's
  * icon themes (/usr/share/icons and ~/.local/share/icons: Adwaita, hicolor,
- * the apps' own), or from WPS's icon library folder (any images put
+ * the apps' own), or from Objectspace's icon library folder (any images put
  * there), in an icon view with a search field. A double click (or Enter)
  * picks one: chosen(owner, key, the image's path), and the picker closes.
  */

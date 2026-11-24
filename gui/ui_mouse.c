@@ -121,7 +121,7 @@ void ui_mouse_load(void)
         for (char *e = k + strlen(k); e > k && isspace((unsigned char)e[-1]);) *--e = 0;
         while (isspace((unsigned char)*v)) v++;
         for (char *e = v + strlen(v); e > v && isspace((unsigned char)e[-1]);) *--e = 0;
-        if (!ui_mouse_set(k, v)) fprintf(stderr, "wps-ui: %s:%d: cannot use \"%s = %s\"\n", path, n, k, v);
+        if (!ui_mouse_set(k, v)) fprintf(stderr, "osd-ui: %s:%d: cannot use \"%s = %s\"\n", path, n, k, v);
     }
     fclose(f);
 }

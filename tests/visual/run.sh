@@ -1,6 +1,6 @@
 #!/bin/sh
 # The looks, headless, for the refactor (docs/object-properties-design.md 4):
-# one fixed scene (the desktop with the WarpCenter and the LaunchPad, the
+# one fixed scene (the desktop with TheBar and the Launcher, the
 # desktop's menu, a folder window, an object's menu, the desktop's notebook
 # and its Background page) in each scheme, saved as PNGs in OUT.
 #   tests/visual/run.sh OUT          (then tests/visual/compare.py BASE OUT)
@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 mkdir -p "${1:?usage: tests/visual/run.sh OUT}"
 OUT=$(readlink -f "$1")
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-visual-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-visual-XXXX")
 trap 'rm -rf "$S"' EXIT
 W="$REPO/build/osdctl"
 fails=0
@@ -43,7 +43,7 @@ EOS
          cp '$REPO/data/icons/'*.png \"\$T/desk/Projects/\" 2>/dev/null || true
          a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdSchemePalette\"][\"address\"])')
          '$W' settings_set \"\$a\" scheme='$scheme' > /dev/null" \
-    DESKENV="OSD_WARPCENTER=1 OSD_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER= TZ=UTC" SECS=16 \
+    DESKENV="OSD_THEBAR=1 OSD_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER= TZ=UTC" SECS=16 \
         tests/comp/run.sh "$S/script" "sleep 30" > "$S/$tag.txt" 2>&1
     for f in desktop desktop-menu folder object-menu notebook notebook-background; do
         [ -s "$OUT/$tag-$f.png" ] || { echo "missing: $tag-$f.png"; fails=$((fails + 1)); }

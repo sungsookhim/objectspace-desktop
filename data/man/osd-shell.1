@@ -1,6 +1,6 @@
-.TH WPS-SHELL 1 "@DATE@" "WPS @VERSION@" "User Commands"
+.TH Objectspace-SHELL 1 "@DATE@" "Objectspace @VERSION@" "User Commands"
 .SH NAME
-osd-shell \- the WPS desktop and folder windows
+osd-shell \- the Objectspace desktop and folder windows
 .SH SYNOPSIS
 .B osd-shell
 .RB [ \-\-desktop
@@ -9,9 +9,9 @@ osd-shell \- the WPS desktop and folder windows
 .RI [ FOLDER ...]
 .SH DESCRIPTION
 .B osd-shell
-draws WPS's desktop and its windows: folder windows in icon, tree and
-details views, settings notebooks, the LaunchPad, the WarpCenter (in the
-WPS session), Find, the Window List and Messages. Objects come from
+draws Objectspace's desktop and its windows: folder windows in icon, tree and
+details views, settings notebooks, the Launcher, TheBar (in the
+Objectspace session), Find, the Window List and Messages. Objects come from
 .BR osdd ;
 .B osd-shell
 is one process per desktop.
@@ -22,7 +22,7 @@ it shows the desktop as an ordinary full-screen window.
 .SH OPTIONS
 .TP
 .BR \-\-desktop " [" \fIFOLDER\fR ]
-Be the desktop, on FOLDER (default: the XDG desktop folder). The WPS
+Be the desktop, on FOLDER (default: the XDG desktop folder). The Objectspace
 session and the GNOME Shell extension start it so.
 .TP
 .B \-\-details
@@ -32,11 +32,11 @@ Open the named folders in details view.
 Print the version.
 .SH ENVIRONMENT
 .TP
-.B OSD_WARPCENTER
-1 shows the WarpCenter, 0 hides it (default: shown in the WPS session).
+.B OSD_THEBAR
+1 shows TheBar, 0 hides it (default: shown in the Objectspace session).
 .TP
-.B OSD_NO_LAUNCHPAD
-Do not show the LaunchPad at start.
+.B OSD_NO_LAUNCHER
+Do not show the Launcher at start.
 .TP
 .B OSD_NO_RESTORE
 Do not reopen the windows open at the last logout.

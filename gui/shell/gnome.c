@@ -34,7 +34,7 @@ static struct { const char *schema, *key; char val[256]; } g[] = {
 #define NG (sizeof g / sizeof *g)
 enum { G_SCHEME, G_CONTRAST, G_LEFT, G_DOUBLE, G_SOUNDS, G_FONT, G_SCALE };
 
-/* The WPS objects' values. */
+/* The Objectspace objects' values. */
 static char w_scheme[32], w_left[8], w_double[16], w_sounds[8];
 
 static pid_t mon_pid[4];
@@ -81,7 +81,7 @@ static void gset(size_t i, const char *value)
     if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0) waitpid(pid, NULL, 0);
 }
 
-/* GNOME's font: "Family Name 11" in points; WPS draws in pixels (96 dpi). */
+/* GNOME's font: "Family Name 11" in points; Objectspace draws in pixels (96 dpi). */
 static void apply_font(void)
 {
     char fam[256];
@@ -98,14 +98,14 @@ static void apply_font(void)
     if ((ui_scheme_now.font_px != before || ui_text_scale() != scale_before) && font_changed) font_changed();
 }
 
-/* What GNOME says, as the WPS objects would say it. */
+/* What GNOME says, as the Objectspace objects would say it. */
 static const char *scheme_of_gnome(void)
 {
     if (!strcmp(g[G_CONTRAST].val, "true")) return "high contrast";
     return !strcmp(g[G_SCHEME].val, "prefer-dark") ? "dark" : "classic";
 }
 
-/* GNOME -> WPS: the objects take GNOME's values where they differ. */
+/* GNOME -> Objectspace: the objects take GNOME's values where they differ. */
 static void to_osd(void)
 {
     if (!both || !osd_set || !read_osd_once) return;
@@ -121,7 +121,7 @@ static void to_osd(void)
     if (g[G_SOUNDS].val[0] && strcmp(w_sounds, es)) { snprintf(w_sounds, sizeof w_sounds, "%s", es); osd_set("OsdSound", "enabled", es); }
 }
 
-/* WPS -> GNOME. */
+/* Objectspace -> GNOME. */
 static void to_gnome(void)
 {
     if (!both) return;

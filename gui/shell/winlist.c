@@ -21,7 +21,7 @@ struct win {
     char app[128];
     char title[256];
     bool minimized, focused, maximized;
-    int x, y, w, h;            /* where (the WPS session's compositor says; else -1) */
+    int x, y, w, h;            /* where (the Objectspace session's compositor says; else -1) */
     char icon_path[256];       /* the app's icon, a PNG the extension made */
     cairo_surface_t *icon;
 };
@@ -189,7 +189,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     if (i >= l->nrows) return;
     const struct win *w = &wins[l->rows[i]];
     out->loaded = out->detailed = true;
-    /* the app's own icon; WPS's folder windows as folders */
+    /* the app's own icon; Objectspace's folder windows as folders */
     out->kind = !strcmp(w->app, "io.github.sungsookhim.Objectspace.shell") || !strcmp(w->app, "io.github.sungsookhim.Objectspace.MinimizedViewer") ? UI_KIND_FOLDER : UI_KIND_PROGRAM;
     out->image = w->icon;
     out->name = w->app;
@@ -263,7 +263,7 @@ static void lw_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, st, k->face);
     ui_bevel(cr, (ui_rect){ st.x + 1, st.y + 1, st.w - 2, st.h - 2 }, false);
     char msg[160];
-    if (cmd_fd < 0) snprintf(msg, sizeof msg, "Needs the WPS GNOME Shell extension (tools/install-extension.sh)");
+    if (cmd_fd < 0) snprintf(msg, sizeof msg, "Needs the Objectspace GNOME Shell extension (tools/install-extension.sh)");
     else snprintf(msg, sizeof msg, "%zu %swindow%s", l->nrows, l->minimized_only ? "minimized " : "", l->nrows == 1 ? "" : "s");
     ui_set_color(cr, k->text);
     cairo_save(cr);

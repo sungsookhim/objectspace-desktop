@@ -1,6 +1,6 @@
 /*
  * Settings shared with GNOME (gui-design.md: Settings shared with GNOME).
- * Where WPS and GNOME's Settings overlap, a change in either shows in both:
+ * Where Objectspace and GNOME's Settings overlap, a change in either shows in both:
  *
  *   Scheme Palette scheme   <-> org.gnome.desktop.interface color-scheme
  *                               (dark: prefer-dark; classic: default) and
@@ -8,7 +8,7 @@
  *   Mouse left_handed       <-> org.gnome.desktop.peripherals.mouse left-handed
  *   Mouse double_click_ms   <-> org.gnome.desktop.peripherals.mouse double-click
  *   Sound enabled           <-> org.gnome.desktop.sound event-sounds
- *   (font: GNOME's interface font and text scaling, followed; WPS has no
+ *   (font: GNOME's interface font and text scaling, followed; Objectspace has no
  *   font setting of its own yet)
  *
  * Every osd-shell follows GNOME's font. One process, the desktop, keeps
@@ -24,7 +24,7 @@
 
 #include "ui.h"
 
-/* set: write one WPS setting (class, key, value); font: the interface
+/* set: write one Objectspace setting (class, key, value); font: the interface
  * font changed (lay out again). */
 void gnome_start(ui_app *a, bool both_ways, void (*set)(const char *cls, const char *key, const char *value),
                  void (*font)(void));

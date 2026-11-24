@@ -1,8 +1,8 @@
 /*
  * Input methods through IBus directly (G5), as GTK's IBus module does:
  * where the session asks programs to use IBus (GTK_IM_MODULE=ibus, the
- * WPS session) and the compositor has no input method of its own for
- * text-input-v3, WPS's entries talk to IBus's daemon over its own D-Bus
+ * Objectspace session) and the compositor has no input method of its own for
+ * text-input-v3, Objectspace's entries talk to IBus's daemon over its own D-Bus
  * connection: the keys typed in an entry go to an IBus input context
  * first; what IBus commits, and the text it is composing (Hangul,
  * Anthy, ...), reach the entry as text-input-v3's would
@@ -106,7 +106,7 @@ static int on_commit(sd_bus_message *m, void *data, sd_bus_error *err)
 {
     (void)data; (void)err;
     char *t = read_text(m);
-    if (ib.debug) fprintf(stderr, "wps-ui: IBus commits '%s'\n", t ? t : "");
+    if (ib.debug) fprintf(stderr, "osd-ui: IBus commits '%s'\n", t ? t : "");
     ui_app *a = app_for_text();
     if (a && t) ui_text_input_inject(a, t, NULL);
     free(t);
@@ -120,7 +120,7 @@ static int on_preedit(sd_bus_message *m, void *data, sd_bus_error *err)
     uint32_t cursor = 0;
     int visible = 1;
     sd_bus_message_read(m, "ub", &cursor, &visible);
-    if (ib.debug) fprintf(stderr, "wps-ui: IBus composes '%s'%s\n", t ? t : "", visible ? "" : " (hidden)");
+    if (ib.debug) fprintf(stderr, "osd-ui: IBus composes '%s'%s\n", t ? t : "", visible ? "" : " (hidden)");
     ui_app *a = app_for_text();
     if (a) ui_text_input_inject(a, NULL, visible && t && *t ? t : NULL);
     free(t);
@@ -175,7 +175,7 @@ static bool connect_ibus(ui_app *a)
     sd_bus_message *reply = NULL;
     const char *path = NULL;
     if (sd_bus_call_method(ib.bus, "org.freedesktop.IBus", "/org/freedesktop/IBus", "org.freedesktop.IBus",
-                           "CreateInputContext", NULL, &reply, "s", "wps") < 0 ||
+                           "CreateInputContext", NULL, &reply, "s", "osd") < 0 ||
         sd_bus_message_read(reply, "o", &path) < 0 || !path) {
         sd_bus_message_unref(reply);
         disconnect();
@@ -192,7 +192,7 @@ static bool connect_ibus(ui_app *a)
     ib.app = a;
     ib.fd = sd_bus_get_fd(ib.bus);
     ui_app_watch_fd(a, ib.fd, POLLIN, on_bus_fd, NULL);
-    if (ib.debug) fprintf(stderr, "wps-ui: IBus: input context %s\n", ib.ctx);
+    if (ib.debug) fprintf(stderr, "osd-ui: IBus: input context %s\n", ib.ctx);
     return true;
 }
 
@@ -241,6 +241,6 @@ bool ui_ibus_key(ui_app *a, uint32_t key, uint32_t sym, bool pressed)
     sd_bus_message_read(reply, "b", &handled);
     sd_bus_message_unref(reply);
     while (sd_bus_process(ib.bus, NULL) > 0) {}   /* its commit and preedit, before the next key */
-    if (ib.debug && pressed) fprintf(stderr, "wps-ui: IBus %s key %#x\n", handled ? "took" : "passed", sym);
+    if (ib.debug && pressed) fprintf(stderr, "osd-ui: IBus %s key %#x\n", handled ? "took" : "passed", sym);
     return handled != 0;
 }

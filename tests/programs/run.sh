@@ -3,8 +3,8 @@
 # XDG_DATA_DIRS, played by tests/programs/scenario.py.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-T=$(mktemp -d "${TMPDIR:-/tmp}/wps-progs-XXXX")
-RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-progs-XXXX")
+T=$(mktemp -d "${TMPDIR:-/tmp}/osd-progs-XXXX")
+RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-progs-XXXX")
 mkdir -p "$T/desk" "$T/share/applications"
 export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
 export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" OSD_TEMPLATES_DIR="$T/templates"

@@ -1,5 +1,5 @@
 """A program that sends notifications and listens for what comes back
-(tests/comp: the WPS session's notification service). Writes to argv[1]."""
+(tests/comp: the Objectspace session's notification service). Writes to argv[1]."""
 import sys
 
 import dbus

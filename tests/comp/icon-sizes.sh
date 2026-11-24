@@ -5,7 +5,7 @@
 # its window is open. SCALE=2: the same at a scale of 2.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sizes-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-sizes-XXXX")
 W="$REPO/build/osdctl"
 K=${SCALE:-1}
 cat > "$S/script" <<EOS
@@ -18,7 +18,7 @@ cat > "$S/script" <<EOS
 13.5 shot $S/open.png
 14 quit
 EOS
-DESKENV="OSD_UI_SCALE=$K OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=17 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_UI_SCALE=$K OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=17 tests/comp/run.sh "$S/script" \
     "sleep 5; sys=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSystem']['address'])\")
      '$W' set \"\$sys\" 'icon_set=Large' > \"\$T/set1.log\" 2>&1
      sleep 3; '$W' set \"\$sys\" 'icon_set=Small' > \"\$T/set2.log\" 2>&1

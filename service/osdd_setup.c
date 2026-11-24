@@ -26,7 +26,7 @@ static void first_start_shadow_done(void *arg, const char *link, const char *err
 {
     (void)arg;
     if (!link && error) log_msg("first start: a shadow was not made: %s", error);
-    if (link) protect(link);   /* (WPS's own: Prevent delete, as step 11 gives the others) */
+    if (link) protect(link);   /* (Objectspace's own: Prevent delete, as step 11 gives the others) */
     fs_busy = false;
     fs_next();
 }
@@ -303,17 +303,17 @@ void first_start_done(void *arg)
 /* ---- settings objects (System, Sound, Mouse, Scheme Palette): one of each
  * per user, central objects in the System Setup folder
  * ($XDG_DATA_HOME/objectspace/System Setup; OSD_SETUP_DIR for tests), made once and
- * remembered by class (locator "setup:<folder ID>", class WPS, prop
+ * remembered by class (locator "setup:<folder ID>", class Objectspace, prop
  * <class> = object ID). */
 static const char *const setup_classes[][2] = {
     { "OsdSystem", "System" }, { "OsdSound", "Sound" }, { "OsdMouse", "Mouse" }, { "OsdSchemePalette", "Scheme Palette" },
     { "OsdFontPalette", "Font Palette" },   /* (0.3) */
     { "OsdColorPalette", "Colour Palette" },   /* (0.4) */
     /* (0.2: in the System folder itself, v0.2-design 9 and 10) */
-    { "OsdLaunchPad", "LaunchPad" }, { "OsdWarpCenter", "WarpCenter" }, { "OsdMessages", "Messages" },
+    { "OsdLauncher", "Launcher" }, { "OsdTheBar", "TheBar" }, { "OsdMessages", "Messages" },
 };
 
-/* WPS's own folders in the user's data ($XDG_DATA_HOME/objectspace/<name>). */
+/* Objectspace's own folders in the user's data ($XDG_DATA_HOME/objectspace/<name>). */
 void data_dir(const char *name, char *out, size_t n)
 {
     const char *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
@@ -379,7 +379,7 @@ void system_folder_init(void)
 
 /* ---- schemes (object-properties-design.md 2.3): OsdScheme objects in
  * System Setup's Schemes folder, made once (Classic, Dark, High contrast;
- * remembered by locator "schemes:<folder ID>", class WPS, prop <title>);
+ * remembered by locator "schemes:<folder ID>", class Objectspace, prop <title>);
  * the user copies one to make their own. Their values are their declared
  * properties (Classic's are the defaults; the others' written here). */
 static const struct { const char *title, *values; } builtin_schemes[] = {
@@ -402,7 +402,7 @@ static void schemes_work(void)
     osd_props_init(&known);
     char sloc[OSD_ID_LEN + 16];
     snprintf(sloc, sizeof sloc, "schemes:%s", fl.id);
-    osd_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    osd_db_get_class(db, fl.vol, sloc, "Objectspace", &known);
     for (size_t i = 0; i < sizeof builtin_schemes / sizeof *builtin_schemes; i++) {
         char *id = NULL, vol[OSD_VOLID_MAX];
         if (osd_props_str(&known, builtin_schemes[i].title, &id) && id && osd_db_vobj_vol(db, id, vol, sizeof vol)) { free(id); continue; }
@@ -419,7 +419,7 @@ static void schemes_work(void)
             osd_db_key(key, sizeof key, loc, "OsdScheme", pair);
             osd_db_put(db, fl.vol, key, 's', eq + 1, (uint32_t)strlen(eq + 1));
         }
-        osd_db_key(key, sizeof key, sloc, "WPS", builtin_schemes[i].title);
+        osd_db_key(key, sizeof key, sloc, "Objectspace", builtin_schemes[i].title);
         osd_db_put(db, fl.vol, key, 's', nid, OSD_ID_LEN);
     }
     snprintf(schemes_vol, sizeof schemes_vol, "%s", fl.vol);
@@ -446,7 +446,7 @@ static void scheme_ids_of(struct scheme_ids *x)
 
 static int by_title(const void *a, const void *b) { return strcasecmp(*(char *const *)a, *(char *const *)b); }
 
-/* The Scheme Palette's choices (loop thread): the schemes' titles, WPS's
+/* The Scheme Palette's choices (loop thread): the schemes' titles, Objectspace's
  * own first (Classic, Dark, High contrast), then the user's by title. */
 char *scheme_titles(void)
 {
@@ -504,7 +504,7 @@ static void setup_objects_work(void *arg)
     osd_props_init(&known);
     char sloc[OSD_ID_LEN + 8];
     snprintf(sloc, sizeof sloc, "setup:%s", fl.id);   /* by the folder: one set per System Setup folder */
-    osd_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    osd_db_get_class(db, fl.vol, sloc, "Objectspace", &known);
     for (size_t i = 0; i < NSETUP; i++) {
         char *id = NULL, vol[OSD_VOLID_MAX];
         if (osd_props_str(&known, setup_classes[i][0], &id) && id && osd_db_vobj_vol(db, id, vol, sizeof vol)) { free(id); continue; }
@@ -519,7 +519,7 @@ static void setup_objects_work(void *arg)
             osd_loaded_free(&sy);
             if (rc) continue;
         } else if (osd_central_create(fl.vol, fl.id, setup_classes[i][0], setup_classes[i][1], NULL, nid)) continue;
-        osd_db_key(key, sizeof key, sloc, "WPS", setup_classes[i][0]);
+        osd_db_key(key, sizeof key, sloc, "Objectspace", setup_classes[i][0]);
         osd_db_put(db, fl.vol, key, 's', nid, OSD_ID_LEN);
     }
     osd_props_free(&known);
@@ -545,7 +545,7 @@ static void system_load_work(void *arg)
     char sloc[OSD_ID_LEN + 8], *id = NULL;
     snprintf(sloc, sizeof sloc, "setup:%s", fl.id);
     system_ld.err = ENOENT;
-    if (!fl.err && fl.id[0]) osd_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    if (!fl.err && fl.id[0]) osd_db_get_class(db, fl.vol, sloc, "Objectspace", &known);
     if (osd_props_str(&known, "OsdSystem", &id) && id) {
         char loc[OSD_ID_LEN + 8];
         snprintf(loc, sizeof loc, "vobj:%s", id);
@@ -651,7 +651,7 @@ static bool def_find_in(const osd_loaded *folder, const char *tid, const char *c
 static void def_note(const char *vol, const char *name, const char *id)
 {
     char key[256];
-    osd_db_key(key, sizeof key, DEFAULTS_LOC, "WPS", name);
+    osd_db_key(key, sizeof key, DEFAULTS_LOC, "Objectspace", name);
     osd_db_put(db, vol, key, 's', id, OSD_ID_LEN);
 }
 
@@ -729,9 +729,9 @@ static void defaults_work(void *arg)
     if (sy.err || !sy.id[0]) { osd_loaded_free(&sy); return; }
     osd_props known;
     osd_props_init(&known);
-    osd_db_get_class(db, sy.vol, DEFAULTS_LOC, "WPS", &known);
+    osd_db_get_class(db, sy.vol, DEFAULTS_LOC, "Objectspace", &known);
     char key[256], *dk = NULL;
-    osd_db_key(key, sizeof key, DEFAULTS_LOC, "WPS", "desktop");
+    osd_db_key(key, sizeof key, DEFAULTS_LOC, "Objectspace", "desktop");
     if (!j->desk[0] && osd_props_str(&known, "desktop", &dk) && dk) snprintf(j->desk, sizeof j->desk, "%s", dk);
     else if (j->desk[0] && (!osd_props_str(&known, "desktop", &dk) || !dk || strcmp(dk, j->desk)))
         osd_db_put(db, sy.vol, key, 's', j->desk, (uint32_t)strlen(j->desk));   /* (osdctl restore-defaults) */
@@ -799,7 +799,7 @@ static void defaults_work(void *arg)
             char sloc[OSD_ID_LEN + 8];
             snprintf(sloc, sizeof sloc, "setup:%s", sf.id);
             osd_props_init(&known);
-            osd_db_get_class(db, sf.vol, sloc, "WPS", &known);
+            osd_db_get_class(db, sf.vol, sloc, "Objectspace", &known);
             char before[NSETUP][OSD_ID_LEN + 1];
             for (size_t i = 0; i < NSETUP; i++) {
                 char *id = NULL, nid[OSD_ID_LEN + 1];
@@ -814,7 +814,7 @@ static void defaults_work(void *arg)
                 if (!ld.err && strcmp(ld.folder_id, home_f->id) &&
                     def_move(j, id, home_f, i >= SETUP_IN_SYSTEM ? sys : sd, nid)) {
                     char key[256];
-                    osd_db_key(key, sizeof key, sloc, "WPS", setup_classes[i][0]);
+                    osd_db_key(key, sizeof key, sloc, "Objectspace", setup_classes[i][0]);
                     osd_db_put(db, sf.vol, key, 's', nid, OSD_ID_LEN);
                     snprintf(before[i], sizeof before[i], "%s", nid);
                     j->put_back[j->nput++] = setup_classes[i][1];
@@ -825,7 +825,7 @@ static void defaults_work(void *arg)
             osd_props_free(&known);
             setup_objects_work(NULL);   /* makes the ones gone */
             osd_props_init(&known);
-            osd_db_get_class(db, sf.vol, sloc, "WPS", &known);
+            osd_db_get_class(db, sf.vol, sloc, "Objectspace", &known);
             for (size_t i = 0; i < NSETUP; i++) {
                 char *id = NULL;
                 if (osd_props_str(&known, setup_classes[i][0], &id) && id && strlen(id) == OSD_ID_LEN && strcmp(id, before[i])) {
@@ -842,7 +842,7 @@ static void defaults_work(void *arg)
     osd_loaded_free(&sy);
 }
 
-/* First-start step 11 (0.4), and Restore Desktop: WPS's own objects get
+/* First-start step 11 (0.4), and Restore Desktop: Objectspace's own objects get
  * Prevent delete (no_delete, their General page; the user may turn it
  * off) - its folders, the default objects and the desktop's shadows of
  * them, the settings objects. (protect_pending: set by the first start) */
@@ -877,7 +877,7 @@ static void protect_defaults(const char *desk)
     if (!sy.err && sy.id[0]) {
         osd_props known;
         osd_props_init(&known);
-        osd_db_get_class(db, sy.vol, DEFAULTS_LOC, "WPS", &known);
+        osd_db_get_class(db, sy.vol, DEFAULTS_LOC, "Objectspace", &known);
         struct defobj d[NDEFAULTS];
         int n = defaults_list(desk, d);
         for (int i = 0; i < n; i++) {
@@ -900,7 +900,7 @@ static void protect_defaults(const char *desk)
         osd_props_init(&known);
         char sloc[OSD_ID_LEN + 8];
         snprintf(sloc, sizeof sloc, "setup:%s", fl.id);
-        osd_db_get_class(db, fl.vol, sloc, "WPS", &known);
+        osd_db_get_class(db, fl.vol, sloc, "Objectspace", &known);
         for (size_t i = 0; i < NSETUP; i++) {
             char *id = NULL;
             if (osd_props_str(&known, setup_classes[i][0], &id) && id && strlen(id) == OSD_ID_LEN) {
@@ -984,7 +984,7 @@ void setup_req_work(void *arg)
     osd_props_init(&known);
     char sloc[OSD_ID_LEN + 8];
     snprintf(sloc, sizeof sloc, "setup:%s", fl.id);
-    if (!fl.err && fl.id[0]) osd_db_get_class(db, fl.vol, sloc, "WPS", &known);
+    if (!fl.err && fl.id[0]) osd_db_get_class(db, fl.vol, sloc, "Objectspace", &known);
     for (size_t i = 0; i < NSETUP; i++) {
         char *id = NULL, loc[OSD_ID_LEN + 8];
         r->ld[i].err = ENOENT;

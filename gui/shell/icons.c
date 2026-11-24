@@ -9,7 +9,7 @@
 #include <math.h>
 #include "osdicon.h"
 #include "osd_themes.h"
-#include "launchpad.h"
+#include "launcher.h"
 #include "mime.h"
 
 #include <errno.h>
@@ -281,7 +281,7 @@ bool icons_preview(const char *src, int size, char *out, size_t n, void (*done)(
 
 /* ---------------------------------------------------- icon themes (0.4) */
 
-static char default_theme[128] = "WPS (flat)";
+static char default_theme[128] = "Objectspace (flat)";
 static struct { char *key; cairo_surface_t *s; unsigned long used; } tcache[256];
 static unsigned long ttick;
 
@@ -297,7 +297,7 @@ void icons_set_default_size(ui_icon_size which)
     ui_icon_set was = *ui_icons();
     ui_set_icons(which);
     if (!memcmp(&was, ui_icons(), sizeof was)) return;
-    launchpad_icons_changed();
+    launcher_icons_changed();
 }
 
 /* a package's path in a theme (by name or id), or "" */
@@ -330,7 +330,7 @@ static cairo_surface_t *package_at(const char *path, int px)
     return s;
 }
 
-/* WPS's 0.2 picture of a name (installed, or a build tree's data/icons) */
+/* Objectspace's 0.2 picture of a name (installed, or a build tree's data/icons) */
 static bool classic_png(const char *name, char *out, size_t n)
 {
     snprintf(out, n, "%s/%s.png", OSD_ICONDIR, name);
@@ -348,7 +348,7 @@ cairo_surface_t *icons_theme(const char *theme, const char *name, int px)
 {
     char p[PATH_MAX + 64];
     if (!name || !*name) return NULL;
-    if (package_in(theme && *theme ? theme : default_theme, name, p, sizeof p) || package_in("wps-flat", name, p, sizeof p))
+    if (package_in(theme && *theme ? theme : default_theme, name, p, sizeof p) || package_in("objectspace-flat", name, p, sizeof p))
         return package_at(p, px);
     /* no theme has it (none installed: a checkout without make icons) */
     if (classic_png(name, p, sizeof p)) return icons_get(p);

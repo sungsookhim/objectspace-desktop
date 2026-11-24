@@ -30,7 +30,7 @@ void list_reply(void *arg, const osd_page *pg)
                                 e->type == DT_REG ? "file" : "other";
                 bool iu = false;
                 if (e->detailed) {
-                    /* In use: a lock file says so, or a program WPS started has it open. */
+                    /* In use: a lock file says so, or a program Objectspace started has it open. */
                     char fp[PATH_MAX + NAME_MAX + 2];
                     snprintf(fp, sizeof fp, "%s/%s", strcmp(r->folder, "/") ? r->folder : "", e->name);
                     iu = e->locked || (e->name[0] != '\x01' && osd_launch_in_use(fp)) ||
@@ -155,7 +155,7 @@ void do_open(struct req *r, osdo_object *o)
         st = &r->shadow_target.st;
     }
     /* Command prompt here (0.4.1): the user's shell in the System's
-     * terminal (WPS Terminal by default), in the folder, $OSD_FOLDER set */
+     * terminal (Objectspace Terminal by default), in the folder, $OSD_FOLDER set */
     const cv *pr = cv_get(&r->msg, "prompt");
     bool prompt = pr && pr->k == CV_BOOL && pr->b && osdo_is_a(o, OsdFolderClass) && path[0];
     static char prompt_track[PATH_MAX + 16], prompt_env[PATH_MAX + 16], prompt_title[PATH_MAX + 32];
@@ -304,10 +304,10 @@ void do_open(struct req *r, osdo_object *o)
             argv[2] = NULL;
             what = "xdg-open";
         }
-    } else if (osdo_is_a(o, OsdLaunchPadClass) || osdo_is_a(o, OsdWarpCenterClass)) {
+    } else if (osdo_is_a(o, OsdLauncherClass) || osdo_is_a(o, OsdTheBarClass)) {
         /* opened as the palette or the bar: the desktop shows it, or
          * brings it forward (never two) */
-        reply_view(r, osdo_is_a(o, OsdLaunchPadClass) ? "launchpad" : "warpcenter");
+        reply_view(r, osdo_is_a(o, OsdLauncherClass) ? "launcher" : "thebar");
         osdo_unref(orig);
         return;
     } else if (osdo_is_a(o, OsdColorPaletteClass)) {

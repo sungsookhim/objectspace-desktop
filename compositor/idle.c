@@ -4,7 +4,7 @@
  * by tools/osd-session as OSD_IDLE_DELAY, OSD_LOCK_ENABLED and
  * OSD_LOCK_DELAY, in seconds; 0 delay: never), and programs may hold the
  * screens on (idle-inhibit: video players, presentations) or hear of
- * idleness (ext-idle-notify). In the WPS session logind's requests are
+ * idleness (ext-idle-notify). In the Objectspace session logind's requests are
  * followed too: lock the session (loginctl lock-session) and sleep (the
  * screen is locked before the machine sleeps).
  */
@@ -143,7 +143,7 @@ static void take_sleep_delay(void)
     if (idle.sleep_fd >= 0) return;
     sd_bus_message *reply = NULL;
     if (sd_bus_call_method(idle.bus, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
-                           "Inhibit", NULL, &reply, "ssss", "sleep", "WPS", "Lock the screen before sleeping", "delay") >= 0) {
+                           "Inhibit", NULL, &reply, "ssss", "sleep", "Objectspace", "Lock the screen before sleeping", "delay") >= 0) {
         int fd;
         if (sd_bus_message_read(reply, "h", &fd) >= 0) idle.sleep_fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
     }

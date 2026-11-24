@@ -1,14 +1,14 @@
 #!/bin/sh
-# The WPS session (G5 step 4): what "WPS" on the login screen starts
+# The Objectspace session (G5 step 4): what "Objectspace" on the login screen starts
 # (/usr/share/wayland-sessions/objectspace.desktop, from tools/install-session.sh).
 #
-# osd-compositor on the screens and input devices, WPS's desktop in it on
+# osd-compositor on the screens and input devices, Objectspace's desktop in it on
 # the Desktop folder, osdd (the user service). GNOME's settings are shared
 # (gui-design.md: Settings shared with GNOME): the keyboard layout and the
-# pointer's look come from them, and other programs follow the WPS
+# pointer's look come from them, and other programs follow the Objectspace
 # scheme's light or dark choice through the desktop portal, whose
 # Settings answer from the same GNOME settings (the desktop keeps them
-# in step with the WPS scheme).
+# in step with the Objectspace scheme).
 #
 # Its log: ~/.local/state/objectspace/session.log (the last session's; the one
 # before is session.log.old).
@@ -37,7 +37,7 @@ if [ -f "$ENVFILE" ]; then
     done < "$ENVFILE"
 fi
 
-export XDG_CURRENT_DESKTOP=WPS XDG_SESSION_DESKTOP=wps XDG_SESSION_TYPE=wayland OSD_SESSION=1
+export XDG_CURRENT_DESKTOP=Objectspace XDG_SESSION_DESKTOP=osd XDG_SESSION_TYPE=wayland OSD_SESSION=1
 export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM="wayland;xcb" SDL_VIDEODRIVER=wayland _JAVA_AWT_WM_NONREPARENTING=1
 
 # The keyboard layout: GNOME's first input source, and its options.
@@ -50,7 +50,7 @@ opts=$(gsettings get org.gnome.desktop.input-sources xkb-options 2>/dev/null | t
 [ -n "$opts" ] && [ "$opts" != "@as" ] && export XKB_DEFAULT_OPTIONS=$opts
 # Input methods (GNOME's IBus sources: Hangul, Anthy, ...): IBus's own
 # service for sessions other than GNOME, with XIM for X11 programs; GTK,
-# Qt and X11 programs reach it through their IBus modules (WPS's own
+# Qt and X11 programs reach it through their IBus modules (Objectspace's own
 # fields do not yet: they need the compositor's input-method support).
 # The compositor's Super+Space sets IBus's engine (compositor/keymap.c).
 IM_VARS=
@@ -79,29 +79,29 @@ case $idle in ''|*[!0-9]*) ;; *) export OSD_IDLE_DELAY=$idle ;; esac
 case $lockd in ''|*[!0-9]*) ;; *) export OSD_LOCK_DELAY=$lockd ;; esac
 
 # The desktop portal: GNOME's GTK backend (its Settings read GNOME's
-# settings), for a desktop named WPS.
+# settings), for a desktop named Objectspace.
 PORTALS=${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal
 mkdir -p "$PORTALS"
-[ -f "$PORTALS/wps-portals.conf" ] || printf '[preferred]\ndefault=gtk;\norg.freedesktop.impl.portal.Secret=oo7-portal;gnome-keyring;\n' > "$PORTALS/wps-portals.conf"
+[ -f "$PORTALS/osd-portals.conf" ] || printf '[preferred]\ndefault=gtk;\norg.freedesktop.impl.portal.Secret=oo7-portal;gnome-keyring;\n' > "$PORTALS/osd-portals.conf"
 
 # VirtualBox's guest additions: its shared clipboard, started as usual
 # (VBoxClient-all), takes this session for X11 under XWayland and reaches
 # no clipboard here; in its Wayland mode (data control) it works. So in
 # this session (only) it starts that way, by two autostart entries of the
-# user's: the system's own, kept from WPS (NotShowIn), and WPS's. Neither
+# user's: the system's own, kept from Objectspace (NotShowIn), and Objectspace's. Neither
 # is written over once there (the user's own edits stay).
 AUTOSTART=${XDG_CONFIG_HOME:-$HOME/.config}/autostart
 if [ -c /dev/vboxguest ] && [ -f /etc/xdg/autostart/vboxclient.desktop ] && command -v VBoxClient >/dev/null; then
     mkdir -p "$AUTOSTART"
     [ -e "$AUTOSTART/vboxclient.desktop" ] || {
         grep -v '^NotShowIn=' /etc/xdg/autostart/vboxclient.desktop
-        echo 'NotShowIn=WPS;'
+        echo 'NotShowIn=Objectspace;'
     } > "$AUTOSTART/vboxclient.desktop"
-    [ -e "$AUTOSTART/wps-vboxclient.desktop" ] || printf '%s\n' '[Desktop Entry]' 'Type=Application' \
-        'Name=VirtualBox shared clipboard (WPS)' \
+    [ -e "$AUTOSTART/osd-vboxclient.desktop" ] || printf '%s\n' '[Desktop Entry]' 'Type=Application' \
+        'Name=VirtualBox shared clipboard (Objectspace)' \
         'Comment=VirtualBox guest services, the clipboard in its Wayland mode' \
         'Exec=sh -c "VBoxClient --clipboard --session-type wayland; VBoxClient --checkhostversion"' \
-        'OnlyShowIn=WPS;' > "$AUTOSTART/wps-vboxclient.desktop"
+        'OnlyShowIn=Objectspace;' > "$AUTOSTART/osd-vboxclient.desktop"
 fi
 
 # osdd: the user service (tools/install-extension.sh installs it), or
@@ -129,7 +129,7 @@ mkdir -p "$UNITS"
 # this script's last lines), the target stops, and graphical-session.target
 # with it. Left active, it kept GNOME from starting at the next login
 # ("A graphical session is already running!").
-printf '%s\n' '[Unit]' 'Description=The WPS session (objectspace-desktop)' \
+printf '%s\n' '[Unit]' 'Description=The Objectspace session (objectspace-desktop)' \
     "BindsTo=$WATCH" "After=$WATCH" \
     'BindsTo=graphical-session.target' 'Before=graphical-session.target' \
     'Wants=graphical-session-pre.target' 'After=graphical-session-pre.target' \

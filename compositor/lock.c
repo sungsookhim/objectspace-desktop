@@ -1,5 +1,5 @@
 /*
- * The lock screen (G5 step 4; OS/2's Lockup): the LaunchPad's Lockup
+ * The lock screen (G5 step 4; OS/2's Lockup): the Launcher's Lockup
  * button (the desktop's "lock" command) or Super+L.
  *
  * The compositor covers every screen and takes all input until the user's

@@ -26,7 +26,7 @@ size_t src_count(void *ctx)
 /* A program's icon was made (an SVG, by glycin): every window draws again. */
 void appicons_ready(void)
 {
-    warpcenter_damage();   /* (the tray's icons) */
+    thebar_damage();   /* (the tray's icons) */
     apppick_icons_changed();
     for (struct folder *f = folders; f; f = f->next)
         if (!f->closing && f->cont) ui_container_changed(f->cont, 0, SIZE_MAX);
@@ -100,7 +100,7 @@ void src_item(void *ctx, size_t i, ui_item *out)
         out->open_icon = out->image != NULL;
         out->hatch_open = r->open_hatch || hatch_open_all;
     }
-    if (!out->image) out->image = icons_object(f->icon_theme, r->icon, px);   /* its own icon, or WPS's (a theme's) */
+    if (!out->image) out->image = icons_object(f->icon_theme, r->icon, px);   /* its own icon, or Objectspace's (a theme's) */
     if (!out->image && r->kind == UI_KIND_PROGRAM) {
         /* a program (or its shadow): its desktop entry's icon */
         char p[PATH_MAX];

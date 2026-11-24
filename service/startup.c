@@ -170,7 +170,7 @@ int osd_startup_add(const char *path, char *made, size_t n)
         char type[32];
         entry_value(t, "Type", type, sizeof type);
         if (strcmp(type, "Application")) { free(t); return ENOEXEC; }
-        static const char *const keys[] = { "X-WPS-Startup", "Hidden", "X-GNOME-Autostart-enabled" };
+        static const char *const keys[] = { "X-Objectspace-Startup", "Hidden", "X-GNOME-Autostart-enabled" };
         static const char *const vals[] = { "true", NULL, NULL };
         text = with_keys(t, keys, vals, 3);
         free(t);
@@ -187,7 +187,7 @@ int osd_startup_add(const char *path, char *made, size_t n)
         }
         q[o++] = '"';
         q[o] = 0;
-        snprintf(text_buf, sizeof text_buf, "[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nX-WPS-Startup=true\n", base, q);
+        snprintf(text_buf, sizeof text_buf, "[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nX-Objectspace-Startup=true\n", base, q);
         text = strdup(text_buf);
         char *dot = strrchr(stem, '.');
         if (dot && dot != stem) *dot = 0;

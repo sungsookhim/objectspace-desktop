@@ -116,8 +116,8 @@ void svc_msg_set(const int64_t *ids, size_t n, int read, int closed, svc_fn fn, 
 void svc_msg_delete(const int64_t *ids, size_t n, svc_fn fn, void *arg);
 void svc_msg_closed(int64_t nid, const char *sender, svc_fn fn, void *arg);
 
-/* An open's reply naming a view (messages, minimized-windows, launchpad,
- * warpcenter): the desktop shows it. Every part that opens objects passes
+/* An open's reply naming a view (messages, minimized-windows, launcher,
+ * thebar): the desktop shows it. Every part that opens objects passes
  * such replies here; true if it was one. */
 extern bool (*svc_view_fn)(const char *view);
 bool svc_reply_view(const cv *reply);

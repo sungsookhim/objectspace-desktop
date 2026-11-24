@@ -1,5 +1,5 @@
 /*
- * Messages (v0.2-design 9): what programs and WPS itself told the user,
+ * Messages (v0.2-design 9): what programs and Objectspace itself told the user,
  * kept by osdd so every GUI sees the same list, in
  * $XDG_STATE_HOME/objectspace/messages (a CBOR array; the last 500, newest
  * last). Loop thread only.

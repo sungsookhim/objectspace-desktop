@@ -4,7 +4,7 @@
 # gets a details view of a given size, a Find window and a notebook, and a
 # second login (the same test folder) opens them all, where they were.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-restore-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-restore-XXXX")
 cat > "$S/one" <<EOS
 3 dclick 54 30
 5 down 500 117
@@ -14,7 +14,7 @@ cat > "$S/one" <<EOS
 9 quit
 EOS
 printf '5 windows\n6 quit\n' > "$S/two"
-export DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1"
+export DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1"
 SECS=12 tests/comp/run.sh "$S/one" "sleep 1" > "$S/out1" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out1")
 fails=0

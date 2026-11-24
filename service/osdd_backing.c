@@ -1,6 +1,6 @@
 /* osdd: properties Linux keeps (object-properties-design.md 2.6). A
  * property declared with `backing` is read from and written to its place,
- * not the object's state - so WPS and every other program see the same:
+ * not the object's state - so Objectspace and every other program see the same:
  *   mimeapps          the program a file's type opens with: mimeapps.list's
  *                     default (shared with GNOME); by the program's name
  *   desktop:MimeType  the types a program's desktop entry opens (its
@@ -15,7 +15,7 @@ static const char *file_of(osdo_object *o)
     return osdo_is_a(o, OsdFileSystemClass) ? OsdFileSystem_data(o)->path : NULL;
 }
 
-/* a program from a desktop entry (not WPS's own): its file */
+/* a program from a desktop entry (not Objectspace's own): its file */
 static const char *desktop_entry_of(osdo_object *o)
 {
     sobj *so = osd_sobj_of(o);

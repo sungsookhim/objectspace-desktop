@@ -1,12 +1,12 @@
 #!/bin/sh
-# The LaunchPad and the WarpCenter in 0.3 (v0.3-plan step 10), headless:
-# tooltips after resting on a LaunchPad button and on the clock; Super
-# pressed alone opens the WPS menu, again closes it, Super with a click in
-# between does nothing; a vertical LaunchPad's drawers open out to the
+# The Launcher and TheBar in 0.3 (v0.3-plan step 10), headless:
+# tooltips after resting on a Launcher button and on the clock; Super
+# pressed alone opens the Objectspace menu, again closes it, Super with a click in
+# between does nothing; a vertical Launcher's drawers open out to the
 # right, or the left (its Drawers setting).
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-lp-XXXX")
-# (the LaunchPad: 351x74+520+718; its first object button at 700..754 x 733..789)
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-lp-XXXX")
+# (the Launcher: 351x74+520+718; its first object button at 700..754 x 733..789)
 cat > "$S/script" <<EOS
 3 move 720 758
 3.2 move 721 758
@@ -40,11 +40,11 @@ cat > "$S/script" <<EOS
 EOS
 REPO=$PWD
 W="$REPO/build/osdctl"
-# (at 12 s: the LaunchPad made vertical, its drawers on the right; at 15 s on the left)
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_LAUNCHPAD=1" SECS=21 tests/comp/run.sh "$S/script" \
-    "sleep 11.5; A=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdLaunchPad\"][\"address\"])');
-     F=\$('$W' layout \"\$T/launchpad\" | python3 -c 'import json,sys; print([k for k, v in json.load(sys.stdin)[\"result\"][\"positions\"].items() if v.startswith(\"0,\")][0])');
-     mkdir -p \"\$T/launchpad Drawers/\$F/Sub\" && echo x > \"\$T/launchpad Drawers/\$F/Sub/a.txt\";
+# (at 12 s: the Launcher made vertical, its drawers on the right; at 15 s on the left)
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_LAUNCHER=1" SECS=21 tests/comp/run.sh "$S/script" \
+    "sleep 11.5; A=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdLauncher\"][\"address\"])');
+     F=\$('$W' layout \"\$T/launcher\" | python3 -c 'import json,sys; print([k for k, v in json.load(sys.stdin)[\"result\"][\"positions\"].items() if v.startswith(\"0,\")][0])');
+     mkdir -p \"\$T/launcher Drawers/\$F/Sub\" && echo x > \"\$T/launcher Drawers/\$F/Sub/a.txt\";
      '$W' settings_set \"\$A\" orientation=1 drawer_side=0 > /dev/null; sleep 3; '$W' settings_set \"\$A\" drawer_side=1 > /dev/null" \
     > "$S/out.txt" 2>&1
 fails=0
@@ -55,13 +55,13 @@ from PIL import Image
 im = Image.open('$1').convert('RGB')
 ok = lambda p: p[0] >= 250 and p[1] >= 250 and 215 <= p[2] <= 232   # (the tooltip's pale yellow)
 exit(0 if any(ok(im.getpixel((x, y))) for x in range($2, $3, 2) for y in range($4, $5, 2)) else 1)"; }
-check "a LaunchPad button's tooltip (above it)" "yellow '$S/tip-lp.png' 690 780 690 735"
+check "a Launcher button's tooltip (above it)" "yellow '$S/tip-lp.png' 690 780 690 735"
 check "the clock's tooltip: the date" "yellow '$S/tip-clock.png' 1080 1280 740 770"
-check "Super alone: the WPS menu (above the Desktop button)" "[ \"\$(px '$S/super.png' 150 700)\" = '204 204 204' ]"
+check "Super alone: the Objectspace menu (above the Desktop button)" "[ \"\$(px '$S/super.png' 150 700)\" = '204 204 204' ]"
 check "the menu closed by a click elsewhere" "[ \"\$(px '$S/closed.png' 150 700)\" != '204 204 204' ]"
 check "Super again: the menu closed" "[ \"\$(px '$S/super-twice.png' 150 700)\" != '204 204 204' ]"
 # (vertical, kept on the screen: 168x309+520+460; its first drawer arrow at 674..686 x 640..682 on the right, 523..535 on the left)
-check "vertical: placed on the screen" "grep -q \"LaunchPad' app io.github.sungsookhim.Objectspace.LaunchPad 168x309+520+460\" '$S/out.txt'"
+check "vertical: placed on the screen" "grep -q \"Launcher' app io.github.sungsookhim.Objectspace.Launcher 168x309+520+460\" '$S/out.txt'"
 check "drawers on the right: one opens out to the right" "[ \"\$(px '$S/right.png' 760 668)\" = '204 204 204' ] && [ \"\$(px '$S/right.png' 450 668)\" != '204 204 204' ]"
 check "drawers on the left: out to the left" "[ \"\$(px '$S/left.png' 450 668)\" = '204 204 204' ] && [ \"\$(px '$S/left.png' 760 668)\" != '204 204 204' ]"
 # (the drawer, on the left, spans x 323..520; a cascade from its folder opens left of it)

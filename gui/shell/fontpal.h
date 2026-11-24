@@ -2,9 +2,9 @@
  * The Font Palette (OS/2's, v0.3-design 10): a window of font samples
  * ("12.Helvetica"), each drawn in its font. Dragged onto a folder window
  * or the desktop, a sample sets that folder's icon font (with Shift:
- * every folder's); onto the WarpCenter, its font; onto a title bar, all
+ * every folder's); onto TheBar, its font; onto a title bar, all
  * title bars'. A sample's menu: Edit font... (family, size, bold, italic),
- * and Use for menus, title bars, every folder, the WarpCenter.
+ * and Use for menus, title bars, every folder, TheBar.
  */
 #ifndef OSD_FONTPAL_H
 #define OSD_FONTPAL_H
@@ -16,7 +16,7 @@
 
 #define MIME_FONT "application/x-objectspace-font"
 
-/* what: "menus", "titles", "folders", "warpcenter" (a font for them; ""
+/* what: "menus", "titles", "folders", "thebar" (a font for them; ""
  * the interface font again), or "samples" (the palette's list, ";"). */
 typedef void (*fontpal_apply_fn)(const char *what, const char *spec);
 

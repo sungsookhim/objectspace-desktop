@@ -538,7 +538,7 @@ void win_frame(ui_surface *s, double now)
             snprintf(data, sizeof data, "%s\ttemplate\n", p);
             struct dragging *was = cur_drag;
             cur_drag = &d;
-            win_drop(s, 560, step == 3 ? 400 : 450, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, step == 3 ? 0 : UI_MOD_SHIFT);
+            win_drop(s, 560, step == 3 ? 400 : 450, MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, step == 3 ? 0 : UI_MOD_SHIFT);
             cur_drag = was;
             step++;
             t0 = now;
@@ -631,7 +631,7 @@ void win_frame(ui_surface *s, double now)
             snprintf(d.src_folder, sizeof d.src_folder, "%s", f->path);
             struct dragging *was = cur_drag;
             cur_drag = &d;
-            const char *mimes[1] = { MIME_WPS }, *mime;
+            const char *mimes[1] = { MIME_OSD }, *mime;
             d.n = 1;   /* the locked one alone over its folder: refused (the no-drop pointer) */
             uint32_t a1 = win_drag_motion(s, 600, 420, mimes, 1, UI_DND_COPY | UI_DND_MOVE, 0, &mime);
             d.n = 2;
@@ -1076,8 +1076,8 @@ void win_frame(ui_surface *s, double now)
                 if (model_name(&src->m, k) && !strcmp(model_name(&src->m, k), "with space.txt")) i = k;
             src_drag(src, i, 0);
             if (cur_drag)   /* first line of each (the test prints, it does not change them) */
-                fprintf(stderr, "selftest: drag data: wps \"%.*s\" uris \"%.*s\"\n", (int)strcspn(cur_drag->wps, "\n"),
-                        cur_drag->wps, (int)strcspn(cur_drag->uris, "\r"), cur_drag->uris);
+                fprintf(stderr, "selftest: drag data: osd \"%.*s\" uris \"%.*s\"\n", (int)strcspn(cur_drag->osd, "\n"),
+                        cur_drag->osd, (int)strcspn(cur_drag->uris, "\r"), cur_drag->uris);
             /* A folder dropped into itself is refused. */
             struct dragging fake = { 0 };
             char *paths[1] = { f->path };
@@ -1085,16 +1085,16 @@ void win_frame(ui_surface *s, double now)
             fake.n = 1;
             struct dragging *was = cur_drag;
             cur_drag = &fake;
-            const char *mime, *mimes[] = { MIME_WPS };
+            const char *mime, *mimes[] = { MIME_OSD };
             uint32_t act = win_drag_motion(s, 20, 60, mimes, 1, UI_DND_COPY | UI_DND_MOVE, 0, &mime);
             cur_drag = was;
             fprintf(stderr, "selftest: sub dropped into itself: action %u (0 = refused)\n", act);
             snprintf(data, sizeof data, "%s/a.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);                      /* move */
+            win_drop(s, 20, 60, MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, 0);                      /* move */
             snprintf(data, sizeof data, "%s/b.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* copy */
+            win_drop(s, 20, 60, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* copy */
             snprintf(data, sizeof data, "%s/sub2\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);   /* shadow */
+            win_drop(s, 20, 60, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);   /* shadow */
             data[0] = 0;
             char *u = NULL;
             size_t ul = 0, uc = 0;
@@ -1106,7 +1106,7 @@ void win_frame(ui_surface *s, double now)
             step++;
         } else if (step == 1 && t > 1500) {
             snprintf(data, sizeof data, "%s/b.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* b.txt is there now */
+            win_drop(s, 20, 60, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* b.txt is there now */
             step++;
         } else if (step == 2 && last_dialog) {
             fprintf(stderr, "selftest: a name clash asks: dialog open\n");
@@ -1118,7 +1118,7 @@ void win_frame(ui_surface *s, double now)
         } else if (step == 3 && t > 1500) {
             fprintf(stderr, "selftest: status: %s\n", f->error);
             snprintf(data, sizeof data, "%s/b.txt\n", D);
-            win_drop(s, 20, 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* and again */
+            win_drop(s, 20, 60, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);            /* and again */
             step++;
             t0 = now;
         } else if (step == 4 && last_dialog) {
@@ -1169,7 +1169,7 @@ void win_frame(ui_surface *s, double now)
             src_drag(f, bi, 0);
             char data[PATH_MAX];
             snprintf(data, sizeof data, "%s/b.txt\n", f->path);
-            win_drop(s, sx + 150, sy + 200, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            win_drop(s, sx + 150, sy + 200, MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, 0);
             ui_pointer_event rl = { .kind = UI_RELEASE, .x = sx + 150, .y = sy + 200, .button = ui_mouse_button(UI_ACT_DRAG) };
             win_pointer(s, &rl);
             step++;
@@ -1216,7 +1216,7 @@ void win_frame(ui_surface *s, double now)
         if (step == 0) {
             snprintf(data, sizeof data, "%s/T\n", f->path);
             ui_rect c = ui_frame_client(s);   /* on the background, away from the icons */
-            win_drop(s, c.x + c.w - 60, c.y + c.h - 60, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);
+            win_drop(s, c.x + c.w - 60, c.y + c.h - 60, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);
             step++;
         } else if (step == 1 && t > 1500 && si != SIZE_MAX) {
             ui_item it;
@@ -1279,7 +1279,7 @@ void win_frame(ui_surface *s, double now)
             char data[PATH_MAX];
             snprintf(data, sizeof data, "%s/T\n", f->path);
             ui_rect cl = ui_frame_client(s);
-            win_drop(s, cl.x + cl.w - 60, cl.y + cl.h - 60, MIME_WPS, data, strlen(data), UI_DND_MOVE, UI_DND_ASK, 0);
+            win_drop(s, cl.x + cl.w - 60, cl.y + cl.h - 60, MIME_OSD, data, strlen(data), UI_DND_MOVE, UI_DND_ASK, 0);
             step++;
         } else if (step == 1 && now - t0 > 1500) {
             bool made = false;
@@ -1305,10 +1305,10 @@ void win_frame(ui_surface *s, double now)
         if (step == 0) {
             sx = cl.x + 260; sy = cl.y + 200;
             snprintf(data, sizeof data, "%s/T\n", f->path);
-            win_drop(s, sx, sy, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);   /* a shadow */
+            win_drop(s, sx, sy, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL | UI_MOD_SHIFT);   /* a shadow */
             cx = cl.x + 420; cy = cl.y + 120;
             snprintf(data, sizeof data, "%s/f.txt\n", f->path);
-            win_drop(s, cx, cy, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);                 /* a copy (renamed) */
+            win_drop(s, cx, cy, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);                 /* a copy (renamed) */
             step++;
         } else if (step == 1 && last_dialog) {
             ui_key_event r = { .sym = XKB_KEY_r, .utf8 = "r" };
@@ -1499,7 +1499,7 @@ void win_frame(ui_surface *s, double now)
         if (step == 0 && t > 300 && tpl_folder[0] && tpl_data[0] && tpl_letter[0]) {
             fprintf(stderr, "selftest: the templates folder: %s\n", rows);
             snprintf(data, sizeof data, "%s\ttemplate\n", tpl_folder);
-            win_drop(s, cl.x + 220, cl.y + 150, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            win_drop(s, cl.x + 220, cl.y + 150, MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, 0);
             step++;
             t0 = now;
         } else if (step == 0 && t > 5000) {
@@ -1527,7 +1527,7 @@ void win_frame(ui_surface *s, double now)
             snprintf(p, sizeof p, "%s/Letters", f->path);
             fprintf(stderr, "selftest: typed a name: Letters on disk %d\n", access(p, F_OK) == 0);
             snprintf(data, sizeof data, "%s\ttemplate\n%s\ttemplate\n", tpl_data, tpl_letter);
-            win_drop(s, cl.x + 420, cl.y + 150, MIME_WPS, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);
+            win_drop(s, cl.x + 420, cl.y + 150, MIME_OSD, data, strlen(data), UI_DND_COPY, 0, UI_MOD_CTRL);
             step++;
             t0 = now;
         } else if (step == 3 && t > 2000) {
@@ -1744,7 +1744,7 @@ void win_frame(ui_surface *s, double now)
         }
         if (step == 0 && tf[0] && td[0]) {
             snprintf(data, sizeof data, "%s\ttemplate\n", tf);
-            win_drop(s, 200, 150, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            win_drop(s, 200, 150, MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, 0);
             step++;
             t0 = now;
         } else if (step == 1 && t > 1500) {
@@ -1756,7 +1756,7 @@ void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 2 && t > 1500 && nw && nw->m.complete) {
             snprintf(data, sizeof data, "%s\ttemplate\n", td);
-            win_drop(nw->win, 150, 120, MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            win_drop(nw->win, 150, 120, MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, 0);
             step++;
             t0 = now;
         } else if (step == 3 && t > 2000) {
@@ -1768,7 +1768,7 @@ void win_frame(ui_surface *s, double now)
             /* three more Data Files, each dropped at its own spot */
             snprintf(data, sizeof data, "%s\ttemplate\n", td);
             static const double spots[3][2] = { { 350, 120 }, { 150, 300 }, { 400, 330 } };
-            for (int k = 0; k < 3; k++) win_drop(nw->win, spots[k][0], spots[k][1], MIME_WPS, data, strlen(data), UI_DND_MOVE, 0, 0);
+            for (int k = 0; k < 3; k++) win_drop(nw->win, spots[k][0], spots[k][1], MIME_OSD, data, strlen(data), UI_DND_MOVE, 0, 0);
             step = 10;
             t0 = now;
         } else if (step == 10 && t > 3000) {
@@ -1862,25 +1862,25 @@ void win_frame(ui_surface *s, double now)
             step++;
             t0 = now;
         } else if (step == 1 && t > 2500) {
-            fprintf(stderr, "selftest: GNOME to dark: WPS scheme %s\n", ui_scheme_now.name);
+            fprintf(stderr, "selftest: GNOME to dark: Objectspace scheme %s\n", ui_scheme_now.name);
             cv d = { .k = CV_TEXT, .s = (char *)"650", .len = 3 };
             svc_settings_set(mouse, "double_click_ms", &d, -1, ignore_reply, NULL);
             step++;
             t0 = now;
         } else if (step == 2 && t > 2500) {
-            fprintf(stderr, "selftest: WPS double-click 650: GNOME %s, the toolkit %d\n",
+            fprintf(stderr, "selftest: Objectspace double-click 650: GNOME %s, the toolkit %d\n",
                     GGET("org.gnome.desktop.peripherals.mouse", "double-click"), ui_mouse.double_click_ms);
             if (system("gsettings set org.gnome.desktop.interface font-name 'DejaVu Sans 12'")) {}
             step++;
             t0 = now;
         } else if (step == 3 && t > 2500) {
-            fprintf(stderr, "selftest: GNOME font DejaVu Sans 12: WPS font %.0f px\n", ui_scheme_now.font_px);
+            fprintf(stderr, "selftest: GNOME font DejaVu Sans 12: Objectspace font %.0f px\n", ui_scheme_now.font_px);
             cv hc = { .k = CV_TEXT, .s = (char *)"high contrast", .len = 13 };
             svc_settings_set(pal, "scheme", &hc, -1, ignore_reply, NULL);
             step++;
             t0 = now;
         } else if (step == 4 && t > 2500) {
-            fprintf(stderr, "selftest: WPS high contrast: GNOME high-contrast %s; WPS scheme %s\n",
+            fprintf(stderr, "selftest: Objectspace high contrast: GNOME high-contrast %s; Objectspace scheme %s\n",
                     GGET("org.gnome.desktop.a11y.interface", "high-contrast"), ui_scheme_now.name);
             ui_app_quit(app);
             step++;
@@ -1889,93 +1889,93 @@ void win_frame(ui_surface *s, double now)
         return;
     }
     if (st && !strcmp(st, "lpfill")) {
-        /* Three objects in the first LaunchPad drawer, then nothing (for
+        /* Three objects in the first Launcher drawer, then nothing (for
          * PROBE_MODE=drawer to click). */
         static bool done;
-        if (!f->desktop || done || launchpad_count() < 2) return;
+        if (!f->desktop || done || launcher_count() < 2) return;
         done = true;
         const char *names[] = { "notes.txt", "Projects", "added-later.txt" };
         for (int k = 0; k < 3; k++) {
             char p[PATH_MAX];
             snprintf(p, sizeof p, "%s/%s", f->path, names[k]);
-            if (access(p, F_OK) == 0) launchpad_drawer(0, p);
+            if (access(p, F_OK) == 0) launcher_drawer(0, p);
         }
         fprintf(stderr, "selftest: first drawer filled\n");
         return;
     }
-    if (st && !strcmp(st, "launchpad2")) {
-        /* The LaunchPad in 0.3 (step 10): vertical, small icons, no text;
+    if (st && !strcmp(st, "launcher2")) {
+        /* The Launcher in 0.3 (step 10): vertical, small icons, no text;
          * a drawer open follows its folder. <D> has notes.txt. */
         static double t0;
         static int step;
         static size_t before;
         if (!f->desktop) return;
-        if (!t0) { if (launchpad_count() < 3) return; t0 = now; }
+        if (!t0) { if (launcher_count() < 3) return; t0 = now; }
         double t = now - t0;
         if (step == 0) step = 1;
         if (step == 1 && t > 500) {
-            /* (its tooltip: tests/comp/launchpad.sh, where the pointer is the test's) */
-            double w0 = launchpad_width(), h0 = launchpad_height();
-            launchpad_setting("orientation", "vertical");
-            double w1 = launchpad_width(), h1 = launchpad_height();
-            launchpad_setting("text", "0");
-            launchpad_setting("small_icons", "1");
-            double w2 = launchpad_width(), h2 = launchpad_height();
-            fprintf(stderr, "selftest: launchpad2: horizontal %.0fx%.0f, vertical %.0fx%.0f (taller %d), small without text %.0fx%.0f (smaller %d)\n",
+            /* (its tooltip: tests/comp/launcher.sh, where the pointer is the test's) */
+            double w0 = launcher_width(), h0 = launcher_height();
+            launcher_setting("orientation", "vertical");
+            double w1 = launcher_width(), h1 = launcher_height();
+            launcher_setting("text", "0");
+            launcher_setting("small_icons", "1");
+            double w2 = launcher_width(), h2 = launcher_height();
+            fprintf(stderr, "selftest: launcher2: horizontal %.0fx%.0f, vertical %.0fx%.0f (taller %d), small without text %.0fx%.0f (smaller %d)\n",
                     w0, h0, w1, h1, h1 > w1 && w0 > h0, w2, h2, w2 < w1 && h2 < h1);
-            launchpad_drawer_open(0);
+            launcher_drawer_open(0);
             step++;
             t0 = now;
         } else if (step == 2 && t > 1500) {
-            before = launchpad_drawer_count();
+            before = launcher_drawer_count();
             char p[PATH_MAX];
             snprintf(p, sizeof p, "%s/notes.txt", f->path);
-            launchpad_drawer(0, p);   /* (as a drop on its arrow: a shadow in its folder) */
+            launcher_drawer(0, p);   /* (as a drop on its arrow: a shadow in its folder) */
             step++;
             t0 = now;
         } else if (step == 3 && t > 2000) {
-            fprintf(stderr, "selftest: launchpad2: drawer open: %zu, then %zu (followed)\n", before, launchpad_drawer_count());
+            fprintf(stderr, "selftest: launcher2: drawer open: %zu, then %zu (followed)\n", before, launcher_drawer_count());
             ui_app_quit(app);
             step++;
         }
         return;
     }
-    if (st && !strcmp(st, "launchpad")) {
-        /* The LaunchPad on the desktop: its first buttons, a button
+    if (st && !strcmp(st, "launcher")) {
+        /* The Launcher on the desktop: its first buttons, a button
          * pressed (a folder opens), a drop on it and on a drawer arrow. */
         static double t0;
         static int step;
         if (!f->desktop) return;
-        if (!t0) { if (launchpad_count() < 3) return; t0 = now; }
+        if (!t0) { if (launcher_count() < 3) return; t0 = now; }
         double t = now - t0;
         char rows[600] = "";
-        #define LROWS() do { rows[0] = 0; for (size_t i_ = 0; launchpad_title(i_); i_++) \
-            snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i_ ? ", " : "", launchpad_title(i_)); } while (0)
+        #define LROWS() do { rows[0] = 0; for (size_t i_ = 0; launcher_title(i_); i_++) \
+            snprintf(rows + strlen(rows), sizeof rows - strlen(rows), "%s'%s'", i_ ? ", " : "", launcher_title(i_)); } while (0)
         if (step == 0 && t > 500) {
             LROWS();
-            fprintf(stderr, "selftest: LaunchPad (%zu): %s\n", launchpad_count(), rows);
+            fprintf(stderr, "selftest: Launcher (%zu): %s\n", launcher_count(), rows);
             char shot[PATH_MAX];
             if (getenv("OSD_SHELL_SHOT")) {
-                snprintf(shot, sizeof shot, "%s-launchpad.png", getenv("OSD_SHELL_SHOT"));
-                launchpad_snapshot(shot);
+                snprintf(shot, sizeof shot, "%s-launcher.png", getenv("OSD_SHELL_SHOT"));
+                launcher_snapshot(shot);
             }
             size_t tb = SIZE_MAX;
-            for (size_t i = 0; launchpad_title(i); i++) if (!strcmp(launchpad_title(i), "templates")) tb = i;
-            fprintf(stderr, "selftest: press Templates: %d\n", tb != SIZE_MAX && launchpad_press(4 + tb));
+            for (size_t i = 0; launcher_title(i); i++) if (!strcmp(launcher_title(i), "templates")) tb = i;
+            fprintf(stderr, "selftest: press Templates: %d\n", tb != SIZE_MAX && launcher_press(4 + tb));
             char p[PATH_MAX];
             snprintf(p, sizeof p, "%s/notes.txt", f->path);
-            launchpad_add(p);
-            launchpad_drawer(0, p);
+            launcher_add(p);
+            launcher_drawer(0, p);
             step++;
             t0 = now;
         } else if (step == 1 && t > 2000) {
             LROWS();
-            fprintf(stderr, "selftest: after the drop (%zu): %s\n", launchpad_count(), rows);
+            fprintf(stderr, "selftest: after the drop (%zu): %s\n", launcher_count(), rows);
             int open = 0;
             for (struct folder *o = folders; o; o = o->next) open += !o->closing && !o->desktop && strstr(o->path, "templates");
             fprintf(stderr, "selftest: templates window open: %d\n", open);
             char d[PATH_MAX];
-            snprintf(d, sizeof d, "%s Drawers", launchpad_dir());
+            snprintf(d, sizeof d, "%s Drawers", launcher_dir());
             DIR *dd = opendir(d);
             int drawers = 0;
             struct dirent *de;
@@ -1984,8 +1984,8 @@ void win_frame(ui_surface *s, double now)
             fprintf(stderr, "selftest: drawers made: %d\n", drawers);
             if (getenv("OSD_SHELL_SHOT")) {
                 char shot[PATH_MAX];
-                snprintf(shot, sizeof shot, "%s-launchpad2.png", getenv("OSD_SHELL_SHOT"));
-                launchpad_snapshot(shot);
+                snprintf(shot, sizeof shot, "%s-launcher2.png", getenv("OSD_SHELL_SHOT"));
+                launcher_snapshot(shot);
             }
             step++;
             t0 = now;
@@ -2352,7 +2352,7 @@ void win_frame(ui_surface *s, double now)
             snprintf(client, sizeof client, "%s/tests/ssd-client Grouped 3060a0; true", exe);   /* (a child of the shell, not it) */
             const char *disp = getenv("OSD_SELFTEST_DISPLAY");
             char env_disp[128];
-            snprintf(env_disp, sizeof env_disp, "WAYLAND_DISPLAY=%s", disp && *disp ? disp : "wps-hl");
+            snprintf(env_disp, sizeof env_disp, "WAYLAND_DISPLAY=%s", disp && *disp ? disp : "osd-hl");
             char *argv[] = { "env", env_disp, "sh", "-c", client, NULL };
             extern char **environ;
             if (posix_spawnp(&pid, "env", NULL, NULL, argv, environ) != 0) pid = 0;

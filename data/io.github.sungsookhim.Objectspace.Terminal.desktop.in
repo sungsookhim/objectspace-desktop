@@ -2,7 +2,7 @@
 Type=Application
 Name=Command Prompt
 GenericName=Terminal
-Comment=A command line in a WPS window (WPS Terminal)
+Comment=A command line in an Objectspace window (Objectspace Terminal)
 Exec=@BINDIR@/osd-terminal
 TryExec=@BINDIR@/osd-terminal
 Icon=utilities-terminal

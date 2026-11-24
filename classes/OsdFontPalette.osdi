@@ -1,5 +1,5 @@
 # The Font Palette (OS/2's): font samples ("12.Helvetica"), dragged onto
-# folder windows, the desktop, the WarpCenter and title bars
+# folder windows, the desktop, TheBar and title bars
 # (v0.3-design 10). It opens as the palette window.
 class OsdFontPalette : OsdSetup
 version 1.0

@@ -4,8 +4,8 @@
 # (its dialog; cancelled, never confirmed), and Lockup now (the lock
 # screen, in a second run).
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-dmenu-XXXX")
-ENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_DEBUG_EVENTS=1"
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-dmenu-XXXX")
+ENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1 OSD_DEBUG_EVENTS=1"
 # A right click at (600, 300) opens the menu there (1280x800): System
 # setup at y 543, Lockup now 565, Shut down... 587 (New at 360).
 cat > "$S/one" <<EOS

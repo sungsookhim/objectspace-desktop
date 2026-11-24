@@ -10,7 +10,7 @@ override osdSaveState
 override osdRestoreProperties
 method osdQuerySortOrder() -> int
 method osdSetSortOrder(int order) -> bool
-# WPS-only objects (shadows and others) made here are kept as .osdobj files
+# Objectspace-only objects (shadows and others) made here are kept as .osdobj files
 # in the folder, instead of centrally (decided 2026-11-18).
 method osdQueryLocalObjects() -> bool
 method osdSetLocalObjects(bool on) -> bool
@@ -66,7 +66,7 @@ property icon_titles : choice "whole,two lines" = whole index page "Icon view" l
 property lock_all : checkbox page "Icon view" label "Lock positions of all icons" set osdSetLockAll
 # Its icons' theme (0.4 step 2): the installed and the user's themes.
 method osdQueryIconThemes() -> string
-property icon_theme : choice = "WPS (flat)" page "Icon view" label "Icon theme" options osdQueryIconThemes
+property icon_theme : choice = "Objectspace (flat)" page "Icon view" label "Icon theme" options osdQueryIconThemes
 # Its icons' set (0.4 step 3): the sizes of its icons (v0.4-design 3).
 property icon_set : choice "Small,Default,Large" = Default page "Icon view" label "Icon size"
 property icon_font : text page "Icon view" label "Icon font (e.g. 10.Sans; empty: the System's)" set osdSetIconFont

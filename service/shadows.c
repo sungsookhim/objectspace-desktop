@@ -1,4 +1,4 @@
-/* Shadows as WPS object files (decided 2026-11-18; see shadows.h). */
+/* Shadows as Objectspace object files (decided 2026-11-18; see shadows.h). */
 #define _GNU_SOURCE
 #include "shadows.h"
 
@@ -61,7 +61,7 @@ bool osd_shadow_read(const char *path, char id[OSD_ID_LEN + 1], char *target_pat
     close(fd);
     if (n <= 0) return false;
     buf[n] = 0;
-    if (!strstr(buf, "[WPS Object]")) return false;
+    if (!strstr(buf, "[Objectspace Object]")) return false;
     const char *cls = strstr(buf, "\nClass=OsdShadow"), *t = strstr(buf, "\nTarget="), *tp = strstr(buf, "\nTargetPath=");
     if (!cls || !t) return false;
     t += 8;
@@ -82,14 +82,14 @@ bool osd_shadow_read(const char *path, char id[OSD_ID_LEN + 1], char *target_pat
 static int write_shadow(int fd, const char *id, const char *target_path)
 {
     char buf[PATH_MAX + 256];
-    int n = snprintf(buf, sizeof buf, "[WPS Object]\nVersion=1\nClass=OsdShadow\nTarget=%s\nTargetPath=%s\n", id, target_path);
+    int n = snprintf(buf, sizeof buf, "[Objectspace Object]\nVersion=1\nClass=OsdShadow\nTarget=%s\nTargetPath=%s\n", id, target_path);
     if (lseek(fd, 0, SEEK_SET) != 0 || write(fd, buf, (size_t)n) != n) return -1;
     return ftruncate(fd, n);
 }
 
 /* Whoever can write a folder may maintain the shadows in it (design:
  * Shadows maintained by any user): a shadow file we cannot write is
- * replaced by a new one, renamed over it, with its WPS settings copied. */
+ * replaced by a new one, renamed over it, with its Objectspace settings copied. */
 static int replace_shadow(const char *file, const char *id, const char *target_path)
 {
     char dir[PATH_MAX], tmp[PATH_MAX + 64], nid[OSD_ID_LEN + 1];

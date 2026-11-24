@@ -40,7 +40,7 @@ def tracked(svc, path, title):
 
 
 def link_of(path):
-    """Where a shadow points: a shadow file's TargetPath (shadows are WPS
+    """Where a shadow points: a shadow file's TargetPath (shadows are Objectspace
     object files, decided 2026-11-18), or a plain symlink's target."""
     try:
         if os.path.islink(path):
@@ -86,7 +86,7 @@ def s3():
     ok = r.get("ok") and link.name.endswith(".osdobj") and bool(ok_link) and sh.get("class") == "OsdShadow" and \
         t.get("title") == "Report" and t.get("path") == str(d / "archive" / "report.txt") and \
         sh2.get("class") == "OsdShadow" and t2.get("path") == str(d / "archive" / "report.txt")
-    return ok, [f"shadow created as {link.name!r} in desk/ (a WPS object file)", f"after the target moved its hint is {hint}",
+    return ok, [f"shadow created as {link.name!r} in desk/ (an Objectspace object file)", f"after the target moved its hint is {hint}",
                 f"resolves as {sh.get('class')} of {t.get('title')!r} at {t.get('path')}",
                 f"moved by mv into elsewhere/: still {sh2.get('class')} of {t2.get('title')!r}"]
 
@@ -260,7 +260,7 @@ def sa2():
     p = Path(r.get("result", {}).get("path", ""))
     me.ctl("flush")
     content = p.read_text() if p.exists() else ""
-    (d / "printer.osdobj").write_text("[WPS Object]\nVersion=1\nClass=OsdPrinter\n")
+    (d / "printer.osdobj").write_text("[Objectspace Object]\nVersion=1\nClass=OsdPrinter\n")
     pr = obj(me, d / "printer.osdobj")
     me.stop()
     me.start()
@@ -490,14 +490,14 @@ def s31():
     me.proc.kill()                      # a crash, not a clean stop
     me.proc.wait()
     me.proc = None
-    on_disk = sum(1 for p in dst.iterdir() if not p.name.startswith(".wps-tmp-"))
+    on_disk = sum(1 for p in dst.iterdir() if not p.name.startswith(".osd-tmp-"))
     me.start()
     c = Conn(me)
     st = job(c, jid)
     c.request(op="job_resume", job=jid)
     done = wait_job(c, jid, timeout=120)
     files = [p for p in dst.iterdir()]
-    good = sum(1 for p in files if not p.name.startswith(".wps-tmp-") and p.stat().st_size == 4096)
+    good = sum(1 for p in files if not p.name.startswith(".osd-tmp-") and p.stat().st_size == 4096)
     c.close()
     me.stop()
     run(["rm", "-rf", str(dst)])
@@ -602,7 +602,7 @@ def s38():
     c = Conn(me)
     resumed = job(c, jid).get("state")
     done = wait_job(c, jid, timeout=120)
-    n = sum(1 for p in dst.iterdir() if not p.name.startswith(".wps-tmp-"))
+    n = sum(1 for p in dst.iterdir() if not p.name.startswith(".osd-tmp-"))
     c.close()
     me.stop()
     ok = resumed in ("queued", "running", "done") and done.get("state") == "done" and n == 10000

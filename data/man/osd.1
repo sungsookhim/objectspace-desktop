@@ -1,41 +1,41 @@
-.TH WPS 1 "@DATE@" "WPS @VERSION@" "User Commands"
+.TH Objectspace 1 "@DATE@" "Objectspace @VERSION@" "User Commands"
 .SH NAME
-wps \- WPS for scripts: objects, messages and questions, in plain text
+osd \- Objectspace for scripts: objects, messages and questions, in plain text
 .SH SYNOPSIS
-.B wps open
+.B osd open
 .IR PATH ...
 .br
-.B wps get
+.B osd get
 .I PATH NAME
 .br
-.B wps set
+.B osd set
 .I PATH
 .RI ' NAME = VALUE ;...'
 .br
-.B wps create
+.B osd create
 .I FOLDER CLASS TITLE
 .br
-.B wps shadow
+.B osd shadow
 .I PATH FOLDER
 .br
-.B wps say
+.B osd say
 .RB [ \-\-stay ]
 .I TEXT
 .br
-.B wps notify
+.B osd notify
 .I TITLE
 .RI [ TEXT ]
 .br
-.B wps ask
+.B osd ask
 .I TEXT
 .RI [ BUTTON ...]
 .br
-.B wps folder
+.B osd folder
 .br
-.B wps selection
+.B osd selection
 .SH DESCRIPTION
-.B wps
-lets scripts work with WPS's objects, as REXX scripts did on OS/2. Its
+.B osd
+lets scripts work with Objectspace's objects, as REXX scripts did on OS/2. Its
 output is plain text, one value a line; it exits with 0 when it worked,
 1 when it did not (with a message on standard error).
 .TP
@@ -45,7 +45,7 @@ its program, a program.
 .TP
 .B get
 Prints a property's value (for example
-.BR "wps get ~/Work icon_font" ).
+.BR "osd get ~/Work icon_font" ).
 .TP
 .B set
 Sets properties with a setup string. The path may also be
@@ -71,7 +71,7 @@ it stays until clicked.
 Shows a notification.
 .TP
 .B ask
-Shows a WPS dialog with the buttons given (OK if none) and prints the one
+Shows an Objectspace dialog with the buttons given (OK if none) and prints the one
 chosen; exits with 1 if it was closed without a choice.
 .TP
 .B folder

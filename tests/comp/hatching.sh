@@ -5,7 +5,7 @@
 # its icon while it is open.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-hatch-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-hatch-XXXX")
 W="$REPO/build/osdctl"
 cat > "$S/script" <<EOS
 4 dclick 54 30
@@ -20,7 +20,7 @@ cat > "$S/script" <<EOS
 13 shot $S/closed.png
 13.5 quit
 EOS
-DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 6.5; sys=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSystem']['address'])\")
      '$W' settings_set \"\$sys\" hatch_open=true > \"\$T/set.log\" 2>&1" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")

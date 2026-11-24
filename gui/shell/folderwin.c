@@ -3,8 +3,8 @@
 #include "shell.h"
 
 /*
- * osd-shell: the WPS GUI (G1: folder windows). One process draws every
- * WPS window (gui-design.md: Processes); the object service is osdd.
+ * osd-shell: the Objectspace GUI (G1: folder windows). One process draws every
+ * Objectspace window (gui-design.md: Processes); the object service is osdd.
  *
  * usage: osd-shell [--details] [--bench SECONDS] FOLDER...
  *   --bench: scroll the first window by itself, print frame statistics as
@@ -224,7 +224,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "icon_font")) snprintf(f->icon_font, sizeof f->icon_font, "%s", v);
         else if (!strcmp(key, "icon_theme") && strcmp(f->icon_theme, v)) {   /* every icon again */
             snprintf(f->icon_theme, sizeof f->icon_theme, "%s", v);
-            if (f->desktop) icons_set_default_theme(v);   /* (menus, the LaunchPad, the WarpCenter) */
+            if (f->desktop) icons_set_default_theme(v);   /* (menus, the Launcher, TheBar) */
             ui_container_changed(f->cont, 0, SIZE_MAX);
         }
         else if (!strcmp(key, "icon_set")) icon_size = (int)ui_icon_size_named(v);
@@ -247,7 +247,7 @@ static void got_bg(void *arg, const cv *reply)
     if (f->bg_mode < 0) f->bg_mode = 2;
     if (icon_size >= 0 && icon_size != f->icon_size) {   /* its icon set (Small, Default, Large) */
         f->icon_size = icon_size;
-        if (f->desktop) icons_set_default_size((ui_icon_size)icon_size);   /* (menus, the LaunchPad, title bars) */
+        if (f->desktop) icons_set_default_size((ui_icon_size)icon_size);   /* (menus, the Launcher, title bars) */
         ui_icon_set set = ui_icon_set_of((ui_icon_size)icon_size), was = *folder_icons(f);
         ui_container_set_icon_set(f->cont, &set);
         if (memcmp(&set, &was, sizeof set)) folder_icons_changed(f);   /* (the one it had: nothing to do) */
@@ -814,7 +814,7 @@ void reload(struct folder *f)
     request_more(f, true);
 }
 
-/* A program WPS started opened or closed a file: the file's row, and
+/* A program Objectspace started opened or closed a file: the file's row, and
  * shadows of it, in every window. (Sent once per subscription; rows
  * already right are left alone.) */
 static void on_in_use_event(const cv *ev)
@@ -900,7 +900,7 @@ void on_event(void *arg, const cv *ev)
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (findwin_event(ev)) return;   /* a search's results (its own IDs) */
-    if (osd_command_event(ev)) return;   /* the wps command: ask, selection, show */
+    if (osd_command_event(ev)) return;   /* the osd command: ask, selection, show */
     if (!strcmp(name, "say")) {   /* osdctl say: on the desktop (a script's: shown with the setting off too) */
         const cv *st = cv_get(ev, "stay");
         if (cv_text(ev, "text")) desktop_say(cv_text(ev, "text"), st && st->k == CV_BOOL && st->b);
@@ -909,7 +909,7 @@ void on_event(void *arg, const cv *ev)
     if (messages_event(ev)) return;   /* (once per client: on whichever subscription) */
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     if (setup_event(ev)) return;
-    if (launchpad_event(name, sub)) return;
+    if (launcher_event(name, sub)) return;
     if (!strcmp(name, "folder_moved")) { folder_moved(cv_text(ev, "from"), cv_text(ev, "to")); return; }
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     if (!strcmp(name, "trash_changed")) { trash_changed(); return; }

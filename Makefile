@@ -1,4 +1,4 @@
-# WPS for Linux: object core.
+# Objectspace: object core.
 #
 #   make          build the runtime, the core classes and the tests
 #   make test     run the unit tests (with AddressSanitizer and UBSan if installed)
@@ -8,7 +8,7 @@
 #   make m0       build the M0 prototypes (see proto/m0)
 #   make g0       build the G0 GUI prototypes (see proto/g0; optimised, no sanitizers)
 #   make gui      build osd-shell (optimised) and osd-shell-asan (sanitizers)
-#   make session  everything the WPS session runs
+#   make session  everything the Objectspace session runs
 #   make install  DESTDIR=... PREFIX=/usr (build with the same PREFIX); make uninstall
 #   make install-check  install into a scratch root and run a session from it
 #   make dist | srpm | rpm  the tarball and spec, the source RPM, the RPMs (build/rpm)
@@ -275,7 +275,7 @@ g0: $(G0)/folderview $(G0)/soundlat
 # The GUI: libwpsui (gui/ui_*.c) and osd-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
 UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_menupaint.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_ibus.c gui/ui_a11y.c
-SHELLSRC := gui/shell/osd-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launchpad.c gui/shell/session.c gui/shell/warpcenter.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/colorpal.c gui/shell/workarea.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/osdicon.c classes/osd_magic.c classes/osd_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
+SHELLSRC := gui/shell/osd-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launcher.c gui/shell/session.c gui/shell/thebar.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/colorpal.c gui/shell/workarea.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/osdicon.c classes/osd_magic.c classes/osd_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon libsystemd
 UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/osd_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
 UIFLAGS = -Igui -Igui/shell -Iservice -Iclasses -I$(G0) $(shell pkg-config --cflags $(UIPKG))
@@ -291,7 +291,7 @@ $(B)/osd-shell: $(UIDEPS)
 $(B)/osd-shell-asan: $(UIDEPS)
 	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS) $(SHLIBS)
 
-# WPS Terminal (docs/cli-design.md): the toolkit and libvterm.
+# Objectspace Terminal (docs/cli-design.md): the toolkit and libvterm.
 TERMSRC := gui/terminal/osd-terminal.c gui/terminal/term_core.c gui/terminal/term_setup.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 TERMLIBS = $(shell pkg-config --libs vterm) -lutil
 $(B)/osd-terminal: $(UIDEPS) $(TERMSRC) gui/terminal/term_core.h gui/terminal/term_setup.h
@@ -318,7 +318,7 @@ $(G0)/xdg-decoration-unstable-v1-protocol.c: $(DECOXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
-# Everything the WPS session runs (tools/osd-session): after a pull, make session.
+# Everything the Objectspace session runs (tools/osd-session): after a pull, make session.
 session: all $(B)/osd-shell $(B)/osd-terminal $(B)/osd-compositor icons
 .PHONY: session
 
@@ -355,9 +355,9 @@ $(TV)/test_osdicon: tests/test_osdicon.c gui/shell/osdicon.c gui/shell/osdicon.h
 	@mkdir -p $(TV)
 	$(CC) $(G0FLAGS) $(SAN) -Igui/shell -Itests $$(pkg-config --cflags cairo zlib librsvg-2.0) -o $@ tests/test_osdicon.c gui/shell/osdicon.c $$(pkg-config --libs cairo zlib librsvg-2.0)
 
-# Icon themes (roadmap 0.4): WPS's isometric set as packages, a theme per
-# variant (tools/icons/make_theme.py, with Pillow: wps-flat, the default,
-# and wps-outline), and 0.2's pictures as the classic theme (packed by
+# Icon themes (roadmap 0.4): Objectspace's isometric set as packages, a theme per
+# variant (tools/icons/make_theme.py, with Pillow: objectspace-flat, the default,
+# and objectspace-outline), and 0.2's pictures as the classic theme (packed by
 # osdctl icon pack, which adds the standard sizes).
 ICONTHEMES := $(B)/icon-themes
 icons: $(ICONTHEMES)/.stamp
@@ -365,7 +365,7 @@ $(ICONTHEMES)/.stamp: tools/icons/make_iso.py tools/icons/make_theme.py $(wildca
 	$(PYTHON) tools/icons/make_theme.py $(ICONTHEMES)
 	@mkdir -p $(ICONTHEMES)/classic
 	for f in data/icons/*.png; do $(B)/osdctl icon pack "$$f" "$(ICONTHEMES)/classic/$$(basename "$$f" .png).osdicon" > /dev/null || exit 1; done
-	printf '[Icon Theme]\nName=Classic\nComment=WPS 0.2 pictures\nVariant=classic\n' > $(ICONTHEMES)/classic/theme.ini
+	printf '[Icon Theme]\nName=Classic\nComment=Objectspace 0.2 pictures\nVariant=classic\n' > $(ICONTHEMES)/classic/theme.ini
 	@touch $@
 .PHONY: icons
 
@@ -382,7 +382,7 @@ gui-test: gui
 	$(TV)/test_osdicon
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area wps-command
+COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \
@@ -472,7 +472,7 @@ clean:
 # release 1 for a release, the commit count for a development build.
 RPMVER  := $(subst -,~,$(OSD_VERSION))
 RPMREL  := $(if $(findstring -,$(OSD_VERSION)),$(shell git rev-list --count HEAD 2>/dev/null || echo 0),1)
-DIST    := wps-$(RPMVER)
+DIST    := objectspace-$(RPMVER)
 RPMTOP  := $(abspath $(B))/rpm
 dist:
 	@mkdir -p $(B)

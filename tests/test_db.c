@@ -215,7 +215,7 @@ static void versions(void)
     sqlite3_close(h);
     err[0] = 0;
     a = osd_db_open(p("v-future.db"), "w1", err, sizeof err);
-    CHECK(!a && strstr(err, "newer WPS"));
+    CHECK(!a && strstr(err, "newer Objectspace"));
     if (a) osd_db_close(a);
 }
 

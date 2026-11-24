@@ -1,4 +1,4 @@
-/* Programs and files WPS starts, tracked while they run (see launch.h). */
+/* Programs and files Objectspace starts, tracked while they run (see launch.h). */
 #define _GNU_SOURCE
 #include "launch.h"
 #include "osd_magic.h"
@@ -41,7 +41,7 @@ struct proc {
     int fd;            /* pidfd */
     struct use *u;
     char *group;       /* the work area it was opened from (0.4 step 9), or NULL */
-    char unit[96];     /* its scope (app-wps-*.scope), "" none */
+    char unit[96];     /* its scope (app-osd-*.scope), "" none */
 };
 
 static osdo_loop *loop;
@@ -161,9 +161,9 @@ void osd_launch_shutdown(void)
 
 static char last_unit[96];   /* the scope spawn just made ("" none) */
 
-/* WPS's own commands for programs and scripts (wps, osdctl, osd-terminal):
+/* Objectspace's own commands for programs and scripts (osd, osdctl, osd-terminal):
  * a build's folder put first on the PATH when osdd runs from one (an
- * installed WPS has them in bin, on the PATH already). "" when not needed. */
+ * installed Objectspace has them in bin, on the PATH already). "" when not needed. */
 static const char *tools_path(void)
 {
     static char env[8192];
@@ -176,9 +176,9 @@ static const char *tools_path(void)
     char *sl = strrchr(exe, '/');
     if (!sl) return env;
     *sl = 0;
-    char wps[PATH_MAX + 8];
-    snprintf(wps, sizeof wps, "%s/osd", exe);
-    if (access(wps, X_OK) != 0) return env;
+    char osd[PATH_MAX + 8];
+    snprintf(osd, sizeof osd, "%s/osd", exe);
+    if (access(osd, X_OK) != 0) return env;
     const char *path = getenv("PATH");
     char copy[8192];
     snprintf(copy, sizeof copy, "%s", path ? path : "");
@@ -211,7 +211,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
      * and X programs need one) */
     char **env = calloc(ne + 5 + nenvs, sizeof *env), wl[4200], xd[64];
     size_t k = 0;
-    const char *tp = tools_path();   /* (a build's: wps and the others found by the program) */
+    const char *tp = tools_path();   /* (a build's: osd and the others found by the program) */
     if (env && *tp) env[k++] = (char *)tp;
     bool w = display && *display, x = x11 && *x11;
     if (env && w) {
@@ -230,7 +230,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
         env[k++] = xd;
     }
     /* GNOME's Settings will not start outside GNOME ("only supported under
-     * GNOME and Unity"); in the WPS session most of its panels work, so it
+     * GNOME and Unity"); in the Objectspace session most of its panels work, so it
      * is told it is in GNOME. */
     const char *b0 = strrchr(argv[0], '/');
     b0 = b0 ? b0 + 1 : argv[0];
@@ -265,7 +265,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
         for (; *b && j < sizeof name - 1; b++)
             name[j++] = (isalnum((unsigned char)*b) || *b == '-' || *b == '.') ? *b : '_';
         name[j] = 0;
-        snprintf(unit, sizeof unit, "app-wps-%s-%d-%u.scope", j ? name : "program", (int)getpid(), ++serial);
+        snprintf(unit, sizeof unit, "app-osd-%s-%d-%u.scope", j ? name : "program", (int)getpid(), ++serial);
         int n = 0;
         sargv[n++] = "/usr/bin/systemd-run";
         sargv[n++] = "--user";
@@ -578,17 +578,17 @@ static const char *const terminals[][5] = {
     { "xterm", "-e", NULL },
 };
 
-/* The System object's Terminal (v0.3-design 8; 0.4.1: WPS Terminal first,
+/* The System object's Terminal (v0.3-design 8; 0.4.1: Objectspace Terminal first,
  * the default). */
-static char term_choice[64] = "WPS Terminal", term_cmd[1024];
+static char term_choice[64] = "Objectspace Terminal", term_cmd[1024];
 
 void osd_terminal_choose(const char *choice, const char *command)
 {
-    snprintf(term_choice, sizeof term_choice, "%s", choice && *choice ? choice : "WPS Terminal");
+    snprintf(term_choice, sizeof term_choice, "%s", choice && *choice ? choice : "Objectspace Terminal");
     snprintf(term_cmd, sizeof term_cmd, "%s", command ? command : "");
 }
 
-/* WPS Terminal: beside this program (a build: build/), else on the PATH
+/* Objectspace Terminal: beside this program (a build: build/), else on the PATH
  * (installed: osdd in libexec, osd-terminal in bin). */
 static const char *osd_term_path(void)
 {
@@ -605,12 +605,12 @@ static const char *osd_term_path(void)
     return on_path("osd-terminal") ? "osd-terminal" : NULL;
 }
 
-/* WPS Terminal for text-mode programs: chosen (the default), found, and no
+/* Objectspace Terminal for text-mode programs: chosen (the default), found, and no
  * command of the user's (the System's, or OSD_TERMINAL) in its place. */
 static bool use_osd_terminal(void)
 {
     const char *env = getenv("OSD_TERMINAL");
-    return !term_cmd[0] && !(env && *env) && !strcasecmp(term_choice, "WPS Terminal") && osd_term_path();
+    return !term_cmd[0] && !(env && *env) && !strcasecmp(term_choice, "Objectspace Terminal") && osd_term_path();
 }
 
 const char *osd_terminal_now(void)
@@ -631,7 +631,7 @@ int osd_terminal_wrap(char **argv, int argc, int max, const char *title, bool ho
     char *pre[16];
     int k = 0;
     if (use_osd_terminal()) {
-        /* WPS's own: the window lives as long as the program (or, held,
+        /* Objectspace's own: the window lives as long as the program (or, held,
          * until Enter: its status shown), titled by the object */
         static char tbuf[256];
         snprintf(tbuf, sizeof tbuf, "%s", title && *title ? title : argv[0]);
@@ -920,7 +920,7 @@ static bool ini_set(const char *file, const char *section, const char *key, cons
     }
     #undef PUT
     char tmp[PATH_MAX + 16];
-    snprintf(tmp, sizeof tmp, "%s.wps-new", file);
+    snprintf(tmp, sizeof tmp, "%s.osd-new", file);
     FILE *o = fopen(tmp, "we");
     bool ok = o && fwrite(outb, 1, len, o) == len;
     if (o && fclose(o) != 0) ok = false;

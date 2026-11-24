@@ -5,7 +5,7 @@
 # Palette; its title bar colour on a folder window's frame.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-schemes-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-schemes-XXXX")
 W="$REPO/build/osdctl"
 # Projects (54,30) opens at 320,96: its title bar at y 105.
 cat > "$S/script" <<EOS
@@ -15,7 +15,7 @@ cat > "$S/script" <<EOS
 9.5 shot $S/two.png
 10 quit
 EOS
-DESKENV="OSD_WARPCENTER=1 OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=13 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_THEBAR=1 OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=13 tests/comp/run.sh "$S/script" \
     "sleep 4
      classic=\$('$W' setup | python3 -c \"import json,sys; print([s['address'] for s in json.load(sys.stdin)['result']['schemes'] if s['title']=='Classic'][0])\")
      '$W' set \"\$classic\" 'desktop=#800000' > \"\$T/set1.log\" 2>&1

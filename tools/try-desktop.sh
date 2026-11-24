@@ -1,7 +1,7 @@
 #!/bin/sh
-# Try the WPS desktop without logging out: a nested GNOME Shell in a window
+# Try the Objectspace desktop without logging out: a nested GNOME Shell in a window
 # of your session, with the objectspace@sungsookhim.github.io extension, a private osdd, and
-# private settings (your own GNOME settings, extensions and WPS state are
+# private settings (your own GNOME settings, extensions and Objectspace state are
 # not touched). The desktop shows FOLDER (default: a scratch folder with a
 # few files); close the window to end it.
 #
@@ -20,10 +20,10 @@ case "$SIZE" in
     *x*) ;;
     *) echo "size must look like 1600x900, not '$SIZE'" >&2; exit 2 ;;
 esac
-T=$(mktemp -d "${TMPDIR:-/tmp}/wps-try-XXXX")
+T=$(mktemp -d "${TMPDIR:-/tmp}/osd-try-XXXX")
 PARENT_RT=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 PARENT_WL="$PARENT_RT/${WAYLAND_DISPLAY:-wayland-0}"
-RT=$(mktemp -d "$PARENT_RT/wps-try-XXXX"); chmod 700 "$RT"
+RT=$(mktemp -d "$PARENT_RT/osd-try-XXXX"); chmod 700 "$RT"
 DESK=${1:-$T/Desktop}
 if [ -z "$1" ]; then
     mkdir -p "$DESK/Projects"
@@ -64,5 +64,5 @@ WAYLAND_DISPLAY="$PARENT_WL" dbus-run-session -- sh -c "
     gsettings set org.gnome.shell enabled-extensions \"['objectspace@sungsookhim.github.io']\"
     gsettings set org.gnome.shell disable-user-extensions false
     gsettings set org.gnome.shell welcome-dialog-last-shown-version '999'
-    exec gnome-shell --devkit --devkit-args=\"--monitor-size=$SIZE\" --wayland --no-x11 --wayland-display wps-try
+    exec gnome-shell --devkit --devkit-args=\"--monitor-size=$SIZE\" --wayland --no-x11 --wayland-display osd-try
 " > "$T/shell.log" 2>&1

@@ -1,8 +1,8 @@
 /*
- * Object menus (the WarpCenter's, v0.3-design 11): a folder's objects as
+ * Object menus (TheBar's, v0.3-design 11): a folder's objects as
  * a menu with their icons, its folders as cascades (each with Open
  * first), read ahead a few levels deep (the menu widget takes whole
- * trees). Used by the WarpCenter's Desktop menu and the LaunchPad's
+ * trees). Used by TheBar's Desktop menu and the Launcher's
  * drawers.
  */
 #ifndef OSD_OBJMENU_H

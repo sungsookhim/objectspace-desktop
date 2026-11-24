@@ -17,7 +17,7 @@ static void end(int choice)
     if (choice < 0 || choice > 2) return;   /* Cancel */
     events_raise("session.end", end_how[choice], end_from, (ui_rect){ 0, 0, 0, 0 });
     if (!winlist_ext("shutdown", end_how[choice]))
-        fprintf(stderr, "osd-shell: %s: ending the session needs the WPS session or the GNOME Shell extension\n", end_from);
+        fprintf(stderr, "osd-shell: %s: ending the session needs the Objectspace session or the GNOME Shell extension\n", end_from);
 }
 
 static void end_chosen(void *ctx, int choice) { (void)ctx; end(choice); }
@@ -27,7 +27,7 @@ bool session_lock(const char *from)
 {
     events_raise("session.lock", "", from, (ui_rect){ 0, 0, 0, 0 });
     if (winlist_ext("lock", NULL)) return true;
-    fprintf(stderr, "osd-shell: %s: Lockup needs the WPS session or the GNOME Shell extension\n", from);
+    fprintf(stderr, "osd-shell: %s: Lockup needs the Objectspace session or the GNOME Shell extension\n", from);
     return false;
 }
 

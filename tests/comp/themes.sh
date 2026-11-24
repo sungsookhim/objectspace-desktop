@@ -1,10 +1,10 @@
 #!/bin/sh
-# Icon themes (0.4 step 2), headless: the desktop in WPS (flat); all folders
-# switched to WPS (outline) from the System object, live; one folder with
+# Icon themes (0.4 step 2), headless: the desktop in Objectspace (flat); all folders
+# switched to Objectspace (outline) from the System object, live; one folder with
 # a theme of its own (Classic) while the desktop keeps outline.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-themes-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-themes-XXXX")
 W="$REPO/build/osdctl"
 cat > "$S/script" <<EOS
 4 move 700 600
@@ -15,9 +15,9 @@ cat > "$S/script" <<EOS
 11.5 shot $S/own.png
 12 quit
 EOS
-DESKENV="OSD_WARPCENTER=1 OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=15 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_THEBAR=1 OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=15 tests/comp/run.sh "$S/script" \
     "sleep 5; sys=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSystem']['address'])\")
-     '$W' set \"\$sys\" 'icon_theme=WPS (outline)' > \"\$T/set1.log\" 2>&1
+     '$W' set \"\$sys\" 'icon_theme=Objectspace (outline)' > \"\$T/set1.log\" 2>&1
      sleep 2; mkdir -p \"\$T/desk/Projects/Inner\"; '$W' set \"\$T/desk/Projects\" 'icon_theme=Classic' > \"\$T/set2.log\" 2>&1
      '$W' props \"\$T/desk/Projects\" > \"\$T/props.log\" 2>&1" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")

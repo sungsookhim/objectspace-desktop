@@ -4,11 +4,11 @@
 # (docs/object-properties-design.md 2.4).
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sounds-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-sounds-XXXX")
 W="$REPO/build/osdctl"
 printf '6 quit\n' > "$S/script"
 PRE="printf '# old settings\nvolume = 40\nwindow.open = bell\nmenu.open = none\n' > \"\$T/config/sounds.conf\"" \
-DESKENV="OSD_WARPCENTER=1 OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1" SECS=9 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_THEBAR=1 OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1" SECS=9 tests/comp/run.sh "$S/script" \
     "sleep 5; '$W' setup > \"\$T/setup.json\" 2>&1; ls \"\$T/config\" > \"\$T/files.txt\"" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0

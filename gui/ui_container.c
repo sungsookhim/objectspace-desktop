@@ -716,7 +716,7 @@ static void columns(ui_container *c, double *x)
  * drawn open (OS/2). */
 static void item_icon(cairo_t *cr, const ui_item *it, double x, double y, double sz);
 
-/* An object's icon anywhere (the LaunchPad, drawers): as in a folder. */
+/* An object's icon anywhere (the Launcher, drawers): as in a folder. */
 void ui_draw_item_icon(cairo_t *cr, const ui_item *it, double x, double y, double size)
 {
     item_icon(cr, it, x, y, size);

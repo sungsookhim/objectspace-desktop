@@ -51,11 +51,11 @@ for p in osd=objectspace osdctl=objectspace-ctl osd-shell=objectspace-shell osd-
     [ "$(readlink "$R/usr/bin/${p#*=}")" = "${p%%=*}" ] || { echo "FAIL: ${p#*=} is not a link to ${p%%=*}"; exit 1; }
 done
 echo "ok   the long names (objectspace, objectspace-ctl, ...) link to the short ones"
-for t in wps-flat wps-outline classic; do
+for t in objectspace-flat objectspace-outline classic; do
     [ -f "$R/usr/share/objectspace/icon-themes/$t/theme.ini" ] && ls "$R/usr/share/objectspace/icon-themes/$t/"*.osdicon >/dev/null 2>&1 ||
         { echo "FAIL: icon theme $t"; exit 1; }
 done
-echo "ok   the icon themes (wps-flat, wps-outline, classic)"
+echo "ok   the icon themes (objectspace-flat, objectspace-outline, classic)"
 for f in include/objectspace/osdo.h include/objectspace/osd_classes.h include/objectspace/OsdObject.h include/objectspace/OsdDataFile.h \
          share/objectspace/sdk/osdc.py share/objectspace/sdk/README.md share/objectspace/sdk/classes/OsdObject.osdi share/objectspace/sdk/sample/Makefile; do
     [ -f "$R/usr/$f" ] || { echo "FAIL: the SDK: $f"; exit 1; }
@@ -66,10 +66,10 @@ grep -q "^LIBEXEC=\${OSD_LIBEXEC:-/usr/libexec/objectspace}" "$R/usr/bin/osd-ses
 grep -q "^ExecStart=/usr/libexec/objectspace/osdd$" "$R/usr/lib/systemd/user/osdd.service" || { echo "FAIL: osdd.service"; exit 1; }
 echo "ok   paths in osd-session and osdd.service"
 # the installed programs, headless, with a private service
-T=$(mktemp -d); RT=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/wps-inst-XXXX")
+T=$(mktemp -d); RT=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/osd-inst-XXXX")
 mkdir -p "$T/desk" "$T/xdg/config" "$T/xdg/data"
 export OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" \
-       OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHPAD_DIR="$T/launchpad"
+       OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHER_DIR="$T/launcher"
 "$R/usr/libexec/objectspace/osdd" 2>"$T/osdd.log" & WP=$!
 for i in $(seq 50); do "$R/usr/bin/osdctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
 v=$("$R/usr/bin/osdctl" ping)

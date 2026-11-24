@@ -1,10 +1,10 @@
-# The root of all WPS objects.
+# The root of all Objectspace objects.
 class OsdObject
 version 1.1
 include "osd_state.h"
 data {
     char *title;        /* NULL: the class decides (see osdQueryTitle) */
-    char *icon;         /* its own icon, a PNG (WPS keeps a copy); NULL: its kind's */
+    char *icon;         /* its own icon, a PNG (Objectspace keeps a copy); NULL: its kind's */
     char id[37];        /* object ID; empty until assigned (lazily, by the service) */
     uint32_t dirty;     /* state changed since the last save */
     uint64_t changes;   /* in-memory change counter, for optimistic client writes */

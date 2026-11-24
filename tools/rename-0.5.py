@@ -93,6 +93,7 @@ STAGES = {
     "ui": [
         (B + r"WPS Terminal" + E, "Objectspace Terminal"),
         (B + r"WPS \((flat|outline)\)", r"Objectspace (\1)"),
+        (B + r"wps-(flat|outline)" + E, r"objectspace-\1"),   # (the icon themes' folders)
         (r"\b[Tt]he WarpCenter" + E, "TheBar"),   # (a name: no article)
         (B + r"WarpCenter" + E, "TheBar"),
         (B + r"WarpCenters" + E, "TheBars"),
@@ -111,8 +112,27 @@ STAGES = {
         (r"(?<=Osd)(WarpCenter)", "TheBar"),
         (r"(?<=Osd)(LaunchPad)", "Launcher"),
         (B + r"Workplace Shell" + E, "Objectspace"),
+        # (inside longer names: LaunchPadWindow, launchpad2, ...)
+        (r"LaunchPad", "Launcher"), (r"launchpad", "launcher"), (r"WarpCenter", "TheBar"), (r"warpcenter", "thebar"),
     ],
 }
+
+# step 4's last part: the words left (the product's name in text, the
+# command in prose and logs, internal names with "wps-"); the README is
+# written anew in step 6 and is left out here.
+STAGES["words"] = [
+    (B + r"MIME_WPS" + E, "MIME_OSD"),
+    (B + r"(wpsclient|wpsession|wpsext4|wpsbtrfs|wpsbig|wpsd1)" + E, None),   # (below, one by one)
+    (B + r"WPSFAT" + E, "OSDFAT"),
+    (B + r"DIST\s*:= wps-", "DIST    := objectspace-"),
+    (B + r"wps-(?=[a-z$(])", "osd-"),
+    (B + r"WPS for Linux" + E, "Objectspace"),
+    (B + r"WPS" + E, "Objectspace"),
+    (B + r"wps" + E, "osd"),
+]
+STAGES["words"][1] = (B + r"wps(?=client|ext4|btrfs|big|d1)", "osd")
+STAGES["words"].insert(1, (B + r"wpsession" + E, "osd_session"))
+WORDS_SKIP = {"README.md"}
 
 # Old names --check looks for (whole identifiers, or parts of compound ones).
 OLD = re.compile(r"(?<![A-Za-z0-9])(?:WP[A-Z][a-z]\w*|wp(?:cls)?[A-Z]\w*|wpoc?|wpo_\w+|WPO\w*|wpi|wps\w*|WPS\w*|Wps\w*|"
@@ -137,6 +157,8 @@ def run_stage(stage, dry):
     rules = [(re.compile(p), r) for p, r in STAGES[stage]]
     changed, total = 0, 0
     for f in tracked():
+        if stage == "words" and f in WORDS_SKIP:
+            continue
         p = ROOT / f
         if not p.is_file() or BINARY.search(f):
             continue
@@ -164,6 +186,9 @@ def run_stage(stage, dry):
     print(f"{stage}: {total} changes in {changed} files, {len(moves)} files moved{' (dry run)' if dry else ''}")
 
 
+EMBEDDED = re.compile(r"LaunchPad|launchpad|LAUNCHPAD|WarpCenter|warpcenter|WARPCENTER|WPS|(?<![a-z])wps")
+
+
 def check():
     left = {}
     for f in tracked():
@@ -172,6 +197,10 @@ def check():
         if p.is_file() and not BINARY.search(f):
             try:
                 names += OLD.findall(p.read_text())
+            except UnicodeDecodeError:
+                pass
+            try:
+                names += ["(inside) " + m for m in EMBEDDED.findall(p.read_text())]
             except UnicodeDecodeError:
                 pass
         for nm in names:

@@ -1,6 +1,6 @@
-# Writing a WPS plug-in
+# Writing an Objectspace plug-in
 
-A plug-in adds classes to WPS: new kinds of objects, or new behaviour for
+A plug-in adds classes to Objectspace: new kinds of objects, or new behaviour for
 existing ones. It runs in its own sandboxed process (`osd-plughost`: no
 network, files limited to the system's libraries, the plug-in and its data
 folder), and a call that takes longer than 2 seconds falls back to the
@@ -29,12 +29,12 @@ override osdMenuItemSelected
 classoverride osdclsQueryTitle
 ```
 
-- **Properties** are kept by WPS: they appear on the object's notebook,
+- **Properties** are kept by Objectspace: they appear on the object's notebook,
   can be set with setup strings (`osdctl set FILE 'rating=4'`), and for
   all objects of the class or a type through Class... (`class:OsdImageFile`),
   with no code. Its own code reads them from the object's state
   (`osd_state_get_str(self, "OsdImageFile", "rating", &v)`) and changes
-  them with `osd_state_put_str`: the changes go back to WPS.
+  them with `osd_state_put_str`: the changes go back to Objectspace.
 - **Methods** it overrides run in its host: menus, menu choices, settings
   pages of its own, setters named on its fields.
 - The full grammar is at the top of `osdc.py`; the built-in classes'

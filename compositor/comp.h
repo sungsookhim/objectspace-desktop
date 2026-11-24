@@ -1,5 +1,5 @@
 /* osd-compositor's shared structures (osd-compositor.c: the core;
- * desktop.c: the link to WPS's desktop process). */
+ * desktop.c: the link to Objectspace's desktop process). */
 #ifndef OSD_COMP_H
 #define OSD_COMP_H
 
@@ -22,7 +22,7 @@
 #include "ui.h"
 
 enum mode { MODE_PASS, MODE_MOVE, MODE_RESIZE, MODE_BUTTON };
-/* palette: the LaunchPad, above; panel: the WarpCenter, along an edge,
+/* palette: the Launcher, above; panel: TheBar, along an edge,
  * taken from the usable screen area (v0.2-design 8) */
 enum kind { KIND_NORMAL, KIND_DESKTOP, KIND_PALETTE, KIND_PANEL, KIND_NOTICE };
 
@@ -30,13 +30,13 @@ struct server {
     struct wl_display *display;
     struct wl_event_loop *loop;
     struct wlr_backend *backend;
-    struct wlr_session *session;      /* on a console (the WPS session): screens and input devices */
+    struct wlr_session *session;      /* on a console (the Objectspace session): screens and input devices */
     struct wlr_renderer *renderer;
     struct wlr_allocator *allocator;
     struct wlr_scene *scene;
     struct wlr_scene_output_layout *scene_layout;
     struct wlr_scene_tree *layer_desktop, *layer_normal, *layer_palette, *layer_fullscreen;
-    struct wlr_scene_rect *background;   /* under everything: a colour until WPS's desktop is there */
+    struct wlr_scene_rect *background;   /* under everything: a colour until Objectspace's desktop is there */
     struct wlr_output_layout *output_layout;
     struct wl_list outputs;
     struct wl_listener new_output;
@@ -76,7 +76,7 @@ struct server {
     struct wl_listener new_xsurface, xwayland_ready;
     struct wl_listener request_activate;
     bool focus_window_list;           /* Ctrl+Esc: the Window List takes the keyboard when it shows */
-    bool panel_top;                   /* the WarpCenter along the top edge (else the bottom) */
+    bool panel_top;                   /* TheBar along the top edge (else the bottom) */
     int panel_h;                      /* its height as placed (0: none shown) */
 };
 
@@ -96,7 +96,7 @@ struct toplevel {
     struct wlr_xwayland_surface *xw;  /* an X11 one (xdg NULL) */
     struct wlr_scene_tree *tree;      /* the whole window, at its position */
     struct wlr_scene_tree *client;    /* the program's surfaces, inside the frame */
-    struct wlr_scene_buffer *frame;   /* WPS's frame (server side), or disabled */
+    struct wlr_scene_buffer *frame;   /* Objectspace's frame (server side), or disabled */
     struct wlr_xdg_toplevel_decoration_v1 *deco;
     bool ssd;                         /* our frame */
     bool mapped, minimized, maximized, activated;
@@ -110,7 +110,7 @@ struct toplevel {
     bool listed;                      /* in the desktop's Window List */
     ui_hit hover, pressed;
     int fw, fh;                       /* the frame drawn, its size */
-    int pal_w, pal_h;                 /* a palette's size last placed (the LaunchPad) */
+    int pal_w, pal_h;                 /* a palette's size last placed (the Launcher) */
     struct wl_listener map, unmap, commit, destroy, request_move, request_resize, request_maximize,
         request_minimize, request_fullscreen, set_title, set_app_id;
     struct wl_listener deco_request_mode, deco_destroy;
@@ -150,8 +150,8 @@ void comp_panel_edge(bool top);
  * login, where it was. */
 void comp_place_next(const char *app, const char *title, int x, int y);
 /* A window's frame position and client size. */
-struct wlr_box comp_window_geometry(struct toplevel *t);   /* the desktop says where the WarpCenter goes */
-void comp_screens_changed(void);   /* sizes changed: the desktop, LaunchPad, lock screen fit again */   /* the scheme or font changed */
+struct wlr_box comp_window_geometry(struct toplevel *t);   /* the desktop says where TheBar goes */
+void comp_screens_changed(void);   /* sizes changed: the desktop, Launcher, lock screen fit again */   /* the scheme or font changed */
 void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);
 
@@ -182,7 +182,7 @@ struct toplevel *comp_toplevel_of(struct wlr_surface *s);
  * Returns false if it could not be started. */
 bool comp_spawn(char *const argv[], void (*prepare)(void *), void *arg);
 
-/* desktop.c: WPS's desktop process, started and followed as the GNOME
+/* desktop.c: Objectspace's desktop process, started and followed as the GNOME
  * extension does (the same lines on its standard input and output). */
 void desktop_start(const char *command);
 bool desktop_is(struct wl_client *c);               /* the desktop process's connection */

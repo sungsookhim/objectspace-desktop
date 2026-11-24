@@ -93,11 +93,11 @@ size_t osd_listing_count(void);
 bool osd_listing_has(const char *folder, const char *name);
 
 /* The Trash Can (a trash's files folder): whether anything is in it; the
- * icon it shows now - its own for that state, or WPS's default. */
+ * icon it shows now - its own for that state, or Objectspace's default. */
 bool osd_trash_full(const char *files);
 void osd_trash_icon(const char *files, char *out, size_t n);
 
-/* One of WPS's own icons (data/icons/NAME; installed, or the tree's). */
+/* One of Objectspace's own icons (data/icons/NAME; installed, or the tree's). */
 void osd_default_icon(const char *name, char *out, size_t n);
 /* A special folder's icon (NAME as above), shown for it and its shadows. */
 void osd_listing_folder_icon(const char *path, const char *png);

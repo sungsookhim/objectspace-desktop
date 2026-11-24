@@ -138,7 +138,7 @@ static void central_details(osd_entry *e)
     e->size = e->mtime = 0;
     if (ld.err) { osd_loaded_free(&ld); return; }
     memcpy(e->id, ld.id, sizeof e->id);
-    const osd_props *op = props_of(&ld, "OsdObject"), *wp = props_of(&ld, "WPS");
+    const osd_props *op = props_of(&ld, "OsdObject"), *wp = props_of(&ld, "Objectspace");
     char *t = NULL;
     if (op && osd_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
     free(t);
@@ -261,7 +261,7 @@ static void drive_icon(const osd_loaded *ld, char *out, size_t n)
     osd_default_icon(name, out, n);
 }
 
-/* WPS's special folders' own icons (Computer, ...), by path. */
+/* Objectspace's special folders' own icons (Computer, ...), by path. */
 static struct { char path[PATH_MAX]; char png[64]; } special[16];
 static int nspecial;
 static pthread_mutex_t special_mu = PTHREAD_MUTEX_INITIALIZER;

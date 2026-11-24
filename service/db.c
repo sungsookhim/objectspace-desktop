@@ -58,7 +58,7 @@ static int exec(sqlite3 *h, const char *sql)
     char *msg = NULL;
     int rc = sqlite3_exec(h, sql, NULL, NULL, &msg);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "wps db: %s\n", msg ? msg : sqlite3_errstr(rc));
+        fprintf(stderr, "osd db: %s\n", msg ? msg : sqlite3_errstr(rc));
         sqlite3_free(msg);
         return -1;
     }
@@ -123,7 +123,7 @@ static int upgrade(sqlite3 *h, const char *path, bool backup, char *err, size_t 
 {
     int64_t v = db_version(h);
     if (v > OSD_DB_VERSION) {
-        snprintf(err, errlen, "%s was made by a newer WPS (database version %lld; this one reads up to %d)", path,
+        snprintf(err, errlen, "%s was made by a newer Objectspace (database version %lld; this one reads up to %d)", path,
                  (long long)v, OSD_DB_VERSION);
         return -1;
     }
@@ -438,11 +438,11 @@ int osd_db_attach_volume(osd_db *db, const char *vol, const char *voldb_path, bo
     }
     a->h = open_handle(voldb_path, writable, false, err, errlen);
     if (!a->h) { pthread_mutex_unlock(&db->mu); return -1; }
-    /* a disk written by a newer WPS: left alone (read-only ones are only
+    /* a disk written by a newer Objectspace: left alone (read-only ones are only
      * read, and are brought up by a writer that can) */
     if (db_version(a->h) > OSD_DB_VERSION || (writable && upgrade(a->h, voldb_path, false, err, errlen) < 0)) {
         if (db_version(a->h) > OSD_DB_VERSION)
-            snprintf(err, errlen, "%s was made by a newer WPS (database version %lld)", voldb_path, (long long)db_version(a->h));
+            snprintf(err, errlen, "%s was made by a newer Objectspace (database version %lld)", voldb_path, (long long)db_version(a->h));
         sqlite3_close(a->h);
         a->h = NULL;
         pthread_mutex_unlock(&db->mu);
@@ -808,13 +808,13 @@ int osd_db_jobs_list(osd_db *db, osd_db_job_fn fn, void *user)
 
 /* ------------------------------------------------------- central objects */
 
-/* Rows "vobj:<id> US WPS US <prop>" (folder, class, target) whose value is
+/* Rows "vobj:<id> US Objectspace US <prop>" (folder, class, target) whose value is
  * `value`: the central objects in a folder, or the shadows of a target. */
 static int vobjs_where(osd_db *db, const char *vol, const char *prop, const char *value,
                        void (*fn)(const char *vol, const char *id, void *user), void *user)
 {
     char suffix[64];
-    snprintf(suffix, sizeof suffix, "%cWPS%c%s", OSD_KEY_SEP, OSD_KEY_SEP, prop);
+    snprintf(suffix, sizeof suffix, "%cObjectspace%c%s", OSD_KEY_SEP, OSD_KEY_SEP, prop);
     size_t sl = strlen(suffix);
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
@@ -868,7 +868,7 @@ int osd_db_vobjs_shadowing(osd_db *db, const char *target_id,
 bool osd_db_vobj_vol(osd_db *db, const char *id, char *vol, size_t vn)
 {
     char key[128];
-    snprintf(key, sizeof key, "vobj:%s%cWPS%cclass", id, OSD_KEY_SEP, OSD_KEY_SEP);
+    snprintf(key, sizeof key, "vobj:%s%cObjectspace%cclass", id, OSD_KEY_SEP, OSD_KEY_SEP);
     pthread_mutex_lock(&db->mu);
     sqlite3_stmt *s;
     bool found = false;

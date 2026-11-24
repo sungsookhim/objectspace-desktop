@@ -771,7 +771,7 @@ static void dup_check(size_t i)
     start_job(j);
 }
 
-/* A WPS settings change on either side of a duplicate makes it a copy. */
+/* An Objectspace settings change on either side of a duplicate makes it a copy. */
 static void on_saved(sobj *s)
 {
     for (size_t i = 0; i < ndups; i++)

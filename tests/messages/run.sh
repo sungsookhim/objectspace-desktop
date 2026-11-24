@@ -1,11 +1,11 @@
 #!/bin/sh
 # Messages (v0.2-plan step 7): osdd's message list, kept across a
-# restart, and the Messages, LaunchPad and WarpCenter objects; played by
+# restart, and the Messages, Launcher and TheBar objects; played by
 # tests/messages/scenario.py (part 1, a restart, part 2).
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-T=$(mktemp -d "${TMPDIR:-/tmp}/wps-msgs-XXXX")
-RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-msgs-XXXX")
+T=$(mktemp -d "${TMPDIR:-/tmp}/osd-msgs-XXXX")
+RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-msgs-XXXX")
 export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
 export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" OSD_TEMPLATES_DIR="$T/templates"
 export OSD_UDISKS_BUS="unix:path=$RT/none"

@@ -16,7 +16,7 @@
 void desktop_say(const char *text, bool sticky);   /* (the desktop's status line: window.c) */
 void desktop_messages_enable(bool on);
 #include "svc.h"
-#include "warpcenter.h"
+#include "thebar.h"
 
 #define MAX_ACT 16
 #define BAR_H 34
@@ -34,7 +34,7 @@ static ui_app *app;
 static struct msg *msgs;          /* newest first */
 static size_t nmsgs;
 static size_t unread;
-static bool desktop_line = true;   /* the setting: WPS's messages on the desktop */
+static bool desktop_line = true;   /* the setting: Objectspace's messages on the desktop */
 static bool listing, list_again;
 
 static struct {
@@ -108,7 +108,7 @@ static void got_list(void *arg, const cv *reply)
         int64_t top = seen;
         for (size_t i = 0; i < nmsgs; i++) {
             if (msgs[i].id > top) top = msgs[i].id;
-            if (seen < 0 || msgs[i].id <= seen || strcmp(msgs[i].app, "WPS") || msgs[i].closed || !desktop_line) continue;
+            if (seen < 0 || msgs[i].id <= seen || strcmp(msgs[i].app, "Objectspace") || msgs[i].closed || !desktop_line) continue;
             char t[1400];
             snprintf(t, sizeof t, "%s: %.*s", msgs[i].summary, (int)strcspn(msgs[i].body, "\n"), msgs[i].body);
             desktop_say(t, false);
@@ -116,7 +116,7 @@ static void got_list(void *arg, const cv *reply)
         seen = top < 0 ? 0 : top;
         int64_t u = 0;
         if (cv_int(res, "unread", &u)) unread = (size_t)u;
-        warpcenter_messages(unread, messages_open);
+        thebar_messages(unread, messages_open);
         redraw();
     }
     if (list_again) { list_again = false; fetch(); }
@@ -140,7 +140,7 @@ bool messages_event(const cv *ev)
     const char *name = cv_text(ev, "event");
     if (!name || strcmp(name, "messages_changed")) return false;
     int64_t u;
-    if (cv_int(ev, "unread", &u)) { unread = (size_t)u; warpcenter_messages(unread, messages_open); }
+    if (cv_int(ev, "unread", &u)) { unread = (size_t)u; thebar_messages(unread, messages_open); }
     fetch();
     return true;
 }
@@ -156,7 +156,7 @@ size_t messages_unread(void) { return unread; }
 
 void messages_post(const char *summary, const char *body, int urgency)
 {
-    svc_message m = { "Workplace Shell", urgency == 2 ? "dialog-error" : "dialog-information", summary, body, "", urgency, 0, NULL, 0 };
+    svc_message m = { "Objectspace", urgency == 2 ? "dialog-error" : "dialog-information", summary, body, "", urgency, 0, NULL, 0 };
     svc_msg_add(&m, ignore, NULL);
     if (urgency == 2) notify_local(summary, body, urgency);
 }

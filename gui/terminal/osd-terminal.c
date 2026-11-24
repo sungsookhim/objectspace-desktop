@@ -1,14 +1,14 @@
 /*
- * WPS Terminal (docs/cli-design.md 1): a program on a pseudo-terminal in a
- * WPS window. libvterm keeps the screen (term_core.c); this draws it with
- * WPS's text code, and passes keys, the mouse, pastes and drops on.
+ * Objectspace Terminal (docs/cli-design.md 1): a program on a pseudo-terminal in a
+ * Objectspace window. libvterm keeps the screen (term_core.c); this draws it with
+ * Objectspace's text code, and passes keys, the mouse, pastes and drops on.
  *
  *   osd-terminal [--title TITLE] [--hold] [--font SPEC] [--cwd FOLDER]
  *                [--size COLSxROWS] [-- COMMAND [ARG...]]
  *
  * No command: the user's shell. --hold: the window stays when the program
  * ends ("Ended (status N). Press Enter to close"), else it closes with it.
- * One process per window: the one WPS started stands for the program
+ * One process per window: the one Objectspace started stands for the program
  * (in use, a work area's group).
  */
 #define _GNU_SOURCE

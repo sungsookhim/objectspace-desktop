@@ -33,7 +33,7 @@ static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", ou
  * and 0.2's objects): osdd does it, once each step, versioned. */
 /* First-start step 7 (0.2): the Trash Can in the desktop's lower right
  * corner, as on OS/2. Done by the desktop, which knows its size: a moment
- * after the first start (the WarpCenter has taken its edge by then, and
+ * after the first start (TheBar has taken its edge by then, and
  * the shadow is made), tried again a few times while it is not there. */
 static int corner_timer = -1, corner_tries;
 
@@ -100,7 +100,7 @@ static void desktop_first_start(const char *desk) { svc_first_start(desk, first_
  * <state>/open-windows when they change (looked at every 2 s, so a crash
  * loses little; the end of a session closes none of them, so the list
  * stands as it was). At the next login (once a session) they open again;
- * in the WPS session the compositor puts each where it was ("place"),
+ * in the Objectspace session the compositor puts each where it was ("place"),
  * inside GNOME GNOME places them. Lines: F path view w h x y maximized,
  * S folder name x y, N target page x y (x -1: not known). */
 static int rec_timer = -1;
@@ -156,7 +156,7 @@ static void rec_find(void *ctx, const char *folder, const char *name, ui_surface
 static char *describe_windows(void)
 {
     struct rec r = { 0 };
-    rec_add(&r, "# WPS's open windows (the desktop writes this; they reopen at login)\n");
+    rec_add(&r, "# Objectspace's open windows (the desktop writes this; they reopen at login)\n");
     /* oldest first: they reopen in the same order (the list is newest first) */
     size_t n = 0;
     for (struct folder *f = folders; f; f = f->next) n++;
@@ -216,7 +216,7 @@ static void place_next(const char *app_id, const char *title, int x, int y)
     if (x < 0 && y < 0) return;
     char arg[600];
     snprintf(arg, sizeof arg, "%s\t%s\t%d\t%d", app_id, plain(title) ? title : "", x, y);
-    winlist_ext("place", arg);   /* (the WPS session's compositor; GNOME's extension ignores it) */
+    winlist_ext("place", arg);   /* (the Objectspace session's compositor; GNOME's extension ignores it) */
 }
 
 /* At login: what was open opens again (once a session), then the
@@ -227,7 +227,7 @@ void windows_at_login(void)
     if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
     const char *sid = getenv("XDG_SESSION_ID");
     char marker[PATH_MAX], was[64] = "";
-    snprintf(marker, sizeof marker, "%s/wps-windows-restored", rt && *rt ? rt : "/tmp");
+    snprintf(marker, sizeof marker, "%s/osd-windows-restored", rt && *rt ? rt : "/tmp");
     FILE *m = fopen(marker, "r");
     if (m) { if (!fgets(was, sizeof was, m)) was[0] = 0; fclose(m); }
     was[strcspn(was, "\n")] = 0;
@@ -274,7 +274,7 @@ void windows_at_login(void)
  * Each view's window is kept on the folder (per user: osdd's properties,
  * with no field): win_icon, win_details, win_tree as "x,y,w,h,maximized,
  * scroll" (x -1: not known, as inside GNOME), and win_view, the view it
- * was last closed in (what a plain Open opens). In the WPS session the
+ * was last closed in (what a plain Open opens). In the Objectspace session the
  * compositor puts it back in its place ("place"); GNOME places it itself. */
 static const char *const view_keys[3] = { "icon", "details", "tree" };
 

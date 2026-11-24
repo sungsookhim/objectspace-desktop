@@ -64,7 +64,7 @@ bool OsdObject__osdSetIcon(osdo_object *self, const char *path)
 {
     OsdObjectData *d = OsdObject_data(self);
     /* "": its kind's icon again; otherwise a full path (the GUI keeps a
-     * PNG copy in WPS's icons folder, so the source may go). */
+     * PNG copy in Objectspace's icons folder, so the source may go). */
     if (path && *path && path[0] != '/') return false;
     char *p = path && *path ? osd_strdup(path) : NULL;
     if (path && *path && !p) return false;

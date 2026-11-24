@@ -121,7 +121,7 @@ static bool read_entry(const char *path, char *cat, size_t cn)
     }
     fclose(f);
     if (strcmp(type, "Application") || nodisplay || hidden) return false;
-    /* this desktop: the session's (XDG_CURRENT_DESKTOP), and WPS */
+    /* this desktop: the session's (XDG_CURRENT_DESKTOP), and Objectspace */
     const char *desks[8];
     size_t nd = 0;
     char xd[256];
@@ -130,7 +130,7 @@ static bool read_entry(const char *path, char *cat, size_t cn)
     snprintf(xd, sizeof xd, "%s", e && *e ? e : "GNOME");
     char *save = NULL;
     for (char *t = strtok_r(xd, ":", &save); t && nd < 7; t = strtok_r(NULL, ":", &save)) desks[nd++] = t;
-    desks[nd++] = "WPS";
+    desks[nd++] = "Objectspace";
     if (only[0] && !in_list(only, desks, nd)) return false;
     if (not[0] && in_list(not, desks, nd)) return false;
     if (tryexec[0] && !on_path(tryexec)) return false;

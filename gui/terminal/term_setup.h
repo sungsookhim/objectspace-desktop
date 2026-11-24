@@ -1,4 +1,4 @@
-/* WPS Terminal's looks from WPS's settings objects (term_setup.c). */
+/* Objectspace Terminal's looks from Objectspace's settings objects (term_setup.c). */
 #ifndef OSD_TERM_SETUP_H
 #define OSD_TERM_SETUP_H
 

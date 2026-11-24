@@ -54,7 +54,7 @@ if PART == "startup":
     r = c.request(op="startup_add", target=T + "/share/applications/clock.desktop")
     check("a program becomes an entry", r.get("result") == AUTO + "/clock.desktop", r)
     text = open(AUTO + "/clock.desktop").read()
-    check("marked X-WPS-Startup, in [Desktop Entry]", text.index("X-WPS-Startup=true") < text.index("[Desktop Action"), text)
+    check("marked X-Objectspace-Startup, in [Desktop Entry]", text.index("X-Objectspace-Startup=true") < text.index("[Desktop Action"), text)
     r = c.request(op="startup_add", target=T + "/share/applications/clock.desktop")
     check("again: a second entry, nothing overwritten", r.get("result") == AUTO + "/clock-2.desktop", r)
     r = c.request(op="startup_add", target=T + "/run me.sh")
@@ -110,7 +110,7 @@ if PART == "restore":
     m = {i["label"]: [x["label"] for x in i["items"]] for i in (r.get("result") or [])}
     check("a shadow's menu: its original's (Open's views, Arrange)", "Arrange" in m and "Icon view" in m.get("Open", []), r)
 
-    # Prevent delete (step 11, 0.4): WPS's own objects refuse the Trash
+    # Prevent delete (step 11, 0.4): Objectspace's own objects refuse the Trash
     # Can and delete, as the desktop's shadows of them do; a file of the
     # user's with it on too, as a trash job and as a move into the Trash Can
     r = c.request(op="vtrash", target=vobj(shadows_of(DESK, SYS)[0]))
@@ -135,7 +135,7 @@ if PART == "restore":
     check("prevent delete off: trashed", r.get("ok"), r)
     # the user's mishaps (Prevent delete turned off first): Programs
     # dropped on itself, System thrown away, Startup and the Minimized
-    # Window Viewer deleted, the LaunchPad object moved to the desktop
+    # Window Viewer deleted, the Launcher object moved to the desktop
     for t in (vobj(shadows_of(DESK, SYS)[0]), vobj(shadows_of(SYS, T + "/xdg/config/autostart")[0]),
               vobj(titled(SYS, "Minimized Window Viewer")[0])):
         c.request(op="settings_set", target=t, values={"no_delete": False})
@@ -148,22 +148,22 @@ if PART == "restore":
     check("(Startup deleted)", r.get("ok"), r)
     r = c.request(op="vdelete", target=vobj(titled(SYS, "Minimized Window Viewer")[0]))
     check("(the Minimized Window Viewer deleted)", r.get("ok"), r)
-    r = c.request(op="vmove", target=vobj(titled(SYS, "LaunchPad")[0]), folder=DESK)
-    check("(the LaunchPad object moved to the desktop)", r.get("ok"), r)
+    r = c.request(op="vmove", target=vobj(titled(SYS, "Launcher")[0]), folder=DESK)
+    check("(the Launcher object moved to the desktop)", r.get("ok"), r)
     r = c.request(op="restore_defaults")
     got = sorted((r.get("result") or {}).get("restored", []))
-    check("restore: what it put back", got == sorted(["Programs", "My System", "Startup", "Minimized Window Viewer", "LaunchPad"]), r)
+    check("restore: what it put back", got == sorted(["Programs", "My System", "Startup", "Minimized Window Viewer", "Launcher"]), r)
     check("Programs: back on the desktop, the same one", len(shadows_of(DESK, PROG)) == 1 and not shadows_of(PROG, PROG),
           (items(DESK), items(PROG)))
     check("System: back from the Trash Can", len(shadows_of(DESK, SYS)) == 1 and not shadows_of(TRASH, SYS), items(TRASH))
     check("Startup: made again", len(shadows_of(SYS, AUTO)) == 1, items(SYS))
     check("the viewer: made again", len(titled(SYS, "Minimized Window Viewer")) == 1, items(SYS))
-    check("the LaunchPad object: back in System", len(titled(SYS, "LaunchPad")) == 1 and not titled(DESK, "LaunchPad"))
+    check("the Launcher object: back in System", len(titled(SYS, "Launcher")) == 1 and not titled(DESK, "Launcher"))
     r = c.request(op="vdelete", target=vobj(titled(SYS, "Minimized Window Viewer")[0]))
     check("restored: Prevent delete on again", r.get("error") == "protected", r)
     r = c.request(op="restore_defaults", desktop=DESK)
     check("again: nothing to do", r.get("ok") and (r.get("result") or {}).get("restored") == [], r)
-    # renamed outside WPS (a shell), osdd running: moved back at once
+    # renamed outside Objectspace (a shell), osdd running: moved back at once
     for own in (SYS, SYS + "/Storages", PROG):
         os.rename(own, own + "-renamed")
         check("%s renamed outside: moved back" % os.path.basename(own),
@@ -199,7 +199,7 @@ def title_of(target):
 check("step 10: System is titled My System - <host>", (title_of(SYS) or "").startswith("My System - "), title_of(SYS))
 check("step 10: Computer is titled My Storages", title_of(COMP) == "My Storages", title_of(COMP))
 r = c.request(op="rename", target=COMP, name="Storage")
-check("renaming WPS's own folder: its title only", r.get("ok") and os.path.isdir(COMP) and title_of(COMP) == "Storage", r)
+check("renaming Objectspace's own folder: its title only", r.get("ok") and os.path.isdir(COMP) and title_of(COMP) == "Storage", r)
 c.request(op="rename", target=COMP, name="My Storages")
 for own in (DESK, TPL):   # XDG user folders: their titles only (user-dirs.dirs would not follow)
     r = c.request(op="rename", target=own, name="Renamed")

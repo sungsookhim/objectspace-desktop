@@ -1,5 +1,5 @@
 /*
- * WPS Terminal's core (docs/cli-design.md 1): libvterm's screen with a
+ * Objectspace Terminal's core (docs/cli-design.md 1): libvterm's screen with a
  * scrollback, keys turned into the bytes a program reads, cells' colours,
  * and the text of a selection - no window, no pseudo-terminal (those are
  * osd-terminal.c's), so the unit tests drive it directly.

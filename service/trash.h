@@ -1,6 +1,6 @@
 /*
  * The trash, as the freedesktop.org Trash specification has it, so that
- * other desktops and file managers see what WPS put there and can restore
+ * other desktops and file managers see what Objectspace put there and can restore
  * it (and the other way round).
  *
  * A file on the home filesystem goes to $XDG_DATA_HOME/Trash; one on

@@ -1,9 +1,9 @@
 /*
- * The WPS session's notification service (v0.2-design 9): the desktop
+ * The Objectspace session's notification service (v0.2-design 9): the desktop
  * process owns org.freedesktop.Notifications on the session bus (sd-bus;
- * only in the WPS session, or with OSD_NOTIFY=1: GNOME has its own).
+ * only in the Objectspace session, or with OSD_NOTIFY=1: GNOME has its own).
  *
- * Notify shows a pop-up near the WarpCenter (a window io.github.sungsookhim.Objectspace.Notice the
+ * Notify shows a pop-up near TheBar (a window io.github.sungsookhim.Objectspace.Notice the
  * compositor puts in the usable area's corner by the bar): icon, summary,
  * body (simple markup taken out) and the actions as buttons. It stays the
  * notification's timeout (the Messages object's "Pop-ups stay", 6 s by
@@ -29,8 +29,8 @@ bool notify_running(void);
 void notify_set_dnd(bool on);
 void notify_set_seconds(int seconds);
 
-/* A pop-up of WPS's own (an error the desktop could not show elsewhere);
- * nothing outside the WPS session. */
+/* A pop-up of Objectspace's own (an error the desktop could not show elsewhere);
+ * nothing outside the Objectspace session. */
 void notify_local(const char *summary, const char *body, int urgency);
 
 /* The program behind notification nid (from sender) can still take its

@@ -15,7 +15,7 @@ static void dragging_free(struct dragging *d)
     free(d->tpl);
     free(d->dx);
     free(d->dy);
-    free(d->wps);
+    free(d->osd);
     free(d->uris);
     free(d);
 }
@@ -40,7 +40,7 @@ void uri_append(char **buf, size_t *len, size_t *cap, const char *path)
 static void drag_send(void *ctx, const char *mime, int fd)
 {
     struct dragging *d = ctx;
-    const char *data = !strcmp(mime, MIME_WPS) ? d->wps : d->uris;
+    const char *data = !strcmp(mime, MIME_OSD) ? d->osd : d->uris;
     ui_app_write_async(app, fd, data, strlen(data));
 }
 
@@ -54,7 +54,7 @@ static void drag_end(void *ctx, bool dropped, uint32_t action)
 /* Start dragging what d holds (its paths and both formats ready). */
 static void start_dragging(struct dragging *d, ui_surface *win, uint32_t serial, ui_kind kind)
 {
-    if (!d->wps || !d->uris) { dragging_free(d); return; }
+    if (!d->osd || !d->uris) { dragging_free(d); return; }
     /* The drag image: the item's icon, and how many go. */
     int sc = ui_surface_scale(win);
     cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 48 * sc, 40 * sc);
@@ -70,7 +70,7 @@ static void start_dragging(struct dragging *d, ui_surface *win, uint32_t serial,
         ui_text_draw(cr, UI_FONT_BOLD, 50 - w, 35, cnt, 0);
     }
     cairo_destroy(cr);
-    const char *mimes[] = { MIME_WPS, MIME_URIS };
+    const char *mimes[] = { MIME_OSD, MIME_URIS };
     cur_drag = d;
     if (!ui_drag_start(win, serial, mimes, 2, UI_DND_COPY | UI_DND_MOVE | UI_DND_ASK, img, sc, drag_send, drag_end, d)) {
         cur_drag = NULL;
@@ -112,9 +112,9 @@ void src_drag(void *ctx, size_t i, uint32_t serial)
     size_t wl = 0, wc = 0, ul = 0, uc = 0;
     for (size_t k = 0; k < d->n; k++) {
         size_t need = wl + strlen(d->paths[k]) + 12;
-        if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->wps = realloc(d->wps, wc); }
-        /* "<path>\ttemplate" for a template (WPS's own type only) */
-        wl += (size_t)sprintf(d->wps + wl, "%s%s\n", d->paths[k], d->tpl[k] ? "\ttemplate" : "");
+        if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->osd = realloc(d->osd, wc); }
+        /* "<path>\ttemplate" for a template (Objectspace's own type only) */
+        wl += (size_t)sprintf(d->osd + wl, "%s%s\n", d->paths[k], d->tpl[k] ? "\ttemplate" : "");
         if (strncmp(d->paths[k], "vobj:", 5)) uri_append(&d->uris, &ul, &uc, d->paths[k]);   /* central: no file to offer */
     }
     if (!d->uris) d->uris = strdup("");
@@ -140,12 +140,12 @@ void shell_drag_paths(ui_surface *win, uint32_t serial, const char *const *paths
         d->dx[d->n] = d->dy[d->n] = 16.0 * (double)k;   /* a small step each, where they land */
         d->n++;
         size_t need = wl + strlen(paths[k]) + 12;
-        if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->wps = realloc(d->wps, wc); }
-        wl += (size_t)sprintf(d->wps + wl, "%s\n", paths[k]);
+        if (need > wc) { while (wc < need) wc = wc ? wc * 2 : 1024; d->osd = realloc(d->osd, wc); }
+        wl += (size_t)sprintf(d->osd + wl, "%s\n", paths[k]);
         if (strncmp(paths[k], "vobj:", 5)) uri_append(&d->uris, &ul, &uc, paths[k]);
     }
     if (!d->uris) d->uris = strdup("");
-    if (!d->wps) { dragging_free(d); return; }
+    if (!d->osd) { dragging_free(d); return; }
     start_dragging(d, win, serial, kind);   /* (no source folder: they come from many) */
 }
 
@@ -236,7 +236,7 @@ uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *const *m
         if (!strcmp(mimes[i], MIME_FONT)) { *mime = MIME_FONT; return UI_DND_COPY; }   /* a font: the folder's, or the title bars' */
     for (size_t i = 0; i < n; i++)
         if (!strcmp(mimes[i], UI_MIME_COLOR)) { *mime = UI_MIME_COLOR; return UI_DND_COPY; }   /* a colour: likewise */
-    for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_WPS)) *mime = MIME_WPS;
+    for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_OSD)) *mime = MIME_OSD;
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_URIS)) *mime = MIME_URIS;
     if (!*mime) return 0;
     char dest[PATH_MAX];

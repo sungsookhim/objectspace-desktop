@@ -143,7 +143,7 @@ static void register_proxy(struct host *h, const cv *c)
     }
     /* its properties, events and file types: the proxy declares them, so
      * pages, get, set, props, the chain and actions work in osdd (a
-     * property's value kept by WPS; methods named for it run nowhere here:
+     * property's value kept by Objectspace; methods named for it run nowhere here:
      * left out) */
     const cv *ps = cv_get(c, "props"), *es = cv_get(c, "events"), *ts = cv_get(c, "types");
     size_t np = ps && ps->k == CV_ARRAY ? ps->n : 0, ne = es && es->k == CV_ARRAY ? es->n : 0, nt = ts && ts->k == CV_ARRAY ? ts->n : 0;

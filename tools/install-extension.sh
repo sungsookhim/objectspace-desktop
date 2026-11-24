@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the WPS desktop for this user's GNOME session:
+# Install the Objectspace desktop for this user's GNOME session:
 #   - the GNOME Shell extension objectspace@sungsookhim.github.io, pointed at this build's osd-shell;
 #   - a systemd user unit that starts this build's osdd at login.
 # Then log out and back in (GNOME on Wayland loads new extensions only at login).
@@ -47,7 +47,7 @@ gsettings set org.gnome.shell disable-user-extensions false
 mkdir -p "$(dirname "$unit")"
 cat > "$unit" <<UNIT
 [Unit]
-Description=WPS object service (osdd)
+Description=Objectspace object service (osdd)
 PartOf=graphical-session.target
 After=graphical-session-pre.target
 

@@ -112,7 +112,7 @@ void osd_sobj_set_inode(sobj *s, const struct stat *st);
 void osd_sobj_forget(sobj *s);
 /* Snapshot of all stored properties, per class, for copying them elsewhere. */
 void osd_sobj_snapshot(sobj *s, osd_loaded *out);
-/* Called when an object's WPS settings were saved (the tracker treats a
+/* Called when an object's Objectspace settings were saved (the tracker treats a
  * pending duplicate as a copy from then on). */
 extern void (*osd_on_saved)(sobj *s);
 
@@ -120,7 +120,7 @@ extern void (*osd_on_saved)(sobj *s);
  * (".desktop" for programs, ".osdobj" for other abstract classes). */
 void osd_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len);
 /* Worker: a new central object of class `cls` in the folder with object ID
- * `folder_id` on `vol`, with extra rows under class WPS (e.g. "target").
+ * `folder_id` on `vol`, with extra rows under class Objectspace (e.g. "target").
  * Writes its ID into `id`. 0, or an errno value. */
 int osd_central_create(const char *vol, const char *folder_id, const char *cls, const char *title,
                        const char *target_id, char id[OSD_ID_LEN + 1]);
@@ -129,7 +129,7 @@ bool osd_folder_keeps_files(const osd_loaded *folder);
 /* Worker: the central objects in a folder (by the folder's ID). */
 int osd_central_in(const char *vol, const char *folder_id, void (*fn)(const char *vol, const char *id, void *user), void *user);
 /* Worker: a special folder's class (a OsdFolder subclass), stored for this
- * user as the folder's WPS "class". 0, or an errno value. */
+ * user as the folder's Objectspace "class". 0, or an errno value. */
 int osd_set_folder_class(const char *path, const char *cls);
 /* Worker: delete a central object (all its rows). 0, or an errno value. */
 int osd_central_delete(const char *id);

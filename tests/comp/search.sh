@@ -4,7 +4,7 @@
 # Escape takes it away and every icon is back in its place; Ctrl+Shift+F
 # is the Find window.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-search-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-search-XXXX")
 cat > "$S/script" <<EOS
 2.5 dclick 54 30
 3.5 shot $S/before.png
@@ -20,7 +20,7 @@ cat > "$S/script" <<EOS
 10.5 quit
 EOS
 PRE='cd "$T/desk/Projects" && touch report-2025.ods report-2026.ods budget.ods notes.txt photo.jpg readme.md letter.odt todo.txt music.ogg && mkdir reports' \
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=13 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=13 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # Projects opens at 320,96 (640x480); the field's row under its title bar

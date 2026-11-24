@@ -1,4 +1,4 @@
-/* The WarpCenter's tray: a StatusNotifierWatcher and host (tray.h). */
+/* TheBar's tray: a StatusNotifierWatcher and host (tray.h). */
 #define _GNU_SOURCE
 #include "tray.h"
 
@@ -435,7 +435,7 @@ static char *unmnemonic(const char *s)
     return o;
 }
 
-/* A dbusmenu node (ia{sv}av): its children as WPS menu items. */
+/* A dbusmenu node (ia{sv}av): its children as Objectspace menu items. */
 static int read_node(sd_bus_message *m, int32_t *id, ui_menu_item *self, bool *visible, ui_menu_item **kids, size_t *nkids)
 {
     int r = sd_bus_message_enter_container(m, 'r', "ia{sv}av");

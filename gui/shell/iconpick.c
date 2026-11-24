@@ -86,7 +86,7 @@ static int by_name(const void *a, const void *b)
     return strcasecmp(((const struct icon *)a)->name, ((const struct icon *)b)->name);
 }
 
-#define OSD_SCORE 100000   /* WPS's own (its themes' packages): first in the list */
+#define OSD_SCORE 100000   /* Objectspace's own (its themes' packages): first in the list */
 
 static int osd_first(const void *a, const void *b)
 {
@@ -210,7 +210,7 @@ static void *scan_thread(void *arg)
     char user[PATH_MAX];
     if (x && *x) snprintf(user, sizeof user, "%s/icons", x);
     else snprintf(user, sizeof user, "%s/.local/share/icons", home ? home : "/nonexistent");
-    /* WPS's themes first: "WPS (flat): folder", ... (0.4 step 2) */
+    /* Objectspace's themes first: "Objectspace (flat): folder", ... (0.4 step 2) */
     static osd_icon_theme th[32];
     size_t nth = osd_icon_themes(th, sizeof th / sizeof *th);
     for (size_t t = 0; t < nth; t++) {

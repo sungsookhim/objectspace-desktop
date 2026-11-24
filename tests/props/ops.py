@@ -201,7 +201,7 @@ c.request(op="set", target=prog, setup="on:object.open=call:osdNoSuchMethod 1")
 c.request(op="open", target=prog)
 msgs = (c.request(op="msg_list").get("result") or {}).get("messages") or []
 check("an action that fails: a message says which and why", len(msgs) == before + 1 and "osdNoSuchMethod" in msgs[0].get("body", "")
-      and msgs[0].get("app") == "WPS", msgs[:1])
+      and msgs[0].get("app") == "Objectspace", msgs[:1])
 c.request(op="reset", target=prog, names="on:object.open")
 
 # a file whose name says nothing: its type from its contents (an empty Data File is text)
@@ -232,7 +232,7 @@ if apps:
     check("... set: mimeapps.list's default for text/plain (shared with GNOME)", r.get("ok") and "text/plain=" in text, (r, text[:200]))
     check("... a text file says the same", get(DESK + "/notes.txt", "open_with") == pick, get(DESK + "/notes.txt", "open_with"))
     r = c.request(op="reset", target="type:text/plain", names="open_with")
-    check("... kept by Linux: not reset by WPS", not r.get("ok"), r)
+    check("... kept by Linux: not reset by Objectspace", not r.get("ok"), r)
 r = c.request(op="set", target="class:OsdDataFile", setup="open_with=x")
 check("a class has no one type: no Opens with", not r.get("ok"), r)
 

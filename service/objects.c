@@ -129,7 +129,7 @@ static size_t nexcluded;
 
 static void excluded_load(void)
 {
-    static const char *defaults[] = { ".git", "node_modules", "/nix/store", "~/.cache", ".wps", NULL };
+    static const char *defaults[] = { ".git", "node_modules", "/nix/store", "~/.cache", ".osd", NULL };
     const char *home = getenv("HOME");
     char line[PATH_MAX], path[PATH_MAX + 32];
     for (int i = 0; defaults[i]; i++) {
@@ -293,13 +293,13 @@ static void read_object_file(osd_loaded *ld)
         snprintf(ld->obj_class, sizeof ld->obj_class, "OsdProgram");
         ini_localized(buf, "Name", ld->desk_name, sizeof ld->desk_name);
         ini_value(buf, "[Desktop Entry]", "Exec", ld->desk_exec, sizeof ld->desk_exec);
-    } else if (!ini_value(buf, "[WPS Object]", "Class", ld->obj_class, sizeof ld->obj_class)) {
+    } else if (!ini_value(buf, "[Objectspace Object]", "Class", ld->obj_class, sizeof ld->obj_class)) {
         snprintf(ld->obj_class, sizeof ld->obj_class, "OsdAbstract");
     } else if (!strcmp(ld->obj_class, "OsdShadow")) {
         char id[OSD_ID_LEN + 8] = "";
-        ini_value(buf, "[WPS Object]", "Target", id, sizeof id);
+        ini_value(buf, "[Objectspace Object]", "Target", id, sizeof id);
         if (strlen(id) == OSD_ID_LEN) memcpy(ld->shadow_of, id, OSD_ID_LEN + 1);
-        ini_value(buf, "[WPS Object]", "TargetPath", ld->link_target, sizeof ld->link_target);
+        ini_value(buf, "[Objectspace Object]", "TargetPath", ld->link_target, sizeof ld->link_target);
     }
 }
 
@@ -325,7 +325,7 @@ int osd_object_file_create(const char *path, const char *cls, const char *title)
     if (c && osdo_subclass_of(c, OsdProgramClass))
         dprintf(fd, "[Desktop Entry]\nType=Application\nName=%s\nExec=\n", title ? title : "Program");
     else if (c && osdo_subclass_of(c, OsdAbstractClass))
-        dprintf(fd, "[WPS Object]\nVersion=1\nClass=%s\n", cls);
+        dprintf(fd, "[Objectspace Object]\nVersion=1\nClass=%s\n", cls);
     close(fd);
     return 0;
 }
@@ -375,7 +375,7 @@ static void load_central(const char *id, osd_loaded *ld)
     ld->owned = ld->writable = true;   /* this user's own rows */
     ld->xattr_ok = false;
     osd_db_get_locator(db, ld->vol, ld->locator, overlay_prop, ld);
-    osd_props *w = class_props(ld, "WPS");
+    osd_props *w = class_props(ld, "Objectspace");
     char *v = NULL;
     if (w && osd_props_str(w, "class", &v)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", v);
     free(v);
@@ -451,9 +451,9 @@ void osd_load(const char *target, bool assign_id, osd_loaded *ld)
         osd_props_remove(op, "@id");
     }
     free(dbid);
-    /* a special folder's class (WPS "class": Trash Can, Drives, ...) */
+    /* a special folder's class (Objectspace "class": Trash Can, Drives, ...) */
     if (S_ISDIR(ld->st.st_mode)) {
-        osd_props *w = class_props(ld, "WPS");
+        osd_props *w = class_props(ld, "Objectspace");
         char *cv = NULL;
         if (w && osd_props_str(w, "class", &cv)) snprintf(ld->obj_class, sizeof ld->obj_class, "%s", cv);
         free(cv);
@@ -510,7 +510,7 @@ static osdo_class *class_for(const osd_loaded *ld)
     mode_t m = ld->st.st_mode;
     if (S_ISDIR(m)) {
         /* a special folder (Trash Can, Drives, ...): its class stored on it
-         * (WPS "class"), if it is a kind of folder */
+         * (Objectspace "class"), if it is a kind of folder */
         if (ld->obj_class[0]) {
             osdo_class *c = osdo_find_class(ld->obj_class);
             if (c && !c->is_meta && osdo_subclass_of(c, OsdFolderClass)) return c;
@@ -534,7 +534,7 @@ static void apply_loaded(sobj *s, osd_loaded *ld)
     for (int i = 0; i < ld->nc; i++) osd_state_load(s->o, ld->c[i].cls, &ld->c[i].props);
     OsdObject_osdRestoreProperties(s->o);
     /* A program's .desktop file is the source of its command and default
-     * title, so other desktops and WPS agree. */
+     * title, so other desktops and Objectspace agree. */
     if (osdo_is_a(s->o, OsdProgramClass)) {
         if (ld->desk_exec[0] && !OsdProgram_data(s->o)->command) OsdProgram_data(s->o)->command = strdup(ld->desk_exec);
         if (ld->desk_name[0] && !d->title) d->title = strdup(ld->desk_name);
@@ -797,7 +797,7 @@ static void start_save(sobj *s)
 {
     s->queued = false;
     if (s->path[0] && osd_path_excluded(s->path)) {
-        /* Excluded paths keep no WPS state (design: Excluded paths). */
+        /* Excluded paths keep no Objectspace state (design: Excluded paths). */
         OsdObject_osdSaveState(s->o);
         OsdObject_data(s->o)->dirty = 0;
         osd_state *st = OsdObject_data(s->o)->state;
@@ -1048,12 +1048,12 @@ int osd_central_create(const char *vol, const char *folder_id, const char *cls, 
     char key[PATH_MAX + 128], loc[64];
     osd_new_id(id);
     snprintf(loc, sizeof loc, "vobj:%s", id);
-    osd_db_key(key, sizeof key, loc, "WPS", "folder");
+    osd_db_key(key, sizeof key, loc, "Objectspace", "folder");
     if (osd_db_put(db, vol, key, 's', folder_id, OSD_ID_LEN) < 0) return EIO;
-    osd_db_key(key, sizeof key, loc, "WPS", "class");
+    osd_db_key(key, sizeof key, loc, "Objectspace", "class");
     osd_db_put(db, vol, key, 's', cls, (uint32_t)strlen(cls));
     if (target_id && *target_id) {
-        osd_db_key(key, sizeof key, loc, "WPS", "target");
+        osd_db_key(key, sizeof key, loc, "Objectspace", "target");
         osd_db_put(db, vol, key, 's', target_id, OSD_ID_LEN);
     }
     if (title && *title) {
@@ -1078,7 +1078,7 @@ int osd_central_move(const char *id, const char *dest_vol, const char *dest_fold
         if (osd_db_vobj_copy(db, vol, id, dest_vol, new_id, !copy) < 0) return EIO;
     }
     snprintf(loc, sizeof loc, "vobj:%s", new_id);
-    osd_db_key(key, sizeof key, loc, "WPS", "folder");
+    osd_db_key(key, sizeof key, loc, "Objectspace", "folder");
     return osd_db_put(db, dest_vol, key, 's', dest_folder_id, OSD_ID_LEN) < 0 ? EIO : 0;
 }
 
@@ -1100,7 +1100,7 @@ int osd_set_folder_class(const char *path, const char *cls)
     if (!e) {
         char key[PATH_MAX + 128];
         /* by its ID (just given, if it had none: the locator was made before) */
-        osd_db_key(key, sizeof key, ld.id[0] ? ld.id : ld.locator, "WPS", "class");
+        osd_db_key(key, sizeof key, ld.id[0] ? ld.id : ld.locator, "Objectspace", "class");
         e = osd_db_put(db, ld.vol, key, 's', cls, (uint32_t)strlen(cls)) < 0 ? EIO : 0;
     }
     osd_loaded_free(&ld);

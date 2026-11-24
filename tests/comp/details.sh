@@ -5,7 +5,7 @@
 # a column's edge dragged keeps its width; a column turned off.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-details-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-details-XXXX")
 # Projects opens at 320,96 (640x480), Ctrl+3: details. Headings at y 133:
 # Title at 400, Size at 760; the Title column's right edge at 506 (window x 186).
 cat > "$S/script" <<EOS
@@ -26,7 +26,7 @@ EOS
 W="$REPO/build/osdctl"
 order() { echo "'$W' list \"\$T/desk/Projects\" | python3 -c 'import json,sys; print(\" \".join(i[\"name\"] for i in json.load(sys.stdin)[\"result\"][\"items\"]))' >> \"\$T/order.log\""; }
 PRE='cd "$T/desk/Projects" && head -c 300 /dev/zero > b.txt && head -c 100 /dev/zero > a.png && head -c 200 /dev/zero > c.md && mkdir z m' \
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=16 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 5.5; $(order); sleep 1.5; $(order); sleep 1.5; $(order); sleep 3;
      '$W' settings_set \"\$T/desk/Projects\" col_type=false > /dev/null; sleep 0.5;
      '$W' settings \"\$T/desk/Projects\" > \"\$T/settings.log\"" > "$S/out.txt" 2>&1

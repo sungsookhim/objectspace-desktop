@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = Path(os.environ.get("WORK", f"/var/tmp/wps-m0-{os.environ.get('USER', os.getlogin())}"))
+WORK = Path(os.environ.get("WORK", f"/var/tmp/osd-m0-{os.environ.get('USER', os.getlogin())}"))
 MNT = {fs: WORK / "mnt" / fs for fs in ("ext4", "btrfs", "fat")}
 BIN = WORK / "bin"
 OUT = ROOT / "build" / os.environ.get("OSD_SUITE", "m2")
@@ -81,7 +81,7 @@ class Service:
             run(["sudo", "chown", f"{user}:60000", str(self.base)], check=True)
         else:
             self.base.mkdir(parents=True, exist_ok=True)
-        if identity_from:   # same WPS user on another computer: copy the identity file
+        if identity_from:   # same Objectspace user on another computer: copy the identity file
             (self.base / "config").mkdir(parents=True, exist_ok=True)
             shutil.copy(identity_from.base / "config" / "identity", self.base / "config" / "identity")
 
@@ -190,7 +190,7 @@ def prepare():
 
 
 def reset_services():
-    run(["sudo", "rm", "-rf", str(WORK / "svc"), str(MNT["ext4"] / ".wps"), str(MNT["fat"] / ".wps")])
+    run(["sudo", "rm", "-rf", str(WORK / "svc"), str(MNT["ext4"] / ".osd"), str(MNT["fat"] / ".osd")])
 
 
 def run_scenarios(want, prefix=""):
@@ -361,7 +361,7 @@ def big_volume(size="6G", inodes=1300000):
         return mnt
     img = WORK / "img" / "big.img"
     run(["truncate", "-s", size, str(img)], check=True)
-    run(["mkfs.ext4", "-q", "-F", "-N", str(inodes), "-L", "wpsbig", str(img)], check=True)
+    run(["mkfs.ext4", "-q", "-F", "-N", str(inodes), "-L", "osdbig", str(img)], check=True)
     mnt.mkdir(parents=True, exist_ok=True)
     run(["sudo", "mount", "-o", "loop", str(img), str(mnt)], check=True)
     run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", str(mnt)], check=True)

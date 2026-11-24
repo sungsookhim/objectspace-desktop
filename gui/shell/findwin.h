@@ -9,7 +9,7 @@
  * modern search field); Enter or Find starts it with the other fields. A
  * double click opens a result; its menu also opens the folder it is in.
  *
- * Opened from the LaunchPad's Find button (the home folder) and with
+ * Opened from the Launcher's Find button (the home folder) and with
  * Ctrl+F in a folder window (that folder).
  */
 #ifndef OSD_FINDWIN_H
@@ -28,7 +28,7 @@ void findwin_init(ui_app *a, void (*open_folder)(const char *path),
 /* A new Find window on `folder` (name: what to look for, or NULL). */
 void findwin_open(const char *folder, const char *name);
 /* The Find window already open brought forward (restored if minimized);
- * a new one when there is none or `fresh` (Shift on the LaunchPad). */
+ * a new one when there is none or `fresh` (Shift on the Launcher). */
 void findwin_show(const char *folder, bool fresh);
 /* Where Save results as folder puts its folder (the desktop's). */
 void findwin_set_desktop(const char *dir);

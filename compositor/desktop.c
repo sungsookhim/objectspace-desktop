@@ -1,5 +1,5 @@
 /*
- * WPS's desktop process, as the compositor runs it (comp.h).
+ * Objectspace's desktop process, as the compositor runs it (comp.h).
  *
  * The same arrangement as the GNOME extension's (gnome-extension/
  * objectspace@sungsookhim.github.io), so osd-shell needs nothing new: the compositor starts
@@ -14,13 +14,13 @@
  * and reads commands from its standard output, one a line:
  *     activate|restore|minimize|maximize|close|terminate TAB <id>
  *     lock   find   shutdown TAB poweroff|reboot|logout
- *     keyboard TAB next|prev|<index>   panel TAB top|bottom (the WarpCenter's edge)
+ *     keyboard TAB next|prev|<index>   panel TAB top|bottom (TheBar's edge)
  * If it ends, it is started again after a delay that grows while it
  * keeps failing (from a second up to half a minute).
  *
  * App icons: the app's .desktop file's Icon, as a PNG from the icon
  * themes (an SVG made into one by glycin-thumbnailer, in
- * $XDG_RUNTIME_DIR/wps-icons).
+ * $XDG_RUNTIME_DIR/osd-icons).
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -114,7 +114,7 @@ static struct wlr_box box_of(struct toplevel *t)
 
 void desktop_event(struct toplevel *t, const char *name)
 {
-    if (d.in_fd < 0 || desktop_is(view_client(t))) return;   /* WPS's own raise theirs */
+    if (d.in_fd < 0 || desktop_is(view_client(t))) return;   /* Objectspace's own raise theirs */
     char app[256], title[512], line[1024];
     clean(app, sizeof app, view_app(t));
     clean(title, sizeof title, view_title(t));
@@ -210,7 +210,7 @@ static int icons_ready(void *data)
 /* The PNG for an app's icon ("" while there is none, or it is being made). */
 static const char *icon_for(const char *app)
 {
-    if (!app || !*app || !strncmp(app, "io.github.sungsookhim.Objectspace.", 8)) return "";   /* WPS's own: WPS's icons */
+    if (!app || !*app || !strncmp(app, "io.github.sungsookhim.Objectspace.", strlen("io.github.sungsookhim.Objectspace."))) return "";   /* Objectspace's own: Objectspace's icons */
     for (size_t i = 0; i < nicons; i++)
         if (!strcmp(icons[i].app, app)) {
             if (!icons[i].png[0] || exists(icons[i].png)) return icons[i].png;
@@ -228,7 +228,7 @@ static const char *icon_for(const char *app)
     /* an SVG: made into a PNG once, by glycin (the compositor never waits) */
     const char *rt = getenv("XDG_RUNTIME_DIR");
     char dir[PATH_MAX], out[PATH_MAX + 64], safe[256];
-    snprintf(dir, sizeof dir, "%s/wps-icons", rt ? rt : "/tmp");
+    snprintf(dir, sizeof dir, "%s/osd-icons", rt ? rt : "/tmp");
     mkdir(dir, 0700);
     clean(safe, sizeof safe, app);
     for (char *p = safe; *p; p++) if (*p == '/' || *p == ' ') *p = '_';
@@ -301,7 +301,7 @@ static bool in_scopes(pid_t pid, const char *scopes)
 }
 
 /* "group TAB minimize|restore|close TAB pid,pid,... TAB scope,scope,...":
- * a work area's programs' windows (0.4 step 9), never WPS's own. */
+ * a work area's programs' windows (0.4 step 9), never Objectspace's own. */
 static void group_command(const char *arg)
 {
     char a[8192];
@@ -335,8 +335,8 @@ static bool listable(struct toplevel *t)
     if (!t->mapped || !view_app(t)) return t->mapped;
     const char *a = view_app(t);
     bool osd_own = desktop_is(view_client(t));
-    return !(osd_own && (!strcmp(a, "io.github.sungsookhim.Objectspace.Desktop") || !strcmp(a, "io.github.sungsookhim.Objectspace.WindowList") || !strcmp(a, "io.github.sungsookhim.Objectspace.LaunchPad") ||
-                         !strcmp(a, "io.github.sungsookhim.Objectspace.WarpCenter") || !strcmp(a, "io.github.sungsookhim.Objectspace.Notice")));
+    return !(osd_own && (!strcmp(a, "io.github.sungsookhim.Objectspace.Desktop") || !strcmp(a, "io.github.sungsookhim.Objectspace.WindowList") || !strcmp(a, "io.github.sungsookhim.Objectspace.Launcher") ||
+                         !strcmp(a, "io.github.sungsookhim.Objectspace.TheBar") || !strcmp(a, "io.github.sungsookhim.Objectspace.Notice")));
 }
 
 void desktop_window(struct toplevel *t, const char *change)
@@ -414,12 +414,12 @@ static void command(char *line)
     if (!strcmp(line, "shutdown")) {
         /* the desktop asked already (its Shut Down dialog) */
         if (!strcmp(arg, "logout")) { wl_display_terminate(server.display); return; }
-        if (getenv("OSD_SESSION")) {   /* the WPS session: the machine too */
+        if (getenv("OSD_SESSION")) {   /* the Objectspace session: the machine too */
             wl_display_terminate(server.display);
             char *argv[] = { "systemctl", !strcmp(arg, "reboot") ? "reboot" : "poweroff", NULL };
             comp_spawn(argv, NULL, NULL);
         } else {
-            fprintf(stderr, "osd-compositor: %s: only in the WPS session (nested, it ends only this)\n", arg);
+            fprintf(stderr, "osd-compositor: %s: only in the Objectspace session (nested, it ends only this)\n", arg);
             wl_display_terminate(server.display);
         }
         return;
@@ -443,7 +443,7 @@ static void command(char *line)
         if (sscanf(t2 + 1, "%d\t%d", &x, &y) == 2) comp_place_next(app, title, x, y);
         return;
     }
-    if (!strcmp(line, "find")) return;   /* WPS's own Find answers it */
+    if (!strcmp(line, "find")) return;   /* Objectspace's own Find answers it */
     /* the desktop's scheme, font and frame options: the frames follow */
     if (!strcmp(line, "scheme_def")) {   /* "Title\tkey=value;..." (a scheme object's) */
         const char *tab = strchr(arg, '\t');

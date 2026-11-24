@@ -153,7 +153,7 @@ TEST(terminals)
     char *a4[16] = { "vim", NULL };
     CHECK(osd_terminal_wrap(a4, 1, 16, NULL, true) == 8);
     CHECK(!strcmp(a4[0], "ptyxis") && !strcmp(a4[3], "sh") && !strcmp(a4[7], "vim"));
-    /* WPS Terminal (0.4.1: the default) once it is there: titled by the
+    /* Objectspace Terminal (0.4.1: the default) once it is there: titled by the
      * object, --hold for Close window on exit off */
     put("osd-terminal", "");
     snprintf(p, sizeof p, "%s/osd-terminal", dir);
@@ -171,7 +171,7 @@ TEST(terminals)
 
 int main(int argc, char **argv)
 {
-    snprintf(dir, sizeof dir, "%s", argc > 1 ? argv[1] : "/tmp/wps-test-launch");
+    snprintf(dir, sizeof dir, "%s", argc > 1 ? argv[1] : "/tmp/osd-test-launch");
     char cmd[4200];
     snprintf(cmd, sizeof cmd, "rm -rf '%s' && mkdir -p '%s'", dir, dir);
     if (system(cmd) != 0) return 2;

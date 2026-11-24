@@ -294,10 +294,10 @@ static bool op_say(struct client *c, int64_t id, const char *op, cv *msg)
     return false;
 }
 
-/* The wps command's questions for the desktop (0.4.1 step 14):
+/* The osd command's questions for the desktop (0.4.1 step 14):
  *   {op:"ask", text, buttons?}  a dialog; replies {value: the button, "" closed}
  *   {op:"selection"}            the active folder window's; replies {paths: [...]}
- *   {op:"show", target}         a folder's window (wps open on a folder)
+ *   {op:"show", target}         a folder's window (osd open on a folder)
  *   {op:"answer", ask, value? | paths?}   the desktop's answer
  * The first desktop to answer wins; a question with no desktop to ask
  * fails at once. */
@@ -309,7 +309,7 @@ static bool ask_desktop(struct client *c, int64_t id, const char *kind, const ch
 {
     int64_t ask = next_ask++;
     if (!desktop_broadcast(kind, ask, text, buttons)) {
-        reply_error(c, id, "no desktop", "the WPS desktop is not running");
+        reply_error(c, id, "no desktop", "the Objectspace desktop is not running");
         return false;
     }
     struct pending_ask *p = calloc(1, sizeof *p);
@@ -341,7 +341,7 @@ static bool op_show(struct client *c, int64_t id, const char *op, cv *msg)
     (void)op;
     const char *t = cv_text(msg, "target");
     if (!t || t[0] != '/') { reply_error(c, id, "bad request", "show needs a folder's path"); return false; }
-    if (!desktop_broadcast("show", 0, t, NULL)) { reply_error(c, id, "no desktop", "the WPS desktop is not running"); return false; }
+    if (!desktop_broadcast("show", 0, t, NULL)) { reply_error(c, id, "no desktop", "the Objectspace desktop is not running"); return false; }
     reply_int(c, id, 0);
     return false;
 }

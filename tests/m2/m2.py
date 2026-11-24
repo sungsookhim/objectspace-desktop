@@ -5,7 +5,7 @@ Runs real osdd services against the loopback test bed (proto/m0/testbed.sh
 up): ext4, btrfs and FAT. Services run as the current user, and as test
 users 60001 (A) and 60002 (B, both in group 60000) through setpriv. A second
 "computer" is simulated by a second osdd with its own database and host ID
-but the same WPS identity file.
+but the same Objectspace identity file.
 
 usage: tests/m2/m2.py [scenario ...]     e.g. m2.py 1 25a
 Writes build/m2/report.json.
@@ -169,7 +169,7 @@ def portable(svc, fs):
     svc.config_file("portable", fs_uuid(fs) + "\n")
 
 
-@scenario("25a", "A FAT disk carries the state to another computer (same WPS identity)")
+@scenario("25a", "A FAT disk carries the state to another computer (same Objectspace identity)")
 def s25a():
     home = Service("home")
     home.start(); home.stop()                     # creates the identity
@@ -185,7 +185,7 @@ def s25a():
     work.start()
     t = work.title(d / "slides.odp")
     work.stop()
-    voldb = list((MNT["fat"] / ".wps").glob("*.db"))
+    voldb = list((MNT["fat"] / ".osd").glob("*.db"))
     ok = t == "Conference slides" and len(voldb) == 1
     return ok, [f"title on the other computer: {t!r}", f"volume databases on the disk: {[p.name for p in voldb]}"]
 
@@ -226,10 +226,10 @@ def s25d():
     b = Service("B2", user=60002)
     for s in (a, b):
         portable(s, "ext4")
-    # The disk's .wps folder (mode 1777, like /tmp) is made by the first user
+    # The disk's .osd folder (mode 1777, like /tmp) is made by the first user
     # who can, or by an administrator; here the disk root belongs to neither.
-    run(["sudo", "mkdir", "-p", str(MNT["ext4"] / ".wps")], check=True)
-    run(["sudo", "chmod", "1777", str(MNT["ext4"] / ".wps")], check=True)
+    run(["sudo", "mkdir", "-p", str(MNT["ext4"] / ".osd")], check=True)
+    run(["sudo", "chmod", "1777", str(MNT["ext4"] / ".osd")], check=True)
     d = fresh("ext4", "s25d", user=60001)
     write_as(60001, d / "shared.txt", mode="0644")
     a.start(); b.start()
@@ -239,7 +239,7 @@ def s25d():
     a.ctl("sync"); b.ctl("sync")
     ta = a.title(d / "shared.txt")
     a.stop(); b.stop()
-    dbs = sorted((MNT["ext4"] / ".wps").glob("*.db"))
+    dbs = sorted((MNT["ext4"] / ".osd").glob("*.db"))
     modes = {p.name: oct(p.stat().st_mode & 0o777) for p in dbs}
     readable = [run(["test", "-r", str(p)], user=60001).returncode == 0 for p in dbs]
     ok = len(dbs) == 2 and all(m == "0o600" for m in modes.values()) and ta == "shared.txt" and readable.count(True) == 1

@@ -3,7 +3,7 @@
 
     tests/visual/compare.py BASE NEW [DIFFS]
 
-The WarpCenter's clock and meters (the right of the bottom bar) change by
+TheBar's clock and meters (the right of the bottom bar) change by
 themselves and are left out. A shot that differs is listed with its count of
 differing pixels and their bounding box; with DIFFS, a picture of each
 difference is saved there (the new shot, the differing pixels in magenta).
@@ -14,7 +14,7 @@ import sys
 
 from PIL import Image, ImageChops
 
-# (x0, y0, x1, y1) on the 1280x800 screen: the WarpCenter's tray and clock
+# (x0, y0, x1, y1) on the 1280x800 screen: TheBar's tray and clock
 MASKS = [(1080, 776, 1280, 800)]
 
 

@@ -3,9 +3,9 @@
 # menus are (0.4 step 8: one menu implementation), in the menu font:
 # Minimize from it; with the System's menu font 18.Sans, a taller menu.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sysmenu-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-sysmenu-XXXX")
 W="$PWD/build/osdctl"
-ENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1"
+ENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1"
 CLIENT="'$PWD/build/tests/ssd-client' Framed 3060a0"
 # The test client's frame at 436,156: its system menu button at 450,171;
 # the menu opens under it (Maximize, Minimize at y 205, -, Close).

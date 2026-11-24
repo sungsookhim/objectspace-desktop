@@ -1,5 +1,5 @@
 /*
- * Programs and files WPS starts, tracked while they run, for in-use
+ * Programs and files Objectspace starts, tracked while they run, for in-use
  * emphasis (design: decided 2026-11-18, In-use emphasis for files).
  *
  * A file is opened with its type's default application, started directly
@@ -24,7 +24,7 @@
 #include "osdo_loop.h"
 
 /* `changed` runs on the loop thread when a path starts or stops being in
- * use by programs WPS started. */
+ * use by programs Objectspace started. */
 void osd_launch_init(osdo_loop *loop, void (*changed)(const char *path, bool in_use));
 void osd_launch_shutdown(void);
 
@@ -45,7 +45,7 @@ void osd_launch_set_group(pid_t pid, const char *group);
  * scope ("" none) and the path it stands for. */
 void osd_launch_group_each(const char *group, void (*fn)(pid_t pid, const char *unit, const char *path, void *arg), void *arg);
 
-/* Loop thread: whether programs WPS started have `path` open. */
+/* Loop thread: whether programs Objectspace started have `path` open. */
 bool osd_launch_in_use(const char *path);
 
 /* Loop thread: something at `from` is now at `to` (renamed or moved). */
@@ -97,7 +97,7 @@ const char *osd_terminal_now(void);
  * until Enter after it ends. The new count. */
 int osd_hold_wrap(char **argv, int argc, int max);
 
-/* Run argv[0..argc) in a terminal window: WPS Terminal (the System's
+/* Run argv[0..argc) in a terminal window: Objectspace Terminal (the System's
  * default, 0.4.1: titled `title`, --hold when `hold`), else the user's
  * command ($OSD_TERMINAL: words the program is appended to), else the
  * System's choice or xdg-terminal-exec, else the first installed common

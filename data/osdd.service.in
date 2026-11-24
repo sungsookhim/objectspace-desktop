@@ -1,5 +1,5 @@
 [Unit]
-Description=WPS object service (osdd)
+Description=Objectspace object service (osdd)
 PartOf=graphical-session.target
 After=graphical-session-pre.target
 

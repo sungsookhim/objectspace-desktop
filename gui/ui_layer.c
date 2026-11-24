@@ -75,7 +75,7 @@ static struct ring *ring_get(ui_layer *l, int w, int h)
         if (r->wb && (r->w != w || r->h != h)) ring_free(r);
         if (!r->wb) {
             r->size = (size_t)w * 4 * (size_t)h;
-            int fd = memfd_create("wps-layer", MFD_CLOEXEC);
+            int fd = memfd_create("osd-layer", MFD_CLOEXEC);
             if (fd < 0 || ftruncate(fd, (off_t)r->size) < 0) { if (fd >= 0) close(fd); return NULL; }
             r->data = mmap(NULL, r->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             if (r->data == MAP_FAILED) { r->data = NULL; close(fd); return NULL; }

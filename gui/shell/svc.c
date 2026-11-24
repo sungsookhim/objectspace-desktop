@@ -316,7 +316,7 @@ static void open_req(const char *target, bool confirm, const char *const *files,
     bool x = x11 && *x11;
     /* and this session's input-method and desktop settings (osdd may have
      * started before the session gave them: Hangul was not typed in
-     * programs opened from WPS) */
+     * programs opened from Objectspace) */
     static const char *const keys[] = { "GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE" };
     char envs[5][300];
     size_t ne = 0;
@@ -622,7 +622,7 @@ void svc_layout(const char *folder, svc_fn fn, void *arg)
 
 static void answer_sent(void *arg, const cv *reply) { (void)arg; (void)reply; }
 
-/* The wps command's question answered (0.4.1): a button's label, or paths. */
+/* The osd command's question answered (0.4.1): a button's label, or paths. */
 void svc_answer(int64_t ask, const char *value, const char *const *paths, size_t n)
 {
     int64_t id;

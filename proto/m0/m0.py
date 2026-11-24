@@ -22,7 +22,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-WORK = Path(os.environ.get("WORK", f"/var/tmp/wps-m0-{os.environ.get('USER', os.getlogin())}"))
+WORK = Path(os.environ.get("WORK", f"/var/tmp/osd-m0-{os.environ.get('USER', os.getlogin())}"))
 MNT = {fs: WORK / "mnt" / fs for fs in ("ext4", "btrfs", "fat")}
 BIN = ROOT / "build" / "m0"
 LOG = BIN / "events.jsonl"
@@ -250,12 +250,12 @@ def vim_modes(dirname, binary):
     return verdict, detail
 
 
-@scenario(4, "vi (vim-minimal) saving a file that has a WPS ID, three backupcopy modes")
+@scenario(4, "vi (vim-minimal) saving a file that has an Objectspace ID, three backupcopy modes")
 def s_vim():
     return vim_modes("s4", "vi")
 
 
-@scenario(5, "sed -i on a file that has a WPS ID")
+@scenario(5, "sed -i on a file that has an Objectspace ID")
 def s_sed():
     d = fresh_dir("ext4", "s5")
     f = d / "a.txt"

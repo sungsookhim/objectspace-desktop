@@ -1,5 +1,5 @@
 /*
- * libwpsui: the WPS widget set (gui-design.md: Toolkit, Widget set).
+ * libwpsui: the Objectspace widget set (gui-design.md: Toolkit, Widget set).
  *
  * Our own drawing with Cairo, HarfBuzz and FreeType on Wayland. One thread
  * (the UI thread) owns everything here; other threads hand results over
@@ -47,7 +47,7 @@ typedef struct {
     ui_color desktop_title, desktop_shadow_title;   /* icon titles on a picture */
     ui_color tooltip_bg, tooltip_text;
     ui_color urgent_bg, urgent_text;   /* urgent notifications and messages */
-    /* (0.4 step 7) the WarpCenter and the LaunchPad: their face and text
+    /* (0.4 step 7) TheBar and the Launcher: their face and text
      * (not given: the window face's and text's), the meters' colours */
     ui_color bar, bar_text;
     ui_color meter_cpu, meter_memory, meter_disk, meter_network;
@@ -108,7 +108,7 @@ double ui_text_ascent(void);    /* for centring text in a row */
  * interface font. Loaded once; kept across interface-font changes. */
 ui_font ui_font_named(const char *spec);
 void ui_menu_set_font(ui_font f);          /* all menus */
-void ui_frame_set_title_font(ui_font f);   /* all title bars WPS draws */
+void ui_frame_set_title_font(ui_font f);   /* all title bars Objectspace draws */
 bool ui_font_valid(const char *spec);
 /* The Dialogs font (notebooks, dialogs, Find, the window list, the
  * palettes): a Font Palette name, "" the interface font. */
@@ -285,11 +285,11 @@ void ui_activation_token(ui_app *a, void (*fn)(void *ctx, const char *token), vo
 ui_surface *ui_popup_new(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
                          ui_rect anchor, double w, double h, uint32_t serial);
 
-/* The same, opening above the anchor (a LaunchPad drawer). */
+/* The same, opening above the anchor (a Launcher drawer). */
 ui_surface *ui_popup_new_above(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
                                ui_rect anchor, double w, double h, uint32_t serial);
 /* The same, beside the anchor, out to the left or the right (a vertical
- * LaunchPad's drawers). */
+ * Launcher's drawers). */
 ui_surface *ui_popup_new_beside(ui_app *a, ui_surface *parent, const ui_surface_ops *ops, void *data,
                                 ui_rect anchor, double w, double h, uint32_t serial, bool left);
 /* A popup's new size, placed again by the compositor. */
@@ -412,12 +412,12 @@ void ui_menu_look_size(const ui_menu_look *l, double *w, double *h);
 void ui_menu_look_draw(cairo_t *cr, const ui_menu_look *l, double w, double h, int hot);
 ui_font ui_menu_font(void);
 /* The same, with an object's icon left of each label for which icon_fn
- * fills `item` (a ui_item) and returns true (the WarpCenter's lists); a cascade's item
+ * fills `item` (a ui_item) and returns true (TheBar's lists); a cascade's item
  * is asked by its id too. Drawn as ui_draw_item_icon draws it. */
 void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                          ui_menu_fn fn, void *arg, bool (*icon_fn)(void *arg, int64_t id, void *item));
 /* The next menu, and its cascades, open beside their anchors out to the
- * left (a cascade from a LaunchPad drawer on the left). */
+ * left (a cascade from a Launcher drawer on the left). */
 void ui_menu_next_left(void);
 bool ui_menu_is_open(void);
 void ui_menu_close_all(void);   /* the open menus, unchosen */
@@ -611,7 +611,7 @@ typedef struct {
 } ui_item;
 
 /* An object's icon, drawn as a folder draws it (in-use, template, link
- * and shadow marks included), anywhere: the LaunchPad, drawers. */
+ * and shadow marks included), anywhere: the Launcher, drawers. */
 void ui_draw_item_icon(cairo_t *cr, const ui_item *it, double x, double y, double size);
 
 typedef struct ui_container ui_container;
@@ -644,7 +644,7 @@ typedef struct {
 } ui_container_src;
 
 /* An icon set (v0.4-design 3): the icon views' and desktop's size, the
- * LaunchPad's and folder trees' (middle), menus', the Details view's and
+ * Launcher's and folder trees' (middle), menus', the Details view's and
  * title bars' (small); an icon view's cell from the large size (titles
  * below, two lines). Logical pixels: a scale of 2 asks for twice. */
 typedef struct { int large, middle, small; double cell_w, cell_h; } ui_icon_set;
@@ -652,7 +652,7 @@ typedef enum { UI_ICONS_SMALL, UI_ICONS_DEFAULT, UI_ICONS_LARGE } ui_icon_size;
 ui_icon_set ui_icon_set_of(ui_icon_size which);
 /* "Small", "Default", "Large" (the property's choices); else Default. */
 ui_icon_size ui_icon_size_named(const char *name);
-/* The System's set (menus, title bars, the LaunchPad, every folder with
+/* The System's set (menus, title bars, the Launcher, every folder with
  * none of its own); Default at first. */
 const ui_icon_set *ui_icons(void);
 void ui_set_icons(ui_icon_size which);

@@ -1,5 +1,5 @@
 #!/bin/sh
-# osd-compositor, headless, with WPS's desktop (a private osdd and folder)
+# osd-compositor, headless, with Objectspace's desktop (a private osdd and folder)
 # and other programs, played by a script (see osd-compositor.c).
 #   tests/comp/run.sh SCRIPT [COMMAND...]
 # COMMAND (default: a GTK 4 dialog and the test client) runs
@@ -10,12 +10,12 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 SCRIPT=$(readlink -f "$1"); shift
-T=${KEEP_T:-$(mktemp -d "${TMPDIR:-/tmp}/wps-comp-XXXX")}   # KEEP_T: a test folder again (a second login)
-RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-comp-XXXX")
+T=${KEEP_T:-$(mktemp -d "${TMPDIR:-/tmp}/osd-comp-XXXX")}   # KEEP_T: a test folder again (a second login)
+RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-comp-XXXX")
 mkdir -p "$T/desk/Projects" "$T/config" "$T/state" "$T/xdg/config" "$T/xdg/data" "$T/cache"
 echo hi > "$T/desk/notes.txt"
 export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
-export OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHPAD_DIR="$T/launchpad"
+export OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHER_DIR="$T/launcher"
 export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_CACHE_HOME="$T/cache"
 "$REPO/build/osdd" 2> "$T/osdd.log" &
 WP=$!
@@ -23,7 +23,7 @@ for i in $(seq 50); do "$REPO/build/osdctl" ping >/dev/null 2>&1 && break; sleep
 # PRE: a command run once osdd is up, before the desktop (to prepare objects)
 [ -n "$PRE" ] && sh -c "$PRE"
 CMD=${*:-"GDK_BACKEND=wayland GSK_RENDERER=cairo GTK_A11Y=none zenity --info --text 'A GTK 4 dialog' 2> '$T/app.log' & sleep 0.5; '$REPO/build/tests/ssd-client' Framed 3060a0 2> '$T/ssd.log'"}
-# WPS's desktop, as the session runs it (-d); DESKENV: settings for it only
+# Objectspace's desktop, as the session runs it (-d); DESKENV: settings for it only
 # (e.g. OSD_SHELL_SELFTEST=winlist), NODESK=1: none
 DESK="env $DESKENV '$REPO/build/osd-shell' --desktop '$T/desk' 2>> '$T/shell.log'"
 [ -n "$NODESK" ] && DESK=

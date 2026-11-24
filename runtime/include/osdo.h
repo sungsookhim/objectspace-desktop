@@ -1,5 +1,5 @@
 /*
- * libwpo - the WPS object runtime.
+ * libwpo - the Objectspace object runtime.
  *
  * A small SOM-like object model in C:
  *   - classes are objects: each class is an instance of its metaclass, and

@@ -1,7 +1,7 @@
 /* The SDK's sample plug-in (OsdImageFile.osdi). Build: make (the SDK's
  * Makefile); install: copy osdimagefile.so to ~/.config/objectspace/plugins and log
  * in again. It runs in its own sandboxed host (osd-plughost): what it
- * changes in an object's state goes back to WPS. */
+ * changes in an object's state goes back to Objectspace. */
 #include "OsdImageFile.h"
 
 #include <stdlib.h>
@@ -28,7 +28,7 @@ char *OsdImageFile__osdModifyPopupMenu(osdo_object *self, const char *menu)
 bool OsdImageFile__osdMenuItemSelected(osdo_object *self, int64_t item)
 {
     if (item != RATE_FIVE) return OsdImageFile_parent_osdMenuItemSelected(self, item);
-    /* its declared property, as WPS keeps it (a choice: the option's text) */
+    /* its declared property, as Objectspace keeps it (a choice: the option's text) */
     osd_state_put_str(self, "OsdImageFile", "rating", "5");
     return true;
 }

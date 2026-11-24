@@ -1,12 +1,12 @@
 #!/bin/sh
-# Work Area folders (0.4 steps 9 and 10), headless (WPS session): Projects
+# Work Area folders (0.4 steps 9 and 10), headless (Objectspace session): Projects
 # is a work area; two test programs, a link to a folder and a shadow of a
 # folder opened from it are minimized and restored with its window, closed
 # with it, and opened again when it opens again; what was open at the end
 # (logout) is kept on the folder, and at the next login it opens again with
 # them, its folders still its group's.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-workarea-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-workarea-XXXX")
 W="$PWD/build/osdctl"
 C="$PWD/build/tests/ssd-client"
 # Projects (its icon at 54,30) opens at 320,106 (640x480): away (a link to
@@ -41,10 +41,10 @@ PRE="mkdir -p \"\$T/away\" \"\$T/zfolder\"; echo z > \"\$T/away/z.txt\"; ln -s \
      printf '[Desktop Entry]\nType=Application\nName=One\nExec=$C One 3060a0\n' > \"\$T/desk/Projects/one.desktop\"
      printf '[Desktop Entry]\nType=Application\nName=Two\nExec=$C Two a03060\n' > \"\$T/desk/Projects/two.desktop\"
      '$W' settings_set \"\$T/desk/Projects\" 'work_area=1' > /dev/null" \
-    env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=24 tests/comp/run.sh "$S/one" \
+    env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=24 tests/comp/run.sh "$S/one" \
     "sleep 2; '$W' shadow \"\$T/zfolder\" \"\$T/desk/Projects\" > /dev/null; sleep 60" > "$S/one.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/one.txt")
-cp "$T/osdd.log" "$S/wpsd1.log"   # (the second run writes its own)
+cp "$T/osdd.log" "$S/osdd1.log"   # (the second run writes its own)
 # what the folder kept when osdd stopped (as at logout)
 KEEP_T=$T NODESK=1 PRE="'$W' get \"\$T/desk/Projects\" work_area_open > \"\$T/kept.txt\" 2>&1" SECS=4 \
     tests/comp/run.sh "$S/one" true > "$S/two.txt" 2>&1
@@ -61,7 +61,7 @@ cat > "$S/three" <<EOS
 EOS
 KEEP_T=$T PRE="a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdSystem\"][\"address\"])')
      '$W' settings_set \"\$a\" 'restore_windows=0' > /dev/null" \
-    env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/three" "sleep 60" > "$S/three.txt" 2>&1
+    env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=12 tests/comp/run.sh "$S/three" "sleep 60" > "$S/three.txt" 2>&1
 # Each "windows" answer: its lines after its "windows now:".
 cat > "$S/blocks.py" <<'EOP'
 import sys
@@ -86,6 +86,6 @@ check "opened again when it opens again (the folders too)" "[ \$(grep -c '^4 .* 
 check "what was open at the end is kept on the folder" "grep -q one.desktop '$T/kept.txt' && grep -q two.desktop '$T/kept.txt'"
 check "at the next login: open again with its programs and folders" "[ \$(grep -c '^0 .* shown' '$S/login.txt') = 4 ]"
 check "... and they are still its group" "[ \$(grep -c '^1 .* minimized' '$S/login.txt') = 4 ]"
-check "no sanitizer reports" "! grep -q 'Sanitizer' '$S/wpsd1.log' '$T/shell.log'"
+check "no sanitizer reports" "! grep -q 'Sanitizer' '$S/osdd1.log' '$T/shell.log'"
 [ $fails = 0 ] && rm -rf "$S" "$T" || echo "logs: $S $T"
 exit $fails

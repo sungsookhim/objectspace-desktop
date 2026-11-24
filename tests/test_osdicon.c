@@ -134,7 +134,7 @@ TEST(svg)
 
 int main(void)
 {
-    snprintf(dir, sizeof dir, "/tmp/wps-test-osdicon-%d", (int)getpid());
+    snprintf(dir, sizeof dir, "/tmp/osd-test-osdicon-%d", (int)getpid());
     mkdir(dir, 0755);
     RUN(pack_adds_the_standard_sizes);
     RUN(a_folder_and_other_sizes);

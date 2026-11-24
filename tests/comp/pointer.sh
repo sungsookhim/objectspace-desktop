@@ -3,7 +3,7 @@
 # window and let go outside it ends (the window still gets the release),
 # instead of following the pointer afterwards.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-ptr-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-ptr-XXXX")
 # Projects (empty) opens at 320,96 (640x480); its list: x 325..938, y 123..548.
 cat > "$S/script" <<EOS
 2.5 dclick 54 30
@@ -16,7 +16,7 @@ cat > "$S/script" <<EOS
 5.6 shot $S/after.png
 6 quit
 EOS
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=9 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=9 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # pixels of the empty list that are not its white background

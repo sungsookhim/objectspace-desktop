@@ -21,7 +21,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-WORK = Path(os.environ.get("WORK", f"/var/tmp/wps-m0-{os.environ.get('USER', os.getlogin())}"))
+WORK = Path(os.environ.get("WORK", f"/var/tmp/osd-m0-{os.environ.get('USER', os.getlogin())}"))
 EXT4 = WORK / "mnt" / "ext4"
 BIN = ROOT / "build" / "m0"
 SOCK = WORK / "watchd.sock"
@@ -48,7 +48,7 @@ class Client:
         self.lines = []
         self.p = subprocess.Popen(
             ["sudo", "setpriv", f"--reuid={uid}", "--regid=60000", "--groups=60000", "--",
-             "python3", str(WORK / "wpsclient.py"), str(SOCK)],
+             "python3", str(WORK / "osdclient.py"), str(SOCK)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         threading.Thread(target=self._read, daemon=True).start()
         self.wait(lambda l: l.get("ready"))
@@ -114,8 +114,8 @@ def result(num, title, ok, detail, verdict=None):
 def main():
     if not os.path.ismount(EXT4):
         sys.exit("run proto/m0/testbed.sh up first")
-    shutil.copy(HERE / "wpsclient.py", WORK / "wpsclient.py")
-    os.chmod(WORK / "wpsclient.py", 0o755)
+    shutil.copy(HERE / "osdclient.py", WORK / "osdclient.py")
+    os.chmod(WORK / "osdclient.py", 0o755)
 
     # Layout, created by user A (60001).
     sh = EXT4 / "shared"

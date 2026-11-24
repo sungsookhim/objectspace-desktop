@@ -1,5 +1,5 @@
 /*
- * The WarpCenter's tray (v0.2-design 10, v0.2-plan step 8): other
+ * TheBar's tray (v0.2-design 10, v0.2-plan step 8): other
  * programs' status icons. The desktop process is the session's
  * StatusNotifierWatcher (org.kde.StatusNotifierWatcher on the session bus)
  * and its only host: programs register their StatusNotifierItems with it;
@@ -9,11 +9,11 @@
  *
  * Clicks: button 1 Activate (the menu for an ItemIsMenu item, or one that
  * has no Activate); button 2 the item's menu, read over dbusmenu
- * (com.canonical.dbusmenu GetLayout) and shown as a WPS menu, a choice
+ * (com.canonical.dbusmenu GetLayout) and shown as an Objectspace menu, a choice
  * sent back as an Event "clicked" (no menu: ContextMenu); the middle
  * button SecondaryActivate. Passive items are not shown.
  *
- * Only when the WarpCenter is open; not when another watcher has the name
+ * Only when TheBar is open; not when another watcher has the name
  * (GNOME's AppIndicator extension).
  */
 #ifndef OSD_TRAY_H

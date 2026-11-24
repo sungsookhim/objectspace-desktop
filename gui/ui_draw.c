@@ -539,7 +539,7 @@ void ui_text_init(void)
     snprintf(family, sizeof family, "sans-serif");
     FT_Init_FreeType(&ft);
     slots[1].bold = true;
-    if (!load_slot(0) || !load_slot(1)) { fprintf(stderr, "wps-ui: no font for %s\n", family); exit(1); }
+    if (!load_slot(0) || !load_slot(1)) { fprintf(stderr, "osd-ui: no font for %s\n", family); exit(1); }
 }
 
 /* The interface font (GNOME's, G3): a family and a size in pixels. All

@@ -11,8 +11,8 @@
 #include "OsdColorPalette.h"
 #include "OsdSound.h"
 #include "OsdSystem.h"
-#include "OsdLaunchPad.h"
-#include "OsdWarpCenter.h"
+#include "OsdLauncher.h"
+#include "OsdTheBar.h"
 #include "OsdMessages.h"
 #include "osd_classes.h"
 #include "osd_state.h"
@@ -79,7 +79,7 @@ char *OsdSystem__osdQueryFoldersHidden(osdo_object *self) { return folders_get(s
 bool OsdSystem__osdSetFoldersHidden(osdo_object *self, const char *on) { return folders_set(self, "show_hidden", on); }
 char *OsdSystem__osdQueryFoldersExt(osdo_object *self) { return folders_get(self, "show_ext", "show_ext", "1"); }
 bool OsdSystem__osdSetFoldersExt(osdo_object *self, const char *on) { return folders_set(self, "show_ext", on); }
-char *OsdSystem__osdQueryFoldersTheme(osdo_object *self) { return folders_get(self, "icon_theme", "icon_theme", "WPS (flat)"); }
+char *OsdSystem__osdQueryFoldersTheme(osdo_object *self) { return folders_get(self, "icon_theme", "icon_theme", "Objectspace (flat)"); }
 bool OsdSystem__osdSetFoldersTheme(osdo_object *self, const char *theme) { return folders_set(self, "icon_theme", theme); }
 char *OsdSystem__osdQueryFoldersIconSet(osdo_object *self) { return folders_get(self, "icon_set", "icon_set", "Default"); }
 bool OsdSystem__osdSetFoldersIconSet(osdo_object *self, const char *set) { return folders_set(self, "icon_set", set); }
@@ -87,14 +87,14 @@ char *OsdSystem__osdQueryIconThemes(osdo_object *self)
 {
     (void)self;
     char *t = osd_icon_theme_names();
-    return t && *t ? t : (free(t), osd_strdup("WPS (flat)"));
+    return t && *t ? t : (free(t), osd_strdup("Objectspace (flat)"));
 }
 
 char *OsdSystem__osdQueryFoldersFont(osdo_object *self) { return folders_get(self, "font_folders", "icon_font", ""); }
 bool OsdSystem__osdSetFoldersFont(osdo_object *self, const char *font) { return folders_set(self, "icon_font", font); }
 
 /* The Scheme Palette's choices: the schemes there are (the service's list),
- * else the three WPS makes. */
+ * else the three Objectspace makes. */
 char *OsdSchemePalette__osdQuerySchemes(osdo_object *self)
 {
     (void)self;
@@ -105,9 +105,9 @@ char *OsdSchemePalette__osdQuerySchemes(osdo_object *self)
 /* Settings objects open as their notebook; they are not copied or made. */
 char *OsdSetup__osdModifyPopupMenu(osdo_object *self, const char *menu)
 {
-    /* the LaunchPad, the WarpCenter and Messages also open (the palette,
+    /* the Launcher, TheBar and Messages also open (the palette,
      * the bar, the list); the others are only their settings */
-    bool opens = osdo_is_a(self, OsdLaunchPadClass) || osdo_is_a(self, OsdWarpCenterClass) || osdo_is_a(self, OsdMessagesClass) ||
+    bool opens = osdo_is_a(self, OsdLauncherClass) || osdo_is_a(self, OsdTheBarClass) || osdo_is_a(self, OsdMessagesClass) ||
                  osdo_is_a(self, OsdFontPaletteClass) || osdo_is_a(self, OsdColorPaletteClass);
     return osd_concat(menu, opens ? "1\tOpen\n2\tProperties\n" : "2\tProperties\n");
 }
@@ -118,6 +118,6 @@ char *OsdMouse__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_str
 char *OsdSchemePalette__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Scheme Palette"); }
 char *OsdFontPalette__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Font Palette"); }
 char *OsdColorPalette__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Colour Palette"); }
-char *OsdLaunchPad__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("LaunchPad"); }
-char *OsdWarpCenter__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("WarpCenter"); }
+char *OsdLauncher__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Launcher"); }
+char *OsdTheBar__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("TheBar"); }
 char *OsdMessages__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Messages"); }

@@ -68,8 +68,8 @@ size_t osd_icon_themes(osd_icon_theme *out, size_t max)
         }
         if (d) closedir(d);
     }
-    /* WPS's own first, flat then outline then classic; then the others by name */
-    static const char *const order[] = { "wps-flat", "wps-outline", "classic" };
+    /* Objectspace's own first, flat then outline then classic; then the others by name */
+    static const char *const order[] = { "objectspace-flat", "objectspace-outline", "classic" };
     size_t k = 0;
     for (size_t o = 0; o < 3; o++)
         for (size_t i = k; i < n; i++)
@@ -137,7 +137,7 @@ const char *osd_icon_name_for_class(const char *cls)
     static const char *const map[][2] = {
         { "OsdSystem", "system" }, { "OsdSound", "sound" }, { "OsdMouse", "mouse" },
         { "OsdSchemePalette", "scheme-palette" }, { "OsdScheme", "scheme-palette" }, { "OsdFontPalette", "file-font" }, { "OsdColorPalette", "scheme-palette" },
-        { "OsdLaunchPad", "launchpad" }, { "OsdWarpCenter", "warpcenter" }, { "OsdMessages", "messages" },
+        { "OsdLauncher", "launcher" }, { "OsdTheBar", "thebar" }, { "OsdMessages", "messages" },
         { "OsdMinWinViewer", "minwin-viewer" }, { "OsdRestoreDesktop", "restore-desktop" },
     };
     for (size_t i = 0; cls && i < sizeof map / sizeof *map; i++) if (!strcmp(cls, map[i][0])) return map[i][1];

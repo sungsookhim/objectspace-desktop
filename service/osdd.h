@@ -55,8 +55,8 @@
 #include "OsdMinWinViewer.h"
 #include "OsdRestoreDesktop.h"
 #include "OsdMessages.h"
-#include "OsdLaunchPad.h"
-#include "OsdWarpCenter.h"
+#include "OsdLauncher.h"
+#include "OsdTheBar.h"
 #include "messages.h"
 #include "startup.h"
 #include "osd_startup_hook.h"
@@ -284,13 +284,13 @@ struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; struct fs_shadow *ne
 /* ---- the default objects (0.2): System, Programs and the Trash Can on the
  * desktop; Templates, Startup, the Minimized Window Viewer and Restore
  * Desktop in System; the settings objects where they belong. Each is
- * noted by ID once it is in place (locator "wps-defaults", class WPS, one
+ * noted by ID once it is in place (locator "osd-defaults", class Objectspace, one
  * prop per object), so {op:"restore_defaults", desktop} can put back the
  * very object the user moved or deleted (a central object moved gets a
  * new ID: noted again), or make one if it is gone for good; missing
  * default folders are made again. Each desktop open notes the ones in
  * place ({op:"first_start"}). */
-#define DEFAULTS_LOC "wps-defaults"
+#define DEFAULTS_LOC "osd-defaults"
 #define NDEFAULTS 8
 
 struct defobj {

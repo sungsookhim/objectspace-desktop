@@ -21,11 +21,11 @@ static void on_window_events(void *arg, int fd, short rev)
         for (char *p = line, *t; k < 13 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
-        else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "wps-menu")) {   /* Super alone (WPS session) */
+        else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "osd-menu")) {   /* Super alone (Objectspace session) */
             if (ui_menu_is_open()) ui_menu_close_all();   /* pressed again: closed (as on Windows) */
-            else if (warpcenter_is_open()) warpcenter_press("desktop");
+            else if (thebar_is_open()) thebar_press("desktop");
         }
-        else if (k >= 5 && !strcmp(f[0], "I")) warpcenter_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
+        else if (k >= 5 && !strcmp(f[0], "I")) thebar_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };
             events_raise(f[0], f[1], "window", at);
@@ -75,20 +75,20 @@ int main(int argc, char **argv)
     } else {
         winlist_init(app, -1);
     }
-    findwin_init(app, launchpad_open_folder, shell_drag_paths);
+    findwin_init(app, launcher_open_folder, shell_drag_paths);
     icons_init(app);
     appicons_init(appicons_ready);
-    iconpick_init(app, launchpad_open_folder);
+    iconpick_init(app, launcher_open_folder);
     filepick_init(app);
     apppick_init(app);
     fontpal_init(app, font_apply);
     colorpal_init(app, color_apply);
     ui_set_font_drop(font_dropped_dialogs);   /* a font on a notebook, a dialog, Find...: the Dialogs font */
     tooltip_init(app);
-    launchpad_set_props(lp_props);
-    warpcenter_on_font(font_dropped_wc);
-    warpcenter_on_color(color_dropped_bar);
-    launchpad_on_color(color_dropped_bar);
+    launcher_set_props(lp_props);
+    thebar_on_font(font_dropped_wc);
+    thebar_on_color(color_dropped_bar);
+    launcher_on_color(color_dropped_bar);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
      * desktop keeps the rest in step both ways. */
     gnome_start(app, desk, gnome_set_osd, gnome_font);
     if (desk) {
-        /* the desktop process: Messages, and in the WPS session the
+        /* the desktop process: Messages, and in the Objectspace session the
          * notification service */
         messages_init(app);
         notify_init(app);

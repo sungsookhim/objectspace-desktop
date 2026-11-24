@@ -1,4 +1,4 @@
-/* WPS Terminal's core (term_core.h). */
+/* Objectspace Terminal's core (term_core.h). */
 #define _GNU_SOURCE
 #include "term_core.h"
 

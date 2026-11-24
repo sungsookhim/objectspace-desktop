@@ -42,7 +42,7 @@ if PART == "1":
     check("msg_add answers an ID", isinstance(a.get("result"), int), a)
     ev = changed()
     check("messages_changed after an add (unread 1)", ev and ev.get("unread") == 1 and ev.get("added") == a.get("result"), ev)
-    b = c.request(op="msg_add", app="Workplace Shell", summary="Cannot delete: x", body="", urgency=2)
+    b = c.request(op="msg_add", app="Objectspace", summary="Cannot delete: x", body="", urgency=2)
     ms, unread = msgs()
     check("two messages, newest first", [m["summary"] for m in ms] == ["Cannot delete: x", "Download finished"], ms)
     check("both unread", unread == 2, unread)
@@ -75,21 +75,21 @@ if PART == "1":
     # the settings objects of step 7
     s = c.request(op="setup").get("result") or {}
     objs = s.get("objects", {})
-    for cls in ("OsdLaunchPad", "OsdWarpCenter", "OsdMessages"):
+    for cls in ("OsdLauncher", "OsdTheBar", "OsdMessages"):
         check(cls + " object made", cls in objs, list(objs))
-    wc = objs.get("OsdWarpCenter", {}).get("settings", {})
-    check("WarpCenter defaults", wc.get("edge") == "bottom" and wc.get("clock") == "24 hours" and wc.get("meters") == "1", wc)
+    wc = objs.get("OsdTheBar", {}).get("settings", {})
+    check("TheBar defaults", wc.get("edge") == "bottom" and wc.get("clock") == "24 hours" and wc.get("meters") == "1", wc)
     m = objs.get("OsdMessages", {})
     check("Messages defaults", m.get("settings", {}).get("dnd") == "0", m)
     sysdir = os.environ["T"] + "/xdg/data/objectspace/System"
     titles = [it.get("title") for it in (c.request(op="list", target=sysdir, offset=0, count=100, details=True)
                                           .get("result") or {}).get("items", [])]
-    check("LaunchPad, WarpCenter and Messages are in System", all(t in titles for t in ("LaunchPad", "WarpCenter", "Messages")), titles)
+    check("Launcher, TheBar and Messages are in System", all(t in titles for t in ("Launcher", "TheBar", "Messages")), titles)
     o = c.request(op="open", target=m.get("address", ""))
     check("opening Messages answers its view", (o.get("result") or {}).get("view") == "messages", o)
-    r = c.request(op="settings_set", target=objs["OsdWarpCenter"]["address"], values={"edge": "top"})
+    r = c.request(op="settings_set", target=objs["OsdTheBar"]["address"], values={"edge": "top"})
     s = c.request(op="setup").get("result") or {}
-    check("the WarpCenter's edge is set", s["objects"]["OsdWarpCenter"]["settings"].get("edge") == "top", r)
+    check("TheBar's edge is set", s["objects"]["OsdTheBar"]["settings"].get("edge") == "top", r)
 else:
     ms, unread = msgs()
     check("kept across a restart", [m["summary"] for m in ms] == ["Kept"] and unread == 1, ms)
@@ -98,7 +98,7 @@ else:
     ms, _ = msgs()
     check("IDs go on after a restart", ms[0]["id"] > ms[1]["id"], [m["id"] for m in ms])
     s = c.request(op="setup").get("result") or {}
-    check("settings kept across a restart", s["objects"]["OsdWarpCenter"]["settings"].get("edge") == "top")
+    check("settings kept across a restart", s["objects"]["OsdTheBar"]["settings"].get("edge") == "top")
     n = len([1 for _ in s["objects"]])
     check("no settings object made twice", n == 9, list(s["objects"]))
 

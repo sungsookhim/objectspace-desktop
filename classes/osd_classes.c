@@ -18,8 +18,8 @@
 #include "OsdScheme.h"
 #include "OsdFontPalette.h"
 #include "OsdColorPalette.h"
-#include "OsdLaunchPad.h"
-#include "OsdWarpCenter.h"
+#include "OsdLauncher.h"
+#include "OsdTheBar.h"
 #include "OsdMessages.h"
 #include "OsdMinWinViewer.h"
 #include "OsdRestoreDesktop.h"
@@ -51,7 +51,7 @@ osdo_status osd_classes_register(void)
         OsdObject_register, OsdFileSystem_register, OsdDataFile_register, OsdFolder_register,
         OsdAbstract_register, OsdProgram_register, OsdShadow_register,
         OsdSetup_register, OsdSystem_register, OsdSound_register, OsdMouse_register, OsdSchemePalette_register, OsdFontPalette_register, OsdColorPalette_register,
-        OsdLaunchPad_register, OsdWarpCenter_register, OsdMessages_register,
+        OsdLauncher_register, OsdTheBar_register, OsdMessages_register,
         OsdScheme_register,
         OsdMinWinViewer_register, OsdRestoreDesktop_register, OsdTrashCan_register, OsdComputer_register, OsdDrives_register, OsdDrive_register, OsdProgramsFolder_register,
     };

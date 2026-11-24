@@ -30,7 +30,7 @@
 
 struct note {
     uint32_t nid;
-    char sender[96];            /* "" for WPS's own */
+    char sender[96];            /* "" for Objectspace's own */
     char app[128], icon[1024], summary[256], body[2048];
     char *actions[MAX_ACTIONS];
     size_t nact;
@@ -543,7 +543,7 @@ static int m_caps(sd_bus_message *m, void *ud, sd_bus_error *err)
 static int m_info(sd_bus_message *m, void *ud, sd_bus_error *err)
 {
     (void)ud; (void)err;
-    return sd_bus_reply_method_return(m, "ssss", "Workplace Shell", "objectspace-desktop", OSD_VERSION, "1.2");
+    return sd_bus_reply_method_return(m, "ssss", "Objectspace", "objectspace-desktop", OSD_VERSION, "1.2");
 }
 
 static const sd_bus_vtable vtable[] = {
@@ -632,7 +632,7 @@ void notify_local(const char *summary, const char *body, int urgency)
     if (nnotes >= MAX_NOTES) drop_note(&notes[0]);
     struct note n = { .urgency = urgency };
     n.nid = next_nid++;
-    snprintf(n.app, sizeof n.app, "Workplace Shell");
+    snprintf(n.app, sizeof n.app, "Objectspace");
     snprintf(n.icon, sizeof n.icon, "%s", urgency == 2 ? "dialog-error" : "dialog-information");
     snprintf(n.summary, sizeof n.summary, "%s", summary ? summary : "");
     snprintf(n.body, sizeof n.body, "%s", body ? body : "");
@@ -640,7 +640,7 @@ void notify_local(const char *summary, const char *body, int urgency)
     notes[nnotes++] = n;
     notes[nnotes - 1].transient = true;
     show(&notes[nnotes - 1], -1);
-    notes[nnotes - 1].deadline = ui_now_ms() + seconds * 1000;   /* (WPS's own errors fade too) */
+    notes[nnotes - 1].deadline = ui_now_ms() + seconds * 1000;   /* (Objectspace's own errors fade too) */
 }
 
 bool notify_can_invoke(int64_t nid, const char *sender)

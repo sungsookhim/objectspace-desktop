@@ -139,7 +139,7 @@ static void volume_work(void *arg)
         }
         if (slot >= 0 && attached[slot].ro == v->ro && j->reply == NULL) continue;
         char dir[PATH_MAX + 8], file[PATH_MAX + 64], err[256];
-        snprintf(dir, sizeof dir, "%s/.wps", v->mnt);
+        snprintf(dir, sizeof dir, "%s/.osd", v->mnt);
         if (!v->ro && mkdir(dir, 01777) == 0) chmod(dir, 01777);   /* shared by all users, like /tmp */
         snprintf(file, sizeof file, "%s/%s.db", dir, env.identity);
         bool writable = !v->ro && access(dir, W_OK) == 0;

@@ -1,0 +1,13 @@
+# The Launcher object (v0.2-design 10): the Launcher's settings, in
+# System; the desktop applies them.
+class OsdLauncher : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle
+# Its settings (stored as text in the OsdSetup state, as before).
+property show_at_start : choice "automatic,yes,no" = "automatic" page "Launcher" label "Show at start" store OsdSetup text
+property orientation : choice "horizontal,vertical" = "horizontal" page "Launcher" label "Orientation" store OsdSetup text
+property drawer_side : choice "right,left" = "right" page "Launcher" label "Drawers (vertical)" store OsdSetup text
+property small_icons : checkbox = "0" page "Launcher" label "Small icons" store OsdSetup text
+property text : checkbox = "1" page "Launcher" label "Text on buttons" store OsdSetup text
+property float_top : checkbox = "1" page "Launcher" label "Float on top" store OsdSetup text
+property close_drawer : checkbox = "1" page "Launcher" label "Close drawer after open" store OsdSetup text

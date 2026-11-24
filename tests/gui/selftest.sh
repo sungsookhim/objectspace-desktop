@@ -13,19 +13,19 @@
 # usage: tests/gui/selftest.sh MODE [SETUP]
 set -e
 cd "$(dirname "$0")/../.."
-W=$(mktemp -d "${TMPDIR:-/tmp}/wps-selftest-$1-XXXX")
-RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-st-XXXX")
+W=$(mktemp -d "${TMPDIR:-/tmp}/osd-selftest-$1-XXXX")
+RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-st-XXXX")
 # Remove the folder at the end (KEEP=1 keeps it, with the logs): big
 # self-tests make hundreds of thousands of files.
 [ -n "$KEEP" ] || trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/d" "$W/xdg/config" "$W/xdg/data/applications" "$W/xdg/sys"
 printf '#!/bin/sh\nsleep 2\n' > "$W/hold.sh"; chmod +x "$W/hold.sh"
-printf '[Desktop Entry]\nType=Application\nName=Hold\nExec=%s %%f\n' "$W/hold.sh" > "$W/xdg/data/applications/wps-hold.desktop"
-printf '[Default Applications]\ntext/plain=wps-hold.desktop\n' > "$W/xdg/config/mimeapps.list"
+printf '[Desktop Entry]\nType=Application\nName=Hold\nExec=%s %%f\n' "$W/hold.sh" > "$W/xdg/data/applications/osd-hold.desktop"
+printf '[Default Applications]\ntext/plain=osd-hold.desktop\n' > "$W/xdg/config/mimeapps.list"
 [ -n "$2" ] && (cd "$W/d" && sh -c "$2")
 export OSD_TEMPLATES_DIR="$W/templates"   # never the user's own
 export OSD_SETUP_DIR="$W/setup"            # nor their settings objects
-export OSD_LAUNCHPAD_DIR="$W/launchpad"    # nor their LaunchPad
+export OSD_LAUNCHER_DIR="$W/launcher"    # nor their Launcher
 [ -n "$TEMPLATES" ] && export OSD_TEMPLATES_DIR="$W/d/Templates" && SHELL_ARGS="$W/d/Templates"
 export LSAN_OPTIONS="suppressions=$PWD/tests/gui/lsan.supp:print_suppressions=0"
 export OSD_CONFIG_DIR="$W/config" OSD_STATE_DIR="$W/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100

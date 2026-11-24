@@ -1,4 +1,4 @@
-/* The WPS GUI's shell (osd-shell): what its files share - the folder
+/* The Objectspace GUI's shell (osd-shell): what its files share - the folder
  * windows' state and every function and variable used across them.
  * Split from osd-shell.c (refactor R1); see each file's top for its part. */
 #ifndef SHELL_H
@@ -27,7 +27,7 @@
 #include "events.h"
 #include "winlist.h"
 #include "appicons.h"
-#include "warpcenter.h"
+#include "thebar.h"
 #include "notify.h"
 #include "messages.h"
 #include "findwin.h"
@@ -40,7 +40,7 @@
 #include "tooltip.h"
 #include "session.h"
 #include "iconpick.h"
-#include "launchpad.h"
+#include "launcher.h"
 #include "gnome.h"
 #include "sound.h"
 #include "svc.h"
@@ -236,7 +236,7 @@ struct drive_ctx { long folder; char target[PATH_MAX], action[16]; bool reopen; 
 
 /* ---------------------------------------------------------- drag and drop */
 
-#define MIME_WPS "application/x-objectspace-objects"
+#define MIME_OSD "application/x-objectspace-objects"
 #define MIME_URIS "text/uri-list"
 
 /* What this program is dragging now (for refusing a folder dropped into
@@ -246,7 +246,7 @@ struct dragging {
     bool *tpl;               /* templates: dropping one makes a new object */
     size_t n;
     char src_folder[PATH_MAX];
-    char *wps, *uris;        /* the data in both formats */
+    char *osd, *uris;        /* the data in both formats */
     double *dx, *dy;         /* each icon's offset from the grab point (icon view) */
 };
 
@@ -305,7 +305,7 @@ struct del {
  * names containing it, any case); Esc or x: all again, the row gone. */
 
 #define FIND_H 30
-#define OFFER_TEXT "Some icons overlap (placed by an older WPS):"   /* the Arrange offer's words (a link after them) */
+#define OFFER_TEXT "Some icons overlap (placed by an older version):"   /* the Arrange offer's words (a link after them) */
 
 struct rec { char *buf; size_t len, cap; };
 
@@ -392,7 +392,7 @@ void workarea_settings(struct folder *f, bool on);
 void workarea_window(const char *title, bool minimized);
 const char *workarea_group_of(struct folder *f);   /* the work area f is (or is in, or was opened from), NULL none */
 void workarea_join(struct folder *f, const char *group);
-bool osd_command_event(const cv *ev);   /* the wps command's ask, selection, show (0.4.1) */
+bool osd_command_event(const cv *ev);   /* the osd command's ask, selection, show (0.4.1) */
 void workarea_focused(struct folder *f);
 struct row *row_at(struct folder *f, size_t i);
 void open_item(struct folder *f, size_t i, ui_view view);
@@ -475,8 +475,8 @@ void font_apply(const char *what, const char *spec);
 void font_dropped_dialogs(const char *spec, unsigned mods);
 void font_dropped_wc(const char *spec);
 /* The Colour Palette's (colorpal.h): its samples kept; a colour for the
- * scheme in use ("title_active", "bar": a title bar, the WarpCenter or
- * the LaunchPad dropped on). */
+ * scheme in use ("title_active", "bar": a title bar, TheBar or
+ * the Launcher dropped on). */
 void color_apply(const char *what, const char *hex);
 void color_dropped_bar(const char *hex);
 void templates_dir(char *out, size_t n);
@@ -503,7 +503,7 @@ void desktop_messages_enable(bool on);   /* the Messages object's setting */
  * offered once in the status line (nothing moves unasked). */
 void arrange_offer_check(struct folder *f);
 void folder_scroll_restore(struct folder *f);
-void launchpad_open_folder(const char *path);
+void launcher_open_folder(const char *path);
 void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip);
 void desk_wallpaper_changed(void *ctx);
 void user_dir(const char *key, const char *fallback, char *out, size_t n);

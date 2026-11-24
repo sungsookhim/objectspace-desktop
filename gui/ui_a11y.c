@@ -353,7 +353,7 @@ static int m_attributes(sd_bus_message *call, void *ud, sd_bus_error *e)
     int k = sd_bus_message_new_method_return(call, &rep);
     if (k < 0) return k;
     sd_bus_message_open_container(rep, 'a', "{ss}");
-    sd_bus_message_append(rep, "{ss}", "toolkit", "wps-ui");
+    sd_bus_message_append(rep, "{ss}", "toolkit", "osd-ui");
     if (r.kind == 2 && r.s->a11y_focus->info.count > 0) {
         char a[16], b[16];
         snprintf(a, sizeof a, "%d", r.s->a11y_focus->info.index + 1);
@@ -419,7 +419,7 @@ static const sd_bus_vtable accessible_vt[] = {
 static int p_toolkit(sd_bus *b, const char *path, const char *i, const char *p, sd_bus_message *m, void *ud, sd_bus_error *e)
 {
     (void)b; (void)path; (void)i; (void)p; (void)ud; (void)e;
-    return sd_bus_message_append(m, "s", "wps-ui");
+    return sd_bus_message_append(m, "s", "osd-ui");
 }
 static int p_version(sd_bus *b, const char *path, const char *i, const char *p, sd_bus_message *m, void *ud, sd_bus_error *e)
 {
@@ -592,7 +592,7 @@ static void emit(struct ref r, const char *iface, const char *member, const char
     sd_bus_send(bus, m, NULL);
     sd_bus_message_unref(m);
     sd_bus_flush(bus);
-    if (debug) fprintf(stderr, "wps-ui: a11y %s:%s %s %s\n", member, detail, path, name_of(r));
+    if (debug) fprintf(stderr, "osd-ui: a11y %s:%s %s %s\n", member, detail, path, name_of(r));
 }
 
 static void announce(ui_surface *s)
@@ -708,9 +708,9 @@ static int embedded(sd_bus_message *m, void *ud, sd_bus_error *e)
 {
     (void)ud; (void)e;
     if (sd_bus_message_is_method_error(m, NULL))
-        fprintf(stderr, "wps-ui: accessibility: the registry refused us: %s\n", sd_bus_message_get_error(m)->message);
+        fprintf(stderr, "osd-ui: accessibility: the registry refused us: %s\n", sd_bus_message_get_error(m)->message);
     else if (debug)
-        fprintf(stderr, "wps-ui: accessibility: registered as %s\n", me);
+        fprintf(stderr, "osd-ui: accessibility: registered as %s\n", me);
     return 0;
 }
 
@@ -727,7 +727,7 @@ void ui_a11y_init(ui_app *a)
     sd_bus_set_method_call_timeout(session, 2 * 1000000ull);
     if (sd_bus_call_method(session, "org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress", &err, &rep, "") < 0 ||
         sd_bus_message_read(rep, "s", &addr) < 0) {
-        if (debug) fprintf(stderr, "wps-ui: accessibility: no AT-SPI bus: %s\n", err.message ? err.message : "?");
+        if (debug) fprintf(stderr, "osd-ui: accessibility: no AT-SPI bus: %s\n", err.message ? err.message : "?");
         goto out;
     }
     if (sd_bus_new(&bus) < 0) goto out;

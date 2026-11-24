@@ -40,7 +40,7 @@ TEST(chords_parse)
 
 TEST(a_config_file_remaps)
 {
-    char dir[] = "/tmp/wps-mouse-XXXXXX";
+    char dir[] = "/tmp/osd-mouse-XXXXXX";
     CHECK(mkdtemp(dir) != NULL);
     char path[256];
     snprintf(path, sizeof path, "%s/mouse.conf", dir);

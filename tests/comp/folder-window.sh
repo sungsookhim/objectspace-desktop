@@ -1,9 +1,9 @@
 #!/bin/sh
-# Folder windows remember (0.4 step 5), headless in the WPS session: a
+# Folder windows remember (0.4 step 5), headless in the Objectspace session: a
 # folder resized, scrolled down a page and moved, then closed and opened
 # again, comes back the same (place, size, scroll).
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-win-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-win-XXXX")
 # Projects opens at 320,96 (640x480): its bottom right corner near 957,583,
 # its title bar at y 121, its scroll bar's trough at x 948.
 cat > "$S/script" <<EOS
@@ -27,7 +27,7 @@ cat > "$S/script" <<EOS
 15 quit
 EOS
 PRE='for i in $(seq 300); do echo x > "$T/desk/Projects/f$i.txt"; done' \
-DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=18 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=18 tests/comp/run.sh "$S/script" true > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

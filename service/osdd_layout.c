@@ -251,7 +251,7 @@ void vmove_work(void *arg)
         if (!j->err && j->trash) {   /* where it was, for Restore */
             char loc[OSD_ID_LEN + 8], key[PATH_MAX + 128];
             snprintf(loc, sizeof loc, "vobj:%s", j->new_id);
-            osd_db_key(key, sizeof key, loc, "WPS", "origin");
+            osd_db_key(key, sizeof key, loc, "Objectspace", "origin");
             osd_db_put(db, dst.vol, key, 's', ld.folder_id, OSD_ID_LEN);
         }
     }
@@ -329,7 +329,7 @@ static void rename_done(void *arg)
 
 char known_desktop[PATH_MAX];   /* the desktop's folder (its first_start says) */
 
-/* WPS's own folders: System, My Storages, Drives, Programs, System Setup,
+/* Objectspace's own folders: System, My Storages, Drives, Programs, System Setup,
  * the Trash Can, Startup; and the desktop and Templates (XDG user folders:
  * renamed, user-dirs.dirs would not follow). */
 
@@ -368,7 +368,7 @@ void do_rename(struct req *r, osdo_object *o)
         return;
     }
     if (!osdo_is_a(o, OsdFileSystemClass) || own_folder(r->tgt.path)) {
-        /* programs and abstract objects, and WPS's own folders (found by
+        /* programs and abstract objects, and Objectspace's own folders (found by
          * their paths: renamed, they would be lost): the title */
         OsdObject_osdSetTitle(o, name);
         reply_ok_object(r, o, NULL);
@@ -389,7 +389,7 @@ void do_from_template(struct req *r, osdo_object *o)
     const char *folder = cv_text(&r->msg, "folder"), *title = cv_text(&r->msg, "title");
     /* A template: marked as one, or anything in the templates folder. */
     char *makes = NULL;
-    osd_state_get_str(o, "WPS", "makes", &makes);
+    osd_state_get_str(o, "Objectspace", "makes", &makes);
     bool tpl = OsdObject_data(o)->is_template || (makes && *makes) || (r->tgt.path[0] && osd_in_templates(r->tgt.path));
     if (!tpl) { free(makes); reply_error(r->c, r->id, "bad request", "not a template"); return; }
     if (!folder) { free(makes); reply_error(r->c, r->id, "bad request", "from_template needs a folder"); return; }
@@ -513,7 +513,7 @@ void builtin_templates_work(void *arg)
     osd_props done;
     osd_props_init(&done);
     int64_t v = 0;
-    bool made = osd_db_get_class(db, fl.vol, loc, "WPS", &done) > 0 && osd_props_int(&done, "builtin", &v) && v;
+    bool made = osd_db_get_class(db, fl.vol, loc, "Objectspace", &done) > 0 && osd_props_int(&done, "builtin", &v) && v;
     osd_props_free(&done);
     if (!made) {
         static const char *const builtins[][2] = { { "OsdFolder", "Folder" }, { "OsdDataFile", "Data File" }, { "OsdProgram", "Program" } };
@@ -521,14 +521,14 @@ void builtin_templates_work(void *arg)
             char id[OSD_ID_LEN + 1], vl[64];
             if (osd_central_create(fl.vol, fl.id, "OsdAbstract", builtins[i][1], NULL, id)) continue;
             snprintf(vl, sizeof vl, "vobj:%s", id);
-            osd_db_key(key, sizeof key, vl, "WPS", "makes");
+            osd_db_key(key, sizeof key, vl, "Objectspace", "makes");
             osd_db_put(db, fl.vol, key, 's', builtins[i][0], (uint32_t)strlen(builtins[i][0]));
             unsigned char one[8] = { 1 };
             osd_db_key(key, sizeof key, vl, "OsdObject", "template");
             osd_db_put(db, fl.vol, key, 'i', one, 8);
         }
         unsigned char one[8] = { 1 };
-        osd_db_key(key, sizeof key, loc, "WPS", "builtin");
+        osd_db_key(key, sizeof key, loc, "Objectspace", "builtin");
         osd_db_put(db, fl.vol, key, 'i', one, 8);
     }
     osd_loaded_free(&fl);

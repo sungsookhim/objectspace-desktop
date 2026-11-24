@@ -7,7 +7,7 @@
 # double click on a sample: Edit Colour.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-cpal-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-cpal-XXXX")
 W="$REPO/build/osdctl"
 # The shadow lands at 570,40; the palette opens at 412,164: its first
 # sample at 447,215, red (the 7th) at 444,255.
@@ -33,7 +33,7 @@ cat > "$S/script" <<EOS
 12.6 shot $S/red.png
 13 quit
 EOS
-DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 2.5; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 9; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0

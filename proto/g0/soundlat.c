@@ -107,8 +107,8 @@ int main(int argc, char **argv)
         click[i] = 0.08f * sinf(2 * (float)M_PI * 2000 * i / RATE) * expf(-(float)i / (RATE / 400.0f));
 
     pw_init(&argc, &argv);
-    tloop = pw_thread_loop_new("wps-sound", NULL);
-    stream = pw_stream_new_simple(pw_thread_loop_get_loop(tloop), "WPS sounds",
+    tloop = pw_thread_loop_new("osd-sound", NULL);
+    stream = pw_stream_new_simple(pw_thread_loop_get_loop(tloop), "Objectspace sounds",
                                   pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Playback",
                                                     PW_KEY_MEDIA_ROLE, "Event", PW_KEY_NODE_LATENCY, "256/48000", NULL),
                                   &events, NULL);

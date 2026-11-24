@@ -1,20 +1,20 @@
 /*
  * osd-compositor (G5, stage 2): a Wayland compositor on wlroots for the
- * WPS session.
+ * Objectspace session.
  *
- * Every program that agrees to it (xdg-decoration, server side) gets WPS's
+ * Every program that agrees to it (xdg-decoration, server side) gets Objectspace's
  * own frame, drawn by the same code as the toolkit's windows
  * (gui/ui_framepaint.c): title bar, system menu, minimize, maximize and
  * close buttons, sizing border. Programs that draw their own title bars
- * (GTK 4, libadwaita, WPS's own) are left as they are (gui-design.md:
+ * (GTK 4, libadwaita, Objectspace's own) are left as they are (gui-design.md:
  * Stage 2). The window manager: click to focus and raise, move by the title
  * bar, size by the border, maximize by the button or a double click on the
- * title (OS/2), Alt+Tab, Alt+F4. WPS's desktop (app ID io.github.sungsookhim.Objectspace.Desktop)
- * stays below all windows and covers the screen, the LaunchPad
- * (io.github.sungsookhim.Objectspace.LaunchPad) above them.
+ * title (OS/2), Alt+Tab, Alt+F4. Objectspace's desktop (app ID io.github.sungsookhim.Objectspace.Desktop)
+ * stays below all windows and covers the screen, the Launcher
+ * (io.github.sungsookhim.Objectspace.Launcher) above them.
  *
  * usage: osd-compositor [-d DESKTOP-COMMAND] [-s COMMAND]
- *   -d: WPS's desktop (osd-shell --desktop FOLDER): started, and started
+ *   -d: Objectspace's desktop (osd-shell --desktop FOLDER): started, and started
  *       again if it ends, as the GNOME extension does (desktop.c).
  *   -s: run COMMAND (sh -c) once the compositor is up, with WAYLAND_DISPLAY.
  * Runs nested in a Wayland or X11 session, or on its own on a console
@@ -334,7 +334,7 @@ static struct wlr_output *output_at_window(struct toplevel *t)
 static void set_fullscreen(struct toplevel *t, bool on);
 static struct wlr_box first_output_box(void);
 
-/* The usable screen area: the screen less the WarpCenter (on the first
+/* The usable screen area: the screen less TheBar (on the first
  * screen, along its edge) - for maximizing and placing windows. */
 static struct wlr_box usable_box(struct wlr_output *o)
 {
@@ -378,7 +378,7 @@ static void maximize(struct toplevel *t, bool on)
 }
 
 /* Fullscreen (a video, a presentation, a game, asked by the program): no
- * frame, the whole screen it is on, above everything (the LaunchPad too)
+ * frame, the whole screen it is on, above everything (the Launcher too)
  * while it is the active window; back below when another is activated.
  * Leaving it, the window has its box (or maximized size) again. */
 static void set_fullscreen(struct toplevel *t, bool on)
@@ -708,9 +708,9 @@ static void process_motion(uint32_t time)
 
 /* While something is dragged (drag and drop between or within programs):
  * the pointer goes to the program surface under it (the drag's grab turns
- * that into the drag's enter, motion and leave); WPS's frames take no part. */
+ * that into the drag's enter, motion and leave); Objectspace's frames take no part. */
 /* What the drop would do, on the pointer (as GNOME shows it): a copy with
- * Ctrl, a shadow with Ctrl+Shift (WPS's keys, as OS/2's), nothing where
+ * Ctrl, a shadow with Ctrl+Shift (Objectspace's keys, as OS/2's), nothing where
  * the place under it would not take it. */
 static void drag_cursor(void)
 {
@@ -756,7 +756,7 @@ static void frame_button(struct toplevel *t, ui_hit part)
 
 static bool menu_release_ignored;   /* the release of the click that opened it */
 
-static bool super_alone;   /* Super is down, nothing else since (the WPS menu) */
+static bool super_alone;   /* Super is down, nothing else since (the Objectspace menu) */
 
 static void process_button(uint32_t time, uint32_t button, bool pressed)
 {
@@ -805,7 +805,7 @@ static void process_button(uint32_t time, uint32_t button, bool pressed)
     ui_hit part;
     struct toplevel *t = window_at(s->cursor->x, s->cursor->y, &surface, &sx, &sy, &part);
     DBG("button %#x at %.0f,%.0f on %s%s%s\n", button, s->cursor->x, s->cursor->y, t ? "'" : "nothing",
-        t ? (view_title(t) ? view_title(t) : "") : "", t ? (surface ? "' (its surface)" : "' (WPS's frame)") : "");
+        t ? (view_title(t) ? view_title(t) : "") : "", t ? (surface ? "' (its surface)" : "' (Objectspace's frame)") : "");
     if (t && !t->activated && t->kind != KIND_NOTICE) focus(t);   /* (a notification does not take the keyboard) */
     else if (t && t->kind == KIND_NORMAL) wlr_scene_node_raise_to_top(&t->tree->node);
     if (t && !surface && button == 0x110 /* BTN_LEFT */) {
@@ -910,7 +910,7 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
 {
     if (menu_key(sym)) return true;
     if ((sym == XKB_KEY_Escape && (mods & WLR_MODIFIER_SHIFT)) || (sym == XKB_KEY_space && (mods & WLR_MODIFIER_ALT))) {
-        /* the front window's system menu, if it has WPS's frame (others have their own) */
+        /* the front window's system menu, if it has Objectspace's frame (others have their own) */
         struct toplevel *f = wl_list_empty(&server.toplevels) ? NULL : wl_container_of(server.toplevels.next, f, link);
         if (f && f->ssd && f->activated) { menu_open(f, true); return true; }
         return false;
@@ -976,12 +976,12 @@ static void on_key(struct wl_listener *l, void *data)
             }
         return;
     }
-    /* Super pressed and released alone: the WPS menu (the WarpCenter's,
+    /* Super pressed and released alone: the Objectspace menu (TheBar's,
      * v0.3-design 11), as GNOME opens its overview; with another key or a
      * click in between, nothing (Super+L and the others are shortcuts) */
     bool super = n > 0 && (syms[0] == XKB_KEY_Super_L || syms[0] == XKB_KEY_Super_R);
     if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED) super_alone = super;
-    else if (super && super_alone) { super_alone = false; desktop_key("wps-menu"); }
+    else if (super && super_alone) { super_alone = false; desktop_key("osd-menu"); }
     bool handled = false;
     if (e->state == WL_KEYBOARD_KEY_STATE_PRESSED)
         for (int i = 0; i < n; i++) handled |= shortcut(mods, syms[i]);
@@ -997,7 +997,7 @@ static void on_modifiers(struct wl_listener *l, void *data)
     wlr_seat_set_keyboard(server.seat, k->wlr_keyboard);
     if (server.seat->drag) {
         /* A drag holds the keyboard and passes no keys on: the modifiers
-         * go to the focused program all the same (WPS chooses move, copy
+         * go to the focused program all the same (Objectspace chooses move, copy
          * or shadow by them), and the place under the pointer is asked
          * again with them. */
         wlr_seat_keyboard_send_modifiers(server.seat, &k->wlr_keyboard->modifiers);
@@ -1337,7 +1337,7 @@ static int on_monitors_xml(int fd, uint32_t mask, void *data)
         comp_redraw_frames();
         server.cursor_image = NULL;
         set_cursor("default");
-        comp_screens_changed();   /* the desktop and the LaunchPad fit the new size */
+        comp_screens_changed();   /* the desktop and the Launcher fit the new size */
     }
     return 0;
 }
@@ -1423,7 +1423,7 @@ static void on_new_output(struct wl_listener *l, void *data)
 }
 
 /* The screens' sizes changed (one came, or a scale): the desktop covers
- * them again, the LaunchPad goes back to the bottom centre, the lock
+ * them again, the Launcher goes back to the bottom centre, the lock
  * screen and the background fit. */
 void comp_screens_changed(void)
 {
@@ -1458,7 +1458,7 @@ static struct wlr_box first_output_box(void)
     return b;
 }
 
-/* The WarpCenter: the first screen's full width, along its edge. */
+/* TheBar: the first screen's full width, along its edge. */
 static void place_panel(struct toplevel *t)
 {
     struct wlr_box b = first_output_box();
@@ -1470,7 +1470,7 @@ static void place_panel(struct toplevel *t)
 }
 
 /* Notification pop-ups (io.github.sungsookhim.Objectspace.Notice): the usable area's corner by the
- * WarpCenter (bottom right, or top right with the bar on top). */
+ * TheBar (bottom right, or top right with the bar on top). */
 static void place_notice(struct toplevel *t)
 {
     struct wlr_box ub = first_output_box();
@@ -1546,7 +1546,7 @@ void comp_panel_edge(bool top)
     comp_screens_changed();
 }
 
-/* The desktop: the first screen less the WarpCenter (as on OS/2, its
+/* The desktop: the first screen less TheBar (as on OS/2, its
  * icons never go under the bar). */
 static void place_desktop(struct toplevel *t)
 {
@@ -1567,7 +1567,7 @@ static struct tag *tag_new(int type, struct toplevel *t)
     return g;
 }
 
-/* WPS's desktop and LaunchPad: only from the desktop process the
+/* Objectspace's desktop and Launcher: only from the desktop process the
  * compositor started (another program naming itself so is a window). */
 static bool from_desktop(struct toplevel *t) { return desktop_is(view_client(t)); }
 
@@ -1575,8 +1575,8 @@ static enum kind kind_of(struct toplevel *t)
 {
     const char *app = view_app(t) ? view_app(t) : "";
     if (!from_desktop(t) && !getenv("OSD_COMP_TRUST_APP_IDS")) return KIND_NORMAL;
-    return !strcmp(app, "io.github.sungsookhim.Objectspace.Desktop") ? KIND_DESKTOP : !strcmp(app, "io.github.sungsookhim.Objectspace.LaunchPad") ? KIND_PALETTE
-           : !strcmp(app, "io.github.sungsookhim.Objectspace.WarpCenter") ? KIND_PANEL : !strcmp(app, "io.github.sungsookhim.Objectspace.Notice") ? KIND_NOTICE : KIND_NORMAL;
+    return !strcmp(app, "io.github.sungsookhim.Objectspace.Desktop") ? KIND_DESKTOP : !strcmp(app, "io.github.sungsookhim.Objectspace.Launcher") ? KIND_PALETTE
+           : !strcmp(app, "io.github.sungsookhim.Objectspace.TheBar") ? KIND_PANEL : !strcmp(app, "io.github.sungsookhim.Objectspace.Notice") ? KIND_NOTICE : KIND_NORMAL;
 }
 
 static void on_map(struct wl_listener *l, void *data)
@@ -1595,13 +1595,13 @@ static void on_map(struct wl_listener *l, void *data)
     struct wlr_box geo = view_geo(t);
     if (t->kind == KIND_DESKTOP) {
         place_desktop(t);
-    } else if (t->kind == KIND_PALETTE) {   /* the LaunchPad: bottom centre, above the WarpCenter */
+    } else if (t->kind == KIND_PALETTE) {   /* the Launcher: bottom centre, above TheBar */
         struct wlr_output *o = wlr_output_layout_output_at(server.output_layout, ob.x + 1, ob.y + 1);
         struct wlr_box ub = o ? usable_box(o) : ob;
         view_move(t, ub.x + (ub.width - geo.width) / 2, ub.y + ub.height - geo.height - 8);
         t->pal_w = geo.width;
         t->pal_h = geo.height;
-    } else if (t->kind == KIND_PANEL) {   /* the WarpCenter: along its edge; windows make room */
+    } else if (t->kind == KIND_PANEL) {   /* TheBar: along its edge; windows make room */
         place_panel(t);
         refit_maximized();
         desktop_window(t, "add");
@@ -1667,7 +1667,7 @@ static void on_unmap(struct wl_listener *l, void *data)
 static void set_decoration_mode(struct toplevel *t)
 {
     if (!t->deco || !view_ready(t)) return;
-    /* WPS's frame, unless it is WPS's desktop or LaunchPad (no frame at all) */
+    /* Objectspace's frame, unless it is Objectspace's desktop or Launcher (no frame at all) */
     wlr_xdg_toplevel_decoration_v1_set_mode(t->deco, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
@@ -1689,8 +1689,8 @@ static void on_commit(struct wl_listener *l, void *data)
     }
     if (t->kind == KIND_NOTICE && t->mapped) place_notice(t);   /* (its size follows what it shows) */
     if (t->kind == KIND_PALETTE && t->mapped && geo.width > 0 && (geo.width != t->pal_w || geo.height != t->pal_h)) {
-        /* the LaunchPad's size changed (vertical, small icons): still on
-         * the screen, clear of the WarpCenter */
+        /* the Launcher's size changed (vertical, small icons): still on
+         * the screen, clear of TheBar */
         t->pal_w = geo.width;
         t->pal_h = geo.height;
         struct wlr_output *o = wlr_output_layout_output_at(server.output_layout, t->tree->node.x + 1, t->tree->node.y + 1);
@@ -2137,7 +2137,7 @@ static void on_new_popup(struct wl_listener *l, void *data)
     wl_signal_add(&xp->events.destroy, &p->destroy);
 }
 
-/* Decorations: WPS's frame for every program that agrees to it. */
+/* Decorations: Objectspace's frame for every program that agrees to it. */
 static void on_deco_request_mode(struct wl_listener *l, void *data)
 {
     (void)data;
@@ -2175,7 +2175,7 @@ static void on_new_decoration(struct wl_listener *l, void *data)
 
 /* GTK 3 programs never use xdg-decoration but do KDE's older server
  * decoration protocol: with "server" as its default, a GTK 3 window with
- * an ordinary title bar (no header bar) asks for it and gets WPS's frame
+ * an ordinary title bar (no header bar) asks for it and gets Objectspace's frame
  * (Firefox with its title bar on, Thunderbird, GIMP 2, ...); one with a
  * header bar asks for "client" and keeps its own. */
 struct kde_deco { struct wlr_server_decoration *d; struct wl_listener mode, destroy; };
@@ -2188,7 +2188,7 @@ static void kde_apply(struct kde_deco *k)
     bool want = k->d->mode == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER && (!t->mapped || t->kind == KIND_NORMAL);
     if (t->ssd == want) return;
     t->ssd = want;
-    DBG("'%s' asks for %s (KDE's protocol)\n", view_title(t) ? view_title(t) : "", want ? "WPS's frame" : "its own frame");
+    DBG("'%s' asks for %s (KDE's protocol)\n", view_title(t) ? view_title(t) : "", want ? "Objectspace's frame" : "its own frame");
     draw_frame(t);
     if (!want && t->client) {
         struct wlr_box geo = view_geo(t);
@@ -2302,7 +2302,7 @@ struct toplevel *comp_toplevel_of(struct wlr_surface *s)
 }
 
 /* xdg-activation: a program asks for one of its windows to come forward
- * (WPS's windows ask so when opened again; any program's own token). */
+ * (Objectspace's windows ask so when opened again; any program's own token). */
 static void on_request_activate(struct wl_listener *l, void *data)
 {
     (void)l;
@@ -2640,9 +2640,9 @@ int main(int argc, char **argv)
         wlr_headless_add_output(s->backend, (unsigned)hw, (unsigned)hh);
         /* a keyboard (headless has none): for the scripts' keys, and
          * XWayland, which will not start without one */
-        static const struct wlr_keyboard_impl impl = { .name = "wps-test-keyboard" };
+        static const struct wlr_keyboard_impl impl = { .name = "osd-test-keyboard" };
         static struct wlr_keyboard kb;
-        wlr_keyboard_init(&kb, &impl, "wps-test-keyboard");
+        wlr_keyboard_init(&kb, &impl, "osd-test-keyboard");
         on_new_input(NULL, &kb.base);
         s->script_kb = &kb;
     }
@@ -2650,7 +2650,7 @@ int main(int argc, char **argv)
     unsetenv("DISPLAY");
     /* X11 programs: XWayland, started when the first one connects */
     if (!getenv("OSD_COMP_NO_X11")) {
-        /* In the WPS session it starts at once and stays: started when the
+        /* In the Objectspace session it starts at once and stays: started when the
          * first X11 program comes, wlroots ends it again some seconds after
          * the last goes, and IBus's X11 part (ibus-x11 --kill-daemon) took
          * IBus down with it (Hangul stopped after a few letters). Nested

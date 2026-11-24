@@ -5,7 +5,7 @@ static void put_object_depth(cbuf *b, osdo_object *o, int depth);
 static void local_call_reply(struct req *r, osdo_object *o);
 
 /*
- * osdd - the per-user WPS object service (M2).
+ * osdd - the per-user Objectspace object service (M2).
  *
  * Serves clients on $OSD_RUNTIME_DIR/objectspace.sock (or $OSD_SOCKET): each message
  * is a 4-byte big-endian length and a CBOR map. Requests:
@@ -197,7 +197,7 @@ static void put_object_depth(cbuf *b, osdo_object *o, int depth)
      * Class... is that class's */
     char *makes = NULL;
     osdo_class *mk = NULL;
-    if (osdo_is_a(o, OsdObjectClass) && osd_state_get_str(o, "WPS", "makes", &makes) && makes && *makes) mk = osdo_find_class(makes);
+    if (osdo_is_a(o, OsdObjectClass) && osd_state_get_str(o, "Objectspace", "makes", &makes) && makes && *makes) mk = osdo_find_class(makes);
     cb_map(b, 8 + (shadow ? 2 : 0) + (missing ? 1 : 0) + (mk ? 2 : 0));
     if (mk) {
         char *mt = OsdObject_osdclsQueryTitle(mk);

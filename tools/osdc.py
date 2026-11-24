@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""osdc - generate C bindings from WPS class interface files (.osdi).
+"""osdc - generate C bindings from Objectspace class interface files (.osdi).
 
 A .osdi file describes one class:
 

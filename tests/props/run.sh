@@ -7,8 +7,8 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 mkdir -p "${1:?usage: tests/props/run.sh OUT [BASE]}"
 OUT=$(readlink -f "$1")
-T=$(mktemp -d "${TMPDIR:-/tmp}/wps-props-XXXX")
-RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-props-XXXX")
+T=$(mktemp -d "${TMPDIR:-/tmp}/osd-props-XXXX")
+RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-props-XXXX")
 export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
 export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" OSD_TEMPLATES_DIR="$T/templates"
 export OSD_UDISKS_BUS="unix:path=$RT/none" OSD_PROGRAMS_DESKTOP=GNOME

@@ -1,5 +1,5 @@
 # A scheme (OS/2's Scheme Palette's schemes; object-properties-design.md
-# 2.3): the colours and sizes every WPS window is drawn with. Classic, Dark
+# 2.3): the colours and sizes every Objectspace window is drawn with. Classic, Dark
 # and High contrast are made in System Setup's Schemes folder; a copy of one
 # (Create another) is a scheme of the user's. The Scheme Palette chooses.
 # The defaults are Classic's (gui/ui_draw.c).
@@ -39,9 +39,9 @@ property border : number = "4" page "Sizes" label "Frame border" text
 property title_h : number = "22" page "Sizes" label "Title bar height" text
 property button_w : number = "18" page "Sizes" label "Title button width" text
 property button_h : number = "16" page "Sizes" label "Title button height" text
-# (0.4 step 7) the WarpCenter's and the LaunchPad's own colours (empty: the
+# (0.4 step 7) TheBar's and the Launcher's own colours (empty: the
 # face's and the text's), the meters'
-property bar : color page "Bars" label "WarpCenter and LaunchPad (empty: the face)"
+property bar : color page "Bars" label "TheBar and Launcher (empty: the face)"
 property bar_text : color page "Bars" label "Their text (empty: the text)"
 property meter_cpu : color = "#33b34d" page "Bars" label "Processor meter"
 property meter_memory : color = "#4073d9" page "Bars" label "Memory meter"

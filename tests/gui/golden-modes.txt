@@ -41,9 +41,9 @@ setup	comp	-	echo a > a.txt	stable
 newfolder	comp	TEMPLATES=1	mkdir Templates	stable
 appearance	comp	-	echo a > a.txt	stable
 gnome	gnome	SHELL_ARGS=--desktop	-	stable
-lpfill	comp	SHELL_ARGS=--desktop OSD_LAUNCHPAD=1 SELFTEST_SECS=12	echo n > notes.txt; mkdir Projects; echo l > added-later.txt	stable
-launchpad2	comp	SHELL_ARGS=--desktop OSD_LAUNCHPAD=1	echo n > notes.txt	stable
-launchpad	comp	SHELL_ARGS=--desktop OSD_LAUNCHPAD=1	echo n > notes.txt; mkdir Projects	stable
+lpfill	comp	SHELL_ARGS=--desktop OSD_LAUNCHER=1 SELFTEST_SECS=12	echo n > notes.txt; mkdir Projects; echo l > added-later.txt	stable
+launcher2	comp	SHELL_ARGS=--desktop OSD_LAUNCHER=1	echo n > notes.txt	stable
+launcher	comp	SHELL_ARGS=--desktop OSD_LAUNCHER=1	echo n > notes.txt; mkdir Projects	stable
 iconlib	comp	OSD_ICON_LIBRARY=@REPO@/data/icons	echo a > a.txt	stable
 icons	comp	-	echo a > a.txt; python3 -c "from PIL import Image; Image.new('RGB', (32, 32), (0, 0, 200)).save('pic.png')"	stable
 a11y	a11y	-	-	stable

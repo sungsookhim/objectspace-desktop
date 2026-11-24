@@ -57,7 +57,7 @@ static struct ui_buffer *buf_get(ui_surface *s, int w, int h)
         if (!b->wb) {
             int stride = w * 4;
             b->size = (size_t)stride * (size_t)h;
-            int fd = memfd_create("wps-ui", MFD_CLOEXEC);
+            int fd = memfd_create("osd-ui", MFD_CLOEXEC);
             if (fd < 0 || ftruncate(fd, (off_t)b->size) < 0) { if (fd >= 0) close(fd); return NULL; }
             b->data = mmap(NULL, b->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             if (b->data == MAP_FAILED) { b->data = NULL; close(fd); return NULL; }
@@ -455,7 +455,7 @@ static struct xdg_positioner *positioner(ui_surface *s, double w, double h)
                                    anchor.h < 1 ? 1 : (int32_t)anchor.h);
     if (s->pop_side) {
         /* beside the anchor, out to that side, its top edges lined up (a
-         * vertical LaunchPad's drawers) */
+         * vertical Launcher's drawers) */
         xdg_positioner_set_anchor(pos, s->pop_side < 0 ? XDG_POSITIONER_ANCHOR_TOP_LEFT : XDG_POSITIONER_ANCHOR_TOP_RIGHT);
         xdg_positioner_set_gravity(pos, s->pop_side < 0 ? XDG_POSITIONER_GRAVITY_BOTTOM_LEFT : XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
     } else if (s->pop_above) {
@@ -878,7 +878,7 @@ ui_app *ui_app_new(void)
     ui_mouse_load();
     ui_app *a = calloc(1, sizeof *a);
     a->dpy = wl_display_connect(NULL);
-    if (!a->dpy) { fprintf(stderr, "wps-ui: no Wayland display\n"); free(a); return NULL; }
+    if (!a->dpy) { fprintf(stderr, "osd-ui: no Wayland display\n"); free(a); return NULL; }
     a->xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     a->repeat_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     a->wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -890,7 +890,7 @@ ui_app *ui_app_new(void)
     wl_display_roundtrip(a->dpy);
     wl_display_roundtrip(a->dpy);
     if (!a->comp || !a->shm || !a->wm || !a->seat) {
-        fprintf(stderr, "wps-ui: the compositor lacks wl_compositor, wl_shm, xdg_wm_base or a seat\n");
+        fprintf(stderr, "osd-ui: the compositor lacks wl_compositor, wl_shm, xdg_wm_base or a seat\n");
         return NULL;
     }
     ui_dnd_init(a);
@@ -931,7 +931,7 @@ void ui_app_run(ui_app *a)
         int r = poll(pf, 3 + nw, -1);
         if (r > 0 && (pf[0].revents & POLLIN)) wl_display_read_events(a->dpy);
         else wl_display_cancel_read(a->dpy);
-        if (pf[0].revents & (POLLERR | POLLHUP)) { fprintf(stderr, "wps-ui: lost the display\n"); break; }
+        if (pf[0].revents & (POLLERR | POLLHUP)) { fprintf(stderr, "osd-ui: lost the display\n"); break; }
         wl_display_dispatch_pending(a->dpy);
         if (pf[1].revents & POLLIN) {
             uint64_t x;
@@ -962,7 +962,7 @@ void ui_app_run(ui_app *a)
         }
     }
     if (getenv("OSD_UI_DEBUG_EXIT"))
-        fprintf(stderr, "wps-ui: main loop ended: %s\n", !a->surfaces ? "no windows left" : !a->running ? "quit requested" : "the display was lost");
+        fprintf(stderr, "osd-ui: main loop ended: %s\n", !a->surfaces ? "no windows left" : !a->running ? "quit requested" : "the display was lost");
     wl_display_flush(a->dpy);
 }
 

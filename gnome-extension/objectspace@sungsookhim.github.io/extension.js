@@ -1,4 +1,4 @@
-// The WPS desktop in a GNOME session (gui-design.md: Coexisting with
+// The Objectspace desktop in a GNOME session (gui-design.md: Coexisting with
 // GNOME, stage 1).
 //
 // GNOME gives ordinary Wayland clients no way to be a desktop. This
@@ -18,14 +18,14 @@
 // desktop process's standard input, one line each, so its sound scheme
 // covers all windows (gui-design.md: Coexisting with GNOME, stage 1):
 //     <event> TAB <app ID> TAB <title> TAB <x> TAB <y> TAB <width> TAB <height>
-// WPS's own windows are left out: they raise their events themselves.
+// Objectspace's own windows are left out: they raise their events themselves.
 //
-// The window list (G4): the desktop also gets every window's state, WPS's
-// own included (the desktop and WPS's window lists excepted), one line per
+// The window list (G4): the desktop also gets every window's state, Objectspace's
+// own included (the desktop and Objectspace's window lists excepted), one line per
 // change:
 //     W TAB add|change|remove TAB <id> TAB <app ID> TAB <title> TAB <minimized 0|1> TAB <focused 0|1> TAB <icon> TAB <maximized 0|1>
 // where <icon> is a PNG of the app's icon (GNOME's, from its .desktop file,
-// rendered once per app into $XDG_RUNTIME_DIR/wps-icons), or empty
+// rendered once per app into $XDG_RUNTIME_DIR/osd-icons), or empty
 // and sends commands back on its standard output, one line each:
 //     activate TAB <id>   minimize TAB <id>   maximize TAB <id>
 //     lock   find   shutdown TAB poweroff|reboot|logout
@@ -46,9 +46,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const DESKTOP_APP_ID = 'io.github.sungsookhim.Objectspace.Desktop';
-// WPS's window list and Minimized Window Viewer: not listed in themselves.
-const UNLISTED = new Set([DESKTOP_APP_ID, 'io.github.sungsookhim.Objectspace.WindowList', 'io.github.sungsookhim.Objectspace.LaunchPad', 'io.github.sungsookhim.Objectspace.WarpCenter']);
-const LAUNCHPAD_APP_ID = 'io.github.sungsookhim.Objectspace.LaunchPad';
+// Objectspace's window list and Minimized Window Viewer: not listed in themselves.
+const UNLISTED = new Set([DESKTOP_APP_ID, 'io.github.sungsookhim.Objectspace.WindowList', 'io.github.sungsookhim.Objectspace.Launcher', 'io.github.sungsookhim.Objectspace.TheBar']);
+const LAUNCHER_APP_ID = 'io.github.sungsookhim.Objectspace.Launcher';
 
 export default class ObjectspaceExtension extends Extension {
     enable() {
@@ -110,7 +110,7 @@ export default class ObjectspaceExtension extends Extension {
             const cfg = JSON.parse(new TextDecoder().decode(bytes));
             if (Array.isArray(cfg.command) && cfg.command.length) return cfg.command;
         } catch (e) {
-            console.log(`wps: no usable config.json (${e.message}); using osd-shell from PATH`);
+            console.log(`osd: no usable config.json (${e.message}); using osd-shell from PATH`);
         }
         return ['osd-shell', '--desktop'];
     }
@@ -129,11 +129,11 @@ export default class ObjectspaceExtension extends Extension {
             this._listed = new Map();
             for (const w of global.display.list_all_windows()) this._track(w);
         } catch (e) {
-            console.error(`wps: cannot start ${argv[0]}: ${e.message}`);
+            console.error(`osd: cannot start ${argv[0]}: ${e.message}`);
             this._retry(started);
             return;
         }
-        console.log(`wps: started ${argv.join(' ')}`);
+        console.log(`osd: started ${argv.join(' ')}`);
         const client = this._client;
         client.get_subprocess().wait_async(null, (proc, res) => {
             try {
@@ -144,7 +144,7 @@ export default class ObjectspaceExtension extends Extension {
             if (client !== this._client) return;   // disabled, or replaced
             this._client = null;
             this._out = null;
-            console.log(`wps: ${argv[0]} exited (status ${proc.get_if_exited() ? proc.get_exit_status() : 'signal'})`);
+            console.log(`osd: ${argv[0]} exited (status ${proc.get_if_exited() ? proc.get_exit_status() : 'signal'})`);
             this._retry(started);
         });
     }
@@ -215,7 +215,7 @@ export default class ObjectspaceExtension extends Extension {
     _iconFor(w) {
         try {
             const cls = w.get_wm_class() ?? '';
-            if (cls.startsWith('io.github.sungsookhim.Objectspace.')) return '';   // WPS's own windows: WPS's icons
+            if (cls.startsWith('io.github.sungsookhim.Objectspace.')) return '';   // Objectspace's own windows: Objectspace's icons
             const app = Shell.WindowTracker.get_default().get_window_app(w);
             if (!app || app.is_window_backed()) return '';
             const id = app.get_id().replace(/[^A-Za-z0-9._-]/g, '_');
@@ -231,7 +231,7 @@ export default class ObjectspaceExtension extends Extension {
                 file = this._theme.lookup_by_gicon(gicon, 64, St.IconLookupFlags.FORCE_SIZE)?.get_filename() ?? null;
             }
             if (file) {
-                const dir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'wps-icons']);
+                const dir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'osd-icons']);
                 GLib.mkdir_with_parents(dir, 0o700);
                 out = GLib.build_filenamev([dir, `${id}.png`]);
                 GdkPixbuf.Pixbuf.new_from_file_at_size(file, 64, 64).savev(out, 'png', [], []);
@@ -239,7 +239,7 @@ export default class ObjectspaceExtension extends Extension {
             this._icons.set(id, out);
             return out;
         } catch (e) {
-            console.log(`wps: no icon for ${w.get_wm_class()}: ${e.message}`);
+            console.log(`osd: no icon for ${w.get_wm_class()}: ${e.message}`);
             return '';
         }
     }
@@ -292,7 +292,7 @@ export default class ObjectspaceExtension extends Extension {
             }
             if (line === null) return;   // the desktop went away
             const [cmd, id] = line.split('\t');
-            // The LaunchPad's own buttons (no window): Lockup, Find, Shut down.
+            // The Launcher's own buttons (no window): Lockup, Find, Shut down.
             if (cmd === 'lock') { Main.screenShield?.lock(true); next(); return; }
             if (cmd === 'find') { Main.overview.show(); next(); return; }
             if (cmd === 'group') { this._group(line.split('\t')); next(); return; }
@@ -301,17 +301,17 @@ export default class ObjectspaceExtension extends Extension {
                 // power off, restart or log out without GNOME asking again
                 // (programs that object still say so).
                 const how = { poweroff: '--power-off', reboot: '--reboot', logout: '--logout' }[id] ?? '--power-off';
-                if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`wps: command shutdown ${how}`);
+                if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`osd: command shutdown ${how}`);
                 else try {
                     GLib.spawn_command_line_async(`gnome-session-quit ${how} --no-prompt`);
                 } catch (e) {
-                    console.log(`wps: cannot ask to shut down: ${e.message}`);
+                    console.log(`osd: cannot ask to shut down: ${e.message}`);
                 }
                 next();
                 return;
             }
             const w = global.display.list_all_windows().find(x => String(x.get_id()) === id);
-            if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`wps: command ${cmd} ${id}: ${w ? w.get_title() : 'no such window'}`);
+            if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`osd: command ${cmd} ${id}: ${w ? w.get_title() : 'no such window'}`);
             if (w) {
                 // a time GNOME takes as now (the event's own may be 0)
                 const now = global.display.get_current_time_roundtrip();
@@ -342,7 +342,7 @@ export default class ObjectspaceExtension extends Extension {
 
     // A work area's group (v0.4 step 10): its programs' windows, found by
     // their process (Mutter knows each window's), its parents', or its
-    // systemd scope (the cgroup's last part); never WPS's own windows.
+    // systemd scope (the cgroup's last part); never Objectspace's own windows.
     _group([, act, pidList, scopeList]) {
         const pids = new Set((pidList ?? '').split(',').filter(x => x).map(Number));
         const scopes = new Set((scopeList ?? '').split(',').filter(x => x));
@@ -366,11 +366,11 @@ export default class ObjectspaceExtension extends Extension {
         };
         const now = global.display.get_current_time_roundtrip();
         const all = global.display.list_all_windows();
-        // (WPS's own: the desktop process's windows)
+        // (Objectspace's own: the desktop process's windows)
         const own = new Set(all.filter(w => w.get_wm_class() === DESKTOP_APP_ID).map(w => w.get_pid()));
         const hits = all.filter(w => w.get_window_type() === Meta.WindowType.NORMAL && w.get_pid() > 0 &&
             !own.has(w.get_pid()) && inGroup(w.get_pid()));
-        if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`wps: command group ${act}: ${JSON.stringify(hits.map(w => w.get_title()))}`);
+        if (GLib.getenv('OSD_DEBUG_COMMANDS')) console.log(`osd: command group ${act}: ${JSON.stringify(hits.map(w => w.get_title()))}`);
         for (const w of hits) {
             if (act === 'minimize') w.minimize();
             else if (act === 'restore' && w.minimized) w.unminimize();
@@ -399,14 +399,14 @@ export default class ObjectspaceExtension extends Extension {
     _windowCreated(w) {
         if (!this._client || !this._client.owns_window(w)) return;
         const lp = () => {
-            if (w.get_wm_class() !== LAUNCHPAD_APP_ID || this._launchpads?.has(w)) return;
-            (this._launchpads ??= new Set()).add(w);
-            // The LaunchPad floats above windows, on every workspace, out of
+            if (w.get_wm_class() !== LAUNCHER_APP_ID || this._launchers?.has(w)) return;
+            (this._launchers ??= new Set()).add(w);
+            // The Launcher floats above windows, on every workspace, out of
             // Alt+Tab; it starts at the bottom centre of the screen.
             w.make_above();
             w.stick();
             w.hide_from_window_list();
-            this._connect(w, 'unmanaged', () => this._launchpads.delete(w));
+            this._connect(w, 'unmanaged', () => this._launchers.delete(w));
             const id = w.connect('shown', () => {
                 w.disconnect(id);
                 const mon = Main.layoutManager.primaryIndex;
@@ -442,7 +442,7 @@ export default class ObjectspaceExtension extends Extension {
             this._place(w);
         });
         const r = w.get_frame_rect();
-        console.log(`wps: desktop window: type ${w.get_window_type()}, on all workspaces ${w.is_on_all_workspaces()}, ` +
+        console.log(`osd: desktop window: type ${w.get_window_type()}, on all workspaces ${w.is_on_all_workspaces()}, ` +
             `skip taskbar ${w.is_skip_taskbar()}, ${r.width}x${r.height}+${r.x}+${r.y}`);
     }
 

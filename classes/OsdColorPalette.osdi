@@ -1,6 +1,6 @@
 # The Colour Palette (OS/2's): colour samples dragged onto folder windows'
 # and the desktop's backgrounds (Ctrl: their icons' titles), title bars,
-# the WarpCenter and the LaunchPad, and notebooks' colour fields
+# TheBar and the Launcher, and notebooks' colour fields
 # (v0.4-design 9). It opens as the palette window.
 class OsdColorPalette : OsdSetup
 version 1.0

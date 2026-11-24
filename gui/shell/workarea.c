@@ -3,7 +3,7 @@
  * group's windows are minimized (its folders' windows too); restored,
  * restored; closed, its programs are asked to close (what was open is kept,
  * and opened again when the window opens again). osdd knows the group
- * (its processes and scopes); the compositor finds their windows (the WPS
+ * (its processes and scopes); the compositor finds their windows (the Objectspace
  * session; inside GNOME, the extension: part 2). */
 #define _GNU_SOURCE
 #include "shell.h"
@@ -142,9 +142,9 @@ void workarea_window(const char *title, bool minimized)
     }
 }
 
-/* ------------------------------------------------ the wps command (0.4.1)
+/* ------------------------------------------------ the osd command (0.4.1)
  *
- * `wps ask`, `wps selection` and `wps open` on a folder reach the desktop
+ * `osd ask`, `osd selection` and `osd open` on a folder reach the desktop
  * through osdd ("ask", "selection", "show" events); the answer goes back
  * as svc_answer. Only the process with the desktop answers. */
 
@@ -192,7 +192,7 @@ bool osd_command_event(const cv *ev)
         a->n = n;
         for (size_t i = 0; i < n; i++)
             a->labels[i] = strdup(bs && bs->k == CV_ARRAY && i < bs->n && bs->items[i].k == CV_TEXT ? bs->items[i].s : "OK");
-        ui_dialog_open(app, "WPS", cv_text(ev, "text") ? cv_text(ev, "text") : "", (const char *const *)a->labels, n, 0, asked, a);
+        ui_dialog_open(app, "Objectspace", cv_text(ev, "text") ? cv_text(ev, "text") : "", (const char *const *)a->labels, n, 0, asked, a);
         return true;
     }
     /* the selection: the active folder window's (else the desktop's) selected objects */

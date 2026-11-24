@@ -16,7 +16,7 @@ static void menu_ctx_free(struct menu_ctx *m)
     free(m);
 }
 
-char setup_folder[PATH_MAX];   /* System Setup's (the LaunchPad's first buttons) */
+char setup_folder[PATH_MAX];   /* System Setup's (the Launcher's first buttons) */
 
 static void convert(const cv *arr, ui_menu_item **out, size_t *n)
 {
@@ -174,7 +174,7 @@ static void drive_acted(void *arg, const cv *reply)
         if (e && !strcmp(e, "busy"))
             snprintf(m, sizeof m, "The drive is in use. Close the windows and programs using it, then try again.");
         else if (e && !strcmp(e, "not authorized"))
-            snprintf(m, sizeof m, "This needs an administrator's permission, which WPS cannot ask for yet. "
+            snprintf(m, sizeof m, "This needs an administrator's permission, which Objectspace cannot ask for yet. "
                                   "Removable drives work; for this one, use GNOME's Disks or Files.");
         else snprintf(m, sizeof m, "%s", msg && *msg ? msg : reply ? "it failed" : "lost the connection to osdd");
         if (!strcmp(x->action, "unlock") && e && !strcmp(e, "failed") && f) {
@@ -291,7 +291,7 @@ void startup_at_login(void)
     if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
     const char *sid = getenv("XDG_SESSION_ID");
     char marker[PATH_MAX], was[64] = "";
-    snprintf(marker, sizeof marker, "%s/wps-startup-opened", rt && *rt ? rt : "/tmp");
+    snprintf(marker, sizeof marker, "%s/osd-startup-opened", rt && *rt ? rt : "/tmp");
     FILE *m = fopen(marker, "r");
     if (m) { if (!fgets(was, sizeof was, m)) was[0] = 0; fclose(m); }
     was[strcspn(was, "\n")] = 0;

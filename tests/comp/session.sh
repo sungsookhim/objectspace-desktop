@@ -1,12 +1,12 @@
 #!/bin/sh
-# Lockup, Shut down and Log off from the WarpCenter's menu, headless
+# Lockup, Shut down and Log off from TheBar's menu, headless
 # (gui/shell/session.c; v0.3-plan step 1). Shut down's dialog is
 # cancelled (never confirmed: nothing may power off); Log off is confirmed
 # and reaches the compositor (headless sessions with a desktop do not
 # exit by themselves: the time limit ends them); Lockup, in a second run, shows the lock screen.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sess-XXXX")
-ENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_DEBUG_EVENTS=1"
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-sess-XXXX")
+ENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1 OSD_DEBUG_EVENTS=1"
 # The menu (1280x800): Lockup now at y 715, Log off... 737, Shut down... 759.
 cat > "$S/end" <<EOS
 2.5 click 30 785

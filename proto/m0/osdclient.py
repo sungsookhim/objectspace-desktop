@@ -11,7 +11,7 @@ Connects to watchd's socket and reads commands on stdin:
 
 Prints one JSON object per line on stdout: command results, then every
 line received from watchd, each with a timestamp "t" in milliseconds.
-usage: wpsclient.py SOCKET
+usage: osdclient.py SOCKET
 """
 import json
 import os

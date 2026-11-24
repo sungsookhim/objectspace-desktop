@@ -43,7 +43,7 @@ TEST(text_and_others)
 
 int main(void)
 {
-    snprintf(dir, sizeof dir, "/tmp/wps-test-magic-%d", (int)getpid());
+    snprintf(dir, sizeof dir, "/tmp/osd-test-magic-%d", (int)getpid());
     mkdir(dir, 0755);
     if (access("/usr/share/mime/magic", R_OK) != 0) { printf("no /usr/share/mime/magic: skipped\n"); return 0; }
     RUN(types);

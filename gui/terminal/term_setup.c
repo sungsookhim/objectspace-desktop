@@ -1,7 +1,7 @@
-/* WPS Terminal's looks from WPS's settings objects (osdd's "setup"): the
+/* Objectspace Terminal's looks from Objectspace's settings objects (osdd's "setup"): the
  * scheme in use (the Scheme Palette's: colours, frame sizes), the System's
  * frame options, and its Terminal font. Asked once, as the window opens;
- * without osdd (started by hand, outside WPS) Classic and the defaults. */
+ * without osdd (started by hand, outside Objectspace) Classic and the defaults. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <stdio.h>

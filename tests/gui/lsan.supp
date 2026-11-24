@@ -1,5 +1,5 @@
 # Leak-checker suppressions for osd-shell-asan: allocations PipeWire's
-# own plug-ins keep for the life of the process (not WPS code).
+# own plug-ins keep for the life of the process (not Objectspace code).
 leak:libspa-
 leak:/spa-0.2/
 leak:libpipewire-module-

@@ -9,7 +9,7 @@
  * ID, the app, the title, minimized, focused, the icon, maximized). Commands go back on the
  * desktop's standard output (activate, restore, minimize, maximize,
  * close, terminate an ID), so even
- * WPS's own windows are restored through GNOME (no program can
+ * Objectspace's own windows are restored through GNOME (no program can
  * unminimize itself). Without the extension the lists say so.
  */
 #ifndef OSD_WINLIST_H
@@ -39,7 +39,7 @@ bool winlist_command(const char *cmd, const char *title);
 /* Whether a window whose title contains `title` is known, and its state. */
 bool winlist_state(const char *title, bool *minimized, bool *maximized);
 bool winlist_is_open(bool minimized_only);
-/* Where a window of this app and title is (the WPS session: the
+/* Where a window of this app and title is (the Objectspace session: the
  * compositor tells; inside GNOME, unknown). */
 bool winlist_where(const char *app, const char *title, int *x, int *y, bool *maximized);
 const char *winlist_title(size_t i, bool minimized_only);

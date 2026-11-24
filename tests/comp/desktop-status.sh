@@ -3,11 +3,11 @@
 # moved to the trash) in a box at the bottom of the desktop, gone after a
 # few seconds and not back when the selection changes; an action not done
 # (Messages) shown there too; a click closes it. A script's (osdctl say)
-# shown; the Messages object's setting off: WPS's own not shown, a
+# shown; the Messages object's setting off: Objectspace's own not shown, a
 # script's still.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-dm-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-dm-XXXX")
 W="$REPO/build/osdctl"
 cat > "$S/script" <<EOS
 3 click 124 40
@@ -23,7 +23,7 @@ cat > "$S/script" <<EOS
 18 quit
 EOS
 PRE="'$W' settings_set \"\$T/desk/Projects\" 'on:object.open=call:osdNoSuchMethod' > /dev/null 2>&1" \
-DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=21 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=21 tests/comp/run.sh "$S/script" \
     "sleep 13.5; '$W' open \"\$T/desk/Projects\" > /dev/null 2>&1; sleep 3.5; '$W' say 'Backup finished' > \"\$T/say.log\" 2>&1; sleep 10" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
@@ -49,7 +49,7 @@ cat > "$S/off" <<EOS
 8.5 quit
 EOS
 PRE="m=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdMessages']['address'])\"); '$W' settings_set \"\$m\" desktop_line=false > /dev/null 2>&1" \
-DESKENV="OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=11 tests/comp/run.sh "$S/off" \
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=11 tests/comp/run.sh "$S/off" \
     "sleep 7; '$W' say 'Backup finished' > /dev/null 2>&1; sleep 10" > "$S/off.txt" 2>&1
 check "the setting off: moved to the trash, no box" "[ \$(box '$S/off-msg.png') -eq 0 ]"
 check "the setting off: a script's message still shown" "[ \$(box '$S/off-said.png') -gt 50 ]"

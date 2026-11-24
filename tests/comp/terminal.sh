@@ -1,10 +1,10 @@
 #!/bin/sh
-# WPS Terminal (0.4.1 step 12), headless: true colours and Korean drawn,
+# Objectspace Terminal (0.4.1 step 12), headless: true colours and Korean drawn,
 # vim edits and saves a file, a resize reaches the program, htop runs and
 # quits (the window closing with it), --hold keeps the window with the
 # program's status until Enter.
 cd "$(dirname "$0")/../.."
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-term-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-term-XXXX")
 TERM_BIN="$PWD/build/osd-terminal-asan"
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

@@ -1,6 +1,6 @@
-# systemd unit for the WPS change helper (optional; see docs/object-core-design.md).
+# systemd unit for the Objectspace change helper (optional; see docs/object-core-design.md).
 [Unit]
-Description=WPS filesystem change helper
+Description=Objectspace filesystem change helper
 Documentation=https://github.com/sungsookhim/objectspace-desktop
 
 [Service]

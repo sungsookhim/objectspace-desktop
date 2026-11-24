@@ -1,6 +1,6 @@
-/* The WarpCenter (see warpcenter.h). */
+/* TheBar (see thebar.h). */
 #define _GNU_SOURCE
-#include "warpcenter.h"
+#include "thebar.h"
 
 #include <limits.h>
 #include <poll.h>
@@ -19,7 +19,7 @@
 #include "tray.h"
 #include "svc.h"
 #include "findwin.h"
-#include "launchpad.h"
+#include "launcher.h"
 #include "session.h"
 #include "winlist.h"
 #include "objmenu.h"
@@ -55,7 +55,7 @@ static struct {
     int clock_mode;
     bool seconds, date;
     int timer;
-    /* the WarpCenter object's parts (meters, messages, keyboard) */
+    /* TheBar object's parts (meters, messages, keyboard) */
     bool shown[NPARTS];
     /* messages */
     size_t unread;
@@ -89,7 +89,7 @@ static double clock_w(void)
 }
 
 /* The Desktop button: its picture and the desktop's name, as OS/2's
- * WarpCenter's first button. */
+ * TheBar's first button. */
 static const char *desk_label(void) { return "Desktop"; }
 static double desk_w(void) { return wc.h - 2 * PAD + ui_text_width(wc_bold, desk_label()) + 14; }
 
@@ -109,7 +109,7 @@ static bool part_shown(int p)
 static double tray_cell(void) { return wc.h - 2 * PAD; }
 
 /* From the right: the clock, the keyboard, messages, the meters, the
- * tray (other programs' icons, when there are any); parts the WarpCenter
+ * tray (other programs' icons, when there are any); parts TheBar
  * object turned off take no room. */
 /* Log off: a door, and an arrow leaving it (centred on 0,0; 30 across). */
 static void glyph_logoff(cairo_t *cr)
@@ -260,7 +260,7 @@ static void wc_draw_in(ui_surface *s, cairo_t *cr, ui_rect clip)
             double sc = fmin(r.w, r.h) / 30;
             cairo_scale(cr, sc, sc);
             if (p == P_LOGOFF) { if (!icons_draw_theme(cr, NULL, "sys-logoff", (ui_rect){ -15, -15, 30, 30 }, 3.6)) glyph_logoff(cr); }
-            else launchpad_glyph(cr, p == P_LOCK ? 0 : p == P_FIND ? 1 : 2, (ui_rect){ -15, -15, 30, 30 });
+            else launcher_glyph(cr, p == P_LOCK ? 0 : p == P_FIND ? 1 : 2, (ui_rect){ -15, -15, 30, 30 });
             cairo_restore(cr);
         } else if (p == P_KEYBOARD) {
             ui_bevel(cr, r, down);
@@ -332,7 +332,7 @@ static void damage(void) { if (wc.s) ui_surface_damage_all(wc.s); }
 
 /* ------------------------------------------------------------ keyboard */
 
-void warpcenter_source_label(bool ibus, const char *name, char *out, size_t n)
+void thebar_source_label(bool ibus, const char *name, char *out, size_t n)
 {
     static const char *const ime[][2] = {
         { "hangul", "한" }, { "anthy", "あ" }, { "mozc-jp", "あ" }, { "kkc", "あ" }, { "pinyin", "拼" },
@@ -357,15 +357,15 @@ void warpcenter_source_label(bool ibus, const char *name, char *out, size_t n)
     snprintf(out, n, "%s", t);
 }
 
-void warpcenter_input_source(int index, int count, bool ibus, const char *name)
+void thebar_input_source(int index, int count, bool ibus, const char *name)
 {
     wc.key_index = index;
     wc.key_count = count;
-    warpcenter_source_label(ibus, name, wc.key_label, sizeof wc.key_label);
+    thebar_source_label(ibus, name, wc.key_label, sizeof wc.key_label);
     damage();
 }
 
-const char *warpcenter_keyboard_label(void) { return wc.key_label; }
+const char *thebar_keyboard_label(void) { return wc.key_label; }
 
 /* ------------------------------------------------------- clock, meters */
 
@@ -625,7 +625,7 @@ static void opened(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { wc.open_folder(cv_text(res, "folder")); return; }
     if (svc_reply_view(reply)) return;
-    if (!res && reply && cv_text(reply, "message")) fprintf(stderr, "osd-shell: WarpCenter: %s\n", cv_text(reply, "message"));
+    if (!res && reply && cv_text(reply, "message")) fprintf(stderr, "osd-shell: TheBar: %s\n", cv_text(reply, "message"));
 }
 
 static void menu_chosen(void *arg, int64_t id)
@@ -636,11 +636,11 @@ static void menu_chosen(void *arg, int64_t id)
     char addr[PATH_MAX], title[256];
     bool folder;
     if (id == M_WINLIST) winlist_open(false);
-    else if (id == M_LOCK) session_lock("warpcenter");
-    else if (id == M_LOGOFF) session_ask_logoff(wc.app, "warpcenter");
-    else if (id == M_SHUTDOWN) session_ask_end(wc.app, "warpcenter");
+    else if (id == M_LOCK) session_lock("thebar");
+    else if (id == M_LOGOFF) session_ask_logoff(wc.app, "thebar");
+    else if (id == M_SHUTDOWN) session_ask_end(wc.app, "thebar");
     else if (objmenu_choice(wc.ready, id, addr, sizeof addr, &folder, title, sizeof title)) {
-        events_raise("object.open", title, "warpcenter", (ui_rect){ 0, 0, 0, 0 });
+        events_raise("object.open", title, "thebar", (ui_rect){ 0, 0, 0, 0 });
         if (folder) wc.open_folder(addr);
         else svc_open(addr, false, opened, NULL);
     }
@@ -679,14 +679,14 @@ static void press(int p, uint32_t serial, int button)
     case P_CLOCK: open_pop(P_CLOCK, serial); break;
     case P_METERS: open_pop(P_METERS, serial); break;
     case P_MESSAGES: if (wc.open_messages) wc.open_messages(); break;
-    case P_LOCK: session_lock("warpcenter"); break;
-    case P_FIND: {   /* WPS's own Find, from the home folder (Shift held: another) */
+    case P_LOCK: session_lock("thebar"); break;
+    case P_FIND: {   /* Objectspace's own Find, from the home folder (Shift held: another) */
         const char *home = getenv("HOME");
         findwin_show(home && *home ? home : "/", false);
         break;
     }
-    case P_LOGOFF: session_ask_logoff(wc.app, "warpcenter"); break;
-    case P_SHUTDOWN: session_ask_end(wc.app, "warpcenter"); break;
+    case P_LOGOFF: session_ask_logoff(wc.app, "thebar"); break;
+    case P_SHUTDOWN: session_ask_end(wc.app, "thebar"); break;
     }
 }
 
@@ -784,10 +784,10 @@ static void wc_close(ui_surface *s) { (void)s; }   /* (it stays) */
 
 /* A font from the Font Palette dropped on it: its own. */
 static void (*on_font)(const char *spec);
-void warpcenter_on_font(void (*fn)(const char *spec)) { on_font = fn; }
+void thebar_on_font(void (*fn)(const char *spec)) { on_font = fn; }
 
 static void (*on_color)(const char *hex);
-void warpcenter_on_color(void (*fn)(const char *hex)) { on_color = fn; }
+void thebar_on_color(void (*fn)(const char *hex)) { on_color = fn; }
 
 static uint32_t wc_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
                                unsigned mods, const char **mime)
@@ -821,7 +821,7 @@ static uint32_t wc_drop(ui_surface *s, double x, double y, const char *mime, con
 static const ui_surface_ops wc_ops = { .draw = wc_draw, .pointer = wc_pointer, .resized = wc_resized, .close = wc_close,
                                        .drag_motion = wc_drag_motion, .drop = wc_drop };
 
-void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folder)(const char *path))
+void thebar_open(ui_app *a, const char *desktop, bool top, void (*open_folder)(const char *path))
 {
     if (wc.s) return;
     wc.app = a;
@@ -834,9 +834,9 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
     wc.h = bar_h();
     winlist_ext("panel", top ? "top" : "bottom");
     ui_press_hook = any_press;
-    wc.s = ui_window_new(a, &wc_ops, NULL, "io.github.sungsookhim.Objectspace.WarpCenter", wc.w, wc.h);
+    wc.s = ui_window_new(a, &wc_ops, NULL, "io.github.sungsookhim.Objectspace.TheBar", wc.w, wc.h);
     ui_window_set_frameless(wc.s, true);
-    ui_window_set_title(wc.s, "WarpCenter");
+    ui_window_set_title(wc.s, "TheBar");
     wc.timer = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     if (wc.timer >= 0) {
         struct itimerspec it = { { 1, 0 }, { 1, 0 } };
@@ -848,18 +848,18 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
     tray_init(a, damage);   /* (the session's tray: only with the bar) */
 }
 
-void warpcenter_damage(void) { damage(); }
+void thebar_damage(void) { damage(); }
 
-void warpcenter_set_font(ui_font f)
+void thebar_set_font(ui_font f)
 {
     wc_font = f;
     wc_bold = f == UI_FONT_REGULAR ? UI_FONT_BOLD : f;   /* (one of the palette's: as it is) */
     damage();
 }
 
-bool warpcenter_is_open(void) { return wc.s != NULL; }
+bool thebar_is_open(void) { return wc.s != NULL; }
 
-bool warpcenter_press(const char *part)
+bool thebar_press(const char *part)
 {
     static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray",
                                                "lock", "find", "logoff", "shutdown" };
@@ -869,11 +869,11 @@ bool warpcenter_press(const char *part)
     return false;
 }
 
-size_t warpcenter_menu_labels(char *out, size_t n) { return objmenu_labels(wc.ready, out, n); }
+size_t thebar_menu_labels(char *out, size_t n) { return objmenu_labels(wc.ready, out, n); }
 
-/* ----------------------------------------------- the WarpCenter object */
+/* ----------------------------------------------- TheBar object */
 
-void warpcenter_setting(const char *key, const char *val)
+void thebar_setting(const char *key, const char *val)
 {
     bool on = !strcmp(val, "1");
     if (!strcmp(key, "edge")) {
@@ -891,7 +891,7 @@ void warpcenter_setting(const char *key, const char *val)
     else if (!strcmp(key, "clock")) wc.clock_mode = !strcmp(val, "12 hours") ? 1 : !strcmp(val, "off") ? 2 : 0;
     else if (!strcmp(key, "seconds")) wc.seconds = on;
     else if (!strcmp(key, "date")) wc.date = on;
-    else if (!strcmp(key, "font")) warpcenter_set_font(ui_font_named(val));
+    else if (!strcmp(key, "font")) thebar_set_font(ui_font_named(val));
     else return;
     if (wc.pop && !part_shown(wc.pop_kind)) pop_free();
     wc.clock[0] = 0;
@@ -899,9 +899,9 @@ void warpcenter_setting(const char *key, const char *val)
     damage();
 }
 
-bool warpcenter_top(void) { return wc.top; }
+bool thebar_top(void) { return wc.top; }
 
-void warpcenter_messages(size_t unread, void (*open_messages)(void))
+void thebar_messages(size_t unread, void (*open_messages)(void))
 {
     wc.open_messages = open_messages;
     if (wc.unread == unread) return;
@@ -909,7 +909,7 @@ void warpcenter_messages(size_t unread, void (*open_messages)(void))
     damage();
 }
 
-bool warpcenter_part_rect(const char *part, double *x, double *y, double *w, double *h)
+bool thebar_part_rect(const char *part, double *x, double *y, double *w, double *h)
 {
     static const char *const names[NPARTS] = { "desktop", "windows", "meters", "messages", "keyboard", "clock", "tray",
                                                "lock", "find", "logoff", "shutdown" };
@@ -922,4 +922,4 @@ bool warpcenter_part_rect(const char *part, double *x, double *y, double *w, dou
     return false;
 }
 
-const char *warpcenter_clock_text(void) { return wc.clock; }
+const char *thebar_clock_text(void) { return wc.clock; }

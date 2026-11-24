@@ -1,4 +1,4 @@
-/* Object menus (objmenu.h), from the WarpCenter's Desktop menu (0.2). */
+/* Object menus (objmenu.h), from TheBar's Desktop menu (0.2). */
 #define _GNU_SOURCE
 #include "objmenu.h"
 

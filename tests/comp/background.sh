@@ -5,7 +5,7 @@
 # as their notebooks do (settings_set) while the desktop runs.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-bg-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-bg-XXXX")
 mkdir -p "$S/다운로드"   # (a Korean folder name: the desktop's picture's path is escaped for glycin)
 python3 -c "
 from PIL import Image
@@ -21,7 +21,7 @@ cat > "$S/script" <<EOS
 13.5 quit
 EOS
 W="$REPO/build/osdctl"
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 4; '$W' settings_set \"\$T/desk\" bg_gnome=false bg_image='$S/다운로드/green.webp' bg_mode=4 > \"\$T/set.log\" 2>&1;
      '$W' settings_set \"\$T/desk/Projects\" bg_color='#ff00ff' >> \"\$T/set.log\" 2>&1;
      sleep 4; '$W' settings_set \"\$T/desk/Projects\" bg_image='$S/blue.png' bg_mode=0 >> \"\$T/set.log\" 2>&1;
@@ -42,7 +42,7 @@ cat > "$S/page" <<EOS
 8 click 580 327
 11 quit
 EOS
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=14 tests/comp/run.sh "$S/page" \
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=14 tests/comp/run.sh "$S/page" \
     "sleep 2.5; '$W' settings_set \"\$T/desk\" bg_image='$S/x.png' > /dev/null; sleep 6.5; '$W' settings \"\$T/desk\" > \"\$T/after.log\"" > "$S/page.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/page.txt")
 fails=0

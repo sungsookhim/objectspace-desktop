@@ -19,7 +19,7 @@ static void problem(const char *event, const char *path, const char *action, con
     snprintf(body, sizeof body, "%s (%s): %s\n%s", path && *path ? path : "an object", event, action, why);
     log_msg("action: %s", body);
     cv items[8] = {
-        { .k = CV_TEXT, .s = "app", .len = 3 }, { .k = CV_TEXT, .s = "WPS", .len = 3 },
+        { .k = CV_TEXT, .s = "app", .len = 3 }, { .k = CV_TEXT, .s = "Objectspace", .len = 11 },
         { .k = CV_TEXT, .s = "summary", .len = 7 }, { .k = CV_TEXT, .s = "An action was not done", .len = 22 },
         { .k = CV_TEXT, .s = "body", .len = 4 }, { .k = CV_TEXT, .s = body, .len = strlen(body) },
         { .k = CV_TEXT, .s = "urgency", .len = 7 }, { .k = CV_INT, .i = 1 },

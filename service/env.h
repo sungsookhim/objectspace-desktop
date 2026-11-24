@@ -1,5 +1,5 @@
 /*
- * The service's environment: directories, the user's WPS identity and the
+ * The service's environment: directories, the user's Objectspace identity and the
  * host ID.
  *
  * Directories follow the XDG conventions and can be overridden for tests:
@@ -10,7 +10,7 @@
  *
  * The identity (design: State that travels with a volume) is a random ID in
  * <config>/identity, created on first use. Copying that file to another
- * computer makes the user the same WPS user there.
+ * computer makes the user the same Objectspace user there.
  */
 #ifndef OSD_ENV_H
 #define OSD_ENV_H

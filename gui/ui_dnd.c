@@ -148,7 +148,7 @@ static struct wl_buffer *icon_buffer(ui_app *a, cairo_surface_t *img, int *w, in
     *h = cairo_image_surface_get_height(img);
     int stride = cairo_image_surface_get_stride(img);
     size_t size = (size_t)stride * (size_t)*h;
-    int fd = memfd_create("wps-drag", MFD_CLOEXEC);
+    int fd = memfd_create("osd-drag", MFD_CLOEXEC);
     if (fd < 0 || ftruncate(fd, (off_t)size) < 0) { if (fd >= 0) close(fd); return NULL; }
     void *p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (p == MAP_FAILED) { close(fd); return NULL; }

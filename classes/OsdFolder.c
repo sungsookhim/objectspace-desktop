@@ -279,5 +279,5 @@ char *OsdFolder__osdQueryIconThemes(osdo_object *self)
 {
     (void)self;
     char *t = osd_icon_theme_names();
-    return t && *t ? t : (free(t), osd_strdup("WPS (flat)"));
+    return t && *t ? t : (free(t), osd_strdup("Objectspace (flat)"));
 }

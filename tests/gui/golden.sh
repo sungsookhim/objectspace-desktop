@@ -13,7 +13,7 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 OUT=$(mkdir -p "${1:?usage: tests/gui/golden.sh OUT [MODE...]}" && cd "$1" && pwd); shift
 WANT=" $* "
-SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/wps-golden-XXXX")
+SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/osd-golden-XXXX")
 trap 'rm -rf "$SCRATCH"' EXIT
 start=$(date +%s)
 
@@ -21,9 +21,9 @@ start=$(date +%s)
 normalize() {
     sed -E \
         -e "s#$REPO#<REPO>#g" \
-        -e 's#/tmp/wps-selftest-[A-Za-z0-9_-]+#<W>#g' \
-        -e 's#/tmp/wps-[a-z]+-[A-Za-z0-9]{4}#<T>#g' \
-        -e 's#/run/user/[0-9]+/wps-[A-Za-z0-9-]+#<RT>#g' \
+        -e 's#/tmp/osd-selftest-[A-Za-z0-9_-]+#<W>#g' \
+        -e 's#/tmp/osd-[a-z]+-[A-Za-z0-9]{4}#<T>#g' \
+        -e 's#/run/user/[0-9]+/osd-[A-Za-z0-9-]+#<RT>#g' \
         -e 's#vobj:[0-9a-f-]{36}#vobj:<ID>#g' \
         -e 's#[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}#<ID>#g' \
         -e 's#==[0-9]+==#==<PID>==#g' \
@@ -41,7 +41,7 @@ normalize() {
 # its own D-Bus; gsettings are off (nothing of the user's GNOME changes).
 run_comp() {   # MODE ENV SETUP
     W=$(mktemp -d "$SCRATCH/c-XXXX")
-    RT=$(mktemp -d "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/wps-golden-XXXX"); chmod 700 "$RT"
+    RT=$(mktemp -d "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/osd-golden-XXXX"); chmod 700 "$RT"
     cat > "$W/cmd" <<EOC
 cd '$REPO'
 env OSD_NO_GSETTINGS=1 $2 tests/gui/selftest.sh '$1' "\$(cat '$W/setup')" > '$W/out.txt' 2>&1
@@ -65,7 +65,7 @@ run_gnome() {   # MODE ENV SETUP
 run_gnomerun() {   # ENV
     t=$(env $1 tests/gnome/run.sh 2>/dev/null | sed -n 's/^T=//p')
     [ -n "$t" ] && [ -f "$t/shell.log" ] && grep -E "selftest:|ERROR: AddressSanitizer|runtime error" "$t/shell.log"
-    case "$t" in /tmp/wps-gnome-*) rm -rf "$t" ;; esac
+    case "$t" in /tmp/osd-gnome-*) rm -rf "$t" ;; esac
 }
 
 grep -v '^#' tests/gui/golden-modes.txt | grep -v '^$' | while IFS='	' read -r mode runner envs setup status; do

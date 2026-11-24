@@ -1,5 +1,5 @@
 #!/bin/sh
-# Put "WPS" on the login screen (G5 step 4). Run with sudo, from your
+# Put "Objectspace" on the login screen (G5 step 4). Run with sudo, from your
 # checkout (it stays there: the session runs tools/osd-session from it):
 #   sudo tools/install-session.sh            install
 #   sudo tools/install-session.sh remove     take it away again
@@ -16,7 +16,7 @@ set -e
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 if [ "$1" = remove ]; then
     rm -f /usr/share/wayland-sessions/objectspace.desktop /usr/local/bin/osd-session /etc/pam.d/osd-lock
-    echo "removed: WPS is no longer on the login screen"
+    echo "removed: Objectspace is no longer on the login screen"
     exit 0
 fi
 for f in build/osd-compositor build/osd-shell build/osdd tools/osd-session; do
@@ -29,12 +29,12 @@ EOF
 chmod 755 /usr/local/bin/osd-session
 cat > /usr/share/wayland-sessions/objectspace.desktop <<'EOF'
 [Desktop Entry]
-Name=WPS
-Comment=The Workplace Shell desktop (objectspace-desktop)
+Name=Objectspace
+Comment=The Objectspace desktop (objectspace-desktop)
 Exec=/usr/local/bin/osd-session
 TryExec=/usr/local/bin/osd-session
 Type=Application
-DesktopNames=WPS
+DesktopNames=Objectspace
 X-GDM-CanRunHeadless=true
 EOF
 cat > /etc/pam.d/osd-lock <<'EOF'
@@ -44,4 +44,4 @@ auth       include      system-auth
 account    include      system-auth
 EOF
 chmod 644 /usr/share/wayland-sessions/objectspace.desktop /etc/pam.d/osd-lock
-echo "installed. The login screen reads its list when it starts: reboot, or log out and from a text console (Ctrl+Alt+F3) run: sudo systemctl restart gdm. Then choose WPS with the gear button, before the password."
+echo "installed. The login screen reads its list when it starts: reboot, or log out and from a text console (Ctrl+Alt+F3) run: sudo systemctl restart gdm. Then choose Objectspace with the gear button, before the password."

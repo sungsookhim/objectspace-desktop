@@ -129,7 +129,7 @@ Two bugs in the prototype were found and fixed on the way. First, events were si
 
 ```
 make -C proto/m0 all     # builds build/m0/fanwatch and build/m0/fhtool
-proto/m0/testbed.sh up    # loopback ext4, btrfs, FAT under /var/tmp/wps-m0-$USER (sudo)
+proto/m0/testbed.sh up    # loopback ext4, btrfs, FAT under /var/tmp/osd-m0-$USER (sudo)
 proto/m0/m0.py            # kernel and program scenarios; or e.g. m0.py 4 7 for a subset
                           # (24 and 25 open real editor windows; they need a desktop session)
 proto/m0/filter.py        # per-user filtering scenarios

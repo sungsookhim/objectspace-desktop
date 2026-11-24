@@ -1,4 +1,4 @@
-/* osd-shell: The bench report; the settings objects (System, Sound, Mouse, schemes, fonts, LaunchPad, WarpCenter) applied. */
+/* osd-shell: The bench report; the settings objects (System, Sound, Mouse, schemes, fonts, Launcher, TheBar) applied. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -74,12 +74,12 @@ double next_w, next_h;   /* the next folder window's size (0: the default) */
 
 bool restore_windows = true;   /* System: "Restore open windows at login" */
 
-/* The LaunchPad's and the WarpCenter's "Show at start" (automatic, yes, no). */
+/* The Launcher's and TheBar's "Show at start" (automatic, yes, no). */
 static char lp_show[16] = "automatic", wc_show[16] = "automatic";
 
 static char scheme_name[32] = "classic";
 
-void lp_props(const char *addr) { open_properties(addr); }   /* (the LaunchPad's Properties) */
+void lp_props(const char *addr) { open_properties(addr); }   /* (the Launcher's Properties) */
 
 /* A settings object's address, by class ("" if not known yet). */
 const char *setup_addr(const char *cls)
@@ -100,14 +100,14 @@ static void setup_set(const char *cls, const char *key, const char *val)
 void font_apply(const char *what, const char *spec)
 {
     if (!strcmp(what, "samples")) setup_set("OsdFontPalette", "fonts", spec);
-    else if (!strcmp(what, "warpcenter")) setup_set("OsdWarpCenter", "font", spec);
+    else if (!strcmp(what, "thebar")) setup_set("OsdTheBar", "font", spec);
     else if (!strcmp(what, "menus")) setup_set("OsdSystem", "font_menus", spec);
     else if (!strcmp(what, "titles")) setup_set("OsdSystem", "font_titles", spec);
     else if (!strcmp(what, "folders")) setup_set("OsdSystem", "font_folders", spec);
     else if (!strcmp(what, "dialogs")) color_apply("font_dialogs", spec);   /* the scheme's (each scheme its fonts) */
 }
 
-void font_dropped_wc(const char *spec) { font_apply("warpcenter", spec); }
+void font_dropped_wc(const char *spec) { font_apply("thebar", spec); }
 /* (Shift or not: there is one Dialogs font, the scheme's) */
 void font_dropped_dialogs(const char *spec, unsigned mods) { (void)mods; font_apply("dialogs", spec); }
 
@@ -150,23 +150,23 @@ static void apply_setup_object(const char *cls, const cv *settings)
         if (!strcmp(cls, "OsdSound")) events_setup_set(key, val);
         else if (!strcmp(cls, "OsdMouse")) {
             ui_mouse_set(key, val);
-            char kv[160];   /* the compositor's too (WPS session): its drag pointer follows them */
+            char kv[160];   /* the compositor's too (Objectspace session): its drag pointer follows them */
             snprintf(kv, sizeof kv, "%s=%s", key, val);
             winlist_ext("mouse", kv);
         }
         else if (!strcmp(cls, "OsdSchemePalette") && !strcmp(key, "scheme")) snprintf(scheme_name, sizeof scheme_name, "%s", val);
-        else if (!strcmp(cls, "OsdLaunchPad") && !strcmp(key, "show_at_start")) snprintf(lp_show, sizeof lp_show, "%s", val);
-        else if (!strcmp(cls, "OsdLaunchPad")) launchpad_setting(key, val);
-        else if (!strcmp(cls, "OsdWarpCenter")) {
+        else if (!strcmp(cls, "OsdLauncher") && !strcmp(key, "show_at_start")) snprintf(lp_show, sizeof lp_show, "%s", val);
+        else if (!strcmp(cls, "OsdLauncher")) launcher_setting(key, val);
+        else if (!strcmp(cls, "OsdTheBar")) {
             if (!strcmp(key, "show_at_start")) snprintf(wc_show, sizeof wc_show, "%s", val);
-            else warpcenter_setting(key, val);
+            else thebar_setting(key, val);
         }
         else if (!strcmp(cls, "OsdMessages")) messages_setting(key, val);
         else if (!strcmp(cls, "OsdFontPalette") && !strcmp(key, "fonts")) fontpal_set_samples(val);
         else if (!strcmp(cls, "OsdColorPalette") && !strcmp(key, "colors")) colorpal_set_samples(val);
         else if (!strcmp(cls, "OsdSystem")) {
             if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */
-                char kv[160];   /* the compositor's frames too (WPS session) */
+                char kv[160];   /* the compositor's frames too (Objectspace session) */
                 snprintf(kv, sizeof kv, "%s=%s", key, val);
                 winlist_ext("frame", kv);
             }
@@ -184,7 +184,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
                 snprintf(folders_font, sizeof folders_font, "%s", val);   /* (shown by the self-tests) */
             } else if (!strcmp(key, "font_menus")) {
                 ui_menu_set_font(ui_font_named(val));
-                char kv[200];   /* the compositor's system menu too (WPS session) */
+                char kv[200];   /* the compositor's system menu too (Objectspace session) */
                 snprintf(kv, sizeof kv, "menu_font=%s", val);
                 winlist_ext("frame", kv);
             } else if (!strcmp(key, "font_titles")) {
@@ -199,13 +199,13 @@ static void apply_setup_object(const char *cls, const cv *settings)
     }
 }
 
-static void show_warpcenter(void)
+static void show_thebar(void)
 {
-    if (warpcenter_is_open()) return;   /* (the bar: always in view) */
+    if (thebar_is_open()) return;   /* (the bar: always in view) */
     for (struct folder *f = folders; f; f = f->next)
         if (f->desktop && !f->closing) {
-            warpcenter_open(app, f->path, getenv("OSD_WARPCENTER_TOP") != NULL || warpcenter_top(), launchpad_open_folder);
-            warpcenter_messages(messages_unread(), messages_open);
+            thebar_open(app, f->path, getenv("OSD_THEBAR_TOP") != NULL || thebar_top(), launcher_open_folder);
+            thebar_messages(messages_unread(), messages_open);
             return;
         }
 }
@@ -219,15 +219,15 @@ void templates_dir(char *out, size_t n)
 
 /* Opened, or brought forward: never two (only the desktop's process
  * has one). */
-static void show_launchpad(void)
+static void show_launcher(void)
 {
-    if (launchpad_is_open()) { launchpad_raise(); return; }
+    if (launcher_is_open()) { launcher_raise(); return; }
     bool desktop = false;
     for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
     if (!desktop) return;
     char tdir[PATH_MAX];
     templates_dir(tdir, sizeof tdir);
-    launchpad_open(app, launchpad_open_folder, tdir, setup_folder[0] ? setup_folder : NULL);
+    launcher_open(app, launcher_open_folder, tdir, setup_folder[0] ? setup_folder : NULL);
 }
 
 /* Restore Desktop: asked first; what was put back, said after. */
@@ -283,10 +283,10 @@ bool open_view(const char *v)
 {
     if (!strcmp(v, "messages")) messages_open();
     else if (!strcmp(v, "minimized-windows")) winlist_open(true);   /* the Minimized Window Viewer */
-    else if (!strcmp(v, "launchpad")) show_launchpad();
+    else if (!strcmp(v, "launcher")) show_launcher();
     else if (!strcmp(v, "fontpalette")) fontpal_open();
     else if (!strcmp(v, "colorpalette")) colorpal_open();
-    else if (!strcmp(v, "warpcenter")) show_warpcenter();
+    else if (!strcmp(v, "thebar")) show_thebar();
     else if (!strcmp(v, "restore-defaults")) restore_defaults_ask();
     else return false;
     return true;
@@ -320,7 +320,7 @@ void got_setup(void *arg, const cv *reply)
         }
     }
     /* the schemes (object-properties-design.md 2.3): each defined from its
-     * object's values, here and in the compositor (WPS session) */
+     * object's values, here and in the compositor (Objectspace session) */
     const cv *sch = cv_get(res, "schemes");
     if (sch && sch->k == CV_ARRAY) nschemes = 0;
     for (size_t i = 0; sch && sch->k == CV_ARRAY && i < sch->n; i++) {
@@ -352,27 +352,27 @@ void got_setup(void *arg, const cv *reply)
     for (struct folder *f = folders; f; f = f->next) if (!f->closing) ui_surface_damage_all(f->win);
     if (!setup_sub && n) svc_subscribe_objects(ids, n, got_setup_sub, NULL);   /* changes made in their notebooks */
     const char *folder = cv_text(res, "folder");
-    /* The desktop's LaunchPad (G4), once System Setup is known (its first
-     * buttons include it). OSD_NO_LAUNCHPAD: none (tests). */
+    /* The desktop's Launcher (G4), once System Setup is known (its first
+     * buttons include it). OSD_NO_LAUNCHER: none (tests). */
     bool desktop = false;
     for (struct folder *f = folders; f && !desktop; f = f->next) desktop = f->desktop && !f->closing;
-    /* In the WPS session the WarpCenter, and not the LaunchPad (the
-     * owner's decision for 0.2; the LaunchPad stays in System). Inside
-     * GNOME, which has its own bar, the LaunchPad as before. */
-    /* The LaunchPad and WarpCenter objects' "Show at start" can say
+    /* In the Objectspace session TheBar, and not the Launcher (the
+     * owner's decision for 0.2; the Launcher stays in System). Inside
+     * GNOME, which has its own bar, the Launcher as before. */
+    /* The Launcher and TheBar objects' "Show at start" can say
      * otherwise (only at start: closing them is not offered). */
-    const char *wcs = getenv("OSD_WARPCENTER");
-    bool wpsession = getenv("OSD_SESSION") != NULL;
-    bool want_wc = wcs ? !strcmp(wcs, "1") : wpsession && strcmp(wc_show, "no");
-    bool want_lp = getenv("OSD_LAUNCHPAD") ? true : !strcmp(lp_show, "automatic") ? !wpsession : !strcmp(lp_show, "yes");
-    if (wcs && !strcmp(wcs, "1")) want_lp = want_lp && (getenv("OSD_LAUNCHPAD") || !strcmp(lp_show, "yes"));
+    const char *wcs = getenv("OSD_THEBAR");
+    bool osd_session = getenv("OSD_SESSION") != NULL;
+    bool want_wc = wcs ? !strcmp(wcs, "1") : osd_session && strcmp(wc_show, "no");
+    bool want_lp = getenv("OSD_LAUNCHER") ? true : !strcmp(lp_show, "automatic") ? !osd_session : !strcmp(lp_show, "yes");
+    if (wcs && !strcmp(wcs, "1")) want_lp = want_lp && (getenv("OSD_LAUNCHER") || !strcmp(lp_show, "yes"));
     static bool started;   /* (settings read again later change neither) */
     bool first = !started && desktop;
     if (desktop) started = true;
     if (folder) snprintf(setup_folder, sizeof setup_folder, "%s", folder);
-    if (first && want_wc) show_warpcenter();
+    if (first && want_wc) show_thebar();
     if (first) windows_at_login();
-    if (first && !getenv("OSD_NO_LAUNCHPAD") && want_lp) show_launchpad();
+    if (first && !getenv("OSD_NO_LAUNCHER") && want_lp) show_launcher();
 }
 
 /* GNOME's text scaling factor, for the Font Palette's fonts the
@@ -389,7 +389,7 @@ static void send_text_scale(void)
 static void apply_scheme(void)
 {
     if (!ui_scheme_use(scheme_name)) ui_scheme_use("classic");
-    /* in the WPS session the compositor draws other programs' frames: the
+    /* in the Objectspace session the compositor draws other programs' frames: the
      * same scheme and font (under GNOME the extension ignores these) */
     winlist_ext("scheme", ui_scheme_now.name);
     char font[300];
@@ -452,7 +452,7 @@ void toolkit_action(const char *name, ui_surface *s, ui_rect at)
 }
 
 
-void launchpad_open_folder(const char *path) { open_folder(path, VIEW_LAST); }
+void launcher_open_folder(const char *path) { open_folder(path, VIEW_LAST); }
 
 void desk_backdrop(void *ctx, cairo_t *cr, ui_rect clip) { (void)ctx; wallpaper_draw(cr, clip); }
 

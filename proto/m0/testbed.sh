@@ -5,12 +5,12 @@
 #   testbed.sh down   unmount and remove them
 #
 # Mounts go under $WORK/mnt/{ext4,btrfs,fat}; $WORK defaults to
-# /var/tmp/wps-m0-$USER so that the test UIDs can reach it (a home folder is
+# /var/tmp/osd-m0-$USER so that the test UIDs can reach it (a home folder is
 # usually mode 700). Needs sudo. Creates no user accounts: the extra test
 # users are bare UIDs 60001 and 60002 in group 60000, run through setpriv.
 set -euo pipefail
 
-WORK=${WORK:-/var/tmp/wps-m0-$(id -un)}
+WORK=${WORK:-/var/tmp/osd-m0-$(id -un)}
 ME=$(id -u)
 MYGID=$(id -g)
 GROUP_SHARED=60000
@@ -27,9 +27,9 @@ up() {
     truncate -s 512M "$WORK/img/ext4.img"
     truncate -s 512M "$WORK/img/btrfs.img"
     truncate -s 128M "$WORK/img/fat.img"
-    mkfs.ext4 -q -F -N 262144 -L wpsext4 "$WORK/img/ext4.img"
-    mkfs.btrfs -q -f -L wpsbtrfs "$WORK/img/btrfs.img" >/dev/null
-    mkfs.fat -F 32 -n WPSFAT "$WORK/img/fat.img" >/dev/null
+    mkfs.ext4 -q -F -N 262144 -L osdext4 "$WORK/img/ext4.img"
+    mkfs.btrfs -q -f -L osdbtrfs "$WORK/img/btrfs.img" >/dev/null
+    mkfs.fat -F 32 -n OSDFAT "$WORK/img/fat.img" >/dev/null
     sudo mount -o loop "$WORK/img/ext4.img" "$WORK/mnt/ext4"
     sudo mount -o loop "$WORK/img/btrfs.img" "$WORK/mnt/btrfs"
     sudo mount -o loop,uid=$ME,gid=$MYGID "$WORK/img/fat.img" "$WORK/mnt/fat"

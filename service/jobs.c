@@ -28,7 +28,7 @@
 
 static osdo_loop *loop;
 static osd_db *db;
-static char owner[16];   /* start of the WPS identity: temporary names are per user */
+static char owner[16];   /* start of the Objectspace identity: temporary names are per user */
 
 /* ------------------------------------------------------------ selections */
 

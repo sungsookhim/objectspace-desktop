@@ -149,7 +149,7 @@ static bool find_pointer(struct folder *f, const ui_pointer_event *e)
 }
 
 /* ---- the desktop's status line: a box over the bottom of its usable
- * area (above the WarpCenter), as WPS's folder windows have their line */
+ * area (above TheBar), as Objectspace's folder windows have their line */
 
 #define MSG_H 28
 
@@ -217,7 +217,7 @@ static void desk_msg_show(struct folder *f, bool sticky)
     desk_msg_damage(f);
 }
 
-/* The Messages object's "Show WPS's messages on the desktop" (on unless
+/* The Messages object's "Show Objectspace's messages on the desktop" (on unless
  * turned off): its own messages; a script's (osdctl say) show anyway. */
 static bool desk_msgs_on = true;
 
@@ -417,7 +417,7 @@ void win_key(ui_surface *s, const ui_key_event *e)
 
 void win_focus(ui_surface *s, bool on)
 {
-    if (on) workarea_focused(ui_surface_data(s));   /* (wps selection: the active folder window's) */
+    if (on) workarea_focused(ui_surface_data(s));   /* (osd selection: the active folder window's) */
     ui_frame_damage(s);
 }
 

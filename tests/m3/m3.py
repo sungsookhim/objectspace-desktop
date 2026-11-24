@@ -366,11 +366,11 @@ def s36():
     ia = wait_for(lambda: obj(a, d / "notes.txt").get("id") == oid and oid)
     ib = wait_for(lambda: obj(b, d / "notes.txt").get("id") == oid and oid)
     t = obj(b, d / "notes.txt").get("title")
-    raw = run(["getfattr", "-d", "-m", "user.wps", str(d / "notes.txt")]).stdout
+    raw = run(["getfattr", "-d", "-m", "user.osd", str(d / "notes.txt")]).stdout
     a.stop(); b.stop()
     ok = ia == ib == oid and t == "Shared notes"
     return ok, [f"A and B both see ID {oid}: {ia == ib == oid}", f"title on the new file {t!r}",
-                f"attributes on the new inode: {raw.count('user.wps')} ({'id' if 'user.osd.id' in raw else 'no id'})"]
+                f"attributes on the new inode: {raw.count('user.osd')} ({'id' if 'user.osd.id' in raw else 'no id'})"]
 
 
 # ------------------------------------------------------------------- driver

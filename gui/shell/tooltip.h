@@ -1,7 +1,7 @@
 /*
  * Tooltips (v0.3-design 11): a line of text in a small box beside what
  * the pointer rests on, after a moment (0.6 s), gone when it moves off,
- * presses or leaves. One at a time, for the LaunchPad and the WarpCenter.
+ * presses or leaves. One at a time, for the Launcher and TheBar.
  */
 #ifndef OSD_TOOLTIP_H
 #define OSD_TOOLTIP_H

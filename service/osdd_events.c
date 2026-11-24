@@ -109,7 +109,7 @@ static void collect_shadow(const char *vol, const char *id, void *user)
     if (sh->n < 32) snprintf(sh->ids[sh->n++], sizeof sh->ids[0], "%s", id);
 }
 
-/* The wps command's questions for the desktop (0.4.1 step 14): "ask" (a
+/* The osd command's questions for the desktop (0.4.1 step 14): "ask" (a
  * dialog: text, buttons), "selection" (the active folder window's), "show"
  * (a folder's window, or a view); once per client. How many were sent. */
 size_t desktop_broadcast(const char *kind, int64_t ask, const char *text, const cv *buttons)
@@ -232,13 +232,13 @@ void on_central_change(const char *folder, const char *id, char kind)
 
 void on_fs_event(char kind, const char *from, const char *path)
 {
-    /* One of WPS's own folders renamed or moved outside WPS (a shell, a
+    /* One of Objectspace's own folders renamed or moved outside Objectspace (a shell, a
      * file manager): put back, as osdd finds them by their paths (else the
      * desktop's shadows would follow the folder and osdd would make a new,
      * empty one). The move back comes as its own event. */
     if (kind == 'm' && from[0] && path[0] && osd_folder(from) && access(from, F_OK) != 0) {
-        if (rename(path, from) == 0) { log_msg("%s is WPS's own folder: moved back from %s", from, path); return; }
-        log_msg("%s is WPS's own folder, moved to %s: cannot move it back (%s)", from, path, strerror(errno));
+        if (rename(path, from) == 0) { log_msg("%s is Objectspace's own folder: moved back from %s", from, path); return; }
+        log_msg("%s is Objectspace's own folder, moved to %s: cannot move it back (%s)", from, path, strerror(errno));
     }
     if (kind == 'm') osd_launch_moved(from, path);
     trash_check(path);
@@ -295,7 +295,7 @@ void on_fs_event(char kind, const char *from, const char *path)
     }
 }
 
-/* Programs WPS started opened or closed `path`: every window may show it
+/* Programs Objectspace started opened or closed `path`: every window may show it
  * (directly, or as a shadow), so every subscription hears it. */
 void on_in_use(const char *path, bool in_use)
 {

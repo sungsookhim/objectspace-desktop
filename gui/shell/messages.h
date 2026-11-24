@@ -1,6 +1,6 @@
 /*
  * Messages (v0.2-design 9): the list window of the OsdMessages object and
- * of the WarpCenter's envelope. osdd keeps the messages (every GUI sees
+ * of TheBar's envelope. osdd keeps the messages (every GUI sees
  * the same list); this shows them newest first, with program, time,
  * summary and body, unread ones in bold. A message's actions are buttons
  * while its program still has the notification; Delete, Delete all and
@@ -23,8 +23,8 @@ void messages_setting(const char *key, const char *val);
 size_t messages_unread(void);
 void messages_open(void);
 
-/* WPS's own message (folder windows' errors, job results): kept, and an
- * error pops up in the WPS session. urgency: 0 low, 1 normal, 2 an error. */
+/* Objectspace's own message (folder windows' errors, job results): kept, and an
+ * error pops up in the Objectspace session. urgency: 0 low, 1 normal, 2 an error. */
 void messages_post(const char *summary, const char *body, int urgency);
 
 /* Self-tests. */

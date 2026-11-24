@@ -214,12 +214,12 @@ bool sound_init(void)
     if (ready) return true;
     if (getenv("OSD_NO_SOUND")) return false;
     pw_init(NULL, NULL);
-    tloop = pw_thread_loop_new("wps-sound", NULL);
+    tloop = pw_thread_loop_new("osd-sound", NULL);
     if (!tloop) return false;
-    stream = pw_stream_new_simple(pw_thread_loop_get_loop(tloop), "WPS sounds",
+    stream = pw_stream_new_simple(pw_thread_loop_get_loop(tloop), "Objectspace sounds",
                                   pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Playback",
                                                     PW_KEY_MEDIA_ROLE, "Event", PW_KEY_NODE_LATENCY, "256/48000",
-                                                    PW_KEY_APP_NAME, "Workplace Shell", NULL),
+                                                    PW_KEY_APP_NAME, "Objectspace", NULL),
                                   &stream_events, NULL);
     if (!stream) { pw_thread_loop_destroy(tloop); tloop = NULL; return false; }
     uint8_t pb[1024];

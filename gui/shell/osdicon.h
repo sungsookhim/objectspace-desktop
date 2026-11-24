@@ -2,7 +2,7 @@
  * Icon packages (roadmap 0.4, the owner's spec): NAME.osdicon, a zip of
  * PNGs named by their size ("256.png", square, any size) and optionally
  * "icon.svg"; no manifest. The standard sizes are 256 (the master), 128,
- * 96, 64 and 32: WPS's own packages hold all five, and packing makes any
+ * 96, 64 and 32: Objectspace's own packages hold all five, and packing makes any
  * of them missing from the largest picture given. A plain PNG is a
  * package of one.
  *

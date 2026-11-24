@@ -3,9 +3,9 @@
  * ($XDG_CONFIG_HOME/autostart), titled Startup, in System.
  *
  * What is dropped there: a program (a desktop entry, or a shadow of one)
- * becomes an autostart entry, a copy of the entry with X-WPS-Startup=true;
+ * becomes an autostart entry, a copy of the entry with X-Objectspace-Startup=true;
  * a script or other executable an entry running it; anything else a
- * shadow, which the WPS desktop opens at login (systemd's autostart
+ * shadow, which the Objectspace desktop opens at login (systemd's autostart
  * generator reads only .desktop files: it ignores them).
  */
 #ifndef OSD_STARTUP_H

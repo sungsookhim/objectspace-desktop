@@ -31,7 +31,7 @@
 #include "db.h"
 #include "osdo_loop.h"
 
-/* `owner` (the user's WPS identity) makes temporary names unique between
+/* `owner` (the user's Objectspace identity) makes temporary names unique between
  * users writing into the same folder. */
 void osd_jobs_init(osdo_loop *loop, osd_db *db, const char *owner);
 /* Pause running jobs for logout and wait for their threads (bounded). */

@@ -514,7 +514,7 @@ def sc2():
 
 # ------------------------------------------------------------------- in use
 
-@scenario("U1", "In use: files opened from WPS show as open while their program runs; lock files mark files opened elsewhere")
+@scenario("U1", "In use: files opened from Objectspace show as open while their program runs; lock files mark files opened elsewhere")
 def su1():
     d = fresh("ext4", "u1")
     xdg = WORK / "u1-xdg"
@@ -530,10 +530,10 @@ def su1():
     fork.write_text('#!/bin/sh\n( sleep 2 ) &\nexit 0\n')
     for f in (hold, fork):
         f.chmod(0o755)
-    (apps / "wps-hold.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Hold\nExec={hold} --view %f\n")
-    (apps / "wps-fork.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Fork\nExec={fork} %U\n")
+    (apps / "osd-hold.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Hold\nExec={hold} --view %f\n")
+    (apps / "osd-fork.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Fork\nExec={fork} %U\n")
     (xdg / "config" / "mimeapps.list").write_text(
-        "[Default Applications]\ntext/plain=missing.desktop;wps-hold.desktop;\nimage/png=wps-fork.desktop\n")
+        "[Default Applications]\ntext/plain=missing.desktop;osd-hold.desktop;\nimage/png=osd-fork.desktop\n")
     me = Service("me", extra_env={"XDG_CONFIG_HOME": str(xdg / "config"), "XDG_DATA_HOME": str(xdg / "data"),
                                   "XDG_CONFIG_DIRS": str(xdg / "sys")}).start()
     for n in ("doc.txt", "pic.png", "sheet.ods"):
@@ -603,8 +603,8 @@ def su2():
     hold = xdg / "hold.sh"
     hold.write_text(f'#!/bin/sh\necho "$@" >> {log}\n')
     hold.chmod(0o755)
-    (xdg / "data" / "applications" / "wps-hold.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Hold\nExec={hold} %f\n")
-    (xdg / "config" / "mimeapps.list").write_text("[Default Applications]\ntext/plain=wps-hold.desktop\n")
+    (xdg / "data" / "applications" / "osd-hold.desktop").write_text(f"[Desktop Entry]\nType=Application\nName=Hold\nExec={hold} %f\n")
+    (xdg / "config" / "mimeapps.list").write_text("[Default Applications]\ntext/plain=osd-hold.desktop\n")
     term, tlog = xdg / "term.sh", xdg / "term-args"
     term.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> {tlog}\nshift\nexec "$@"\n')   # a stand-in terminal: logs, then runs
     term.chmod(0o755)
@@ -825,7 +825,7 @@ def sb1():
     end = time.time() + 20
     while time.time() < end:
         res = page(total0, 400)
-        seen_tmp |= any(i["name"].startswith(".wps-tmp-") for i in res.get("items", []))
+        seen_tmp |= any(i["name"].startswith(".osd-tmp-") for i in res.get("items", []))
         st = c.request(op="job", job=jid).get("result") or {}
         if st.get("state") == "done":
             break

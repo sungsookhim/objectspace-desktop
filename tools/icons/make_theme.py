@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""WPS's icon themes as packages (roadmap 0.4): every icon of the isometric
+"""Objectspace's icon themes as packages (roadmap 0.4): every icon of the isometric
 set (tools/icons/make_iso.py, sets A to E) drawn at each size and packed as
 NAME.osdicon, one theme per variant:
 
-  OUTDIR/wps-flat/      the default (the owner's, 2026-11-22)
-  OUTDIR/wps-outline/
+  OUTDIR/objectspace-flat/      the default (the owner's, 2026-11-22)
+  OUTDIR/objectspace-outline/
 each with theme.ini (its name and what it is) and NAME.osdicon packages: a
 zip of SIZE.png, stored, no manifest (gui/shell/osdicon.h). The sizes: the
 standard five (256, 128, 96, 64, 32) and the small designs 48, 40 and 16,
@@ -25,8 +25,8 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIZES = "256,128,96,64,48,40,32,16"
 THEMES = {
-    "flat": ("wps-flat", "WPS (flat)", "The isometric set without outlines (the default)"),
-    "outline": ("wps-outline", "WPS (outline)", "The isometric set with a dark outline round each shape"),
+    "flat": ("objectspace-flat", "Objectspace (flat)", "The isometric set without outlines (the default)"),
+    "outline": ("objectspace-outline", "Objectspace (outline)", "The isometric set with a dark outline round each shape"),
 }
 
 

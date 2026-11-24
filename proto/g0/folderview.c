@@ -382,7 +382,7 @@ static struct buffer *get_buffer(int w, int h)
         if (!b->wb) {
             int stride = w * 4;
             b->size = (size_t)stride * h;
-            int fd = memfd_create("wps-buffer", MFD_CLOEXEC);
+            int fd = memfd_create("osd-buffer", MFD_CLOEXEC);
             if (fd < 0 || ftruncate(fd, (off_t)b->size) < 0) return NULL;
             b->data = mmap(NULL, b->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)b->size);

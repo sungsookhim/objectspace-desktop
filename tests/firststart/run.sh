@@ -8,8 +8,8 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 R=0
 for part in new old; do
-    T=$(mktemp -d "${TMPDIR:-/tmp}/wps-first-XXXX")
-    RT=$(mktemp -d "$XDG_RUNTIME_DIR/wps-first-XXXX")
+    T=$(mktemp -d "${TMPDIR:-/tmp}/osd-first-XXXX")
+    RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-first-XXXX")
     mkdir -p "$T/desk" "$T/config" "$T/templates" "$T/home"
     export HOME="$T/home"   # (step 9 shadows the home folder: never the real one)
     [ $part = old ] && printf 'version 6\n' > "$T/config/desktop-made"

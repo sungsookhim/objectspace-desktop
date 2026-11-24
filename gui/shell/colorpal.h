@@ -3,7 +3,7 @@
  * Dragged (UI_MIME_COLOR, "#rrggbb") onto a folder window's or the
  * desktop's background, a sample sets its background colour (Ctrl: its
  * icons' titles; Shift: every folder's); onto a title bar, the scheme's
- * active title bar; onto the WarpCenter or the LaunchPad, the scheme's
+ * active title bar; onto TheBar or the Launcher, the scheme's
  * bar colour; onto a notebook's colour field, that field. A sample's menu
  * (or a double click): Edit colour... (hue and saturation, brightness,
  * #rrggbb).

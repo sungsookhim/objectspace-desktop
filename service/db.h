@@ -10,7 +10,7 @@
  * (a logical clock), its writer ("<identity>/<host>"), a deletion flag
  * (tombstones) and whether it has been pushed to the volume's own database.
  *
- * Portable volumes have their own database, <mount>/.wps/<identity>.db,
+ * Portable volumes have their own database, <mount>/.osd/<identity>.db,
  * with the same table. Synchronisation is git-like: pull rows that are
  * newer on the volume, push rows that are newer here; when both sides
  * changed a row, the higher (revision, writer) wins and the loser is kept
@@ -104,9 +104,9 @@ typedef void (*osd_db_job_fn)(int64_t id, const char *kind, const char *src, con
                               const char *state, int64_t items_done, int64_t bytes_done, void *user);
 int osd_db_jobs_list(osd_db *db, osd_db_job_fn fn, void *user);
 
-/* Central objects (decided 2026-11-18): WPS-only objects kept here rather
+/* Central objects (decided 2026-11-18): Objectspace-only objects kept here rather
  * than as .osdobj files. Locator "vobj:<id>"; their own rows under class
- * "WPS": folder (the folder's object ID), class, and target (shadows). Their
+ * "Objectspace": folder (the folder's object ID), class, and target (shadows). Their
  * settings use the ordinary rows. Rows on a portable volume travel in its
  * database like any other. */
 int osd_db_vobjs_in(osd_db *db, const char *vol, const char *folder_id,

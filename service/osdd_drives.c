@@ -169,7 +169,7 @@ void restore_work(void *arg)
         osd_props_init(&ps);
         char *origin = NULL;
         if (ld.err || !ld.central) j->err = ENOENT;
-        else if (osd_db_get_class(db, ld.vol, ld.locator, "WPS", &ps) <= 0 || !osd_props_str(&ps, "origin", &origin))
+        else if (osd_db_get_class(db, ld.vol, ld.locator, "Objectspace", &ps) <= 0 || !osd_props_str(&ps, "origin", &origin))
             j->err = ENOENT;
         else {
             char fid[OSD_ID_LEN + 8];
@@ -184,7 +184,7 @@ void restore_work(void *arg)
                 j->err = osd_central_move(ld.id, of.vol, of.id, false, j->new_id);
                 if (!j->err) {
                     char key[PATH_MAX + 128];
-                    osd_db_key(key, sizeof key, ld.locator, "WPS", "origin");
+                    osd_db_key(key, sizeof key, ld.locator, "Objectspace", "origin");
                     osd_db_delete(db, of.vol, key);
                     snprintf(j->out, sizeof j->out, "%s", of.path);
                     if (!tf.err) snprintf(j->from, sizeof j->from, "%s", tf.path);
@@ -275,7 +275,7 @@ void empty_done(void *arg)
  * its UUID (OsdDrive "uuid"). A drive that goes away is parked (moved to
  * a folder ID no folder has) and brought back when it returns, keeping
  * its object ID and so its place. Titles follow the label unless the
- * user renamed it (OsdDrive "autotitle": the title WPS gave). */
+ * user renamed it (OsdDrive "autotitle": the title Objectspace gave). */
 
 void computer_dirs(char *comp, size_t cn, char *drives, size_t dn)
 {
@@ -295,8 +295,8 @@ static void drives_collect(const char *vol, const char *id, void *user)
     osd_props ps;
     osd_props_init(&ps);
     char *v = NULL;
-    osd_db_key(key, sizeof key, loc, "WPS", "class");
-    bool drive = osd_db_get_class(db, vol, loc, "WPS", &ps) > 0 && osd_props_str(&ps, "class", &v) && !strcmp(v, "OsdDrive");
+    osd_db_key(key, sizeof key, loc, "Objectspace", "class");
+    bool drive = osd_db_get_class(db, vol, loc, "Objectspace", &ps) > 0 && osd_props_str(&ps, "class", &v) && !strcmp(v, "OsdDrive");
     free(v);
     osd_props_free(&ps);
     if (!drive) return;

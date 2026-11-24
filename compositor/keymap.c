@@ -7,7 +7,7 @@
  * GNOME: an xkb source is a layout (an xkb group); an IBus one (Hangul,
  * Anthy, ...) is set as IBus's engine (`ibus engine`), and going back to
  * a layout sets IBus's engine for that layout, so keys pass as typed. The
- * WPS session starts IBus (tools/osd-session).
+ * Objectspace session starts IBus (tools/osd-session).
  * Without gsettings (headless tests, OSD_NO_GSETTINGS) XKB_DEFAULT_* or US.
  */
 #define _GNU_SOURCE
@@ -167,7 +167,7 @@ static void ibus_engine(int i)
     comp_spawn(argv, NULL, NULL);
 }
 
-/* The current input source, to the desktop (the WarpCenter's keyboard
+/* The current input source, to the desktop (TheBar's keyboard
  * part). Without GNOME's sources: the keyboard's xkb group. */
 void keymap_report(void)
 {

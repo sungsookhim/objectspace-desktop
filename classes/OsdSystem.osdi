@@ -20,7 +20,7 @@ method osdSetFoldersExt(string on) -> bool
 method osdQueryFoldersTheme() -> string
 method osdSetFoldersTheme(string theme) -> bool
 method osdQueryIconThemes() -> string
-property icon_theme : choice = "WPS (flat)" page "Theme" label "Icon theme" get osdQueryFoldersTheme set osdSetFoldersTheme options osdQueryIconThemes
+property icon_theme : choice = "Objectspace (flat)" page "Theme" label "Icon theme" get osdQueryFoldersTheme set osdSetFoldersTheme options osdQueryIconThemes
 method osdQueryFoldersIconSet() -> string
 method osdSetFoldersIconSet(string set) -> bool
 property icon_set : choice "Small,Default,Large" = "Default" page "Theme" label "Icon size (Small 32/16, Default 64/32/16, Large 96/48/24)" get osdQueryFoldersIconSet set osdSetFoldersIconSet
@@ -32,9 +32,9 @@ property show_ext : checkbox = "1" page "Folders" label "Show file extensions in
 property font_folders : text = "" page "Fonts" label "Folders' icon titles (e.g. 10.Sans; empty: the interface font)" get osdQueryFoldersFont set osdSetFoldersFont
 property font_menus : text = "" page "Fonts" label "Menus" store OsdSetup text
 property font_titles : text = "" page "Fonts" label "Title bars" store OsdSetup text
-property font_terminal : text = "" page "Fonts" label "Terminal (WPS Terminal; e.g. 11.Monospace; empty: 11.Monospace)" store OsdSetup text
-# (0.4.1) WPS Terminal first and the default, as OS/2's command window;
+property font_terminal : text = "" page "Fonts" label "Terminal (Objectspace Terminal; e.g. 11.Monospace; empty: 11.Monospace)" store OsdSetup text
+# (0.4.1) Objectspace Terminal first and the default, as OS/2's command window;
 # "system default": xdg-terminal-exec, else the first installed (0.4.0's
 # "automatic" and "xdg-terminal-exec" mean it too)
-property terminal : choice "WPS Terminal,system default,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" = "WPS Terminal" page "Programs" label "Terminal for text-mode programs" store OsdSetup text
+property terminal : choice "Objectspace Terminal,system default,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" = "Objectspace Terminal" page "Programs" label "Terminal for text-mode programs" store OsdSetup text
 property terminal_command : text = "" page "Programs" label "Or this command (the program goes after it)" store OsdSetup text

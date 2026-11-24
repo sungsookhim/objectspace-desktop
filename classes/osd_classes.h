@@ -1,4 +1,4 @@
-/* The core WPS classes. */
+/* The core Objectspace classes. */
 #ifndef OSD_CLASSES_H
 #define OSD_CLASSES_H
 

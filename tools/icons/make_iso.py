@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WPS's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files; set D: the basic kinds; set E: WPS's own icons redrawn).
+"""Objectspace's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files; set D: the basic kinds; set E: Objectspace's own icons redrawn).
 
 Style: isometric pixel art after BeOS / OS/2 Warp 4, 2:1 lines (2 across
 for 1 down; verticals straight), light from the upper left (top lightest,
@@ -422,8 +422,8 @@ def button(c, x0, x1, y, z0, z1, glyph, d=4):
     glyph(c, y + d, (x0 + x1) / 2, (z0 + z1) / 2, (min(x1 - x0, z1 - z0)) * 0.34)
 
 
-def launchpad(c):
-    """OS/2's LaunchPad: a floating bar; the system buttons (Lockup, Find,
+def launcher(c):
+    """OS/2's Launcher: a floating bar; the system buttons (Lockup, Find,
     Shut down, Window list) two by two on the left, big object buttons
     with their drawers' arrows above."""
     if c.small:                                                               # Lockup, Shut down; two big buttons
@@ -446,8 +446,8 @@ def launchpad(c):
         c.on_y(2.1, [(cx - 6, 85), (cx + 6, 85), (cx, 89.5)], DARK, edge=False)
 
 
-def warpcenter(c):
-    """The WarpCenter: the bar along the screen's top - the desktop menu
+def thebar(c):
+    """TheBar: the bar along the screen's top - the desktop menu
     and window list buttons, the meters, messages, the clock, Lockup and
     Shut down - over the desktop it serves."""
     if c.small:                                                               # a deep bar: menu button, meters, clock
@@ -571,7 +571,7 @@ def drive_missing(c):
 
 
 SET_A = [("mouse", "Mouse", mouse), ("sound", "Sound", sound), ("scheme-palette", "Scheme Palette", scheme_palette),
-         ("system", "System", system), ("launchpad", "LaunchPad", launchpad), ("warpcenter", "WarpCenter", warpcenter),
+         ("system", "System", system), ("launcher", "Launcher", launcher), ("thebar", "TheBar", thebar),
          ("messages", "Messages", messages), ("restore-desktop", "Restore Desktop", restore_desktop),
          ("minwin-viewer", "Minimized Window Viewer", minwin_viewer), ("drive-missing", "Drive (not present)", drive_missing)]
 
@@ -892,7 +892,7 @@ def program_text(c):
 
 
 def abstract_object(c):
-    """An object of no kind WPS draws: a cube, its faces lettered by light."""
+    """An object of no kind Objectspace draws: a cube, its faces lettered by light."""
     c.box(-40, 40, -40, 40, 0, 80, (120, 150, 210))
     c.on_z(80.1, rect(-26, 26, -26, 26), shade((120, 150, 210), 1.1), edge=False)
 
@@ -909,7 +909,7 @@ SET_D = [("program", "Program", program), ("program-text", "Text-mode program", 
          ("object", "Object", abstract_object), ("link-mark", "Link mark", link_mark)]
 
 
-# -------------------------------------- set E: WPS's own icons, redrawn
+# -------------------------------------- set E: Objectspace's own icons, redrawn
 
 def computer(c):
     """Computer: a monitor showing the desktop (System is the whole
@@ -1088,7 +1088,7 @@ def sheets(out, imgs, sizes, ICONS, tag):
             cols, cell = (4 if tag == "B" else 5), s + 24
             sh = Image.new("RGBA", (cols * cell, 40 + -(-len(ICONS) // cols) * (cell + 24)), (196, 198, 202, 255))
             d = ImageDraw.Draw(sh)
-            d.text((12, 10), f"WPS icons, set {tag} - {variant}, {s} px", fill=(20, 20, 20), font=fb)
+            d.text((12, 10), f"Objectspace icons, set {tag} - {variant}, {s} px", fill=(20, 20, 20), font=fb)
             for i, (name, title, _) in enumerate(ICONS):
                 x, y = (i % cols) * cell + 12, 40 + (i // cols) * (cell + 24)
                 sh.alpha_composite(imgs[variant, name, s], (x, y))

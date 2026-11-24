@@ -57,7 +57,7 @@ export default class Probe {
             at(t, () => { if (Main.overview.visible) Main.overview.hide(); });
         at(5.8, () => console.log(`probe: overview visible ${Main.overview.visible}`));
         if (GLib.getenv('PROBE_MODE') === 'keys') {
-            // Ctrl+Esc on a virtual keyboard: the WPS Window List, focused.
+            // Ctrl+Esc on a virtual keyboard: the Objectspace Window List, focused.
             const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
             const kb = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
             this._dev = kb;
@@ -124,7 +124,7 @@ export default class Probe {
             return;
         }
         if (GLib.getenv('PROBE_MODE') === 'drawer') {
-            // The LaunchPad's first drawer arrow: open, close by a click
+            // The Launcher's first drawer arrow: open, close by a click
             // elsewhere; open, close by the arrow again.
             const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
             const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
@@ -144,7 +144,7 @@ export default class Probe {
                 });
             };
             const arrow = () => {
-                const lp = global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad');
+                const lp = global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.Launcher');
                 if (!lp) return null;
                 const r = lp.get_frame_rect();
                 return [r.x + 12 + 4 * 40 + 8 + 27, r.y + 3 + 5];
@@ -153,7 +153,7 @@ export default class Probe {
             at(8, () => dev.notify_absolute_motion(t(), 640, 400));   // off the hot corner
             // The first click (step 10) is lost in headless GNOME: the hidden
             // overview's dash (its app icons at the bottom centre, under the
-            // LaunchPad) still takes it, and may start Text Editor or
+            // Launcher) still takes it, and may start Text Editor or
             // Software; step 13 on works. Not seen in a real session.
             step(10, a => click(...a));                  // open the first drawer
             at(11, () => { if (out) shoot(out.replace('.png', '-open.png')); });
@@ -183,7 +183,7 @@ export default class Probe {
             return;
         }
         if (GLib.getenv('PROBE_MODE') === 'lpkeys') {
-            // The keyboard alone: the LaunchPad (focused), Home, Right twice to Shut down,
+            // The keyboard alone: the Launcher (focused), Home, Right twice to Shut down,
             // Enter: its dialog; Shift+Esc: the dialog's system menu; Escape twice.
             const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
             const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
@@ -205,10 +205,10 @@ export default class Probe {
                 kb.notify_keyval(t(), sym, Clutter.KeyState.RELEASED);
                 if (mod) kb.notify_keyval(t(), mod, Clutter.KeyState.RELEASED);
             };
-            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad')?.get_frame_rect();
+            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.Launcher')?.get_frame_rect();
             dev.notify_absolute_motion(t(), 640, 400);   // off the hot corner from the start
             // focused as a click gives it (clicks are unreliable headless)
-            at(10.5, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad')?.activate(global.display.get_current_time_roundtrip()));
+            at(10.5, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.Launcher')?.activate(global.display.get_current_time_roundtrip()));
             at(11.5, () => { console.log(`probe: focused ${global.display.focus_window?.get_title()}`); key(Clutter.KEY_Home); key(Clutter.KEY_Right); key(Clutter.KEY_Right); });
             at(12, () => { if (out) shoot(out.replace('.png', '-focus.png')); });
             at(12.5, () => key(Clutter.KEY_Return));
@@ -230,7 +230,7 @@ export default class Probe {
             return;
         }
         if (GLib.getenv('PROBE_MODE') === 'shutdown') {
-            // The LaunchPad's Shut down: its dialog, then Log off by keys
+            // The Launcher's Shut down: its dialog, then Log off by keys
             // (Right twice, Enter). OSD_DEBUG_COMMANDS (run.sh) makes the
             // extension log the command rather than run it.
             const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
@@ -251,7 +251,7 @@ export default class Probe {
                 });
             };
             const key = sym => { kb.notify_keyval(t(), sym, Clutter.KeyState.PRESSED); kb.notify_keyval(t(), sym, Clutter.KeyState.RELEASED); };
-            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad')?.get_frame_rect();
+            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.Launcher')?.get_frame_rect();
             at(8, () => dev.notify_absolute_motion(t(), 640, 400));   // off the hot corner
             // a first click on Window list (the first is lost headless; if not, a list opens)
             at(10, () => { const r = lp(); if (r) click(r.x + 12 + 3 * 40 + 18, r.y + r.height / 2 + 5); });

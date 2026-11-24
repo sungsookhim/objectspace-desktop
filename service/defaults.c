@@ -2,7 +2,7 @@
  * the chain between an object and its class's declared default - "all
  * folders" (class:OsdFolder), "all PNG files" (type:image/png), "all images"
  * (type:image/\*). Kept in the user's DB under the scope as the locator,
- * per store class and property, on the volume of the user's WPS folder. */
+ * per store class and property, on the volume of the user's Objectspace folder. */
 #define _GNU_SOURCE
 #include "defaults.h"
 

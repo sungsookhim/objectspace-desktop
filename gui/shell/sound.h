@@ -1,7 +1,7 @@
 /*
  * Sounds for action events (gui-design.md: Every action is an event).
  *
- * One PipeWire stream ("WPS sounds", role Event) with a small buffer
+ * One PipeWire stream ("Objectspace sounds", role Event) with a small buffer
  * (256 frames, 5 ms at 48 kHz: G0 measured 2-5 ms from action to the
  * stream), paused while nothing plays. Sounds are decoded once into
  * memory as 48 kHz stereo floats: with libsndfile (WAV, Ogg Vorbis, FLAC,

@@ -7,7 +7,7 @@ version 1.0
 override osdModifyPopupMenu
 classoverride osdclsQueryTitle
 data {
-    char *full_icon;    /* its own icon when full (a PNG); NULL: WPS's */
+    char *full_icon;    /* its own icon when full (a PNG); NULL: Objectspace's */
 }
 override osdUnInitData
 override osdSaveState
@@ -15,6 +15,6 @@ override osdRestoreProperties
 property icon : icon page Icon label Empty get osdQueryIcon set osdSetIcon
 property fullicon : icon page Icon label Full get osdQueryFullIcon set osdSetFullIcon
 # Its icon when something is in it (Icon, OsdObject's, is when empty):
-# the path of a PNG, or "" for WPS's again.
+# the path of a PNG, or "" for Objectspace's again.
 method osdQueryFullIcon() -> string
 method osdSetFullIcon(string path) -> bool

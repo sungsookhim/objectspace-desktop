@@ -1,13 +1,13 @@
 #!/bin/sh
-# The WarpCenter's tray, headless (v0.2-plan step 8): programs' status
+# TheBar's tray, headless (v0.2-plan step 8): programs' status
 # icons (tray_item.py, on a private session bus) register with the
 # desktop's StatusNotifierWatcher. Item A shows its red pixmap, then blue
 # when it needs attention; B a theme icon; Passive C nothing. Clicks:
 # button 1 Activate, the middle button SecondaryActivate, button 2 A's
-# dbusmenu menu as a WPS menu, whose Quit reaches the program as an Event.
+# dbusmenu menu as an Objectspace menu, whose Quit reaches the program as an Event.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
-S=$(mktemp -d "${TMPDIR:-/tmp}/wps-tray-XXXX")
+S=$(mktemp -d "${TMPDIR:-/tmp}/osd-tray-XXXX")
 cat > "$S/script" <<EOS
 2.4 shot $S/start.png
 2.5 click 1042 785
@@ -19,7 +19,7 @@ cat > "$S/script" <<EOS
 6.5 shot $S/attention.png
 7.5 quit
 EOS
-DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=11 dbus-run-session -- tests/comp/run.sh "$S/script" \
+DESKENV="OSD_THEBAR=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHER=1" SECS=11 dbus-run-session -- tests/comp/run.sh "$S/script" \
     "python3 '$REPO/tests/comp/tray_item.py' \$T/tray.log 10" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
@@ -31,7 +31,7 @@ check "A's pixmap, red, in the tray (C, passive, takes no room)" "[ \"\$(px '$S/
 check "button 1: Activate" "grep -q '^activate A' '$T/tray.log'"
 check "the middle button: SecondaryActivate" "grep -q '^secondary B' '$T/tray.log'"
 check "an item registered by its path (Ayatana) is reached" "grep -q '^activate B' '$T/tray.log'"
-check "button 2: the menu, as a WPS menu" "[ \"\$(px '$S/menu.png' 1040 759)\" != '220 20 20' ] && [ -s '$S/menu.png' ]"
+check "button 2: the menu, as an Objectspace menu" "[ \"\$(px '$S/menu.png' 1040 759)\" != '220 20 20' ] && [ -s '$S/menu.png' ]"
 check "a menu choice reaches the program (Event clicked)" "grep -q '^event 5 clicked' '$T/tray.log'"
 check "needing attention: the blue pixmap" "[ \"\$(px '$S/attention.png' 1042 785)\" = '20 20 220' ]"
 echo "$fails failed (screenshots: $S, logs: $T)"

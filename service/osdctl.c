@@ -181,7 +181,7 @@ static int icon_cmd(int argc, char **argv)
 /* osdctl plugin new NAME [PARENT]: a folder NAME with a plug-in's skeleton
  * (the SDK's sample, sdk/sample: its .osdi, its C and its Makefile). */
 static const char plugin_makefile[] =
-    "# A WPS plug-in, built with the SDK (the objectspace-devel package): make, then\n"
+    "# An Objectspace plug-in, built with the SDK (the objectspace-devel package): make, then\n"
     "# make install (your own plug-ins: ~/.config/objectspace/plugins), and log in again.\n"
     "# (osdctl plugin new NAME makes one like this; OSD_SDK and OSD_INC say\n"
     "# where the SDK is, for a checkout: make OSD_SDK=... OSD_INC=...)\n"
@@ -230,10 +230,10 @@ static int plugin_cmd(int argc, char **argv)
     if (mkdir(name, 0755) != 0) { fprintf(stderr, "osdctl: %s: %s\n", name, strerror(errno)); return 1; }
     char osdi[2048], c[4096], *mk = malloc(sizeof plugin_makefile + 128);
     snprintf(osdi, sizeof osdi,
-             "# %s: a WPS plug-in class (sdk/README.md; the grammar: osdc.py).\n"
+             "# %s: an Objectspace plug-in class (sdk/README.md; the grammar: osdc.py).\n"
              "class %s : %s\n"
              "version 1.0\n"
-             "# a property WPS keeps for you (its notebook's %s page, setup strings, Class...)\n"
+             "# a property Objectspace keeps for you (its notebook's %s page, setup strings, Class...)\n"
              "property note : text page %s label Note\n"
              "classoverride osdclsQueryTitle\n", name, name, parent, name, name);
     snprintf(c, sizeof c,
