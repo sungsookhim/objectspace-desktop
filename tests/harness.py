@@ -14,6 +14,22 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def wait_written(path, secs=5):
+    """A file a program writes: its text once it has a whole line (it can
+    be there, empty, before what is written to it), or "" at the end."""
+    end = time.time() + secs
+    while True:
+        try:
+            with open(path) as f:
+                t = f.read()
+        except OSError:
+            t = ""
+        if t.endswith("\n") or time.time() >= end:
+            return t
+        time.sleep(0.1)
+
 WORK = Path(os.environ.get("WORK", f"/var/tmp/osd-m0-{os.environ.get('USER') or pwd.getpwuid(os.getuid()).pw_name}"))
 MNT = {fs: WORK / "mnt" / fs for fs in ("ext4", "btrfs", "fat")}
 BIN = WORK / "bin"

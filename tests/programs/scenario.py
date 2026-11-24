@@ -140,17 +140,11 @@ check("a text file has none", "Program" not in pages(T + "/desk/notes.txt"), pag
 r = c.request(op="settings_set", target=tool, values={"prog_cwd": T + "/share", "prog_type": 1})
 check("its page's settings taken", r.get("ok"), r)
 r = c.request(op="open", target=tool)
-deadline = time.time() + 5
-while time.time() < deadline and not os.path.exists(T + "/ran.txt"):
-    time.sleep(0.1)
-ran = open(T + "/ran.txt").read().strip() if os.path.exists(T + "/ran.txt") else None
+ran = harness.wait_written(T + "/ran.txt").strip() or None
 check("opened: in its page's working directory", r.get("ok") and ran == T + "/share", (r, ran))
 c.request(op="settings_set", target=tool, values={"prog_type": 2, "prog_close": False})
 r = c.request(op="open", target=tool)
-deadline = time.time() + 5
-while time.time() < deadline and not os.path.exists(T + "/term.txt"):
-    time.sleep(0.1)
-term = open(T + "/term.txt").read() if os.path.exists(T + "/term.txt") else ""
+term = harness.wait_written(T + "/term.txt")
 check("text mode: in a terminal, kept open after it ends", r.get("ok") and tool in term and "Press Enter" in term, (r, term))
 
 # the click's activation token (0.4 step 6): the program has it, as
@@ -159,10 +153,7 @@ with open(tool, "w") as f:
     f.write("#!/bin/sh\necho \"$XDG_ACTIVATION_TOKEN $DESKTOP_STARTUP_ID\" > \"%s/tok.txt\"\n" % T)
 c.request(op="settings_set", target=tool, values={"prog_type": 1})
 r = c.request(op="open", target=tool, token_env=["XDG_ACTIVATION_TOKEN=tok-123", "DESKTOP_STARTUP_ID=tok-123", "PATH=/evil"])
-deadline = time.time() + 5
-while time.time() < deadline and not os.path.exists(T + "/tok.txt"):
-    time.sleep(0.1)
-tok = open(T + "/tok.txt").read().strip() if os.path.exists(T + "/tok.txt") else None
+tok = harness.wait_written(T + "/tok.txt").strip() or None
 check("the activation token in its environment (both names)", r.get("ok") and tok == "tok-123 tok-123", (r, tok))
 
 sys.exit(1 if fails else 0)

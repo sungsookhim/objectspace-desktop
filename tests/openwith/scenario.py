@@ -137,10 +137,7 @@ check("the System object: a terminal command", r.get("ok"), (sysaddr, r))
 r = c.request(op="settings_set", target=ED, values={"program_type": 2, "close_on_exit": False, "cwd": T + "/work"})
 check("set: text mode, kept open, a working directory", r.get("ok"), r)
 r = c.request(op="open", target=ED)
-t0 = time.time()
-while time.time() - t0 < 3 and not os.path.exists(T + "/term.log"):
-    time.sleep(0.1)
-tl = open(T + "/term.log").read() if os.path.exists(T + "/term.log") else ""
+tl = harness.wait_written(T + "/term.log", 3)
 check("opened in that terminal, held open after it ends", r.get("ok") and tl.startswith("--run sh -c ")
       and "Press Enter" in tl and (T + "/fakeapp editor") in tl, (r, tl))
 r = c.request(op="settings_set", target=ED, values={"program_type": 1})
