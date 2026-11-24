@@ -294,6 +294,93 @@ static bool op_say(struct client *c, int64_t id, const char *op, cv *msg)
     return false;
 }
 
+/* The wps command's questions for the desktop (0.4.1 step 14):
+ *   {op:"ask", text, buttons?}  a dialog; replies {value: the button, "" closed}
+ *   {op:"selection"}            the active folder window's; replies {paths: [...]}
+ *   {op:"show", target}         a folder's window (wps open on a folder)
+ *   {op:"answer", ask, value? | paths?}   the desktop's answer
+ * The first desktop to answer wins; a question with no desktop to ask
+ * fails at once. */
+struct pending_ask { struct pending_ask *next; int64_t ask, id; struct client *c; };
+static struct pending_ask *asks;
+static int64_t next_ask = 1;
+
+static bool ask_desktop(struct client *c, int64_t id, const char *kind, const char *text, const cv *buttons)
+{
+    int64_t ask = next_ask++;
+    if (!desktop_broadcast(kind, ask, text, buttons)) {
+        reply_error(c, id, "no desktop", "the WPS desktop is not running");
+        return false;
+    }
+    struct pending_ask *p = calloc(1, sizeof *p);
+    p->ask = ask;
+    p->id = id;
+    p->c = c;
+    c->refs++;
+    p->next = asks;
+    asks = p;
+    return false;
+}
+
+static bool op_ask(struct client *c, int64_t id, const char *op, cv *msg)
+{
+    (void)op;
+    const char *t = cv_text(msg, "text");
+    if (!t || !*t) { reply_error(c, id, "bad request", "missing text"); return false; }
+    return ask_desktop(c, id, "ask", t, cv_get(msg, "buttons"));
+}
+
+static bool op_selection(struct client *c, int64_t id, const char *op, cv *msg)
+{
+    (void)op; (void)msg;
+    return ask_desktop(c, id, "selection", "", NULL);
+}
+
+static bool op_show(struct client *c, int64_t id, const char *op, cv *msg)
+{
+    (void)op;
+    const char *t = cv_text(msg, "target");
+    if (!t || t[0] != '/') { reply_error(c, id, "bad request", "show needs a folder's path"); return false; }
+    if (!desktop_broadcast("show", 0, t, NULL)) { reply_error(c, id, "no desktop", "the WPS desktop is not running"); return false; }
+    reply_int(c, id, 0);
+    return false;
+}
+
+static bool op_answer(struct client *c, int64_t id, const char *op, cv *msg)
+{
+    (void)op;
+    int64_t ask = 0;
+    cv_int(msg, "ask", &ask);
+    struct pending_ask *p = NULL;
+    for (struct pending_ask **pp = &asks; *pp; pp = &(*pp)->next)
+        if ((*pp)->ask == ask) { p = *pp; *pp = p->next; break; }
+    reply_int(c, id, p ? 0 : -1);   /* (another desktop answered first: -1) */
+    if (!p) return false;
+    if (!p->c->dead) {
+        const char *v = cv_text(msg, "value");
+        const cv *paths = cv_get(msg, "paths");
+        cbuf b;
+        cb_init(&b);
+        cb_map(&b, 3);
+        cb_text(&b, "id"); cb_int(&b, p->id);
+        cb_text(&b, "ok"); cb_bool(&b, true);
+        cb_text(&b, "result");
+        cb_map(&b, 1);
+        if (paths && paths->k == CV_ARRAY) {
+            cb_text(&b, "paths");
+            cb_array(&b, paths->n);
+            for (size_t i = 0; i < paths->n; i++) cb_text(&b, paths->items[i].k == CV_TEXT ? paths->items[i].s : "");
+        } else {
+            cb_text(&b, "value"); cb_text(&b, v ? v : "");
+        }
+        send_frame(p->c, &b);
+        cb_free(&b);
+    }
+    client_unref(p->c);
+    free(p);
+    return false;
+}
+
 /* msg_list */
 static bool op_msg_list(struct client *c, int64_t id, const char *op, cv *msg)
 {
@@ -547,6 +634,10 @@ static const struct op_def ops[] = {
     { "msg_add", op_msg_add },
     { "msg_list", op_msg_list },
     { "say", op_say },
+    { "ask", op_ask },
+    { "selection", op_selection },
+    { "show", op_show },
+    { "answer", op_answer },
     { "msg_set", op_msg_set },
     { "msg_delete", op_msg_set },
     { "msg_closed", op_msg_set },

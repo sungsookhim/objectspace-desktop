@@ -28,6 +28,7 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "term_core.h"
+#include "term_setup.h"
 #include "ui.h"
 
 #define PAD 3
@@ -510,6 +511,10 @@ int main(int argc, char **argv)
     snprintf(T.title, sizeof T.title, "%s", title ? title : base ? base + 1 : cmd[0]);
     T.app = ui_app_new();
     if (!T.app) return 1;
+    /* the scheme in use and the System's Terminal font (--font first) */
+    char sys_font[200] = "";
+    term_setup_read(sys_font, sizeof sys_font);
+    if (!font && sys_font[0]) font = sys_font;
     T.font = ui_font_named(font && ui_font_valid(font) ? font : "11.Monospace");
     char bspec[200];
     snprintf(bspec, sizeof bspec, "%s Bold", font && ui_font_valid(font) ? font : "11.Monospace");

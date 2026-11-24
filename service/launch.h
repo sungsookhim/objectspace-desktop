@@ -97,11 +97,13 @@ const char *wps_terminal_now(void);
  * until Enter after it ends. The new count. */
 int wps_hold_wrap(char **argv, int argc, int max);
 
-/* Run argv[0..argc) in a terminal window: $WPS_TERMINAL (words the
- * command is appended to), else xdg-terminal-exec, else the first
- * installed common terminal, each asked for a window of its own. Shifts
- * argv; the new count, or 0 when there is no terminal. */
-int wps_terminal_wrap(char **argv, int argc, int max);
+/* Run argv[0..argc) in a terminal window: WPS Terminal (the System's
+ * default, 0.4.1: titled `title`, --hold when `hold`), else the user's
+ * command ($WPS_TERMINAL: words the program is appended to), else the
+ * System's choice or xdg-terminal-exec, else the first installed common
+ * terminal, each asked for a window of its own (`hold`: through sh, as
+ * wps_hold_wrap). Shifts argv; the new count, or 0 when there is none. */
+int wps_terminal_wrap(char **argv, int argc, int max, const char *title, bool hold);
 
 /* Whether a program needs a terminal: a script, or a binary that links
  * no window library (as OS/2 told text-mode programs from PM ones). */

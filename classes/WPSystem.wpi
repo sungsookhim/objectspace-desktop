@@ -32,5 +32,9 @@ property show_ext : checkbox = "1" page "Folders" label "Show file extensions in
 property font_folders : text = "" page "Fonts" label "Folders' icon titles (e.g. 10.Sans; empty: the interface font)" get wpQueryFoldersFont set wpSetFoldersFont
 property font_menus : text = "" page "Fonts" label "Menus" store WPSetup text
 property font_titles : text = "" page "Fonts" label "Title bars" store WPSetup text
-property terminal : choice "automatic,xdg-terminal-exec,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" = "automatic" page "Programs" label "Terminal for text-mode programs" store WPSetup text
+property font_terminal : text = "" page "Fonts" label "Terminal (WPS Terminal; e.g. 11.Monospace; empty: 11.Monospace)" store WPSetup text
+# (0.4.1) WPS Terminal first and the default, as OS/2's command window;
+# "system default": xdg-terminal-exec, else the first installed (0.4.0's
+# "automatic" and "xdg-terminal-exec" mean it too)
+property terminal : choice "WPS Terminal,system default,ptyxis,gnome-terminal,kgx,konsole,xfce4-terminal,alacritty,kitty,foot,wezterm,xterm" = "WPS Terminal" page "Programs" label "Terminal for text-mode programs" store WPSetup text
 property terminal_command : text = "" page "Programs" label "Or this command (the program goes after it)" store WPSetup text

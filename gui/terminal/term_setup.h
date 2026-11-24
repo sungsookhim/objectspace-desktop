@@ -1,0 +1,12 @@
+/* WPS Terminal's looks from WPS's settings objects (term_setup.c). */
+#ifndef WPS_TERM_SETUP_H
+#define WPS_TERM_SETUP_H
+
+#include <stdbool.h>
+#include <stddef.h>
+
+/* The scheme in use and the System's frame options applied; the System's
+ * Terminal font into font ("" left as it was). False: no wpsd. */
+bool term_setup_read(char *font, size_t fn);
+
+#endif

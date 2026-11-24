@@ -141,3 +141,79 @@ void workarea_window(const char *title, bool minimized)
         f->wa_state = minimized ? 2 : 1;
     }
 }
+
+/* ------------------------------------------------ the wps command (0.4.1)
+ *
+ * `wps ask`, `wps selection` and `wps open` on a folder reach the desktop
+ * through wpsd ("ask", "selection", "show" events); the answer goes back
+ * as svc_answer. Only the process with the desktop answers. */
+
+static long active_folder;   /* the folder window that had the keyboard last */
+
+void workarea_focused(struct folder *f) { if (f && !f->desktop) active_folder = f->id; }
+
+static bool has_desktop(void)
+{
+    for (struct folder *f = folders; f; f = f->next) if (f->desktop && !f->closing) return true;
+    return false;
+}
+
+struct wps_ask { int64_t ask; char **labels; size_t n; };
+
+static void asked(void *ctx, int choice)
+{
+    struct wps_ask *a = ctx;
+    const char *v = choice >= 0 && (size_t)choice < a->n ? a->labels[choice] : "";
+    svc_answer(a->ask, v, NULL, 0);
+    for (size_t i = 0; i < a->n; i++) free(a->labels[i]);
+    free(a->labels);
+    free(a);
+}
+
+bool wps_command_event(const cv *ev)
+{
+    const char *name = cv_text(ev, "event");
+    if (!name || (strcmp(name, "ask") && strcmp(name, "selection") && strcmp(name, "show"))) return false;
+    if (!has_desktop()) return true;   /* (a folder window's process: the desktop answers) */
+    int64_t ask = 0;
+    cv_int(ev, "ask", &ask);
+    if (!strcmp(name, "show")) {
+        const char *p = cv_text(ev, "text");
+        if (p && *p) open_folder(p, VIEW_LAST);
+        return true;
+    }
+    if (!strcmp(name, "ask")) {
+        const cv *bs = cv_get(ev, "buttons");
+        struct wps_ask *a = calloc(1, sizeof *a);
+        size_t n = bs && bs->k == CV_ARRAY && bs->n ? bs->n : 1;
+        if (n > 6) n = 6;
+        a->ask = ask;
+        a->labels = calloc(n, sizeof *a->labels);
+        a->n = n;
+        for (size_t i = 0; i < n; i++)
+            a->labels[i] = strdup(bs && bs->k == CV_ARRAY && i < bs->n && bs->items[i].k == CV_TEXT ? bs->items[i].s : "OK");
+        ui_dialog_open(app, "WPS", cv_text(ev, "text") ? cv_text(ev, "text") : "", (const char *const *)a->labels, n, 0, asked, a);
+        return true;
+    }
+    /* the selection: the active folder window's (else the desktop's) selected objects */
+    struct folder *f = folder_by_id(active_folder);
+    if (!f || f->closing) for (struct folder *d = folders; d && !f; d = d->next) if (d->desktop && !d->closing) f = d;
+    const char **paths = NULL;
+    char (*buf)[PATH_MAX] = NULL;
+    size_t np = 0;
+    if (f && !is_tree(f) && f->cont) {
+        size_t want = ui_container_selected_count(f->cont);
+        paths = calloc(want ? want : 1, sizeof *paths);
+        buf = calloc(want ? want : 1, sizeof *buf);
+        for (size_t i = 0; i < f->m.total && np < want; i++)
+            if (ui_container_is_selected(f->cont, i)) {
+                target_of(f, i, buf[np], sizeof buf[np]);
+                paths[np] = buf[np];
+                np++;
+            }
+    }
+    svc_answer(ask, NULL, paths, np);
+    free(paths);
+    free(buf);
+    return true;
+}

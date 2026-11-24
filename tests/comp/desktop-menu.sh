@@ -7,10 +7,10 @@ cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-dmenu-XXXX")
 ENV="WPS_WARPCENTER=1 WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1 WPS_DEBUG_EVENTS=1"
 # A right click at (600, 300) opens the menu there (1280x800): System
-# setup at y 521, Lockup now 543, Shut down... 565 (New at 360).
+# setup at y 543, Lockup now 565, Shut down... 587 (New at 360).
 cat > "$S/one" <<EOS
 2.5 click 600 300 right
-3.2 click 660 521
+3.2 click 660 543
 5.5 windows
 6 click 300 300 right
 6.7 shot $S/menu2.png
@@ -18,11 +18,11 @@ cat > "$S/one" <<EOS
 EOS
 cat > "$S/two" <<EOS
 2.5 click 600 300 right
-3.2 click 660 565
+3.2 click 660 587
 4 shot $S/shutdown.png
 4.2 key Escape
 5 click 600 300 right
-5.7 click 660 543
+5.7 click 660 565
 6.7 shot $S/lock.png
 7.5 quit
 EOS

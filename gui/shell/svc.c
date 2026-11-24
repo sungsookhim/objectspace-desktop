@@ -265,6 +265,14 @@ void svc_open_with(const char *target, const char *app, int app_index, bool alwa
     open_req(target, false, NULL, 0, app, app_index, always, fn, arg);
 }
 
+/* Command prompt here (0.4.1): a folder's prompt, in the System's terminal. */
+static bool open_prompt;
+void svc_open_prompt(const char *folder, svc_fn fn, void *arg)
+{
+    open_prompt = true;
+    open_req(folder, false, NULL, 0, NULL, -1, false, fn, arg);
+}
+
 void svc_apps(svc_fn fn, void *arg)
 {
     int64_t id;
@@ -317,7 +325,7 @@ static void open_req(const char *target, bool confirm, const char *const *files,
         if (v && *v) snprintf(envs[ne++], sizeof envs[0], "%s=%s", keys[i], v);
     }
     struct out *o = begin("open", 3 + (disp[0] ? 1 : 0) + (x ? 1 : 0) + (ne ? 1 : 0) + (nfiles ? 1 : 0) + (app ? 1 : 0)
-                                      + (app_index >= 0 ? 1 : 0) + (always ? 1 : 0), &id);
+                                      + (app_index >= 0 ? 1 : 0) + (always ? 1 : 0) + (open_prompt ? 1 : 0), &id);
     cb_text(&o->b, "target"); cb_text(&o->b, target);
     cb_text(&o->b, "confirm"); cb_bool(&o->b, confirm);
     if (disp[0]) { cb_text(&o->b, "display"); cb_text(&o->b, disp); }
@@ -335,6 +343,7 @@ static void open_req(const char *target, bool confirm, const char *const *files,
     if (app) { cb_text(&o->b, "app"); cb_text(&o->b, app); }   /* Open With */
     if (app_index >= 0) { cb_text(&o->b, "app_index"); cb_int(&o->b, app_index); }
     if (always) { cb_text(&o->b, "always"); cb_bool(&o->b, true); }
+    if (open_prompt) { cb_text(&o->b, "prompt"); cb_bool(&o->b, true); open_prompt = false; }
     struct open_wait *w = malloc(sizeof *w);
     *w = (struct open_wait){ o, id, fn, arg };
     ui_activation_token(the_app(), open_go, w);   /* (token_env, the last field; at once without one) */
@@ -609,6 +618,23 @@ void svc_layout(const char *folder, svc_fn fn, void *arg)
     struct out *o = begin("layout", 1, &id);
     cb_text(&o->b, "target"); cb_text(&o->b, folder);
     send_req(o, id, fn, arg);
+}
+
+static void answer_sent(void *arg, const cv *reply) { (void)arg; (void)reply; }
+
+/* The wps command's question answered (0.4.1): a button's label, or paths. */
+void svc_answer(int64_t ask, const char *value, const char *const *paths, size_t n)
+{
+    int64_t id;
+    struct out *o = begin("answer", 2, &id);
+    cb_text(&o->b, "ask"); cb_int(&o->b, ask);
+    if (value || !paths) { cb_text(&o->b, "value"); cb_text(&o->b, value ? value : ""); }
+    else {
+        cb_text(&o->b, "paths");
+        cb_array(&o->b, n);
+        for (size_t i = 0; i < n; i++) cb_text(&o->b, paths[i]);
+    }
+    send_req(o, id, answer_sent, NULL);
 }
 
 /* A work area's group (0.4 step 9): act open, close, minimize, restore. */

@@ -2,6 +2,8 @@
 #define _GNU_SOURCE
 #include "wpsd.h"
 
+#include <pwd.h>
+
 void list_reply(void *arg, const wps_page *pg)
 {
     struct list_req *r = arg;
@@ -150,7 +152,12 @@ void do_open(struct req *r, wpo_object *o)
         path = r->shadow_target.path;
         st = &r->shadow_target.st;
     }
-    if (wpo_is_a(o, WPFolderClass)) {
+    /* Command prompt here (0.4.1): the user's shell in the System's
+     * terminal (WPS Terminal by default), in the folder, $WPS_FOLDER set */
+    const cv *pr = cv_get(&r->msg, "prompt");
+    bool prompt = pr && pr->k == CV_BOOL && pr->b && wpo_is_a(o, WPFolderClass) && path[0];
+    static char prompt_track[PATH_MAX + 16], prompt_env[PATH_MAX + 16], prompt_title[PATH_MAX + 32];
+    if (wpo_is_a(o, WPFolderClass) && !prompt) {
         free(fire_event(o, path, "object.open", NULL, NULL, NULL, 0));   /* its actions (its window has its own sound) */
         reply_folder(r, path);
         wpo_unref(orig);
@@ -166,7 +173,25 @@ void do_open(struct req *r, wpo_object *o)
         st = &ts;
         data = true;
     }
-    if (!data && wpo_is_a(o, WPProgramClass)) {
+    if (prompt) {
+        const char *sh = getenv("SHELL");
+        struct passwd *pw = (!sh || !*sh) ? getpwuid(getuid()) : NULL;
+        if (pw) sh = pw->pw_shell;
+        argv[0] = (char *)(sh && *sh ? sh : "/bin/sh");
+        argv[1] = NULL;
+        const char *bn = strrchr(path, '/');
+        snprintf(prompt_title, sizeof prompt_title, "Command Prompt - %s", bn && bn[1] ? bn + 1 : path);
+        if (!wps_terminal_wrap(argv, 1, 64, prompt_title, false)) {
+            reply_error(r->c, r->id, "failed", "no terminal program was found (System: Programs page)");
+            wpo_unref(orig);
+            return;
+        }
+        snprintf(cwd, sizeof cwd, "%s", path);
+        snprintf(prompt_track, sizeof prompt_track, "\x01prompt:%s", path);   /* (tracked, not shown as in use) */
+        snprintf(prompt_env, sizeof prompt_env, "WPS_FOLDER=%s", path);
+        what = argv[0];
+        tracked = prompt_track;
+    } else if (!data && wpo_is_a(o, WPProgramClass)) {
         const char *cmd = WPProgram_data(o)->command;
         if (!cmd || !*cmd) { reply_error(r->c, r->id, "failed", "the program has no command"); wpo_unref(orig); return; }
         if (st->st_uid != geteuid() && st->st_uid != 0 && !confirmed) { ask_first(r, cmd, st->st_uid); wpo_unref(orig); return; }
@@ -189,8 +214,11 @@ void do_open(struct req *r, wpo_object *o)
         }
         free(wd);
         bool term = ptype == 2 || (ptype == 0 && pl > 8 && !strcmp(path + pl - 8, ".desktop") && wps_desktop_wants_terminal(path));
-        if (term && !close_exit) argc = wps_hold_wrap(argv, argc, 64);
-        if (term && !wps_terminal_wrap(argv, argc, 64)) {
+        char *ttl = WPObject_wpQueryTitle(o);
+        int wrapped = term ? wps_terminal_wrap(argv, argc, 64, ttl, !close_exit) : argc;
+        free(ttl);
+        if (term) argc = wrapped;
+        if (term && !wrapped) {
             reply_error(r->c, r->id, "failed", "it runs in a terminal, and no terminal program was found (System: Programs page)");
             wpo_unref(orig);
             return;
@@ -216,8 +244,10 @@ void do_open(struct req *r, wpo_object *o)
             bool keep = pc && (!strcmp(pc, "0") || !strcmp(pc, "false"));
             free(pt);
             free(pc);
-            if (term && keep) na = wps_hold_wrap(argv, na, 64);
-            if (term && !wps_terminal_wrap(argv, na, 64)) {
+            const char *bn = strrchr(path, '/');
+            int wrapped = term ? wps_terminal_wrap(argv, na, 64, bn ? bn + 1 : path, keep) : na;
+            if (term) na = wrapped;
+            if (term && !wrapped) {
                 free(pw);
                 reply_error(r->c, r->id, "failed", "a text-mode program, and no terminal program was found (System: Programs page)");
                 wpo_unref(orig);
@@ -362,10 +392,18 @@ void do_open(struct req *r, wpo_object *o)
     }
     client_note_session(r->c, disp, x11, envs, nenv);   /* (its next actions' session; a token is for this once) */
     for (size_t i = 0; i < ntok && nenv < 8; i++) envs[nenv++] = toks[i];
-    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs, nenv);   /* as this user, in this user's session */
+    const char *envs2[9];   /* (a prompt: its folder too) */
+    memcpy(envs2, envs, nenv * sizeof *envs);
+    size_t nenv2 = nenv;
+    if (prompt) envs2[nenv2++] = prompt_env;
+    pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs2, nenv2);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
     char wa[PATH_MAX];   /* opened from a work area (or a folder or shadow in it): its group's */
-    if (r->tgt.path[0] && work_area_of(r->tgt.path, wa, sizeof wa)) work_area_opened(wa, r->tgt.path, tracked, pid);
+    char *own_wa = prompt ? WPObject_wpQueryProperty(o, "work_area") : NULL;   /* (a prompt in the work area itself) */
+    bool in_own = own_wa && (!strcmp(own_wa, "1") || !strcmp(own_wa, "true"));
+    free(own_wa);
+    if (in_own) wps_launch_set_group(pid, path);
+    else if (r->tgt.path[0] && work_area_of(r->tgt.path, wa, sizeof wa)) work_area_opened(wa, r->tgt.path, prompt ? "" : tracked, pid);
     /* its actions on opening (object-properties-design.md 2.4); the sound
      * the GUI plays: absent, the Sound object's; "" none */
     char *sound = fire_event(o, path, "object.open", disp, x11, envs, nenv);

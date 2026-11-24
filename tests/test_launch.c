@@ -132,16 +132,16 @@ TEST(terminals)
     CHECK(wps_program_needs_terminal(p));
     char *argv[16] = { "vim", "/f", NULL };
     setenv("WPS_TERMINAL", "myterm --hold -e", 1);
-    CHECK(wps_terminal_wrap(argv, 2, 16) == 5);
+    CHECK(wps_terminal_wrap(argv, 2, 16, "Vim", false) == 5);
     CHECK_STR(joined(argv), "myterm|--hold|-e|vim|/f");
     char *argv2[16] = { "vim", NULL };
     setenv("WPS_TERMINAL", "", 1);
     setenv("PATH", dir, 1);   /* no terminal installed */
-    CHECK(wps_terminal_wrap(argv2, 1, 16) == 0);
+    CHECK(wps_terminal_wrap(argv2, 1, 16, NULL, false) == 0);
     put("ptyxis", "");
     snprintf(p, sizeof p, "%s/ptyxis", dir);
     chmod(p, 0755);
-    CHECK(wps_terminal_wrap(argv2, 1, 16) == 4);
+    CHECK(wps_terminal_wrap(argv2, 1, 16, NULL, false) == 4);
     CHECK_STR(joined(argv2), "ptyxis|-s|--|vim");
     /* a Terminal=true default application comes wrapped */
     put("data/applications/vimish.desktop", "[Desktop Entry]\nExec=vim %f\nTerminal=true\n");
@@ -149,6 +149,24 @@ TEST(terminals)
     char buf[1024], *a3[16];
     CHECK(wps_handler_argv("/d/a.txt", buf, sizeof buf, a3, 16) == 5);
     CHECK_STR(joined(a3), "ptyxis|-s|--|vim|/d/a.txt");
+    /* Close window on exit off with another terminal: through sh */
+    char *a4[16] = { "vim", NULL };
+    CHECK(wps_terminal_wrap(a4, 1, 16, NULL, true) == 8);
+    CHECK(!strcmp(a4[0], "ptyxis") && !strcmp(a4[3], "sh") && !strcmp(a4[7], "vim"));
+    /* WPS Terminal (0.4.1: the default) once it is there: titled by the
+     * object, --hold for Close window on exit off */
+    put("wps-terminal", "");
+    snprintf(p, sizeof p, "%s/wps-terminal", dir);
+    chmod(p, 0755);
+    char *a5[16] = { "vim", "/f", NULL };
+    CHECK(wps_terminal_wrap(a5, 2, 16, "Notes", true) == 7);
+    CHECK_STR(joined(a5), "wps-terminal|--title|Notes|--hold|--|vim|/f");
+    CHECK_STR(wps_terminal_now(), "wps-terminal");
+    wps_terminal_choose("system default", "");   /* another choice: the list again */
+    char *a6[16] = { "vim", NULL };
+    CHECK(wps_terminal_wrap(a6, 1, 16, NULL, false) == 4);
+    CHECK_STR(joined(a6), "ptyxis|-s|--|vim");
+    wps_terminal_choose("", "");
 }
 
 int main(int argc, char **argv)

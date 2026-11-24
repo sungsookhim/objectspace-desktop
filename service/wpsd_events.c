@@ -109,6 +109,32 @@ static void collect_shadow(const char *vol, const char *id, void *user)
     if (sh->n < 32) snprintf(sh->ids[sh->n++], sizeof sh->ids[0], "%s", id);
 }
 
+/* The wps command's questions for the desktop (0.4.1 step 14): "ask" (a
+ * dialog: text, buttons), "selection" (the active folder window's), "show"
+ * (a folder's window, or a view); once per client. How many were sent. */
+size_t desktop_broadcast(const char *kind, int64_t ask, const char *text, const cv *buttons)
+{
+    size_t n = 0;
+    for (struct sub *x = subs; x; x = x->next) {
+        if (x->c->dead) continue;
+        bool sent = false;
+        for (struct sub *y = subs; y != x && !sent; y = y->next) sent = y->c == x->c;
+        if (sent) continue;
+        cbuf b;
+        size_t nb = buttons && buttons->k == CV_ARRAY ? buttons->n : 0;
+        event_head(&b, kind, x->id, 3);
+        cb_text(&b, "ask"); cb_int(&b, ask);
+        cb_text(&b, "text"); cb_text(&b, text ? text : "");
+        cb_text(&b, "buttons");
+        cb_array(&b, nb);
+        for (size_t i = 0; i < nb; i++) cb_text(&b, buttons->items[i].k == CV_TEXT ? buttons->items[i].s : "");
+        send_frame(x->c, &b);
+        cb_free(&b);
+        n++;
+    }
+    return n;
+}
+
 /* The System object's Terminal (v0.3-design 8), for text-mode programs. */
 void terminal_from_system(wpo_object *o)
 {

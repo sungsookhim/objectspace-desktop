@@ -392,6 +392,8 @@ void workarea_settings(struct folder *f, bool on);
 void workarea_window(const char *title, bool minimized);
 const char *workarea_group_of(struct folder *f);   /* the work area f is (or is in, or was opened from), NULL none */
 void workarea_join(struct folder *f, const char *group);
+bool wps_command_event(const cv *ev);   /* the wps command's ask, selection, show (0.4.1) */
+void workarea_focused(struct folder *f);
 struct row *row_at(struct folder *f, size_t i);
 void open_item(struct folder *f, size_t i, ui_view view);
 void src_activate(void *ctx, size_t i);

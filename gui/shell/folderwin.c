@@ -895,6 +895,7 @@ void on_event(void *arg, const cv *ev)
     const char *name = ev ? cv_text(ev, "event") : NULL;
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (findwin_event(ev)) return;   /* a search's results (its own IDs) */
+    if (wps_command_event(ev)) return;   /* the wps command: ask, selection, show */
     if (!strcmp(name, "say")) {   /* wpsctl say: on the desktop (a script's: shown with the setting off too) */
         const cv *st = cv_get(ev, "stay");
         if (cv_text(ev, "text")) desktop_say(cv_text(ev, "text"), st && st->k == CV_BOOL && st->b);

@@ -417,7 +417,7 @@ void win_key(ui_surface *s, const ui_key_event *e)
 
 void win_focus(ui_surface *s, bool on)
 {
-    (void)on;
+    if (on) workarea_focused(ui_surface_data(s));   /* (wps selection: the active folder window's) */
     ui_frame_damage(s);
 }
 

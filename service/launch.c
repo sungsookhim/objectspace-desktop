@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <elf.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -548,17 +549,44 @@ static const char *const terminals[][5] = {
     { "xterm", "-e", NULL },
 };
 
-/* The System object's Terminal (v0.3-design 8). */
-static char term_choice[64] = "automatic", term_cmd[1024];
+/* The System object's Terminal (v0.3-design 8; 0.4.1: WPS Terminal first,
+ * the default). */
+static char term_choice[64] = "WPS Terminal", term_cmd[1024];
 
 void wps_terminal_choose(const char *choice, const char *command)
 {
-    snprintf(term_choice, sizeof term_choice, "%s", choice && *choice ? choice : "automatic");
+    snprintf(term_choice, sizeof term_choice, "%s", choice && *choice ? choice : "WPS Terminal");
     snprintf(term_cmd, sizeof term_cmd, "%s", command ? command : "");
+}
+
+/* WPS Terminal: beside this program (a build: build/), else on the PATH
+ * (installed: wpsd in libexec, wps-terminal in bin). */
+static const char *wps_term_path(void)
+{
+    static char p[PATH_MAX];
+    char exe[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    exe[n > 0 ? n : 0] = 0;
+    char *sl = strrchr(exe, '/');
+    if (sl) {
+        *sl = 0;
+        snprintf(p, sizeof p, "%s/wps-terminal", exe);
+        if (access(p, X_OK) == 0) return p;
+    }
+    return on_path("wps-terminal") ? "wps-terminal" : NULL;
+}
+
+/* WPS Terminal for text-mode programs: chosen (the default), found, and no
+ * command of the user's (the System's, or WPS_TERMINAL) in its place. */
+static bool use_wps_terminal(void)
+{
+    const char *env = getenv("WPS_TERMINAL");
+    return !term_cmd[0] && !(env && *env) && !strcasecmp(term_choice, "WPS Terminal") && wps_term_path();
 }
 
 const char *wps_terminal_now(void)
 {
+    if (use_wps_terminal()) return wps_term_path();
     if (term_cmd[0]) return term_cmd;
     const char *env = getenv("WPS_TERMINAL");
     if (env && *env) return env;
@@ -569,10 +597,26 @@ const char *wps_terminal_now(void)
     return NULL;
 }
 
-int wps_terminal_wrap(char **argv, int argc, int max)
+int wps_terminal_wrap(char **argv, int argc, int max, const char *title, bool hold)
 {
     char *pre[16];
     int k = 0;
+    if (use_wps_terminal()) {
+        /* WPS's own: the window lives as long as the program (or, held,
+         * until Enter: its status shown), titled by the object */
+        static char tbuf[256];
+        snprintf(tbuf, sizeof tbuf, "%s", title && *title ? title : argv[0]);
+        pre[k++] = (char *)wps_term_path();
+        pre[k++] = "--title";
+        pre[k++] = tbuf;
+        if (hold) pre[k++] = "--hold";
+        pre[k++] = "--";
+        if (argc + k >= max) return 0;
+        memmove(argv + k, argv, (size_t)(argc + 1) * sizeof *argv);
+        memcpy(argv, pre, (size_t)k * sizeof *argv);
+        return argc + k;
+    }
+    if (hold) argc = wps_hold_wrap(argv, argc, max);   /* (another terminal: through sh) */
     const char *env = term_cmd[0] ? term_cmd : getenv("WPS_TERMINAL");
     static char envbuf[1024];
     if (env && *env) {
@@ -580,10 +624,12 @@ int wps_terminal_wrap(char **argv, int argc, int max)
          * program's goes after these words */
         k = wps_split_exec(env, NULL, envbuf, sizeof envbuf, pre, 16);
     } else {
-        /* the System object's choice if it is installed, else the first installed */
+        /* the System object's choice if it is installed ("system default",
+         * 0.4.0's "automatic": xdg-terminal-exec), else the first installed */
+        const char *want = !strcmp(term_choice, "system default") || !strcmp(term_choice, "automatic") ? "xdg-terminal-exec" : term_choice;
         for (int pass = 0; pass < 2 && !k; pass++)
             for (size_t t = 0; t < sizeof terminals / sizeof *terminals && !k; t++)
-                if ((pass || !strcmp(term_choice, terminals[t][0])) && on_path(terminals[t][0]))
+                if ((pass || !strcmp(want, terminals[t][0])) && on_path(terminals[t][0]))
                     for (int i = 0; terminals[t][i]; i++) pre[k++] = (char *)terminals[t][i];
     }
     if (!k || argc + k >= max) return 0;
@@ -617,7 +663,7 @@ int wps_handler_argv(const char *file, char *buf, size_t n, char **argv, int max
     if (!mime || !default_app(mime, desktop, sizeof desktop)) return 0;
     if (!ini_get(desktop, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
     int argc = wps_split_exec(exec, file, buf, n, argv, max);
-    if (argc > 0 && wps_desktop_wants_terminal(desktop)) argc = wps_terminal_wrap(argv, argc, max);
+    if (argc > 0 && wps_desktop_wants_terminal(desktop)) argc = wps_terminal_wrap(argv, argc, max, NULL, false);
     return argc;
 }
 
@@ -810,7 +856,7 @@ int wps_app_argv(const char *id, const char *file, char *buf, size_t n, char **a
     if (strchr(id, '/') || !find_desktop(id, path, sizeof path)) return 0;
     if (!ini_get(path, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
     int argc = wps_split_exec(exec, file, buf, n, argv, max);
-    if (argc > 0 && wps_desktop_wants_terminal(path)) argc = wps_terminal_wrap(argv, argc, max);
+    if (argc > 0 && wps_desktop_wants_terminal(path)) argc = wps_terminal_wrap(argv, argc, max, NULL, false);
     return argc;
 }
 

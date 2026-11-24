@@ -33,6 +33,7 @@ void svc_open(const char *target, bool confirm, svc_fn fn, void *arg);
 /* Open With: with the program `app` ("x.desktop"), or the one at
  * `app_index` in its Open cascade (-1: none); `always`: the type's
  * default from now on. */
+void svc_open_prompt(const char *folder, svc_fn fn, void *arg);   /* Command prompt here */
 void svc_open_with(const char *target, const char *app, int app_index, bool always, svc_fn fn, void *arg);
 /* Every installed application: [{id, name, icon}], by name. */
 void svc_apps(svc_fn fn, void *arg);
@@ -63,6 +64,7 @@ void svc_find(const char *folder, const char *name, bool subfolders, const char 
 void svc_find_cancel(int64_t find);
 void svc_layout(const char *folder, svc_fn fn, void *arg);
 void svc_arrange(const char *folder, svc_fn fn, void *arg);
+void svc_answer(int64_t ask, const char *value, const char *const *paths, size_t n);
 void svc_work_area(const char *folder, const char *act, const char *const *folders, size_t nfolders, svc_fn fn, void *arg);
 void svc_place(const char *folder, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg);
 /* One icon's position, locked or unlocked there (Lock position). */

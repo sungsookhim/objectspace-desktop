@@ -93,6 +93,7 @@ void menu_chosen(void *arg, int64_t id)
             sort_icons(f, (int)(id - WPS_MI_SORT_NAME));
             break;
         case WPS_MI_FIND: findwin_open(f->path, NULL); break;
+        case WPS_MI_PROMPT_HERE: svc_open_prompt(t, opened, as_arg(f)); break;   /* (a shadow's: its original's folder) */
         case WPS_MI_CLOSE: win_close(f->win); break;
         case WPS_MI_OPEN_PARENT: {
             char parent[PATH_MAX];

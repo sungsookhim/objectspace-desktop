@@ -51,7 +51,7 @@ CLASSES := $(wildcard classes/*.c) service/attrs.c $(patsubst classes/%.wpi,$(GE
 # 1.0 (older, must load), 1.2 (newer, refused) and 2.0 (other major, refused).
 TV      := $(B)/tests
 
-all: $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor $(TV)/test_launch $(TV)/test_magic $(TV)/test_ui_damage plugins
+all: $(B)/wpsd $(B)/wpsctl $(B)/wps $(B)/wps-watchd $(B)/wps-plughost $(TV)/test_runtime $(TV)/test_loop $(TV)/test_attrs $(TV)/test_db $(TV)/test_cbor $(TV)/test_launch $(TV)/test_magic $(TV)/test_ui_damage plugins
 
 $(GEN)/.stamp: $(WPI) tools/wpoc.py
 	$(PYTHON) tools/wpoc.py -I classes -o $(GEN) $(WPI)
@@ -112,6 +112,11 @@ $(B)/wps-watchd: service/watchd.c service/cbor.c service/cbor.h
 	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/watchd.c service/cbor.c $(LDFLAGS)
 
 # (with the icon packages' code: `wpsctl icon` works on files, roadmap 0.4)
+# wps: WPS for scripts (docs/cli-design.md 2), plain text
+$(B)/wps: service/wps.c service/cbor.c service/cbor.h
+	@mkdir -p $(B)
+	$(CC) $(CFLAGS) $(SAN) -Iservice -o $@ service/wps.c service/cbor.c $(LDFLAGS) -lsystemd
+
 $(B)/wpsctl: service/wpsctl.c service/cbor.c service/cbor.h gui/shell/wpsicon.c gui/shell/wpsicon.h
 	@mkdir -p $(B)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Igui/shell $$(pkg-config --cflags cairo zlib librsvg-2.0) -o $@ service/wpsctl.c service/cbor.c gui/shell/wpsicon.c $(LDFLAGS) $$(pkg-config --libs cairo zlib librsvg-2.0)
@@ -287,9 +292,9 @@ $(B)/wps-shell-asan: $(UIDEPS)
 	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS) $(SHLIBS)
 
 # WPS Terminal (docs/cli-design.md): the toolkit and libvterm.
-TERMSRC := gui/terminal/wps-terminal.c gui/terminal/term_core.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
+TERMSRC := gui/terminal/wps-terminal.c gui/terminal/term_core.c gui/terminal/term_setup.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 TERMLIBS = $(shell pkg-config --libs vterm) -lutil
-$(B)/wps-terminal: $(UIDEPS) $(TERMSRC) gui/terminal/term_core.h
+$(B)/wps-terminal: $(UIDEPS) $(TERMSRC) gui/terminal/term_core.h gui/terminal/term_setup.h
 	$(CC) $(G0FLAGS) $(UIFLAGS) -Igui/terminal -o $@ $(UISRC) $(TERMSRC) $(LDFLAGS) $(UILIBS) $(TERMLIBS)
 
 $(B)/wps-terminal-asan: $(UIDEPS) $(TERMSRC) gui/terminal/term_core.h
@@ -377,7 +382,7 @@ gui-test: gui
 	$(TV)/test_wpsicon
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal tray work-area
+COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area wps-command
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \
@@ -396,19 +401,21 @@ visual-check: session gui compositor
 # make install DESTDIR=... PREFIX=/usr: the programs, the user service,
 # the session on the login screen, the lock screen's PAM file and the
 # GNOME Shell extension (which then starts wps-shell from the PATH).
-INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-shell $(B)/wps-terminal $(B)/wps-compositor
+INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-shell $(B)/wps-terminal $(B)/wps-compositor
 EXT := gnome-extension/wps@wps-linux
 EXTDIR = $(DATADIR)/gnome-shell/extensions/wps@wps-linux
 subst = sed -e 's|@BINDIR@|$(BINDIR)|g' -e 's|@LIBEXECDIR@|$(LIBEXECDIR)|g'
 install: $(INSTALLED) icons install-sdk
 	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins
-	install -m 755 $(B)/wpsctl $(B)/wps-shell $(B)/wps-terminal $(DESTDIR)$(BINDIR)/
+	install -m 755 $(B)/wps $(B)/wpsctl $(B)/wps-shell $(B)/wps-terminal $(DESTDIR)$(BINDIR)/
 	install -m 755 $(B)/wpsd $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-compositor $(DESTDIR)$(LIBEXECDIR)/
 	$(subst) tools/wps-session > $(DESTDIR)$(BINDIR)/wps-session && chmod 755 $(DESTDIR)$(BINDIR)/wps-session
 	install -d $(DESTDIR)$(USERUNITDIR) $(DESTDIR)$(SYSTEMUNITDIR) $(DESTDIR)$(DATADIR)/wayland-sessions $(DESTDIR)$(SYSCONFDIR)/pam.d
 	$(subst) data/wpsd.service.in > $(DESTDIR)$(USERUNITDIR)/wpsd.service
 	$(subst) service/wps-watchd.service > $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	$(subst) data/wps.desktop.in > $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop
+	install -d $(DESTDIR)$(DATADIR)/applications
+	$(subst) data/org.wps.Terminal.desktop.in > $(DESTDIR)$(DATADIR)/applications/org.wps.Terminal.desktop
 	install -m 644 data/wps-lock.pam $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
 	install -d $(DESTDIR)$(DATADIR)/wps/icons
 	install -m 644 data/icons/*.png $(DESTDIR)$(DATADIR)/wps/icons/
@@ -440,10 +447,10 @@ install-check: $(INSTALLED)
 	tests/install/check.sh
 
 uninstall:
-	rm -f $(addprefix $(DESTDIR)$(BINDIR)/,wpsctl wps-shell wps-terminal wps-session)
+	rm -f $(addprefix $(DESTDIR)$(BINDIR)/,wps wpsctl wps-shell wps-terminal wps-session)
 	rm -f $(addprefix $(DESTDIR)$(LIBEXECDIR)/,wpsd wps-watchd wps-plughost wps-compositor)
 	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
-	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock
+	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock $(DESTDIR)$(DATADIR)/applications/org.wps.Terminal.desktop
 	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons $(DESTDIR)$(DATADIR)/wps/icon-themes
 	rm -rf $(DESTDIR)$(DATADIR)/wps/sdk $(DESTDIR)$(INCLUDEDIR)/wps
 	rm -f $(addprefix $(DESTDIR)$(MANDIR)/man1/,wpsctl.1 wps-shell.1 wps-session.1)

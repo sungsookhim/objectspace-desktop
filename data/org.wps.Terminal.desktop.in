@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Command Prompt
+GenericName=Terminal
+Comment=A command line in a WPS window (WPS Terminal)
+Exec=@BINDIR@/wps-terminal
+TryExec=@BINDIR@/wps-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;terminal;console;
+StartupWMClass=org.wps.Terminal

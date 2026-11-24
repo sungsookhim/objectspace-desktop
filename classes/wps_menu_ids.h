@@ -44,6 +44,8 @@
 #define WPS_MI_SHUTDOWN       71
 /* Added by the GUI to an icon's menu in icon view (v0.3-design 5). */
 #define WPS_MI_LOCK_POS       72
+/* A folder's (0.4.1): the System's terminal with the user's shell, there. */
+#define WPS_MI_PROMPT_HERE    73
 /* A data file's Open cascade (v0.3-design 7), from wpsd: its type's
  * programs (opened with "app_index" = id - WPS_MI_OPEN_APP), then Other
  * program... (a picker). */

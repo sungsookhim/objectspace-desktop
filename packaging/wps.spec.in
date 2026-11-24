@@ -127,6 +127,7 @@ echo "enable wpsd.service" > %{buildroot}%{_userpresetdir}/80-wps.preset
 %files
 %license LICENSE
 %doc README.md docs/roadmap.md
+%{_bindir}/wps
 %{_bindir}/wpsctl
 %{_bindir}/wps-shell
 %{_bindir}/wps-terminal
@@ -142,6 +143,7 @@ echo "enable wpsd.service" > %{buildroot}%{_userpresetdir}/80-wps.preset
 %{_userpresetdir}/80-wps.preset
 %{_unitdir}/wps-watchd.service
 %{_datadir}/wayland-sessions/wps.desktop
+%{_datadir}/applications/org.wps.Terminal.desktop
 %{_datadir}/wps
 %exclude %{_datadir}/wps/sdk
 %config(noreplace) %{_sysconfdir}/pam.d/wps-lock
