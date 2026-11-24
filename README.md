@@ -88,6 +88,7 @@ make visual-baseline && make visual-check   # screenshots in each scheme, compar
 | [docs/cli-design.md](docs/cli-design.md) | Objectspace Terminal and the `osd` command |
 | [docs/roadmap.md](docs/roadmap.md) | What is open, deferred or not yet designed, and the order proposed for it |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps |
+| [docs/release-notes-0.5.md](docs/release-notes-0.5.md) | What 0.5 brings, and what is called what for those coming from WPS 0.4.1 |
 | [docs/HISTORY.md](docs/HISTORY.md) | The project's history, its old name, and the old names next to today's |
 | `docs/v0.*-design.md`, `docs/v0.*-plan.md`, `docs/release-notes-*.md` | Each version's design, plan and release notes |
 | [sdk/README.md](sdk/README.md) | Writing plug-ins |
