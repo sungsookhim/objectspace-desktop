@@ -5,6 +5,7 @@ services on the loopback test bed (proto/m0/testbed.sh), as the current
 user or as test users 60001/60002 through setpriv."""
 import json
 import os
+import pwd
 import shutil
 import subprocess
 import sys
@@ -13,7 +14,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = Path(os.environ.get("WORK", f"/var/tmp/osd-m0-{os.environ.get('USER', os.getlogin())}"))
+WORK = Path(os.environ.get("WORK", f"/var/tmp/osd-m0-{os.environ.get('USER') or pwd.getpwuid(os.getuid()).pw_name}"))
 MNT = {fs: WORK / "mnt" / fs for fs in ("ext4", "btrfs", "fat")}
 BIN = WORK / "bin"
 OUT = ROOT / "build" / os.environ.get("OSD_SUITE", "m2")
