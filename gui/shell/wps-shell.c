@@ -82,9 +82,12 @@ int main(int argc, char **argv)
     filepick_init(app);
     apppick_init(app);
     fontpal_init(app, font_apply);
+    colorpal_init(app, color_apply);
     tooltip_init(app);
     launchpad_set_props(lp_props);
     warpcenter_on_font(font_dropped_wc);
+    warpcenter_on_color(color_dropped_bar);
+    launchpad_on_color(color_dropped_bar);
     if (!app) return 1;
     char err[512];
     /* The service may be starting at the same moment (a session starts

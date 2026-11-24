@@ -108,6 +108,26 @@ void font_apply(const char *what, const char *spec)
 
 void font_dropped_wc(const char *spec) { font_apply("warpcenter", spec); }
 
+/* The schemes' objects (their titles and addresses, from the setup reply):
+ * a colour dropped on a title bar or a bar goes to the one in use. */
+#define MAX_SCHEMES 32
+static char scheme_titles[MAX_SCHEMES][64], scheme_addrs[MAX_SCHEMES][64];
+static size_t nschemes;
+
+void color_apply(const char *what, const char *hex)
+{
+    if (!strcmp(what, "samples")) { setup_set("WPColorPalette", "colors", hex); return; }
+    for (size_t i = 0; i < nschemes; i++)
+        if (!strcasecmp(scheme_titles[i], ui_scheme_now.name)) {
+            cv v = { .k = CV_TEXT, .s = (char *)hex, .len = strlen(hex) };
+            svc_settings_set(scheme_addrs[i], what, &v, -1, ignore_reply, NULL);   /* (every window, when it comes back) */
+            return;
+        }
+    fprintf(stderr, "wps-shell: no scheme object for %s: %s not kept\n", ui_scheme_now.name, what);
+}
+
+void color_dropped_bar(const char *hex) { color_apply("bar", hex); }
+
 static void got_setup_sub(void *arg, const cv *reply)
 {
     (void)arg;
@@ -140,6 +160,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
         }
         else if (!strcmp(cls, "WPMessages")) messages_setting(key, val);
         else if (!strcmp(cls, "WPFontPalette") && !strcmp(key, "fonts")) fontpal_set_samples(val);
+        else if (!strcmp(cls, "WPColorPalette") && !strcmp(key, "colors")) colorpal_set_samples(val);
         else if (!strcmp(cls, "WPSystem")) {
             if (ui_scheme_set_option(key, val)) {   /* corners, buttons, border, shadows, translucency, title layout */
                 char kv[160];   /* the compositor's frames too (WPS session) */
@@ -258,6 +279,7 @@ bool open_view(const char *v)
     else if (!strcmp(v, "minimized-windows")) winlist_open(true);   /* the Minimized Window Viewer */
     else if (!strcmp(v, "launchpad")) show_launchpad();
     else if (!strcmp(v, "fontpalette")) fontpal_open();
+    else if (!strcmp(v, "colorpalette")) colorpal_open();
     else if (!strcmp(v, "warpcenter")) show_warpcenter();
     else if (!strcmp(v, "restore-defaults")) restore_defaults_ask();
     else return false;
@@ -294,9 +316,15 @@ void got_setup(void *arg, const cv *reply)
     /* the schemes (object-properties-design.md 2.3): each defined from its
      * object's values, here and in the compositor (WPS session) */
     const cv *sch = cv_get(res, "schemes");
+    if (sch && sch->k == CV_ARRAY) nschemes = 0;
     for (size_t i = 0; sch && sch->k == CV_ARRAY && i < sch->n; i++) {
         const char *t = cv_text(&sch->items[i], "title"), *v = cv_text(&sch->items[i], "values");
+        const char *ad = cv_text(&sch->items[i], "address");
         if (!t || !*t || !v) continue;
+        if (ad && nschemes < MAX_SCHEMES) {
+            snprintf(scheme_titles[nschemes], sizeof scheme_titles[0], "%s", t);
+            snprintf(scheme_addrs[nschemes++], sizeof scheme_addrs[0], "%s", ad);
+        }
         ui_scheme_define(t, "classic", v);
         size_t l = strlen(t) + strlen(v) + 2;
         char *def = malloc(l);

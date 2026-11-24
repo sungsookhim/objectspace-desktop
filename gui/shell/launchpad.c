@@ -442,7 +442,7 @@ static void drawer_got(void *arg, const cv *reply)
     ui_surface_damage_all(d->s);
 }
 
-static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+static void drawer_draw_in(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     (void)clip;
     struct drawer *d = ui_surface_data(s);
@@ -478,6 +478,18 @@ static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_text_draw(cr, UI_FONT_REGULAR, r.x + 32, r.y + (DRAWER_ROW + ui_text_ascent()) / 2 - 1, d->items[i].title,
                      r.w - 36);
     }
+}
+
+/* In the scheme's bar colours (0.4 step 7): its face and text for the
+ * window's while it is drawn. */
+static void drawer_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+{
+    ui_color face = ui_scheme_now.face, text = ui_scheme_now.text;
+    ui_scheme_now.face = ui_scheme_now.bar;
+    ui_scheme_now.text = ui_scheme_now.bar_text;
+    drawer_draw_in(s, cr, clip);
+    ui_scheme_now.face = face;
+    ui_scheme_now.text = text;
 }
 
 static void drawer_pointer(ui_surface *s, const ui_pointer_event *e)
@@ -684,7 +696,7 @@ static void focus_ring(cairo_t *cr, ui_rect r)
     cairo_restore(cr);
 }
 
-static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+static void lp_draw_in(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     (void)s; (void)clip;
     const ui_scheme *k = &ui_scheme_now;
@@ -760,6 +772,18 @@ static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             cairo_restore(cr);
         }
     }
+}
+
+/* In the scheme's bar colours (0.4 step 7): its face and text for the
+ * window's while it is drawn. */
+static void lp_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+{
+    ui_color face = ui_scheme_now.face, text = ui_scheme_now.text;
+    ui_scheme_now.face = ui_scheme_now.bar;
+    ui_scheme_now.text = ui_scheme_now.bar_text;
+    lp_draw_in(s, cr, clip);
+    ui_scheme_now.face = face;
+    ui_scheme_now.text = text;
 }
 
 static void bar_menu_chosen(void *arg, int64_t id)
@@ -999,11 +1023,15 @@ static void opened_with(void *arg, const cv *reply)
         fprintf(stderr, "wps-shell: LaunchPad: cannot start it: %s\n", reply ? cv_text(reply, "message") : "no wpsd");
 }
 
+static void (*on_color)(const char *hex);
+void launchpad_on_color(void (*fn)(const char *hex)) { on_color = fn; }
+
 static uint32_t lp_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
                                uint32_t src_actions, unsigned mods, const char **mime)
 {
     (void)mods;
     *mime = NULL;
+    for (size_t i = 0; i < n; i++) if (!strcmp(mimes[i], UI_MIME_COLOR) && on_color) { *mime = mimes[i]; return UI_DND_COPY; }
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_WPS)) *mime = MIME_WPS;
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_URIS)) *mime = MIME_URIS;
     if (!*mime) return 0;
@@ -1028,7 +1056,15 @@ static void lp_drag_leave(ui_surface *s)
 static uint32_t lp_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
                         uint32_t action, uint32_t start_action, unsigned mods)
 {
-    (void)mime; (void)action; (void)start_action; (void)mods;
+    (void)action; (void)start_action; (void)mods;
+    if (!strcmp(mime, UI_MIME_COLOR)) {   /* a colour from the Colour Palette: the scheme's bars' */
+        char hex[8];
+        double rgb[3];
+        snprintf(hex, sizeof hex, "%.*s", (int)strcspn(data, "\r\n"), data);
+        if (hex[0] != '#' || !ui_parse_color(hex, rgb) || !on_color) return 0;
+        on_color(hex);
+        return UI_DND_COPY;
+    }
     bool arrow;
     ssize_t h = hit(x, y, &arrow);
     lp.drop_at = -1;

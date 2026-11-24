@@ -139,6 +139,17 @@ static void selftest_cells(struct folder *f, const char *when)
     fprintf(stderr, "selftest: layout: %s: %zu overlaps; tallest of row 1 %.0f, row 2 at %.0f\n", when, over, tall, row2 - top1);
 }
 
+/* (the colors self-test) every folder's background, after a Shift drop */
+static void colors_class_read(void *arg, const cv *reply)
+{
+    (void)arg;
+    const cv *res = reply ? cv_get(reply, "result") : NULL;
+    for (size_t i = 0; res && res->k == CV_ARRAY && i < res->n; i++) {
+        const char *k = cv_text(&res->items[i], "name"), *v = cv_text(&res->items[i], "value");
+        if (k && v && !strcmp(k, "bg_color")) fprintf(stderr, "selftest: colors: with Shift: every folder's %s\n", v);
+    }
+}
+
 static void selftest_lock_page(void *arg, const cv *reply)
 {
     (void)arg;
@@ -288,6 +299,90 @@ void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 4 && t > 1500) {
             fprintf(stderr, "selftest: fonts: read back: %s\n", f->icon_font);
+            ui_app_quit(app);
+            step++;
+        }
+        return;
+    }
+    if (st && !strcmp(st, "colors")) {
+        /* The Colour Palette (0.4 step 7): a colour dropped on this
+         * folder (its background), with Ctrl (its icons' titles), with
+         * Shift (every folder's), on its title bar (the scheme's active
+         * title bar); on its notebook's colour field; Edit colour...
+         * <D> has a.txt. */
+        static double t0;
+        static int step;
+        static ui_notebook *nb;
+        if (!t0) { if (!f->m.complete || !setup_addr("WPColorPalette")[0]) return; t0 = now; }
+        double t = now - t0;
+        const char *shot = getenv("WPS_SHELL_SHOT");
+        if (step == 0) {
+            colorpal_open();
+            fprintf(stderr, "selftest: colors: palette open %d, %zu samples, first %s\n", colorpal_is_open(), colorpal_count(),
+                    colorpal_sample(0));
+            fprintf(stderr, "selftest: colors: on the background: %u\n", ui_surface_test_drop(s, 300, 300, UI_MIME_COLOR, "#336699", 0));
+            fprintf(stderr, "selftest: colors: with Ctrl: %u\n", ui_surface_test_drop(s, 300, 300, UI_MIME_COLOR, "#ffff00", UI_MOD_CTRL));
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 1500) {
+            if (shot) {
+                char p[PATH_MAX];
+                snprintf(p, sizeof p, "%s-palette.png", shot);
+                colorpal_snapshot(p);
+                snprintf(p, sizeof p, "%s-folder.png", shot);
+                ui_surface_snapshot(s, p);
+            }
+            fprintf(stderr, "selftest: colors: its background %s, its titles %s\n", f->bg_color, f->title_color);
+            ui_surface_test_drop(s, 300, 300, UI_MIME_COLOR, "#800000", UI_MOD_SHIFT);   /* every folder's */
+            fprintf(stderr, "selftest: colors: on its title bar: %u\n", ui_surface_test_drop(s, 200, 12, UI_MIME_COLOR, "#008000", 0));
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            const ui_color c = ui_scheme_now.title_active;
+            fprintf(stderr, "selftest: colors: its own still %s; the scheme's active title bar #%02x%02x%02x\n", f->bg_color,
+                    (int)lround(c.r * 255), (int)lround(c.g * 255), (int)lround(c.b * 255));
+            open_properties(f->path);
+            svc_props("class:WPFolder", colors_class_read, NULL);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1500) {
+            nb = props_open && !strcmp(props_open->target, f->path) ? props_open->nb : NULL;
+            double x = 0, y = 0;
+            bool spot = nb && ui_notebook_field_spot(nb, "bg_color", &x, &y);
+            fprintf(stderr, "selftest: colors: its notebook: the colour field %d\n", spot);
+            if (spot) fprintf(stderr, "selftest: colors: dropped on the field: %u\n",
+                              ui_surface_test_drop(ui_notebook_surface(nb), x, y, UI_MIME_COLOR, "#c0ffc0", 0));
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 1500) {
+            if (shot && nb) {
+                char p[PATH_MAX];
+                snprintf(p, sizeof p, "%s-background.png", shot);
+                ui_surface_snapshot(ui_notebook_surface(nb), p);
+            }
+            fprintf(stderr, "selftest: colors: its background now %s\n", f->bg_color);
+            colorpal_edit(0);
+            fprintf(stderr, "selftest: colors: Edit colour: open %d, shows %s\n", colorpal_edit_is_open(), colorpal_edit_hex());
+            step++;
+            t0 = now;
+        } else if (step == 5 && t > 1000) {
+            colorpal_edit_pick(0.5, 0);   /* the hue across the middle (cyan), full saturation */
+            colorpal_edit_bright(1);
+            fprintf(stderr, "selftest: colors: picked: %s\n", colorpal_edit_hex());
+            step++;
+            t0 = now;
+        } else if (step == 6 && t > 1000) {
+            if (shot) {
+                char p[PATH_MAX];
+                snprintf(p, sizeof p, "%s-edit.png", shot);
+                colorpal_edit_snapshot(p);
+            }
+            colorpal_edit_type("#123456");
+            colorpal_edit_ok();
+            step++;
+            t0 = now;
+        } else if (step == 7 && t > 1500) {
+            fprintf(stderr, "selftest: colors: the first sample now %s\n", colorpal_sample(0));
             ui_app_quit(app);
             step++;
         }
@@ -650,8 +745,8 @@ void win_frame(ui_surface *s, double now)
         if (step == 0) {
             static const char *const kind[] = { "image" };
             static ui_field_desc fd[2];
-            fd[0] = (ui_field_desc){ "picture", "Image", UI_FIELD_FILE, { .text = "" }, kind, 1, false, NULL };
-            fd[1] = (ui_field_desc){ "colour", "Colour", UI_FIELD_COLOR, { .text = "#336699" }, NULL, 0, false, NULL };
+            fd[0] = (ui_field_desc){ "picture", "Image", UI_FIELD_FILE, { .text = "" }, kind, 1, false, NULL, NULL };
+            fd[1] = (ui_field_desc){ "colour", "Colour", UI_FIELD_COLOR, { .text = "#336699" }, NULL, 0, false, NULL, NULL };
             static ui_page_desc pd[1];
             pd[0] = (ui_page_desc){ "Background", fd, 2 };
             selftest_nb = ui_notebook_open(app, "Fields", pd, 1, selftest_field_set, NULL, NULL);

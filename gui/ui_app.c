@@ -1005,6 +1005,16 @@ size_t ui_surface_verify(ui_surface *s, const char *png_prefix)
     return diff;
 }
 
+uint32_t ui_surface_test_drop(ui_surface *s, double x, double y, const char *mime, const char *data, unsigned mods)
+{
+    if (!s || !s->ops || !s->ops->drop) return 0;
+    if (s->ops->drag_motion) {
+        const char *mimes[1] = { mime }, *chosen = NULL;
+        if (!s->ops->drag_motion(s, x, y, mimes, 1, UI_DND_COPY, mods, &chosen) || !chosen) return 0;
+    }
+    return s->ops->drop(s, x, y, mime, data, strlen(data), UI_DND_COPY, 0, mods);
+}
+
 bool ui_surface_snapshot(ui_surface *s, const char *png)
 {
     struct ui_buffer *b = NULL;

@@ -47,6 +47,10 @@ typedef struct {
     ui_color desktop_title, desktop_shadow_title;   /* icon titles on a picture */
     ui_color tooltip_bg, tooltip_text;
     ui_color urgent_bg, urgent_text;   /* urgent notifications and messages */
+    /* (0.4 step 7) the WarpCenter and the LaunchPad: their face and text
+     * (not given: the window face's and text's), the meters' colours */
+    ui_color bar, bar_text;
+    ui_color meter_cpu, meter_memory, meter_disk, meter_network;
     double font_px;
     double border, title_h, button_w, button_h;
     double corner_radius;      /* 0: square (the default) */
@@ -299,6 +303,8 @@ size_t ui_surface_verify(ui_surface *s, const char *png_prefix);
 /* Save the buffer last given to the compositor (with any shadow margin
  * and transparency) as a PNG (self-tests). False if there is none yet. */
 bool ui_surface_snapshot(ui_surface *s, const char *png);
+/* Self-tests: a drop on it, as from a drag (its drag_motion, then drop). */
+uint32_t ui_surface_test_drop(ui_surface *s, double x, double y, const char *mime, const char *data, unsigned mods);
 
 /* Per-frame statistics (for benchmarks). */
 typedef struct { double draw_ms, move_ms, interval_ms, drawn_fraction; bool full; } ui_frame_stat;
@@ -443,7 +449,12 @@ const char *ui_clipboard_text(void);
  * what it takes ("image", "audio"): ui_notebook_field_hint. A sound's
  * ("audio") has Play too: `set` gets value.checked true and its text, to
  * play it, not to store it. */
-/* UI_FIELD_COLOR: value.text "#rrggbb", shown as a swatch beside it. */
+/* UI_FIELD_COLOR: value.text "#rrggbb", shown as a swatch beside it; a
+ * colour dragged from the Colour Palette (UI_MIME_COLOR) dropped on it
+ * sets it. Empty, `preview` ("#rrggbb") is the colour used then: the
+ * swatch shows it, marked "default". A file field's `preview`: a PNG
+ * shown small beside its path (a picture's). */
+#define UI_MIME_COLOR "application/x-wps-color"   /* "#rrggbb" */
 typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO,
                UI_FIELD_FILE, UI_FIELD_COLOR } ui_field_kind;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */
@@ -455,6 +466,7 @@ typedef struct {
     size_t nchoices;
     bool own;                  /* the object's own value: Default removes it */
     const char *from;          /* an inherited value's source ("Folder default"), shown by the label */
+    const char *preview;       /* a colour field's default colour, a file field's picture (above) */
 } ui_field_desc;
 typedef struct { const char *title; const ui_field_desc *fields; size_t nfields; } ui_page_desc;
 typedef struct ui_notebook ui_notebook;
@@ -471,6 +483,8 @@ size_t ui_notebook_page(ui_notebook *nb);     /* the page shown */
 /* A text, file or colour field's new value, applied (Browse...'s choice). */
 bool ui_notebook_set_value(ui_notebook *nb, const char *key, const char *text);
 const char *ui_notebook_field_hint(ui_notebook *nb, const char *key);   /* a file field's choices[0], or "" */
+/* Self-tests: the field's page shown, and its middle (a drop's place). */
+bool ui_notebook_field_spot(ui_notebook *nb, const char *key, double *x, double *y);
 /* Default (object-properties-design.md 2.2): `fn` gets the keys of the
  * shown page's fields with values of their own, to remove them; Default is
  * enabled when there are any. */
@@ -606,6 +620,9 @@ void ui_container_set_icon_set(ui_container *c, const ui_icon_set *set);
 const ui_icon_set *ui_container_icon_set(ui_container *c);
 /* The items' titles in this font (a folder's, from the Font Palette). */
 void ui_container_set_font(ui_container *c, ui_font f);
+/* Its icons' titles in this colour (a folder's Title colour; NULL: the
+ * scheme's), selected ones aside. */
+void ui_container_set_title_color(ui_container *c, const ui_color *col);
 void ui_container_free(ui_container *c);
 void ui_container_layout(ui_container *c, ui_rect r);
 /* Details view: the title of the second column ("Name"), e.g. "Folder"; a

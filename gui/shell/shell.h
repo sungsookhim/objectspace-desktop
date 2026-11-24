@@ -36,6 +36,7 @@
 #include "filepick.h"
 #include "apppick.h"
 #include "fontpal.h"
+#include "colorpal.h"
 #include "tooltip.h"
 #include "session.h"
 #include "iconpick.h"
@@ -110,6 +111,7 @@ struct folder {
      * the folder object itself */
     int64_t bg_sub;
     char bg_image[PATH_MAX], bg_color[16], bg_img_path[PATH_MAX];
+    char title_color[16];    /* its icons' titles' colour ("": the scheme's) */
     int bg_mode;
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
@@ -152,7 +154,7 @@ struct bg_load { long folder; char path[PATH_MAX]; };
 
 /* Which model and generation a reply belongs to. */
 struct pctx { long id; unsigned gen; bool shadow; };
-#define NSETUP 10
+#define NSETUP 11
 #define TIMING(f, fmt, ...) do { if ((f)->desktop && getenv("WPS_DEBUG_TIMING")) \
     fprintf(stderr, "timing: %7.0f ms: " fmt "\n", since_start(), ##__VA_ARGS__); } while (0)
 
@@ -459,6 +461,11 @@ void lp_props(const char *addr);
 const char *setup_addr(const char *cls);
 void font_apply(const char *what, const char *spec);
 void font_dropped_wc(const char *spec);
+/* The Colour Palette's (colorpal.h): its samples kept; a colour for the
+ * scheme in use ("title_active", "bar": a title bar, the WarpCenter or
+ * the LaunchPad dropped on). */
+void color_apply(const char *what, const char *hex);
+void color_dropped_bar(const char *hex);
 void templates_dir(char *out, size_t n);
 bool open_view(const char *v);
 void got_setup(void *arg, const cv *reply);

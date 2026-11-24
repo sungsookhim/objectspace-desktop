@@ -136,7 +136,7 @@ const char *wps_icon_name_for_class(const char *cls)
 {
     static const char *const map[][2] = {
         { "WPSystem", "system" }, { "WPSound", "sound" }, { "WPMouse", "mouse" },
-        { "WPSchemePalette", "scheme-palette" }, { "WPScheme", "scheme-palette" }, { "WPFontPalette", "file-font" },
+        { "WPSchemePalette", "scheme-palette" }, { "WPScheme", "scheme-palette" }, { "WPFontPalette", "file-font" }, { "WPColorPalette", "scheme-palette" },
         { "WPLaunchPad", "launchpad" }, { "WPWarpCenter", "warpcenter" }, { "WPMessages", "messages" },
         { "WPMinWinViewer", "minwin-viewer" }, { "WPRestoreDesktop", "restore-desktop" },
     };

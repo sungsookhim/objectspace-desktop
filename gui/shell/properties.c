@@ -91,6 +91,8 @@ static void note_object(struct props *p, const cv *reply)
     if (ct) snprintf(p->cls_title, sizeof p->cls_title, "%s", ct);
 }
 
+static void page_previews(struct props *p, ui_page_desc *pages, size_t n);
+
 static void props_refreshed(void *arg, const cv *reply)
 {
     struct props *p = props_by_id((long)(intptr_t)arg);
@@ -99,11 +101,43 @@ static void props_refreshed(void *arg, const cv *reply)
     note_object(p, reply);
     size_t n;
     ui_page_desc *pages = pages_from(res, &n);
+    page_previews(p, pages, n);
     ui_notebook_update(p->nb, pages, n);
     pages_free(pages, n);
 }
 
 static void props_refresh(struct props *p) { svc_settings(p->target, props_refreshed, (void *)(intptr_t)p->id); }
+
+static void preview_ready(void *ctx, const char *png)
+{
+    struct props *p = props_by_id((long)(intptr_t)ctx);
+    if (p && p->nb && png) props_refresh(p);   /* (shown now: made before) */
+}
+
+/* The Background page's polish (0.4 step 7): a picture's preview beside
+ * its path (made off the UI thread if it is not a PNG); with no colour of
+ * its own, the colour used then (the scheme's desktop teal, or a folder's
+ * window background), marked "default". */
+static void page_previews(struct props *p, ui_page_desc *pages, size_t n)
+{
+    static char pics[4][PATH_MAX], dflt[4][8];
+    static int npic, ndflt;
+    bool desk = false;
+    for (struct folder *f = folders; f && !desk; f = f->next) desk = f->desktop && !strcmp(f->path, p->target);
+    for (size_t i = 0; i < n; i++)
+        for (size_t k = 0; k < pages[i].nfields; k++) {
+            ui_field_desc *d = (ui_field_desc *)&pages[i].fields[k];
+            if (d->kind == UI_FIELD_FILE && d->nchoices && !strcmp(d->choices[0], "image") && d->value.text && *d->value.text) {
+                char *out = pics[npic++ % 4];
+                if (icons_preview(d->value.text, 96, out, PATH_MAX, preview_ready, (void *)(intptr_t)p->id)) d->preview = out;
+            } else if (d->kind == UI_FIELD_COLOR && !strcmp(d->key, "bg_color")) {
+                ui_color c = desk ? ui_scheme_now.desktop : ui_scheme_now.client_bg;
+                char *out = dflt[ndflt++ % 4];
+                snprintf(out, 8, "#%02x%02x%02x", (int)lround(c.r * 255), (int)lround(c.g * 255), (int)lround(c.b * 255));
+                d->preview = out;
+            }
+        }
+}
 
 static void props_applied(void *arg, const cv *reply)
 {
@@ -276,6 +310,7 @@ static void got_settings(void *arg, const cv *reply)
     snprintf(p->title, sizeof p->title, "%s - Properties", t && *t ? t : p->target);
     size_t n;
     ui_page_desc *pages = pages_from(res, &n);
+    page_previews(p, pages, n);
     p->nb = ui_notebook_open(app, p->title, pages, n, props_set, props_closed, p);
     ui_notebook_on_default(p->nb, props_default);
     if (strncmp(p->target, "class:", 6) && strncmp(p->target, "type:", 5) && p->cls[0])

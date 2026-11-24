@@ -39,6 +39,8 @@ struct ui_container {
     bool bg_picture;             /* a picture behind: titles as on the desktop */
     bool whole_titles;           /* every title whole, cells as tall as they need */
     ui_font font;                /* the items' titles (the interface font unless set) */
+    bool has_title_color;        /* its titles' own colour (a folder's Title colour) */
+    ui_color title_color;
     bool own_set;                /* its own icon set, else the System's */
     ui_icon_set set;
     ui_surface *s;
@@ -896,7 +898,7 @@ static void draw_tree_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     double tx = ix + is + 4, tw = ui_text_width(c->font, t), maxw = r.x + r.w - tx - 4;
     if (tw > maxw) tw = maxw;
     if (sel) ui_fill(cr, (ui_rect){ tx - 2, r.y + 1, tw + 4, ROW_H - 2 }, k->selection);
-    ui_set_color(cr, sel ? k->selection_text : k->text);
+    ui_set_color(cr, sel ? k->selection_text : c->has_title_color ? c->title_color : k->text);
     ui_text_draw(cr, c->font, tx, r.y + (ROW_H + ui_font_ascent(c->font)) / 2 - 1, t, maxw);
     if (c->focused && c->has_cursor && c->cursor == i) {
         ui_set_color(cr, sel ? k->selection_text : k->cursor);
@@ -1039,9 +1041,9 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
             /* on a picture: light text with a dark shadow reads on anything */
             cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
             ui_text_draw(cr, c->font, tx + 1, by + 1, lines[l], maxw);
-            ui_set_color(cr, it->shadow ? k->desktop_shadow_title : k->desktop_title);
+            ui_set_color(cr, it->shadow ? k->desktop_shadow_title : c->has_title_color ? c->title_color : k->desktop_title);
         } else {
-            ui_set_color(cr, sel ? k->selection_text : it->shadow ? k->shadow_text : k->text);
+            ui_set_color(cr, sel ? k->selection_text : it->shadow ? k->shadow_text : c->has_title_color ? c->title_color : k->text);
         }
         ui_text_draw(cr, c->font, tx, by, lines[l], maxw);
     }
@@ -1155,6 +1157,15 @@ void ui_container_set_font(ui_container *c, ui_font f)
 {
     if (c->font == f) return;
     c->font = f;
+    damage_list(c);
+}
+
+void ui_container_set_title_color(ui_container *c, const ui_color *col)
+{
+    bool on = col != NULL;
+    if (on == c->has_title_color && (!on || !memcmp(col, &c->title_color, sizeof *col))) return;
+    c->has_title_color = on;
+    if (on) c->title_color = *col;
     damage_list(c);
 }
 

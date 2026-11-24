@@ -54,6 +54,7 @@ void launchpad_glyph(cairo_t *cr, int i, ui_rect r);
 void launchpad_setting(const char *key, const char *val);
 /* Properties on an object button's menu: the shell opens its notebook. */
 void launchpad_set_props(void (*fn)(const char *addr));
+void launchpad_on_color(void (*fn)(const char *hex));   /* a colour dropped on it */
 
 /* Self-tests. */
 bool launchpad_vertical(void);

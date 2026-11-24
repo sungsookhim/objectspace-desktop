@@ -229,7 +229,7 @@ static void centred_text(cairo_t *cr, ui_rect r, const char *t, double d)
     ui_text_draw(cr, wc_font, r.x + (r.w - tw) / 2 + d, r.y + (r.h + ui_font_ascent(wc_font)) / 2 - 1 + d, t, r.w);
 }
 
-static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+static void wc_draw_in(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     (void)s; (void)clip;
     const ui_scheme *k = &ui_scheme_now;
@@ -301,19 +301,31 @@ static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             }
         } else if (p == P_METERS) {
             ui_bevel(cr, r, false);
-            static const double col[NMETERS][3] = { { 0.2, 0.7, 0.3 }, { 0.25, 0.45, 0.85 }, { 0.85, 0.55, 0.15 }, { 0.6, 0.35, 0.8 } };
+            const ui_color col[NMETERS] = { k->meter_cpu, k->meter_memory, k->meter_disk, k->meter_network };   /* (the scheme's) */
             for (int m = 0; m < NMETERS; m++) {
                 ui_rect b = { r.x + 4 + m * (METER_W + 3), r.y + 4, METER_W, r.h - 8 };
                 ui_fill(cr, b, k->client_bg);
                 ui_bevel(cr, b, false);
                 double v = fmin(1, fmax(0, wc.meter[m]));
                 double hh = (b.h - 2) * v;
-                cairo_set_source_rgb(cr, col[m][0], col[m][1], col[m][2]);
+                ui_set_color(cr, col[m]);
                 cairo_rectangle(cr, b.x + 1, b.y + b.h - 1 - hh, b.w - 2, hh);
                 cairo_fill(cr);
             }
         }
     }
+}
+
+/* In the scheme's bar colours (0.4 step 7): its face and text for the
+ * window's while it is drawn. */
+static void wc_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
+{
+    ui_color face = ui_scheme_now.face, text = ui_scheme_now.text;
+    ui_scheme_now.face = ui_scheme_now.bar;
+    ui_scheme_now.text = ui_scheme_now.bar_text;
+    wc_draw_in(s, cr, clip);
+    ui_scheme_now.face = face;
+    ui_scheme_now.text = text;
 }
 
 static void damage(void) { if (wc.s) ui_surface_damage_all(wc.s); }
@@ -774,11 +786,15 @@ static void wc_close(ui_surface *s) { (void)s; }   /* (it stays) */
 static void (*on_font)(const char *spec);
 void warpcenter_on_font(void (*fn)(const char *spec)) { on_font = fn; }
 
+static void (*on_color)(const char *hex);
+void warpcenter_on_color(void (*fn)(const char *hex)) { on_color = fn; }
+
 static uint32_t wc_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
                                unsigned mods, const char **mime)
 {
     (void)s; (void)x; (void)y; (void)src_actions; (void)mods;
-    for (size_t i = 0; i < n; i++) if (!strcmp(mimes[i], "application/x-wps-font")) { *mime = mimes[i]; return UI_DND_COPY; }
+    for (size_t i = 0; i < n; i++)
+        if (!strcmp(mimes[i], "application/x-wps-font") || !strcmp(mimes[i], UI_MIME_COLOR)) { *mime = mimes[i]; return UI_DND_COPY; }
     return 0;
 }
 
@@ -786,6 +802,14 @@ static uint32_t wc_drop(ui_surface *s, double x, double y, const char *mime, con
                         uint32_t start_action, unsigned mods)
 {
     (void)s; (void)x; (void)y; (void)len; (void)action; (void)start_action; (void)mods;
+    if (!strcmp(mime, UI_MIME_COLOR) && on_color) {   /* a colour from the Colour Palette: the scheme's bars' */
+        char hex[8];
+        double rgb[3];
+        snprintf(hex, sizeof hex, "%.*s", (int)strcspn(data, "\r\n"), data);
+        if (hex[0] != '#' || !ui_parse_color(hex, rgb)) return 0;
+        on_color(hex);
+        return UI_DND_COPY;
+    }
     if (strcmp(mime, "application/x-wps-font") || !on_font) return 0;
     char spec[128];
     snprintf(spec, sizeof spec, "%.*s", (int)strcspn(data, "\r\n"), data);

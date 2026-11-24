@@ -234,6 +234,8 @@ uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *const *m
     *mime = NULL;
     for (size_t i = 0; i < n; i++)
         if (!strcmp(mimes[i], MIME_FONT)) { *mime = MIME_FONT; return UI_DND_COPY; }   /* a font: the folder's, or the title bars' */
+    for (size_t i = 0; i < n; i++)
+        if (!strcmp(mimes[i], UI_MIME_COLOR)) { *mime = UI_MIME_COLOR; return UI_DND_COPY; }   /* a colour: likewise */
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_WPS)) *mime = MIME_WPS;
     for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_URIS)) *mime = MIME_URIS;
     if (!*mime) return 0;
@@ -494,6 +496,25 @@ uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const cha
         else {
             cv v = { .k = CV_TEXT, .s = spec, .len = strlen(spec) };
             svc_settings_set(f->path, "icon_font", &v, -1, ignore_reply, NULL);   /* (back through its settings) */
+        }
+        return UI_DND_COPY;
+    }
+    if (!strcmp(mime, UI_MIME_COLOR)) {
+        /* the Colour Palette's (v0.4-design 9): onto a title bar, the
+         * scheme's active title bar; else the folder's background (Ctrl:
+         * its icons' titles), with Shift every folder's */
+        char hex[8];
+        double rgb[3];
+        snprintf(hex, sizeof hex, "%.*s", (int)strcspn(data, "\r\n"), data);
+        if (hex[0] != '#' || !ui_parse_color(hex, rgb)) return 0;
+        if (!f->desktop && ui_frame_hit(s, x, y) == UI_HIT_TITLE) { color_apply("title_active", hex); return UI_DND_COPY; }
+        cv v = { .k = CV_TEXT, .s = hex, .len = strlen(hex) };
+        const char *key = mods & UI_MOD_CTRL ? "title_color" : "bg_color";
+        svc_settings_set(mods & UI_MOD_SHIFT ? "class:WPFolder" : f->path, key, &v, -1, ignore_reply, NULL);
+        if (f->desktop && !(mods & (UI_MOD_CTRL | UI_MOD_SHIFT)) && f->bg_gnome) {
+            /* (GNOME's picture would hide it: the desktop's own background now) */
+            cv off = { .k = CV_BOOL, .b = false };
+            svc_settings_set(f->path, "bg_gnome", &off, -1, ignore_reply, NULL);
         }
         return UI_DND_COPY;
     }

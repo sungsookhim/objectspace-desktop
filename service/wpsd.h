@@ -48,6 +48,7 @@
 #include "WPScheme.h"
 #include "WPSetup.h"
 #include "WPFontPalette.h"
+#include "WPColorPalette.h"
 #include "WPFolder.h"
 #include "WPTrashCan.h"
 #include "WPDrive.h"
@@ -277,8 +278,8 @@ struct first_start {
  * new icons in the order they appear, so a new desktop is always laid out
  * the same (concurrently, My System and Programs swapped places at random). */
 struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; struct fs_shadow *next; };
-#define NSETUP 8
-#define SETUP_IN_SYSTEM 5   /* setup_classes from this one on */
+#define NSETUP 9
+#define SETUP_IN_SYSTEM 6   /* setup_classes from this one on */
 
 /* ---- the default objects (0.2): System, Programs and the Trash Can on the
  * desktop; Templates, Startup, the Minimized Window Viewer and Restore

@@ -37,6 +37,9 @@ struct field {
     bool spin_down;          /* an arrow held (number) */
     bool own;                /* its own value (Default removes it) */
     char *from;              /* an inherited value's source, or NULL */
+    char *preview;           /* colour: the one used when empty; file: a PNG of the picture */
+    cairo_surface_t *pv_img; /* file: preview read */
+    char *pv_read;           /* (from this path) */
 };
 
 struct page {
@@ -98,6 +101,9 @@ static void free_pages(struct page *p, size_t n)
             free(f->key);
             free(f->label);
             free(f->from);
+            free(f->preview);
+            free(f->pv_read);
+            if (f->pv_img) cairo_surface_destroy(f->pv_img);
             value_free(&f->v);
             value_free(&f->orig);
             for (size_t c = 0; c < f->nchoices; c++) free(f->choices[c]);
@@ -139,6 +145,7 @@ static struct page *copy_pages(const ui_page_desc *src, size_t n)
             f->label = strdup(d->label ? d->label : d->key);
             f->own = d->own;
             f->from = d->from && *d->from ? strdup(d->from) : NULL;
+            f->preview = d->preview && *d->preview ? strdup(d->preview) : NULL;
             f->kind = d->kind;
             value_copy(&f->v, &d->value);
             value_copy(&f->orig, &d->value);
@@ -213,12 +220,18 @@ static ui_rect file_button(ui_rect r, int i)
 static bool is_audio(const struct field *f) { return f->kind == UI_FIELD_FILE && f->nchoices && !strcmp(f->choices[0], "audio"); }
 static int file_buttons(const struct field *f) { return is_audio(f) ? 3 : 2; }
 static ui_rect color_swatch(ui_rect r) { return (ui_rect){ r.x, r.y, FIELD_H, FIELD_H }; }
+/* a file field's picture: small, before its path */
+#define PV_W (FIELD_H * 3 / 2)
+static ui_rect file_preview(ui_rect r) { return (ui_rect){ r.x, r.y, PV_W, FIELD_H }; }
 
 /* Where a field's text is typed (number: before its arrows). */
 static ui_rect entry_rect(const struct field *f, ui_rect r)
 {
     if (f->kind == UI_FIELD_NUMBER) r.w -= 16;
-    else if (f->kind == UI_FIELD_FILE) r.w -= BROWSE_W + NONE_W + 10 + (is_audio(f) ? PLAY_W + 4 : 0);
+    else if (f->kind == UI_FIELD_FILE) {
+        r.w -= BROWSE_W + NONE_W + 10 + (is_audio(f) ? PLAY_W + 4 : 0);
+        if (f->preview) { r.x += PV_W + 6; r.w -= PV_W + 6; }
+    }
     else if (f->kind == UI_FIELD_COLOR) { r.x += FIELD_H + 6; r.w -= FIELD_H + 6; }
     return r;
 }
@@ -456,6 +469,29 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             break;
         case UI_FIELD_FILE: {
             ui_rect er = entry_rect(f, r);
+            if (f->preview) {   /* the picture, small */
+                if (!f->pv_read || strcmp(f->pv_read, f->preview)) {
+                    if (f->pv_img) cairo_surface_destroy(f->pv_img);
+                    f->pv_img = cairo_image_surface_create_from_png(f->preview);
+                    if (cairo_surface_status(f->pv_img) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(f->pv_img); f->pv_img = NULL; }
+                    free(f->pv_read);
+                    f->pv_read = strdup(f->preview);
+                }
+                ui_rect pv = file_preview(r);
+                ui_fill(cr, pv, k->client_bg);
+                if (f->pv_img) {
+                    double iw = cairo_image_surface_get_width(f->pv_img), ih = cairo_image_surface_get_height(f->pv_img);
+                    double sc = fmin((pv.w - 4) / iw, (pv.h - 4) / ih);
+                    cairo_save(cr);
+                    cairo_translate(cr, pv.x + (pv.w - iw * sc) / 2, pv.y + (pv.h - ih * sc) / 2);
+                    cairo_scale(cr, sc, sc);
+                    cairo_set_source_surface(cr, f->pv_img, 0, 0);
+                    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+                    cairo_paint(cr);
+                    cairo_restore(cr);
+                }
+                ui_bevel(cr, pv, false);
+            }
             if (nb->drop_on == f) { ui_fill(cr, er, k->selection); ui_bevel(cr, er, false); }
             else ui_entry_draw(f->entry, cr, er, focused);
             static const char *const fl[3] = { "Browse...", "None", "Play" };
@@ -474,7 +510,8 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             ui_rect sw = color_swatch(r);
             double rgb[3];
             bool ok = ui_parse_color(f->v.text, rgb);
-            if (ok) {
+            bool dflt = !(f->v.text && *f->v.text) && ui_parse_color(f->preview, rgb);   /* none: the one used */
+            if (ok || dflt) {
                 cairo_set_source_rgb(cr, rgb[0], rgb[1], rgb[2]);
                 cairo_rectangle(cr, sw.x, sw.y, sw.w, sw.h);
                 cairo_fill(cr);
@@ -482,7 +519,13 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
                 ui_fill(cr, sw, k->client_bg);
             }
             ui_bevel(cr, sw, false);
-            ui_entry_draw(f->entry, cr, entry_rect(f, r), focused);
+            ui_rect er = entry_rect(f, r);
+            if (nb->drop_on == f) { ui_fill(cr, er, k->selection); ui_bevel(cr, er, false); }
+            else ui_entry_draw(f->entry, cr, er, focused);
+            if (dflt && !focused && nb->drop_on != f && !*ui_entry_text(f->entry)) {
+                ui_set_color(cr, k->disabled_text);
+                ui_text_draw(cr, UI_FONT_REGULAR, er.x + 5, r.y + base_off, "default", er.w - 8);
+            }
             break;
         }
         case UI_FIELD_NUMBER: {
@@ -782,12 +825,23 @@ static struct field *icon_field_at(ui_notebook *nb, double x, double y)
     return NULL;
 }
 
+/* A colour from the Colour Palette dropped on a colour field. */
+static struct field *color_field_at(ui_notebook *nb, double x, double y)
+{
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    for (size_t k = 0; pg && k < pg->n; k++)
+        if (pg->f[k].kind == UI_FIELD_COLOR && ui_rect_has(control_rect(nb, k), x, y)) return &pg->f[k];
+    return NULL;
+}
+
 static uint32_t nb_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
                                unsigned mods, const char **mime)
 {
     (void)src_actions; (void)mods;
     ui_notebook *nb = ui_surface_data(s);
     struct field *f = NULL;
+    for (size_t i = 0; i < n && !f; i++)
+        if (!strcmp(mimes[i], UI_MIME_COLOR)) { f = color_field_at(nb, x, y); if (f) *mime = mimes[i]; }
     for (size_t i = 0; i < n && !f; i++)
         if (!strcmp(mimes[i], "text/uri-list")) { f = icon_field_at(nb, x, y); if (f) *mime = mimes[i]; }
     if (f != nb->drop_on) { nb->drop_on = f; damage(nb); }
@@ -803,10 +857,19 @@ static void nb_drag_leave(ui_surface *s)
 static uint32_t nb_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
                         uint32_t start_action, unsigned mods)
 {
-    (void)mime; (void)action; (void)start_action; (void)mods;
+    (void)action; (void)start_action; (void)mods;
     ui_notebook *nb = ui_surface_data(s);
     nb->drop_on = NULL;
     damage(nb);
+    if (!strcmp(mime, UI_MIME_COLOR)) {   /* "#rrggbb", as if typed */
+        struct field *cf = color_field_at(nb, x, y);
+        char hex[8];
+        snprintf(hex, sizeof hex, "%.*s", (int)strcspn(data, "\r\n"), data);
+        double rgb[3];
+        if (!cf || !ui_parse_color(hex, rgb)) return 0;
+        ui_notebook_set_value(nb, cf->key, hex);
+        return UI_DND_COPY;
+    }
     struct field *f = icon_field_at(nb, x, y);
     if (!f || !nb->set) return 0;
     /* the first file:// line, unescaped */
@@ -1185,6 +1248,8 @@ void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n)
                 f->own = d->own;
                 free(f->from);
                 f->from = d->from && *d->from ? strdup(d->from) : NULL;
+                free(f->preview);
+                f->preview = d->preview && *d->preview ? strdup(d->preview) : NULL;
                 entry_from_value(f);
             }
         }
@@ -1219,6 +1284,20 @@ bool ui_notebook_set_value(ui_notebook *nb, const char *key, const char *text)
     commit_entry(nb, f);   /* (a colour checked; unchanged: nothing applied) */
     damage(nb);
     return true;
+}
+
+bool ui_notebook_field_spot(ui_notebook *nb, const char *key, double *x, double *y)
+{
+    for (size_t p = 0; nb && !nb->closing && p < nb->npages; p++)
+        for (size_t k = 0; k < nb->pages[p].n; k++) {
+            if (strcmp(nb->pages[p].f[k].key, key)) continue;
+            show_page(nb, p);
+            ui_rect r = control_rect(nb, k);
+            *x = r.x + r.w / 2;
+            *y = r.y + r.h / 2;
+            return true;
+        }
+    return false;
 }
 
 const char *ui_notebook_field_hint(ui_notebook *nb, const char *key)

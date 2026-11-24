@@ -8,6 +8,7 @@
 #include "WPMouse.h"
 #include "WPSchemePalette.h"
 #include "WPFontPalette.h"
+#include "WPColorPalette.h"
 #include "WPSound.h"
 #include "WPSystem.h"
 #include "WPLaunchPad.h"
@@ -107,7 +108,7 @@ char *WPSetup__wpModifyPopupMenu(wpo_object *self, const char *menu)
     /* the LaunchPad, the WarpCenter and Messages also open (the palette,
      * the bar, the list); the others are only their settings */
     bool opens = wpo_is_a(self, WPLaunchPadClass) || wpo_is_a(self, WPWarpCenterClass) || wpo_is_a(self, WPMessagesClass) ||
-                 wpo_is_a(self, WPFontPaletteClass);
+                 wpo_is_a(self, WPFontPaletteClass) || wpo_is_a(self, WPColorPaletteClass);
     return wps_concat(menu, opens ? "1\tOpen\n2\tProperties\n" : "2\tProperties\n");
 }
 
@@ -116,6 +117,7 @@ char *WPSound__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup
 char *WPMouse__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Mouse"); }
 char *WPSchemePalette__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Scheme Palette"); }
 char *WPFontPalette__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Font Palette"); }
+char *WPColorPalette__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Colour Palette"); }
 char *WPLaunchPad__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("LaunchPad"); }
 char *WPWarpCenter__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("WarpCenter"); }
 char *WPMessages__wpclsQueryTitle(wpo_object *self) { (void)self; return wps_strdup("Messages"); }

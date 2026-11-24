@@ -14,6 +14,7 @@ live	comp	-	echo a > a.txt	stable
 close	comp	AFTER=sub	mkdir sub	stable
 ext	comp	-	touch report.odt archive.tar.gz notes; mkdir dir.d	stable
 fonts	comp	-	echo a > a.txt; echo b > a-file-with-a-rather-long-name-indeed.txt	stable
+colors	comp	-	echo a > a.txt	stable
 soundpage	comp	-	-	stable
 templates	comp	-	echo a > a.txt; mkdir sub	stable
 openwith	comp	-	echo a > a.txt	sorted

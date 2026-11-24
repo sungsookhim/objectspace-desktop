@@ -308,6 +308,7 @@ void first_start_done(void *arg)
 static const char *const setup_classes[][2] = {
     { "WPSystem", "System" }, { "WPSound", "Sound" }, { "WPMouse", "Mouse" }, { "WPSchemePalette", "Scheme Palette" },
     { "WPFontPalette", "Font Palette" },   /* (0.3) */
+    { "WPColorPalette", "Colour Palette" },   /* (0.4) */
     /* (0.2: in the System folder itself, v0.2-design 9 and 10) */
     { "WPLaunchPad", "LaunchPad" }, { "WPWarpCenter", "WarpCenter" }, { "WPMessages", "Messages" },
 };

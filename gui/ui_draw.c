@@ -19,12 +19,14 @@
 /* ---------------------------------------------------------------- schemes */
 
 #define RGB(r, g, b) { (r) / 255.0, (g) / 255.0, (b) / 255.0, 1 }
+#define METERS .meter_cpu = RGB(51, 179, 77), .meter_memory = RGB(64, 115, 217), .meter_disk = RGB(217, 140, 38), \
+               .meter_network = RGB(153, 89, 204)
 
 /* Our own colours in the spirit of Warp 4: grey faces with 3D edges, a
  * dark blue active title bar, white client areas. */
 static const ui_scheme classic = {
     .name = "classic",
-    .face = RGB(204, 204, 204), .light = RGB(255, 255, 255), .shadow = RGB(128, 128, 128), .dark = RGB(64, 64, 64),
+    .face = RGB(204, 204, 204), .bar = RGB(204, 204, 204), .bar_text = RGB(0, 0, 0), .light = RGB(255, 255, 255), .shadow = RGB(128, 128, 128), .dark = RGB(64, 64, 64),
     .text = RGB(0, 0, 0), .disabled_text = RGB(128, 128, 128),
     .title_active = RGB(0, 0, 128), .title_inactive = RGB(150, 150, 150),
     .title_text = RGB(255, 255, 255), .title_text_inactive = RGB(220, 220, 220),
@@ -37,13 +39,14 @@ static const ui_scheme classic = {
     .desktop = { 0, 0.5, 0.5, 1 }, .desktop_title = RGB(255, 255, 255), .desktop_shadow_title = { 0.75, 0.85, 1.0, 1 },
     .tooltip_bg = { 1.0, 1.0, 0.88, 1 }, .tooltip_text = RGB(0, 0, 0),
     .urgent_bg = { 1.0, 0.93, 0.85, 1 }, .urgent_text = { 0.7, 0, 0, 1 },
+    METERS,
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
 
 static const ui_scheme dark = {
     .name = "dark",
-    .face = RGB(60, 62, 66), .light = RGB(100, 102, 108), .shadow = RGB(30, 31, 34), .dark = RGB(15, 15, 17),
+    .face = RGB(60, 62, 66), .bar = RGB(60, 62, 66), .bar_text = RGB(230, 230, 230), .light = RGB(100, 102, 108), .shadow = RGB(30, 31, 34), .dark = RGB(15, 15, 17),
     .text = RGB(230, 230, 230), .disabled_text = RGB(130, 130, 130),
     .title_active = RGB(40, 70, 140), .title_inactive = RGB(70, 72, 76),
     .title_text = RGB(255, 255, 255), .title_text_inactive = RGB(170, 170, 170),
@@ -56,6 +59,7 @@ static const ui_scheme dark = {
     .desktop = { 0, 0.5, 0.5, 1 }, .desktop_title = RGB(255, 255, 255), .desktop_shadow_title = { 0.75, 0.85, 1.0, 1 },
     .tooltip_bg = { 1.0, 1.0, 0.88, 1 }, .tooltip_text = RGB(0, 0, 0),
     .urgent_bg = { 1.0, 0.93, 0.85, 1 }, .urgent_text = { 0.7, 0, 0, 1 },
+    METERS,
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
@@ -63,7 +67,7 @@ static const ui_scheme dark = {
 /* High contrast: black and white, yellow emphasis, thicker frames. */
 static const ui_scheme high_contrast = {
     .name = "high contrast",
-    .face = RGB(0, 0, 0), .light = RGB(255, 255, 255), .shadow = RGB(255, 255, 255), .dark = RGB(255, 255, 255),
+    .face = RGB(0, 0, 0), .bar = RGB(0, 0, 0), .bar_text = RGB(255, 255, 255), .light = RGB(255, 255, 255), .shadow = RGB(255, 255, 255), .dark = RGB(255, 255, 255),
     .text = RGB(255, 255, 255), .disabled_text = RGB(0, 255, 0),
     .title_active = RGB(255, 255, 0), .title_inactive = RGB(0, 0, 0),
     .title_text = RGB(0, 0, 0), .title_text_inactive = RGB(255, 255, 255),
@@ -76,6 +80,7 @@ static const ui_scheme high_contrast = {
     .desktop = { 0, 0.5, 0.5, 1 }, .desktop_title = RGB(255, 255, 255), .desktop_shadow_title = { 0.75, 0.85, 1.0, 1 },
     .tooltip_bg = { 1.0, 1.0, 0.88, 1 }, .tooltip_text = RGB(0, 0, 0),
     .urgent_bg = { 1.0, 0.93, 0.85, 1 }, .urgent_text = { 0.7, 0, 0, 1 },
+    METERS,
     .font_px = 13, .border = 4, .title_h = 22, .button_w = 18, .button_h = 16,
     .corner_radius = 0, .buttons_on_hover = false,
 };
@@ -115,6 +120,8 @@ static const struct { const char *key; size_t off; char type; } scheme_keys[] = 
     SCHEME_COLOR(menu_hilite), SCHEME_COLOR(menu_hilite_text), SCHEME_COLOR(placeholder), SCHEME_COLOR(shadow_text),
     SCHEME_COLOR(desktop), SCHEME_COLOR(desktop_title), SCHEME_COLOR(desktop_shadow_title),
     SCHEME_COLOR(tooltip_bg), SCHEME_COLOR(tooltip_text), SCHEME_COLOR(urgent_bg), SCHEME_COLOR(urgent_text),
+    SCHEME_COLOR(bar), SCHEME_COLOR(bar_text), SCHEME_COLOR(meter_cpu), SCHEME_COLOR(meter_memory), SCHEME_COLOR(meter_disk),
+    SCHEME_COLOR(meter_network),
     SCHEME_NUMBER(font_px), SCHEME_NUMBER(border), SCHEME_NUMBER(title_h), SCHEME_NUMBER(button_w), SCHEME_NUMBER(button_h),
 };
 
@@ -160,6 +167,7 @@ bool ui_scheme_define(const char *name, const char *base, const char *settings)
     }
     snprintf(defined[k].name, sizeof defined[k].name, "%s", name);
     s.name = defined[k].name;
+    bool bar = false, bar_text = false;   /* (not given: the face's and text's) */
     for (const char *p = settings; p && *p;) {
         const char *e = strchr(p, ';'), *eq = memchr(p, '=', e ? (size_t)(e - p) : strlen(p));
         size_t len = e ? (size_t)(e - p) : strlen(p);
@@ -168,12 +176,18 @@ bool ui_scheme_define(const char *name, const char *base, const char *settings)
             for (size_t i = 0; i < sizeof scheme_keys / sizeof *scheme_keys; i++) {
                 if (strlen(scheme_keys[i].key) != kl || strncmp(scheme_keys[i].key, p, kl)) continue;
                 char *at = (char *)&s + scheme_keys[i].off;
-                if (scheme_keys[i].type == 'c') hex_color(eq + 1, vl, (ui_color *)at);
+                if (scheme_keys[i].type == 'c') {
+                    bool ok = hex_color(eq + 1, vl, (ui_color *)at);
+                    if (ok && !strcmp(scheme_keys[i].key, "bar")) bar = true;
+                    if (ok && !strcmp(scheme_keys[i].key, "bar_text")) bar_text = true;
+                }
                 else if (vl) *(double *)at = atof(eq + 1);
             }
         }
         p = e ? e + 1 : NULL;
     }
+    if (!bar) s.bar = s.face;
+    if (!bar_text) s.bar_text = s.text;
     defined[k].s = s;
     return true;
 }
