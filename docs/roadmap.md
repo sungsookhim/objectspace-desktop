@@ -302,6 +302,7 @@ A to do, after 0.2 (with network file systems below).
       - The authorship note kept (designed by the owner, code written with Claude through Claude Code).
    4. **Checks:** a search for the old names finds none outside the history notes; the RPMs build and install under the new names; an upgrade from 0.4.1 (if moving over is chosen); the suites green under the new names.
 5. **0.6 The look of other programs and more screens** (the compositor and themes; was 0.5):
+   - **TheBar's trays** (the owner's, 2026-11-24; WarpCenter's object trays, not the status icons): named trays of shadows of folders and programs on the bar; the tray button shows the current one's name, a click goes to the next, its menu chooses one, adds, renames, deletes; objects dropped on the bar join the tray, an icon's menu removes it; one made at the first start, kept in the user's settings; a headless test.
    - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
    - **libadwaita programs keep their own look and title bars** (the owner's); the scheme's colours offered to them as an option (Scheme Palette, off by default).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
