@@ -141,7 +141,7 @@ void do_open(struct req *r, wpo_object *o)
     /* A shadow opens its original, wherever that is now. */
     if (wpo_is_a(o, WPShadowClass)) {
         orig = WPShadow_wpQueryTarget(o);
-        if (!orig || r->shadow_target.err || !r->shadow_target.path[0]) {
+        if (!orig || r->shadow_target.err || (!r->shadow_target.path[0] && !r->shadow_target.central)) {
             wpo_unref(orig);
             reply_error(r->c, r->id, "unavailable", "the original is not available (on a volume that is not mounted, or gone)");
             return;
@@ -276,6 +276,10 @@ void do_open(struct req *r, wpo_object *o)
         /* opened as the palette or the bar: the desktop shows it, or
          * brings it forward (never two) */
         reply_view(r, wpo_is_a(o, WPLaunchPadClass) ? "launchpad" : "warpcenter");
+        wpo_unref(orig);
+        return;
+    } else if (wpo_is_a(o, WPColorPaletteClass)) {
+        reply_view(r, "colorpalette");
         wpo_unref(orig);
         return;
     } else if (wpo_is_a(o, WPFontPaletteClass)) {

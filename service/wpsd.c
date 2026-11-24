@@ -638,7 +638,8 @@ void prepare_done(void *arg)    /* loop */
     }
     wpo_object *o = wps_object_from_loaded(&r->tgt);
     if (o && wpo_is_a(o, WPShadowClass)) {
-        wpo_object *t = r->tgt.shadow_of[0] && !r->shadow_target.err && r->shadow_target.path[0]
+        /* (a central original, such as a settings object, has no path) */
+        wpo_object *t = r->tgt.shadow_of[0] && !r->shadow_target.err && (r->shadow_target.path[0] || r->shadow_target.central)
                             ? wps_object_from_loaded(&r->shadow_target) : NULL;
         WPShadow_wpSetTarget(o, t);   /* NULL: unavailable (volume not mounted, or gone) */
     }
