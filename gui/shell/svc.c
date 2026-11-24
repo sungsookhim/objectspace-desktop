@@ -611,6 +611,16 @@ void svc_layout(const char *folder, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+/* A work area's group (0.4 step 9): act open, close, minimize, restore. */
+void svc_work_area(const char *folder, const char *act, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("work_area", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, folder);
+    cb_text(&o->b, "act"); cb_text(&o->b, act);
+    send_req(o, id, fn, arg);
+}
+
 void svc_arrange(const char *folder, svc_fn fn, void *arg)
 {
     int64_t id;

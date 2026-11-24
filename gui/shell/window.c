@@ -461,6 +461,7 @@ void win_close(ui_surface *s)
     struct folder *f = ui_surface_data(s);
     if (f->closing || f->desktop) return;   /* the desktop stays */
     folder_window_save(f);   /* (before closing: its title finds it in the window list) */
+    workarea_act(f, "close");   /* a work area: its programs asked to close, what was open kept */
     f->closing = true;
     if (f->bench_secs > 0) report(f);
     ui_app_post(app, close_later, as_arg(f));

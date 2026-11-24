@@ -233,6 +233,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "title_color")) snprintf(title_color, sizeof title_color, "%s", v);
         else if (!strcmp(key, "title_bar_color")) snprintf(bar_color, sizeof bar_color, "%s", v);
         else if (!strcmp(key, "show_hidden")) f->show_hidden = on;
+        else if (!strcmp(key, "work_area")) workarea_settings(f, on);   /* (its group comes back) */
         else if (!strcmp(key, "show_ext")) f->show_ext = on;
         else if (!strcmp(key, "arrange_offered")) offered = on || !strcmp(v, "true");
         else if (!strcmp(key, "search_place")) find_place = option_number(ch, v) < 0 ? 0 : option_number(ch, v);

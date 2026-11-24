@@ -55,6 +55,8 @@ static void local_call_reply(struct req *r, wpo_object *o);
  *   {op:"layout", target:FOLDER} -> {positions:{ID:"x,y"}, items:[{name,id,x,y}]}
  *   {op:"place", folder, items:[{target, x, y, lock?}]} -> [ID...]  set positions (and locks)
  *   {op:"arrange", target:FOLDER}   forget the folder's positions
+ *   {op:"work_area", target:FOLDER, act:"open"|"close"|"minimize"|"restore"}
+ *                                  a work area's group: {pids, scopes, reopen}
  *   {op:"rename", target, name}   rename a file or folder in its folder (never
  *                      replacing); its title then follows the name. Without
  *                      permission to rename, the name becomes its title
@@ -676,6 +678,7 @@ void prepare_done(void *arg)    /* loop */
     else if (!strcmp(r->op, "rename")) do_rename(r, o);
     else if (!strcmp(r->op, "layout")) do_layout(r, o);
     else if (!strcmp(r->op, "arrange")) do_arrange(r, o);
+    else if (!strcmp(r->op, "work_area")) do_work_area(r, o);
     else if (!strcmp(r->op, "get") || !strcmp(r->op, "set") || !strcmp(r->op, "props") || !strcmp(r->op, "reset")) do_props(r, o);
     else if (do_call(r, o)) return;   /* the reply comes from the plug-in */
     req_free(r);

@@ -113,6 +113,8 @@ struct folder {
     char bg_image[PATH_MAX], bg_color[16], bg_img_path[PATH_MAX];
     char title_color[16];    /* its icons' titles' colour ("": the scheme's) */
     char title_bar_color[16];   /* its active title bar's ("": the scheme's) */
+    bool work_area, wa_opened;  /* (0.4 step 9) a work area; its group asked back once */
+    int wa_state;               /* its window as the compositor last said: 0 not yet, 1 shown, 2 minimized */
     int bg_mode;
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
@@ -383,6 +385,10 @@ const char *row_name(struct folder *f, size_t i);
 void target_of(struct folder *f, size_t i, char *out, size_t n);
 void ignore_reply(void *arg, const cv *reply);
 void opened(void *arg, const cv *reply);
+/* workarea.c: Work Area folders (0.4 step 9) */
+void workarea_act(struct folder *f, const char *act);   /* open, close, minimize, restore */
+void workarea_settings(struct folder *f, bool on);
+void workarea_window(const char *title, bool minimized);
 struct row *row_at(struct folder *f, size_t i);
 void open_item(struct folder *f, size_t i, ui_view view);
 void src_activate(void *ctx, size_t i);

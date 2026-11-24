@@ -450,6 +450,12 @@ void tmpl_work(void *arg);
 void tmpl_done(void *arg);
 void do_layout(struct req *r, wpo_object *o);
 void do_arrange(struct req *r, wpo_object *o);
+/* wpsd_workarea.c: Work Area folders (0.4 step 9) */
+bool work_area_of(const char *path, char *out, size_t n);   /* the nearest work area holding path */
+void work_area_opened(const char *group, const char *opened, const char *tracked, pid_t pid);
+void work_area_in_use(const char *path, bool in_use);
+void work_area_save_all(void);   /* at the end: each group's open objects kept on its folder */
+void do_work_area(struct req *r, wpo_object *o);
 void job_placed(const char *dest, char **paths, int64_t *x, int64_t *y, size_t n);
 void start_place(struct client *c, int64_t id, const cv *msg);
 void vmove_work(void *arg);

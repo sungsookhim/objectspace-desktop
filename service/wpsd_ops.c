@@ -64,7 +64,7 @@ static bool op_flush(struct client *c, int64_t id, const char *op, cv *msg)
     struct simple *s = calloc(1, sizeof *s);
     s->c = c; s->id = id; c->refs++;
     if (op[0] == 'f') wps_objects_flush(flushed, s);
-    else if (op[1] == 'h') wps_objects_flush(shutdown_flushed, s);
+    else if (op[1] == 'h') { work_area_save_all(); wps_objects_flush(shutdown_flushed, s); }   /* (as at a signal) */
     else start_volume_job(s);
     return false;
 }
@@ -574,6 +574,7 @@ static const struct op_def ops[] = {
     { "rename", op_resolve },
     { "layout", op_resolve },
     { "arrange", op_resolve },
+    { "work_area", op_resolve },
 };
 
 static void handle(struct client *c, cv *msg)
@@ -652,6 +653,7 @@ void on_signal(int fd, short rev, void *arg)
     ssize_t r = read(fd, &si, sizeof si);
     (void)r;
     log_msg("signal %u: writing pending changes and stopping", si.ssi_signo);
+    work_area_save_all();   /* (logout: what the work areas had open, kept with the rest) */
     wps_objects_flush(quit_after_flush, NULL);
 }
 

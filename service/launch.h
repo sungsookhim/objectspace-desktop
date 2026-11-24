@@ -38,6 +38,13 @@ pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *dis
  * binary (ELF) or a script (#!). */
 bool wps_is_program_file(const char *path);
 
+/* Loop thread: the program started as `pid` (and what it starts) belongs
+ * to a work area's group (0.4 step 9: the folder's path; NULL none). */
+void wps_launch_set_group(pid_t pid, const char *group);
+/* Loop thread: each live process of a group (adopted ones too), with its
+ * scope ("" none) and the path it stands for. */
+void wps_launch_group_each(const char *group, void (*fn)(pid_t pid, const char *unit, const char *path, void *arg), void *arg);
+
 /* Loop thread: whether programs WPS started have `path` open. */
 bool wps_launch_in_use(const char *path);
 

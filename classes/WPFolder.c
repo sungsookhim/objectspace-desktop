@@ -254,6 +254,9 @@ bool WPFolder__wpQueryIsDesktop(wpo_object *self)
     return path && wps_is_desktop && wps_is_desktop(path);
 }
 
+/* (a work area is a folder with a window of its own: not the desktop) */
+bool WPFolder__wpQueryIsNotDesktop(wpo_object *self) { return !WPFolder__wpQueryIsDesktop(self); }
+
 
 char *WPFolder__wpclsQueryTitle(wpo_object *self)
 {

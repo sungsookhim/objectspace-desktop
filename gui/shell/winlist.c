@@ -12,6 +12,8 @@
 
 #include "events.h"
 
+void workarea_window(const char *title, bool minimized);   /* (workarea.c) */
+
 #define STATUS_H (20 + ui_dialog_grow())
 
 struct win {
@@ -92,6 +94,7 @@ void winlist_line(char **f, int n)
         }
     }
     for (int k = 0; k < 2; k++) if (lists[k].s && !lists[k].closing) refresh(&lists[k]);
+    if (w && strcmp(f[1], "remove")) workarea_window(w->title, w->minimized);   /* a work area's window: its group follows */
 }
 
 static void command(const char *cmd, const char *id)

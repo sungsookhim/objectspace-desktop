@@ -364,6 +364,8 @@ void do_open(struct req *r, wpo_object *o)
     for (size_t i = 0; i < ntok && nenv < 8; i++) envs[nenv++] = toks[i];
     pid_t pid = wps_launch(argv, tracked, cwd[0] ? cwd : NULL, disp, x11, envs, nenv);   /* as this user, in this user's session */
     if (pid < 0) { reply_error(r->c, r->id, "failed", strerror(errno)); wpo_unref(orig); return; }
+    char wa[PATH_MAX];   /* opened from a work area (or a folder or shadow in it): its group's */
+    if (r->tgt.path[0] && work_area_of(r->tgt.path, wa, sizeof wa)) work_area_opened(wa, r->tgt.path, tracked, pid);
     /* its actions on opening (object-properties-design.md 2.4); the sound
      * the GUI plays: absent, the Sound object's; "" none */
     char *sound = fire_event(o, path, "object.open", disp, x11, envs, nenv);

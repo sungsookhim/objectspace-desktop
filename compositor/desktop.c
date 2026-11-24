@@ -245,6 +245,89 @@ static const char *icon_for(const char *app)
     return "";
 }
 
+/* ------------------------------------------------------ work area groups */
+
+/* A program's process: the Wayland client's (its socket's credentials),
+ * an X11 window's _NET_WM_PID. */
+static pid_t view_pid(struct toplevel *t)
+{
+    pid_t pid = 0;
+    if (t->xw) pid = t->xw->pid;
+    else if (view_client(t)) wl_client_get_credentials(view_client(t), &pid, NULL, NULL);
+    return pid;
+}
+
+static pid_t parent_of(pid_t pid)
+{
+    char p[64], buf[512];
+    snprintf(p, sizeof p, "/proc/%d/stat", (int)pid);
+    FILE *f = fopen(p, "r");
+    if (!f) return 0;
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    const char *e = strrchr(buf, ')');   /* (the name may hold spaces and parentheses) */
+    int pp = 0;
+    return e && sscanf(e + 1, " %*c %d", &pp) == 1 ? (pid_t)pp : 0;
+}
+
+/* Is the process one of the group's: one of its processes or started by
+ * one (followed up the parents), or in one of its scopes (its cgroup)? */
+static bool in_group(pid_t pid, const pid_t *pids, size_t n)
+{
+    for (int depth = 0; pid > 1 && depth < 32; depth++, pid = parent_of(pid))
+        for (size_t i = 0; i < n; i++) if (pids[i] == pid) return true;
+    return false;
+}
+
+static bool in_scopes(pid_t pid, const char *scopes)
+{
+    if (!scopes || !*scopes || pid <= 0) return false;
+    char p[64], cg[1024];
+    snprintf(p, sizeof p, "/proc/%d/cgroup", (int)pid);
+    FILE *f = fopen(p, "r");
+    if (!f) return false;
+    bool yes = false;
+    while (!yes && fgets(cg, sizeof cg, f)) {
+        cg[strcspn(cg, "\n")] = 0;
+        const char *last = strrchr(cg, '/');
+        last = last ? last + 1 : cg;
+        char list[2048];
+        snprintf(list, sizeof list, "%s", scopes);
+        for (char *q = list, *u; !yes && (u = strsep(&q, ","));) yes = *u && !strcmp(u, last);
+    }
+    fclose(f);
+    return yes;
+}
+
+/* "group TAB minimize|restore|close TAB pid,pid,... TAB scope,scope,...":
+ * a work area's programs' windows (0.4 step 9), never WPS's own. */
+static void group_command(const char *arg)
+{
+    char a[8192];
+    snprintf(a, sizeof a, "%s", arg);
+    char *q = a, *act = strsep(&q, "\t"), *pl = q ? strsep(&q, "\t") : NULL, *scopes = q;
+    if (!act || !pl) return;
+    pid_t pids[256];
+    size_t n = 0;
+    for (char *x; n < 256 && (x = strsep(&pl, ","));) if (atoi(x) > 0) pids[n++] = (pid_t)atoi(x);
+    /* the windows first: minimizing one moves the focus, and the list's order with it */
+    struct toplevel *t, *hit[256];
+    size_t nh = 0;
+    wl_list_for_each(t, &server.toplevels, link) {
+        if (!t->mapped || desktop_is(view_client(t)) || nh == 256) continue;
+        pid_t pid = view_pid(t);
+        if (in_group(pid, pids, n) || in_scopes(pid, scopes)) hit[nh++] = t;
+    }
+    for (size_t i = 0; i < nh; i++) {
+        t = hit[i];
+        DBG("group %s: '%s'\n", act, view_title(t) ? view_title(t) : "");
+        if (!strcmp(act, "minimize")) comp_minimize(t, true);
+        else if (!strcmp(act, "restore") && t->minimized) comp_minimize(t, false);
+        else if (!strcmp(act, "close")) comp_close(t);   /* asked, as at logout: one that refuses keeps its window */
+    }
+}
+
 /* -------------------------------------------------------- window lines */
 
 static bool listable(struct toplevel *t)
@@ -399,6 +482,7 @@ static void command(char *line)
         if (px > 0 && fam) { ui_text_set_font(fam + 1, px); comp_redraw_frames(); }
         return;
     }
+    if (!strcmp(line, "group")) { group_command(arg); return; }
     struct toplevel *t = by_id(arg);
     if (!t) return;
     if (!strcmp(line, "activate")) comp_focus(t);

@@ -52,6 +52,7 @@ method wpSetBgColor(string color) -> bool
 method wpSetBgGnome(bool on) -> bool
 # Its pages' properties (object-properties-design.md 2.1).
 method wpQueryIsDesktop() -> bool
+method wpQueryIsNotDesktop() -> bool
 property sort_key : choice "none,name,type,size,last write" = name page View label "Sort by"
 property sort_desc : checkbox page View label Descending set wpSetSortDesc
 property local : checkbox page View label "Keep objects as files here" get wpQueryLocalObjects set wpSetLocalObjects
@@ -86,4 +87,13 @@ property bg_gnome : checkbox = 1 page Background label "GNOME's background" show
 property bg_image : file image page Background label Image set wpSetBgImage
 property bg_mode : choice "centred,tiled,scaled to fill,scaled to fit,stretched" = "scaled to fill" index page Background label Shown set wpSetBgMode
 property bg_color : color page Background label Colour set wpSetBgColor
+# Work Area (0.4 step 9, OS/2's, on its File page): what is opened from it
+# (or a folder or shadow in it) is its group, minimized, restored and
+# closed with its window; what was open when it closed (or at logout) is
+# kept (paths separated by 0x1e: no line breaks in a property), and opened again with it.
+event work_area.open, work_area.close
+property work_area : checkbox page File label "Work area" show wpQueryIsNotDesktop
+property work_area_open : hidden page File label "Open when it closed" show wpQueryIsNotDesktop
+property on:work_area.open : text page Actions label "When its window opens (work area)" show wpQueryIsNotDesktop last
+property on:work_area.close : text page Actions label "When its window closes (work area)" show wpQueryIsNotDesktop last
 classoverride wpclsQueryTitle

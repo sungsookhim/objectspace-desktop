@@ -39,6 +39,8 @@ struct proc {
     pid_t pid;
     int fd;            /* pidfd */
     struct use *u;
+    char *group;       /* the work area it was opened from (0.4 step 9), or NULL */
+    char unit[96];     /* its scope (app-wps-*.scope), "" none */
 };
 
 static wpo_loop *loop;
@@ -65,7 +67,7 @@ static struct proc *proc_of(pid_t pid)
 
 static void on_exit_fd(int fd, short rev, void *arg);
 
-static bool track(pid_t pid, struct use *u)
+static bool track(pid_t pid, struct use *u, const char *group, const char *unit)
 {
     int fd = (int)syscall(SYS_pidfd_open, pid, 0);
     if (fd < 0) return false;
@@ -74,6 +76,8 @@ static bool track(pid_t pid, struct use *u)
     p->pid = pid;
     p->fd = fd;
     p->u = u;
+    p->group = group ? strdup(group) : NULL;
+    snprintf(p->unit, sizeof p->unit, "%s", unit ? unit : "");
     u->procs++;
     p->next = procs;
     procs = p;
@@ -84,7 +88,7 @@ static bool track(pid_t pid, struct use *u)
 /* Children this service did not start itself were adopted (it is a
  * subreaper): descendants of a started program whose parent exited. They
  * count for the program whose process just ended. */
-static void adopt(struct use *u)
+static void adopt(struct use *u, const char *group, const char *unit)
 {
     DIR *d = opendir("/proc/self/task");
     if (!d) return;
@@ -102,7 +106,7 @@ static void adopt(struct use *u)
         for (char *s = buf, *e; *s; s = e) {
             long pid = strtol(s, &e, 10);
             if (e == s) break;
-            if (pid > 0 && !proc_of((pid_t)pid) && !wps_plugins_is_host((pid_t)pid)) track((pid_t)pid, u);
+            if (pid > 0 && !proc_of((pid_t)pid) && !wps_plugins_is_host((pid_t)pid)) track((pid_t)pid, u, group, unit);
         }
     }
     closedir(d);
@@ -116,12 +120,13 @@ static void on_exit_fd(int fd, short rev, void *arg)
     memset(&si, 0, sizeof si);
     /* Reaps it when it is our child (started here, or adopted). */
     waitid(P_PIDFD, (id_t)fd, &si, WEXITED | WNOHANG);
-    adopt(p->u);   /* before it stops counting: its orphans came to us */
+    adopt(p->u, p->group, p->unit);   /* before it stops counting: its orphans came to us (and its group) */
     wpo_loop_unwatch_fd(loop, fd);
     close(fd);
     for (struct proc **pp = &procs; *pp; pp = &(*pp)->next)
         if (*pp == p) { *pp = p->next; break; }
     struct use *u = p->u;
+    free(p->group);
     free(p);
     use_put(u);
 }
@@ -141,6 +146,7 @@ void wps_launch_shutdown(void)
         procs = p->next;
         wpo_loop_unwatch_fd(loop, p->fd);
         close(p->fd);
+        free(p->group);
         free(p);
     }
     while (uses) {
@@ -151,6 +157,8 @@ void wps_launch_shutdown(void)
     }
     on_changed = NULL;
 }
+
+static char last_unit[96];   /* the scope spawn just made ("" none) */
 
 static pid_t spawn(char **argv, const char *cwd, const char *display, const char *x11, const char *const *envs, size_t nenvs)
 {
@@ -218,6 +226,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
     char *sargv[80], unit[96];
     char **run = argv;
     static unsigned serial;
+    last_unit[0] = 0;
     if (getenv("INVOCATION_ID") && access("/usr/bin/systemd-run", X_OK) == 0) {
         const char *b = strrchr(argv[0], '/');
         b = b ? b + 1 : argv[0];
@@ -240,6 +249,7 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
         for (int i = 0; argv[i] && n < 79; i++) sargv[n++] = argv[i];
         sargv[n] = NULL;
         run = sargv;
+        snprintf(last_unit, sizeof last_unit, "%s", unit);
     }
     pid_t pid = -1;
     int e = posix_spawnp(&pid, run[0], &fa, &at, run, env ? env : environ);
@@ -265,12 +275,26 @@ pid_t wps_launch(char **argv, const char *path, const char *cwd, const char *dis
         u->next = uses;
         uses = u;
     }
-    if (!track(pid, u)) {
+    if (!track(pid, u, NULL, last_unit)) {
         if (fresh) { uses = u->next; free(u->path); free(u); }
         return pid;   /* started, just not tracked */
     }
     if (fresh && on_changed) on_changed(path, true);
     return pid;
+}
+
+void wps_launch_set_group(pid_t pid, const char *group)
+{
+    struct proc *p = proc_of(pid);
+    if (!p) return;
+    free(p->group);
+    p->group = group && *group ? strdup(group) : NULL;
+}
+
+void wps_launch_group_each(const char *group, void (*fn)(pid_t pid, const char *unit, const char *path, void *arg), void *arg)
+{
+    for (struct proc *p = procs; p; p = p->next)
+        if (p->group && !strcmp(p->group, group)) fn(p->pid, p->unit, p->u->path, arg);
 }
 
 bool wps_launch_in_use(const char *path)
@@ -293,6 +317,15 @@ void wps_launch_moved(const char *from, const char *to)
         strcat(n, u->path + fl);
         free(u->path);
         u->path = n;
+    }
+    for (struct proc *p = procs; p; p = p->next) {   /* a work area renamed or moved: its group follows */
+        if (!p->group || strncmp(p->group, from, fl) || (p->group[fl] && p->group[fl] != '/')) continue;
+        char *n = malloc(strlen(to) + strlen(p->group + fl) + 1);
+        if (!n) continue;
+        strcpy(n, to);
+        strcat(n, p->group + fl);
+        free(p->group);
+        p->group = n;
     }
 }
 

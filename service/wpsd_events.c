@@ -273,6 +273,7 @@ void on_fs_event(char kind, const char *from, const char *path)
  * (directly, or as a shadow), so every subscription hears it. */
 void on_in_use(const char *path, bool in_use)
 {
+    work_area_in_use(path, in_use);   /* (a work area's group: when it ended) */
     for (struct sub *x = subs; x; x = x->next) {
         if (x->c->dead || (!x->nfolders && !x->ntargets)) continue;
         cbuf b;
