@@ -1,10 +1,10 @@
 #!/bin/sh
-# Every wps-shell self-test, its output kept as a "golden" file to compare
+# Every osd-shell self-test, its output kept as a "golden" file to compare
 # across a refactor (docs/object-properties-design.md 4):
 #   tests/gui/golden.sh OUT [MODE...]      (default: every mode in golden-modes.txt)
 #   tests/gui/golden-compare.sh BASE OUT
 # Each mode runs through tests/gui/selftest.sh in a fresh folder, inside a
-# headless compositor (never the user's session): wps-compositor with a
+# headless compositor (never the user's session): osd-compositor with a
 # private D-Bus and runtime folder, or a private headless GNOME Shell for
 # the modes that need GNOME. OUT/MODE.txt gets the "selftest:" lines and
 # any sanitizer or runtime errors, with temporary paths, PIDs and times
@@ -31,12 +31,12 @@ normalize() {
         -e 's#[0-9]+(\.[0-9]+)? ?ms\b#<MS>#g' \
         -e 's#\b[0-9]+\.[0-9]+ s\b#<S> s#g' \
         -e 's#-[0-9]{9,}\.png#-<N>.png#g' \
-        -e 's#-[0-9]{9,}\.wpsicon#-<N>.wpsicon#g' \
+        -e 's#-[0-9]{9,}\.osdicon#-<N>.osdicon#g' \
         -e 's#cube-[A-Za-z0-9-]+#<HOST>#g' \
         -e "s#$(hostname)#<HOST>#g"
 }
 
-# One self-test in the headless wps-compositor: its own runtime folder
+# One self-test in the headless osd-compositor: its own runtime folder
 # (so no Wayland, PipeWire or portal of the user's session is reached) and
 # its own D-Bus; gsettings are off (nothing of the user's GNOME changes).
 run_comp() {   # MODE ENV SETUP
@@ -49,7 +49,7 @@ kill \$(cat '$W/pid') 2>/dev/null
 EOC
     printf '%s' "$3" > "$W/setup"
     XDG_RUNTIME_DIR=$RT OSD_COMP_HEADLESS=1280x800 timeout 120 dbus-run-session -- sh -c \
-        "echo \$\$ > '$W/pid'; exec '$REPO/build/wps-compositor' -s 'sh $W/cmd'" > "$W/comp.log" 2>&1
+        "echo \$\$ > '$W/pid'; exec '$REPO/build/osd-compositor' -s 'sh $W/cmd'" > "$W/comp.log" 2>&1
     cat "$W/out.txt" 2>/dev/null
     rm -rf "$RT"
 }

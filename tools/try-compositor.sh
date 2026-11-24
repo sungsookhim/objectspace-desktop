@@ -1,7 +1,7 @@
 #!/bin/sh
-# Try wps-compositor (G5) without logging out: it runs in a window of your
+# Try osd-compositor (G5) without logging out: it runs in a window of your
 # session, with WPS's desktop inside on FOLDER (default: a scratch folder
-# with a few files), a private wpsd and private WPS state. Start programs
+# with a few files), a private osdd and private WPS state. Start programs
 # from the desktop, or pass a command to run as well, e.g.
 #   tools/try-compositor.sh ~/Desktop 1600x900 gnome-calculator
 # Ctrl+Alt+BackSpace (or closing the window) ends it. Inside: click to
@@ -12,7 +12,7 @@
 # usage: tools/try-compositor.sh [FOLDER] [WIDTHxHEIGHT] [COMMAND...]
 set -e
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-for f in "$REPO/build/wps-compositor" "$REPO/build/wps-shell" "$REPO/build/wpsd"; do
+for f in "$REPO/build/osd-compositor" "$REPO/build/osd-shell" "$REPO/build/osdd"; do
     [ -x "$f" ] || { echo "$f is missing: run 'make && make gui && make compositor' first" >&2; exit 1; }
 done
 T=$(mktemp -d "${TMPDIR:-/tmp}/wps-trycomp-XXXX")
@@ -28,21 +28,21 @@ SIZE=${2:-1280x800}
 mkdir -p "$T/config" "$T/state"
 export OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT"
 export OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHPAD_DIR="$T/launchpad"
-"$REPO/build/wpsd" 2> "$T/wpsd.log" &
+"$REPO/build/osdd" 2> "$T/osdd.log" &
 WP=$!
 cleanup() {
-    "$REPO/build/wpsctl" shutdown >/dev/null 2>&1 || kill $WP 2>/dev/null
+    "$REPO/build/osdctl" shutdown >/dev/null 2>&1 || kill $WP 2>/dev/null
     for p in $(pgrep -u "$(id -u)"); do   # what it started (never your other programs)
         { tr '\0' '\n' < /proc/$p/environ; } 2>/dev/null | grep -q "^OSD_RUNTIME_DIR=$RT\$" && kill $p 2>/dev/null
     done
     rm -rf "$RT"
 }
 trap cleanup EXIT
-for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
-DESKTOP="'$REPO/build/wps-shell' --desktop '$DESK' 2>> '$T/shell.log'"
+for i in $(seq 50); do "$REPO/build/osdctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
+DESKTOP="'$REPO/build/osd-shell' --desktop '$DESK' 2>> '$T/shell.log'"
 echo "WPS compositor: logs in $T"
 if [ $# -gt 0 ]; then
-    OSD_COMP_SIZE=$SIZE "$REPO/build/wps-compositor" -d "$DESKTOP" -s "sleep 1; $*" 2> "$T/compositor.log"
+    OSD_COMP_SIZE=$SIZE "$REPO/build/osd-compositor" -d "$DESKTOP" -s "sleep 1; $*" 2> "$T/compositor.log"
 else
-    OSD_COMP_SIZE=$SIZE "$REPO/build/wps-compositor" -d "$DESKTOP" 2> "$T/compositor.log"
+    OSD_COMP_SIZE=$SIZE "$REPO/build/osd-compositor" -d "$DESKTOP" 2> "$T/compositor.log"
 fi

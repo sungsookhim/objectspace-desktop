@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-schemes-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 # Projects (54,30) opens at 320,96: its title bar at y 105.
 cat > "$S/script" <<EOS
 3 dclick 54 30

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """M2 scenarios: persistence, identity, concurrency, users, travelling volumes.
 
-Runs real wpsd services against the loopback test bed (proto/m0/testbed.sh
+Runs real osdd services against the loopback test bed (proto/m0/testbed.sh
 up): ext4, btrfs and FAT. Services run as the current user, and as test
 users 60001 (A) and 60002 (B, both in group 60000) through setpriv. A second
-"computer" is simulated by a second wpsd with its own database and host ID
+"computer" is simulated by a second osdd with its own database and host ID
 but the same WPS identity file.
 
 usage: tests/m2/m2.py [scenario ...]     e.g. m2.py 1 25a
@@ -251,7 +251,7 @@ def s25d():
 
 def main():
     prepare()
-    for f in OUT.glob("wpsd-*.log"):
+    for f in OUT.glob("osdd-*.log"):
         f.unlink()
     reset_services()
     run_scenarios(set(sys.argv[1:]))

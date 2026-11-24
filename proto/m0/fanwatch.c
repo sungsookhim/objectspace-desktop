@@ -4,7 +4,7 @@
  * Watches whole filesystems with fanotify in FID mode and prints one JSON
  * line per event: event types, pid, the child file handle, the directory
  * handle and name, and for renames the old and new locations. Handles are
- * resolved to paths with open_by_handle_at(), and the child's user.wps.id
+ * resolved to paths with open_by_handle_at(), and the child's user.osd.id
  * attribute is read when the file still exists.
  *
  * Needs CAP_SYS_ADMIN (filesystem marks) and CAP_DAC_READ_SEARCH
@@ -109,7 +109,7 @@ static void print_handle(const __kernel_fsid_t *fsid, struct file_handle *h,
     jstr(path);
     if (want_id) {
         char id[256];
-        ssize_t n = lgetxattr(path, "user.wps.id", id, sizeof id - 1);
+        ssize_t n = lgetxattr(path, "user.osd.id", id, sizeof id - 1);
         if (n >= 0) {
             id[n] = 0;
             fprintf(out, ",\"id\":");

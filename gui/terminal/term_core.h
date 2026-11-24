@@ -2,7 +2,7 @@
  * WPS Terminal's core (docs/cli-design.md 1): libvterm's screen with a
  * scrollback, keys turned into the bytes a program reads, cells' colours,
  * and the text of a selection - no window, no pseudo-terminal (those are
- * wps-terminal.c's), so the unit tests drive it directly.
+ * osd-terminal.c's), so the unit tests drive it directly.
  *
  * Rows are numbered from the top of the screen: 0 .. rows-1 the screen,
  * -1 the newest line of the scrollback, -nsb the oldest.

@@ -1,5 +1,5 @@
 /*
- * watchd - prototype of wps-watchd's per-user event filtering.
+ * watchd - prototype of osd-watchd's per-user event filtering.
  *
  * Watches whole filesystems with fanotify (as fanwatch does) and serves
  * clients over a Unix socket. A client registers a folder or file by

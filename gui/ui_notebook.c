@@ -1254,7 +1254,7 @@ ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *
     /* wide enough for every tab (a class's pages, the Actions page) */
     double w = 2 * ui_scheme_now.border + 2 * MARGIN + 8, least = ceil(520 * ui_dialog_wider());
     for (size_t i = 0; i < n; i++) w += ui_text_width(UI_FONT_DIALOG, pages[i].title ? pages[i].title : "") + 28;
-    nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", w > least ? ceil(w) : least, h < 280 ? 280 : h);
+    nb->win = ui_window_new(a, &nb_ops, nb, "io.github.sungsookhim.Objectspace.notebook", w > least ? ceil(w) : least, h < 280 ? 280 : h);
     ui_window_set_title(nb->win, title);
     return nb;
 }

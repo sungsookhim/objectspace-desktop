@@ -1,4 +1,4 @@
-"""Messages: wpsd's list (run by run.sh: part 1, then 2 after a restart)."""
+"""Messages: osdd's list (run by run.sh: part 1, then 2 after a restart)."""
 import os
 import sys
 import time
@@ -81,7 +81,7 @@ if PART == "1":
     check("WarpCenter defaults", wc.get("edge") == "bottom" and wc.get("clock") == "24 hours" and wc.get("meters") == "1", wc)
     m = objs.get("OsdMessages", {})
     check("Messages defaults", m.get("settings", {}).get("dnd") == "0", m)
-    sysdir = os.environ["T"] + "/xdg/data/wps/System"
+    sysdir = os.environ["T"] + "/xdg/data/objectspace/System"
     titles = [it.get("title") for it in (c.request(op="list", target=sysdir, offset=0, count=100, details=True)
                                           .get("result") or {}).get("items", [])]
     check("LaunchPad, WarpCenter and Messages are in System", all(t in titles for t in ("LaunchPad", "WarpCenter", "Messages")), titles)

@@ -16,7 +16,7 @@ The design's core assumptions hold. One real gap was found, vim's default way of
 | 3 | Atomic save, temp file in another folder | PASS | Same as 2 |
 | 4 | vim saving a file | **FINDING** | Default mode renames the original away and creates a new file. See below |
 | 5 | `sed -i` | PASS | Temp file renamed over the original; the rule applies |
-| 6 | Which tools keep `user.wps.id` | PASS | `mv` across filesystems keeps it. Table below |
+| 6 | Which tools keep `user.osd.id` | PASS | `mv` across filesystems keeps it. Table below |
 | 7 | `mv` across filesystems: ID on the copy before the original is deleted | PASS | The ID is written to the copy (`FAN_ATTRIB`) before the source `FAN_DELETE`, so matching by ID needs no time window |
 | 8 | `user.*` attributes refused on symlinks | PASS | `EPERM`, as assumed |
 | 9 | `XATTR_CREATE` lets one of two simultaneous ID assignments win | PASS | 300 races, never two winners |
@@ -37,7 +37,7 @@ The design's core assumptions hold. One real gap was found, vim's default way of
 | 24 | The real gedit 51 window, edited and saved through the accessibility bus | PASS | Same as 23 |
 | 25 | The real GNOME Text Editor 51 window, edited and saved through the accessibility bus (its window's `page.save` action) | PASS | Same as 19 |
 
-### Tools and `user.wps.id` (scenario 6)
+### Tools and `user.osd.id` (scenario 6)
 
 | Tool | ID |
 |---|---|
@@ -91,7 +91,7 @@ No other editor tested renames the original away. GNOME Text Editor, gedit (both
 
 ## Per-user filtering (`filter.py`)
 
-`watchd.c` is a prototype of `wps-watchd`'s filtering. Two clients stand in for two users' services: A (UID 60001) and B (UID 60002), both in group 60000. They register folders by passing open descriptors.
+`watchd.c` is a prototype of `osd-watchd`'s filtering. Two clients stand in for two users' services: A (UID 60001) and B (UID 60002), both in group 60000. They register folders by passing open descriptors.
 
 | # | Scenario | Result |
 |---|---|---|

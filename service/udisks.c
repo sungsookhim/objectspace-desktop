@@ -1,5 +1,5 @@
 /*
- * Drives: wpsd's udisks2 client (see udisks.h).
+ * Drives: osdd's udisks2 client (see udisks.h).
  *
  * The bus thread owns the connection: it polls the bus and an eventfd
  * (requests from the loop thread), reads every udisks2 object
@@ -447,7 +447,7 @@ static void *run(void *arg)
     if (bus) sd_bus_match_signal(bus, NULL, UD, NULL, NULL, NULL, on_signal, NULL);
     if (bus && read_all(bus, &list, &n) >= 0) available = true;
     else {
-        if (bus) fprintf(stderr, "wpsd: udisks2 not reachable: drives from mountinfo, no mounting\n");
+        if (bus) fprintf(stderr, "osdd: udisks2 not reachable: drives from mountinfo, no mounting\n");
         read_mountinfo(&list, &n);
     }
     publish(list, n);

@@ -192,10 +192,10 @@ TEST(errors_are_classified)
     osd_props_free(&r);
     /* A corrupt stored value is reported and left alone. */
     touch("bad");
-    setxattr(path_of("bad"), "user.wps.OsdObject", "\x07garbage", 8, 0);
+    setxattr(path_of("bad"), "user.osd.OsdObject", "\x07garbage", 8, 0);
     CHECK(osd_attr_update(path_of("bad"), "OsdObject", &s, NULL, 100, NULL, NULL) == OSD_A_CORRUPT);
     char raw[16];
-    CHECK(getxattr(path_of("bad"), "user.wps.OsdObject", raw, sizeof raw) == 8);
+    CHECK(getxattr(path_of("bad"), "user.osd.OsdObject", raw, sizeof raw) == 8);
     /* Read-only file: no permission (unless running as root). */
     touch("ro");
     chmod(path_of("ro"), 0444);
@@ -209,7 +209,7 @@ int main(int argc, char **argv)
     char cmd[8400];
     snprintf(cmd, sizeof cmd, "rm -rf '%s' && mkdir -p '%s'", dir, dir);
     if (system(cmd) != 0) return 1;
-    if (setxattr(dir, "user.wps.probe", "1", 1, 0) < 0 && errno == ENOTSUP) {
+    if (setxattr(dir, "user.osd.probe", "1", 1, 0) < 0 && errno == ENOTSUP) {
         printf("skip: %s does not support user attributes\n", dir);
         return 0;
     }

@@ -1,6 +1,6 @@
-/* The WPS GUI's shell (wps-shell): what its files share - the folder
+/* The WPS GUI's shell (osd-shell): what its files share - the folder
  * windows' state and every function and variable used across them.
- * Split from wps-shell.c (refactor R1); see each file's top for its part. */
+ * Split from osd-shell.c (refactor R1); see each file's top for its part. */
 #ifndef SHELL_H
 #define SHELL_H
 
@@ -236,7 +236,7 @@ struct drive_ctx { long folder; char target[PATH_MAX], action[16]; bool reopen; 
 
 /* ---------------------------------------------------------- drag and drop */
 
-#define MIME_WPS "application/x-wps-objects"
+#define MIME_WPS "application/x-objectspace-objects"
 #define MIME_URIS "text/uri-list"
 
 /* What this program is dragging now (for refusing a folder dropped into
@@ -301,7 +301,7 @@ struct del {
 /* ------------------------------------------------------------------ window */
 
 /* ---- the search field (v0.3-design 6): a row under the title bar, shown
- * with Ctrl+F; what is typed filters the window's own listing (wpsd's:
+ * with Ctrl+F; what is typed filters the window's own listing (osdd's:
  * names containing it, any case); Esc or x: all again, the row gone. */
 
 #define FIND_H 30

@@ -155,13 +155,13 @@ TEST(terminals)
     CHECK(!strcmp(a4[0], "ptyxis") && !strcmp(a4[3], "sh") && !strcmp(a4[7], "vim"));
     /* WPS Terminal (0.4.1: the default) once it is there: titled by the
      * object, --hold for Close window on exit off */
-    put("wps-terminal", "");
-    snprintf(p, sizeof p, "%s/wps-terminal", dir);
+    put("osd-terminal", "");
+    snprintf(p, sizeof p, "%s/osd-terminal", dir);
     chmod(p, 0755);
     char *a5[16] = { "vim", "/f", NULL };
     CHECK(osd_terminal_wrap(a5, 2, 16, "Notes", true) == 7);
-    CHECK_STR(joined(a5), "wps-terminal|--title|Notes|--hold|--|vim|/f");
-    CHECK_STR(osd_terminal_now(), "wps-terminal");
+    CHECK_STR(joined(a5), "osd-terminal|--title|Notes|--hold|--|vim|/f");
+    CHECK_STR(osd_terminal_now(), "osd-terminal");
     osd_terminal_choose("system default", "");   /* another choice: the list again */
     char *a6[16] = { "vim", NULL };
     CHECK(osd_terminal_wrap(a6, 1, 16, NULL, false) == 4);

@@ -1,4 +1,4 @@
-/* wps-shell: Menus: object and folder menus, their choices, Drives' actions, emptying the Trash Can. */
+/* osd-shell: Menus: object and folder menus, their choices, Drives' actions, emptying the Trash Can. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -176,7 +176,7 @@ static void drive_acted(void *arg, const cv *reply)
         else if (e && !strcmp(e, "not authorized"))
             snprintf(m, sizeof m, "This needs an administrator's permission, which WPS cannot ask for yet. "
                                   "Removable drives work; for this one, use GNOME's Disks or Files.");
-        else snprintf(m, sizeof m, "%s", msg && *msg ? msg : reply ? "it failed" : "lost the connection to wpsd");
+        else snprintf(m, sizeof m, "%s", msg && *msg ? msg : reply ? "it failed" : "lost the connection to osdd");
         if (!strcmp(x->action, "unlock") && e && !strcmp(e, "failed") && f) {
             unlock_ask(f, x->target, x->reopen);   /* (a wrong passphrase: again) */
             set_status(f->id, "Wrong passphrase?");
@@ -309,7 +309,7 @@ static void emptied(void *arg, const cv *reply)
     const cv *ok = reply ? cv_get(reply, "ok") : NULL;
     if (!(ok && ok->k == CV_BOOL && ok->b)) {
         char m[300];
-        snprintf(m, sizeof m, "Cannot empty the trash: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Cannot empty the trash: %s", reply ? cv_text(reply, "message") : "lost the connection to osdd");
         set_status(folder, m);
     } else set_status(folder, "Emptying the trash...");
 }
@@ -333,7 +333,7 @@ static void restored(void *arg, const cv *reply)
     const cv *ok = reply ? cv_get(reply, "ok") : NULL;
     char m[PATH_MAX + 64];
     if (ok && ok->k == CV_BOOL && ok->b) snprintf(m, sizeof m, "Restored to %s", cv_text(reply, "result") ? cv_text(reply, "result") : "its folder");
-    else snprintf(m, sizeof m, "Cannot restore: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+    else snprintf(m, sizeof m, "Cannot restore: %s", reply ? cv_text(reply, "message") : "lost the connection to osdd");
     set_status(folder, m);
 }
 
@@ -551,7 +551,7 @@ static void renamed(void *arg, const cv *reply)
             snprintf(f->error, sizeof f->error, "No permission to rename the file: the new name is kept as its title");
         else f->error[0] = 0;
     } else {
-        const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
+        const char *msg = reply ? cv_text(reply, "message") : "lost the connection to osdd";
         snprintf(f->error, sizeof f->error, "Cannot rename: %s", msg ? msg : "refused");
     }
     damage_status(f);

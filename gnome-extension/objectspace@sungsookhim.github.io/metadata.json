@@ -1,0 +1,9 @@
+{
+  "uuid": "objectspace@sungsookhim.github.io",
+  "name": "WPS desktop",
+  "description": "Runs the WPS desktop (osd-shell) as GNOME's desktop: below all windows, on every workspace, out of Alt+Tab and the overview. Later also forwards window events to WPS (sounds, animations).",
+  "shell-version": ["49", "50", "51"],
+  "settings-schema": "org.gnome.shell.extensions.objectspace",
+  "session-modes": ["user", "unlock-dialog"],
+  "version-name": "0.1"
+}

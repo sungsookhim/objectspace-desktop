@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sizes-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 K=${SCALE:-1}
 cat > "$S/script" <<EOS
 4 move 1200 700

@@ -1,0 +1,4 @@
+#%PAM-1.0
+# osd-compositor's lock screen: the user's own password, as at login
+auth       include      system-auth
+account    include      system-auth

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Command Prompt
+GenericName=Terminal
+Comment=A command line in a WPS window (WPS Terminal)
+Exec=@BINDIR@/osd-terminal
+TryExec=@BINDIR@/osd-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;terminal;console;
+StartupWMClass=io.github.sungsookhim.Objectspace.Terminal

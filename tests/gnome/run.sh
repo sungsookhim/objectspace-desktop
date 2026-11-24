@@ -20,53 +20,53 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/wps-gnome-XXXX")
 RT=$(mktemp -d "/run/user/$(id -u)/wps-hl-XXXX"); chmod 700 "$RT"
 mkdir -p "$T/config" "$T/data/gnome-shell/extensions" "$T/cache" "$T/desk/Projects" "$T/w"
 echo hi > "$T/desk/notes.txt"
-E="$T/data/gnome-shell/extensions/wps@wps-linux"
-mkdir -p "$E"; cp -r "$REPO/gnome-extension/wps@wps-linux/"* "$E/"; glib-compile-schemas "$E/schemas"
+E="$T/data/gnome-shell/extensions/objectspace@sungsookhim.github.io"
+mkdir -p "$E"; cp -r "$REPO/gnome-extension/objectspace@sungsookhim.github.io/"* "$E/"; glib-compile-schemas "$E/schemas"
 if [ -n "$SELFTEST" ]; then   # the desktop runs a self-test (its output in shell.log)
-  printf '{"command": ["env", "OSD_SELFTEST_TERMINATE=%s", "OSD_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$TERMINATE" "$SELFTEST" "$T/cache" "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
+  printf '{"command": ["env", "OSD_SELFTEST_TERMINATE=%s", "OSD_SHELL_SELFTEST=%s", "XDG_CACHE_HOME=%s", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$TERMINATE" "$SELFTEST" "$T/cache" "$REPO/tests/gui/lsan.supp" "$REPO/build/osd-shell-asan" "$T/desk" > "$E/config.json"
 elif [ -n "$WLDEBUG" ]; then
-  printf '{"command": ["env", "WAYLAND_DEBUG=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
+  printf '{"command": ["env", "WAYLAND_DEBUG=1", "%s", "--desktop", "%s"]}\n' "$REPO/build/osd-shell" "$T/desk" > "$E/config.json"
 elif [ -n "$DESKENV" ]; then   # e.g. DESKENV=OSD_DEBUG_DND=1
-  printf '{"command": ["env", "%s", "%s", "--desktop", "%s"]}\n' "$DESKENV" "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
+  printf '{"command": ["env", "%s", "%s", "--desktop", "%s"]}\n' "$DESKENV" "$REPO/build/osd-shell" "$T/desk" > "$E/config.json"
 elif [ -n "$ASAN" ]; then   # the plain desktop, under the sanitizers
-  printf '{"command": ["env", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$REPO/tests/gui/lsan.supp" "$REPO/build/wps-shell-asan" "$T/desk" > "$E/config.json"
+  printf '{"command": ["env", "LSAN_OPTIONS=suppressions=%s:print_suppressions=0", "%s", "--desktop", "%s"]}\n' "$REPO/tests/gui/lsan.supp" "$REPO/build/osd-shell-asan" "$T/desk" > "$E/config.json"
 else
-  printf '{"command": ["%s", "--desktop", "%s"]}\n' "$REPO/build/wps-shell" "$T/desk" > "$E/config.json"
+  printf '{"command": ["%s", "--desktop", "%s"]}\n' "$REPO/build/osd-shell" "$T/desk" > "$E/config.json"
 fi
 cp -r "$REPO/tests/gnome/wps-probe@local" "$T/data/gnome-shell/extensions/"
 export XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache"
 export OSD_TEMPLATES_DIR="$T/templates" OSD_SETUP_DIR="$T/setup" OSD_LAUNCHPAD_DIR="$T/launchpad"
-export OSD_CONFIG_DIR="$T/w/config" OSD_STATE_DIR="$T/w/state" OSD_RUNTIME_DIR="$RT/wps"
+export OSD_CONFIG_DIR="$T/w/config" OSD_STATE_DIR="$T/w/state" OSD_RUNTIME_DIR="$RT/objectspace"
 export OSD_DEBUG_COMMANDS=1 PROBE_SHOT="$T/shot.png" OSD_WALLPAPER="${WALL:-/usr/share/backgrounds/f45/default/f45-01-day.jxl}"
 unset WAYLAND_DISPLAY DISPLAY JOURNAL_STREAM INVOCATION_ID
-mkdir -p "$RT/wps"
-"$REPO/build/wpsd" 2> "$T/wpsd.log" &
+mkdir -p "$RT/objectspace"
+"$REPO/build/osdd" 2> "$T/osdd.log" &
 WP=$!
 # SYSTEM="shadows=2 title_layout=1": the System object's options, before anything opens
 if [ -n "$SYSTEM" ]; then
   for i in $(seq 50); do
-    SA=$("$REPO/build/wpsctl" setup 2>/dev/null | grep -o '"OsdSystem": *{"address": *"vobj:[^"]*"' | grep -o 'vobj:[^"]*')
+    SA=$("$REPO/build/osdctl" setup 2>/dev/null | grep -o '"OsdSystem": *{"address": *"vobj:[^"]*"' | grep -o 'vobj:[^"]*')
     [ -n "$SA" ] && break; sleep 0.1
   done
-  "$REPO/build/wpsctl" settings_set "$SA" $SYSTEM > /dev/null
+  "$REPO/build/osdctl" settings_set "$SA" $SYSTEM > /dev/null
 fi
 dbus-run-session -- sh -c "
-  gsettings set org.gnome.shell enabled-extensions \"['wps@wps-linux', 'wps-probe@local']\"
+  gsettings set org.gnome.shell enabled-extensions \"['objectspace@sungsookhim.github.io', 'wps-probe@local']\"
   gsettings set org.gnome.shell disable-user-extensions false
   gsettings set org.gnome.shell welcome-dialog-last-shown-version '999'
   gnome-shell --headless --wayland --no-x11 --virtual-monitor 1280x800 --wayland-display wps-hl > '$T/shell.log' 2>&1 &
   SH=\$!
   sleep 5
-  [ \"\$PROBE_MODE\" = interact ] || WAYLAND_DISPLAY=wps-hl '$REPO/build/wps-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
+  [ \"\$PROBE_MODE\" = interact ] || WAYLAND_DISPLAY=wps-hl '$REPO/build/osd-shell' '$T/desk/Projects' 2> '$T/folderwin.log' &
   # APP=gnome-text-editor: another program's window too (the window list's icons)
   [ -n \"\$APP\" ] && WAYLAND_DISPLAY=wps-hl \$APP > '$T/app.log' 2>&1 &
-  if [ -n \"\$KILLTEST\" ]; then sleep 1; pkill -KILL -f -- 'wps-shell --deskto[p]'; fi
+  if [ -n \"\$KILLTEST\" ]; then sleep 1; pkill -KILL -f -- 'osd-shell --deskto[p]'; fi
   sleep 4
   echo late > '$T/desk/added-later.txt'
   sleep ${SECS:-9}
   kill \$SH; sleep 1; kill -9 \$SH 2>/dev/null
 " 
-"$REPO/build/wpsctl" shutdown >/dev/null 2>&1; wait $WP 2>/dev/null
+"$REPO/build/osdctl" shutdown >/dev/null 2>&1; wait $WP 2>/dev/null
 grep -E "wps:|probe:|selftest:|dnd:|timing:|event:|JS ERROR|ERROR: AddressSanitizer|runtime error|wps-ui" "$T/shell.log" | grep -v "^$" | head -40
 ls -la "$T/shot.png" 2>/dev/null
 echo "T=$T"

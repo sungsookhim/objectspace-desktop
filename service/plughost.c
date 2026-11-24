@@ -1,9 +1,9 @@
 /*
- * wps-plughost - runs one plug-in package's classes outside wpsd
+ * osd-plughost - runs one plug-in package's classes outside osdd
  * (design: Plug-in isolation; decided 2026-11-18: never in-process,
  * always sandboxed).
  *
- * Started by wpsd with a socketpair on fd 3. Before loading the plug-in it
+ * Started by osdd with a socketpair on fd 3. Before loading the plug-in it
  * sandboxes itself: no new privileges, an empty network namespace (or,
  * failing that, Landlock TCP rules), and a Landlock filesystem ruleset that
  * allows reading system libraries and the plug-in's own folder, and
@@ -11,15 +11,15 @@
  * through the service, which applies the user's permissions.
  *
  * Protocol (SOCK_SEQPACKET, one CBOR map per message):
- *   host -> wpsd   {hello:true, classes:[{name, parent, methods:[{name,sig}],
+ *   host -> osdd   {hello:true, classes:[{name, parent, methods:[{name,sig}],
  *                  overrides:[name], props:[{name, type, ..., flags}],
  *                  events:[name], types:[mime]}], replaces:[{original, replacement}],
  *                  sandbox:{network, filesystem}, error?}
- *   wpsd -> host   {call:N, class, method, args:[...], object:{path, id,
+ *   osdd -> host   {call:N, class, method, args:[...], object:{path, id,
  *                  props:{Class:{key:value}}}}
- *   host -> wpsd   {reply:N, ok, result, changes:{Class:{key:value|null}}}
+ *   host -> osdd   {reply:N, ok, result, changes:{Class:{key:value|null}}}
  *
- * usage: wps-plughost PLUGIN.so DATA_DIR    (fd 3: the socket to wpsd)
+ * usage: osd-plughost PLUGIN.so DATA_DIR    (fd 3: the socket to osdd)
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -284,7 +284,7 @@ static void handle_call(const cv *m)
 
 int main(int argc, char **argv)
 {
-    if (argc != 3) { fprintf(stderr, "usage: wps-plughost PLUGIN.so DATA_DIR\n"); return 2; }
+    if (argc != 3) { fprintf(stderr, "usage: osd-plughost PLUGIN.so DATA_DIR\n"); return 2; }
     char plugin[4096];
     if (!realpath(argv[1], plugin)) snprintf(plugin, sizeof plugin, "%s", argv[1]);
     sandbox(plugin, argv[2]);

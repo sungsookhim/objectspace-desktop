@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import harness  # noqa: E402
 
 T = os.environ["T"]
-DESK, SYS, TPL = T + "/desk", T + "/xdg/data/wps/System", T + "/templates"
+DESK, SYS, TPL = T + "/desk", T + "/xdg/data/objectspace/System", T + "/templates"
 PART = sys.argv[1]
 fails = 0
 
@@ -96,7 +96,7 @@ def titled(folder, title):
 
 if PART == "restore":
     # (after "new": the desktop's defaults made; a second start notes them)
-    PROG, TRASH = T + "/xdg/data/wps/Programs", T + "/xdg/data/Trash/files"
+    PROG, TRASH = T + "/xdg/data/objectspace/Programs", T + "/xdg/data/Trash/files"
     c.request(op="first_start", desktop=DESK)
     check("Restore Desktop is in System", wait(lambda: len(titled(SYS, "Restore Desktop")) == 1), items(SYS))
     time.sleep(0.5)
@@ -163,7 +163,7 @@ if PART == "restore":
     check("restored: Prevent delete on again", r.get("error") == "protected", r)
     r = c.request(op="restore_defaults", desktop=DESK)
     check("again: nothing to do", r.get("ok") and (r.get("result") or {}).get("restored") == [], r)
-    # renamed outside WPS (a shell), wpsd running: moved back at once
+    # renamed outside WPS (a shell), osdd running: moved back at once
     for own in (SYS, SYS + "/Storages", PROG):
         os.rename(own, own + "-renamed")
         check("%s renamed outside: moved back" % os.path.basename(own),

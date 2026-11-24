@@ -83,7 +83,7 @@ def s3():
     sh2 = obj(me, moved)
     me.stop()
     t, t2 = sh.get("target") or {}, sh2.get("target") or {}
-    ok = r.get("ok") and link.name.endswith(".wpobj") and bool(ok_link) and sh.get("class") == "OsdShadow" and \
+    ok = r.get("ok") and link.name.endswith(".osdobj") and bool(ok_link) and sh.get("class") == "OsdShadow" and \
         t.get("title") == "Report" and t.get("path") == str(d / "archive" / "report.txt") and \
         sh2.get("class") == "OsdShadow" and t2.get("path") == str(d / "archive" / "report.txt")
     return ok, [f"shadow created as {link.name!r} in desk/ (a WPS object file)", f"after the target moved its hint is {hint}",
@@ -252,7 +252,7 @@ def sa1():
                 f"after deleting the database: {again.get('class')} {again.get('title')!r}, command {cmd!r}"]
 
 
-@scenario("A2", "Other abstract objects are .wpobj files; a class not installed shows as a plain object")
+@scenario("A2", "Other abstract objects are .osdobj files; a class not installed shows as a plain object")
 def sa2():
     me = Service("me").start()
     d = fresh("ext4", "a2")
@@ -260,17 +260,17 @@ def sa2():
     p = Path(r.get("result", {}).get("path", ""))
     me.ctl("flush")
     content = p.read_text() if p.exists() else ""
-    (d / "printer.wpobj").write_text("[WPS Object]\nVersion=1\nClass=OsdPrinter\n")
-    pr = obj(me, d / "printer.wpobj")
+    (d / "printer.osdobj").write_text("[WPS Object]\nVersion=1\nClass=OsdPrinter\n")
+    pr = obj(me, d / "printer.osdobj")
     me.stop()
     me.start()
     again = obj(me, p)
     me.stop()
-    ok = r.get("ok") and p.suffix == ".wpobj" and "Class=OsdAbstract" in content and \
+    ok = r.get("ok") and p.suffix == ".osdobj" and "Class=OsdAbstract" in content and \
         again.get("title") == "Team notes" and pr.get("class") == "OsdAbstract" and pr.get("class_not_installed") == "OsdPrinter"
     return ok, [f"created {p.name!r} containing Class=OsdAbstract: {'Class=OsdAbstract' in content}",
                 f"after restart: {again.get('class')} {again.get('title')!r}",
-                f"printer.wpobj (OsdPrinter not installed): {pr.get('class')}, class_not_installed={pr.get('class_not_installed')!r}"]
+                f"printer.osdobj (OsdPrinter not installed): {pr.get('class')}, class_not_installed={pr.get('class_not_installed')!r}"]
 
 
 @scenario("A3", "A shadow of a program object; creating never overwrites")
@@ -286,7 +286,7 @@ def sa3():
     sh = obj(me, link)
     me.stop()
     ok = p1.name == "Terminal.desktop" and p2.name == "Terminal (2).desktop" and ini(p1, "Exec") == "ptyxis" and \
-        sh.get("class") == "OsdShadow" and (sh.get("target") or {}).get("class") == "OsdProgram" and link.name.endswith(".wpobj")
+        sh.get("class") == "OsdShadow" and (sh.get("target") or {}).get("class") == "OsdProgram" and link.name.endswith(".osdobj")
     return ok, [f"first: {p1.name!r}, second: {p2.name!r} (Exec of the first still {ini(p1, 'Exec')!r})",
                 f"shadow in menu/ resolves to a {(sh.get('target') or {}).get('class')}"]
 
@@ -474,7 +474,7 @@ def s30():
                 f"second copy cancelled after {took * 1000:.0f} ms: {st2.get('state')}; left in the destination: {left or 'nothing'}"]
 
 
-@scenario(31, "wpsd killed during a copy of 10,000 files: reported interrupted after restart; resume completes it")
+@scenario(31, "osdd killed during a copy of 10,000 files: reported interrupted after restart; resume completes it")
 def s31():
     big = big_volume()
     src = fresh("ext4", "s31")
@@ -648,14 +648,14 @@ def main():
     helper = None
     if mode == "watchd":
         sock = WORK / "watchd.sock"
-        helper = subprocess.Popen(["sudo", "env", f"OSD_TRACE={os.environ.get('OSD_TRACE', '')}", str(BIN / "wps-watchd"), "-s", str(sock)],
-                                  stdout=open(OUT / "wps-watchd.log", "w"), stderr=subprocess.STDOUT)
+        helper = subprocess.Popen(["sudo", "env", f"OSD_TRACE={os.environ.get('OSD_TRACE', '')}", str(BIN / "osd-watchd"), "-s", str(sock)],
+                                  stdout=open(OUT / "osd-watchd.log", "w"), stderr=subprocess.STDOUT)
         time.sleep(0.5)
         harness.WATCHD["socket"] = str(sock)
     print(f"=== mode: {mode}")
     run_scenarios(set(args))
     if helper:
-        run(["sudo", "pkill", "-TERM", "-x", "wps-watchd"])
+        run(["sudo", "pkill", "-TERM", "-x", "osd-watchd"])
         helper.wait(timeout=10)
     finish()
 

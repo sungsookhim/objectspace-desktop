@@ -1,4 +1,4 @@
-/* wps-shell: The tree view. */
+/* osd-shell: The tree view. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -98,7 +98,7 @@ static void got_kids(void *arg, const cv *reply)
     n->npending = 0;
     n->loaded = true;
     n->loading = false;
-    if (!reply) snprintf(f->error, sizeof f->error, "lost the connection to wpsd");
+    if (!reply) snprintf(f->error, sizeof f->error, "lost the connection to osdd");
     struct tnode *cur = NULL;
     size_t ci = ui_container_cursor(f->cont);
     if (ci != SIZE_MAX && ci < f->ntvis) cur = f->tvis[ci];

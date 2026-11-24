@@ -11,7 +11,7 @@
 
 char *OsdDataFile__osdModifyPopupMenu(osdo_object *self, const char *menu)
 {
-    /* (Open With: wpsd makes Open a cascade of the type's programs) */
+    /* (Open With: osdd makes Open a cascade of the type's programs) */
     return OsdDataFile_parent_osdModifyPopupMenu(self, menu);
 }
 

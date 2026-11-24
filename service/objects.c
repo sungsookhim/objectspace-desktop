@@ -277,8 +277,8 @@ static bool ini_localized(const char *text, const char *key, char *out, size_t n
 
 static void read_object_file(osd_loaded *ld)
 {
-    bool desk = ends_with(ld->path, ".desktop"), wpobj = ends_with(ld->path, ".wpobj");
-    if (!desk && !wpobj) return;
+    bool desk = ends_with(ld->path, ".desktop"), osdobj = ends_with(ld->path, ".osdobj");
+    if (!desk && !osdobj) return;
     char buf[32768];   /* (entries with many languages) */
     int fd = open(ld->path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) return;
@@ -312,7 +312,7 @@ void osd_object_filename(const char *folder, const char *cls, const char *title,
     if (safe[0] == '.') safe[0] = '_';
     osdo_class *c = osdo_find_class(cls);
     const char *ext = !c ? "" : osdo_subclass_of(c, OsdProgramClass) ? ".desktop" :
-                      osdo_subclass_of(c, OsdAbstractClass) ? ".wpobj" : "";
+                      osdo_subclass_of(c, OsdAbstractClass) ? ".osdobj" : "";
     if (n <= 1) snprintf(out, len, "%s/%s%s", folder, safe, ext);
     else snprintf(out, len, "%s/%s (%d)%s", folder, safe, n, ext);
 }
@@ -414,7 +414,7 @@ void osd_load(const char *target, bool assign_id, osd_loaded *ld)
     ld->owned = ld->st.st_uid == geteuid();
     ld->writable = access(ld->path, W_OK) == 0 && !v.ro;
     if (S_ISREG(ld->st.st_mode)) read_object_file(ld);
-    if (S_ISLNK(ld->st.st_mode)) {   /* a plain file-system link (shadows are .wpobj files) */
+    if (S_ISLNK(ld->st.st_mode)) {   /* a plain file-system link (shadows are .osdobj files) */
         ssize_t n = readlink(ld->path, ld->link_target, sizeof ld->link_target - 1);
         ld->link_target[n < 0 ? 0 : n] = 0;
     }
@@ -423,8 +423,8 @@ void osd_load(const char *target, bool assign_id, osd_loaded *ld)
      * itself: FAT, for one, lists security labels but refuses user.*. */
     char probe[1];
     ld->xattr_ok = !S_ISLNK(ld->st.st_mode) &&
-                   (lgetxattr(ld->path, "user.wps.probe", probe, 0) >= 0 || errno != ENOTSUP);
-    /* Shared state: every user.wps.<Class> attribute on the file. */
+                   (lgetxattr(ld->path, "user.osd.probe", probe, 0) >= 0 || errno != ENOTSUP);
+    /* Shared state: every user.osd.<Class> attribute on the file. */
     char names[8192];
     ssize_t nl = ld->xattr_ok ? llistxattr(ld->path, names, sizeof names) : -1;
     if (ld->xattr_ok && osd_attr_get_id(ld->path, ld->id)) { /* has an ID */ }

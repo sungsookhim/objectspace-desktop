@@ -1,15 +1,15 @@
 /*
- * Plug-in classes, run in sandboxed wps-plughost processes (design:
+ * Plug-in classes, run in sandboxed osd-plughost processes (design:
  * Plug-in isolation; decided 2026-11-18: never in-process).
  *
  * For each plug-in package found (any .so file in <config>/plugins, in
- * /usr/lib/wps/plugins, or in the folders of $OSD_PLUGIN_DIRS), wpsd starts a host and registers a
- * proxy for each class it reports. Inside wpsd a proxy behaves like its
+ * /usr/lib/objectspace/plugins, or in the folders of $OSD_PLUGIN_DIRS), osdd starts a host and registers a
+ * proxy for each class it reports. Inside osdd a proxy behaves like its
  * parent class; methods the plug-in introduces or overrides are run in the
  * host when called through the service API, asynchronously and with a
  * deadline. A call that misses its deadline gets the parent's behaviour;
  * repeated misses or a crash restart the host. Class replacements the
- * plug-in asks for are applied in wpsd too.
+ * plug-in asks for are applied in osdd too.
  */
 #ifndef OSD_PLUGINS_H
 #define OSD_PLUGINS_H

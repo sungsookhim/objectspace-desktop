@@ -3,8 +3,8 @@
  * host ID.
  *
  * Directories follow the XDG conventions and can be overridden for tests:
- *   OSD_CONFIG_DIR   default $XDG_CONFIG_HOME/wps   (~/.config/wps)
- *   OSD_STATE_DIR    default $XDG_DATA_HOME/wps     (~/.local/share/wps)
+ *   OSD_CONFIG_DIR   default $XDG_CONFIG_HOME/objectspace   (~/.config/objectspace)
+ *   OSD_STATE_DIR    default $XDG_DATA_HOME/objectspace     (~/.local/share/objectspace)
  *   OSD_RUNTIME_DIR  default $XDG_RUNTIME_DIR       (the socket lives here)
  *   OSD_HOST_ID      default /etc/machine-id
  *

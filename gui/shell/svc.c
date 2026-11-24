@@ -133,15 +133,15 @@ bool svc_start(ui_app *a, char *err, size_t errlen)
     char path[4096];
     const char *s = getenv("OSD_SOCKET"), *rt = getenv("OSD_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
-    else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
-    else if (xr && *xr) snprintf(path, sizeof path, "%s/wps.sock", xr);
-    else snprintf(path, sizeof path, "/tmp/wps-%u/wps.sock", (unsigned)getuid());
+    else if (rt && *rt) snprintf(path, sizeof path, "%s/objectspace.sock", rt);
+    else if (xr && *xr) snprintf(path, sizeof path, "%s/objectspace.sock", xr);
+    else snprintf(path, sizeof path, "/tmp/objectspace-%u/objectspace.sock", (unsigned)getuid());
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
     if (strlen(path) >= sizeof sa.sun_path) { snprintf(err, errlen, "socket path too long: %s", path); return false; }
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
     sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (sock < 0 || connect(sock, (struct sockaddr *)&sa, sizeof sa) < 0) {
-        snprintf(err, errlen, "cannot reach wpsd at %s: %s", path, strerror(errno));
+        snprintf(err, errlen, "cannot reach osdd at %s: %s", path, strerror(errno));
         if (sock >= 0) close(sock);
         sock = -1;
         return false;
@@ -307,14 +307,14 @@ static void open_req(const char *target, bool confirm, const char *const *files,
                      bool always, svc_fn fn, void *arg)
 {
     int64_t id;
-    /* What opens appears on this GUI's display (wpsd may have been
+    /* What opens appears on this GUI's display (osdd may have been
      * started elsewhere, e.g. before the session's compositor). */
     char disp[4096] = "";
     const char *wd = getenv("WAYLAND_DISPLAY"), *rt = getenv("XDG_RUNTIME_DIR");
     if (wd && *wd) snprintf(disp, sizeof disp, "%s%s%s", wd[0] == '/' || !rt ? "" : rt, wd[0] == '/' || !rt ? "" : "/", wd);
     const char *x11 = getenv("DISPLAY");
     bool x = x11 && *x11;
-    /* and this session's input-method and desktop settings (wpsd may have
+    /* and this session's input-method and desktop settings (osdd may have
      * started before the session gave them: Hangul was not typed in
      * programs opened from WPS) */
     static const char *const keys[] = { "GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE" };
@@ -689,7 +689,7 @@ void svc_place_lock(const char *folder, const char *target, int64_t x, int64_t y
     send_req(o, id, fn, arg);
 }
 
-/* ---- messages (wpsd keeps them: messages.h) */
+/* ---- messages (osdd keeps them: messages.h) */
 
 void svc_msg_add(const svc_message *m, svc_fn fn, void *arg)
 {

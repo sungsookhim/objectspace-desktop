@@ -1,0 +1,61 @@
+.TH WPS-TERMINAL 1 "@DATE@" "WPS @VERSION@" "User Commands"
+.SH NAME
+osd-terminal \- WPS Terminal, a program on a terminal in a WPS window
+.SH SYNOPSIS
+.B osd-terminal
+.RB [ \-\-title
+.IR TITLE ]
+.RB [ \-\-hold ]
+.RB [ \-\-font
+.IR SPEC ]
+.RB [ \-\-cwd
+.IR FOLDER ]
+.RB [ \-\-size
+.IR COLS x ROWS ]
+.RB [ \-\-
+.IR COMMAND " [" ARG ...]]
+.SH DESCRIPTION
+.B osd-terminal
+runs a program (the user's shell if none is given) on a pseudo-terminal in
+a WPS window, as OS/2's command window did. WPS starts it for text-mode
+programs (the System's Programs page) and for
+.BR "Command prompt here" .
+It draws in the scheme in use and the System's Terminal font; colours (true
+colour too), full-screen programs, the mouse, wide characters and input
+methods work. One window is one process: the window lives as long as the
+program, and goes with a work area's group.
+.PP
+Shift+Page Up and Shift+Page Down scroll back; Ctrl+Shift+C and
+Ctrl+Shift+V copy and paste; objects dropped on the window are typed in as
+their paths.
+.SH OPTIONS
+.TP
+.BI \-\-title " TITLE"
+The window's title (a program may set its own).
+.TP
+.B \-\-hold
+When the program ends, the window stays with its status until Enter.
+.TP
+.BI \-\-font " SPEC"
+A font as the Font Palette names it (for example
+.BR 12.Monospace );
+by default the System's Terminal font, else
+.BR 11.Monospace .
+.TP
+.BI \-\-cwd " FOLDER"
+Where the program starts.
+.TP
+.BI \-\-size " COLS" x ROWS
+The window's size in characters (80x24).
+.SH ENVIRONMENT
+.B TERM
+is set to
+.B xterm-256color
+and
+.B COLORTERM
+to
+.B truecolor
+for the program.
+.SH SEE ALSO
+.BR wps (1),
+.BR osd-shell (1)

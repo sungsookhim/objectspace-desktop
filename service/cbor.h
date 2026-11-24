@@ -55,7 +55,7 @@ const cv *cv_get(const cv *map, const char *key);     /* NULL if absent */
 const char *cv_text(const cv *map, const char *key);  /* NULL if absent or not text */
 bool cv_int(const cv *map, const char *key, int64_t *out);
 
-/* Append a JSON rendering of `v` (for wpsctl and logs). */
+/* Append a JSON rendering of `v` (for osdctl and logs). */
 void cv_json(const cv *v, cbuf *out);
 
 #endif

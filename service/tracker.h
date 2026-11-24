@@ -1,7 +1,7 @@
 /*
  * The change tracker (design: Change tracking, Edge cases, Detecting saves).
  *
- * Events come from wps-watchd when it is running (fanotify, whole
+ * Events come from osd-watchd when it is running (fanotify, whole
  * filesystems, filtered per user) or else from inotify on the folders the
  * service tracks. Both are turned into one stream of path-based events,
  * which the rules below apply to the service's objects:
@@ -42,7 +42,7 @@ void osd_tracker_watch(const char *dir);
 void osd_tracker_scan(void (*done)(void *arg, const char *report), void *arg);
 
 typedef struct {
-    const char *mode;        /* "wps-watchd" or "inotify" */
+    const char *mode;        /* "osd-watchd" or "inotify" */
     uint64_t events;         /* events applied */
     uint64_t overflows;
     uint64_t watched;        /* folders watched */

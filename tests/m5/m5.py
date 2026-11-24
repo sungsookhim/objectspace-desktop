@@ -122,7 +122,7 @@ def ss2():
     changes = obj(me, p).get("changes")
     r = me.ctl("settings_set", p, "command=loupe", "title=Image Viewer")
     me.ctl("flush")
-    stale = harness.run([str(BIN / "wpsctl"), "call", "--expect", str(changes), str(p), "osdSetTitle", "x"],
+    stale = harness.run([str(BIN / "osdctl"), "call", "--expect", str(changes), str(p), "osdSetTitle", "x"],
                         env=me.env).stdout
     me.stop()
     titles = [pg["title"] for pg in pages]
@@ -321,7 +321,7 @@ def s19():
                 f"pings meanwhile: {len(pings)}, 99th percentile {p99:.2f} ms"]
 
 
-@scenario(20, "The plug-in's host is killed mid-call: the parent's menu at once; the host restarts; wpsd keeps running")
+@scenario(20, "The plug-in's host is killed mid-call: the parent's menu at once; the host restarts; osdd keeps running")
 def s20():
     me = Service("me", extra_env=PLUG).start()
     ps = plugins_ready(me)
@@ -345,13 +345,13 @@ def s20():
     tf = ps2.get("testfolder", {})
     (d / "fast").mkdir()
     again = labels(me.ctl("menu", d / "fast"))
-    wpsd_alive = me.proc.poll() is None
+    osdd_alive = me.proc.poll() is None
     me.stop()
     ok = res.get("menu") == ["Open", "Properties", "Create another", "Delete...", "Arrange"] and res.get("took", 9) < 1.5 and tf.get("ready") and \
-        tf.get("pid") != pid0 and tf.get("restarts") == 1 and again and again[-1] == "From the plug-in" and wpsd_alive
+        tf.get("pid") != pid0 and tf.get("restarts") == 1 and again and again[-1] == "From the plug-in" and osdd_alive
     return ok, [f"menu during the crash: {res.get('menu')} after {res.get('took', 0):.2f} s",
                 f"host restarted: pid {pid0} -> {tf.get('pid')}, restarts {tf.get('restarts')}",
-                f"plug-in works again: {again}; wpsd never restarted: {wpsd_alive}"]
+                f"plug-in works again: {again}; osdd never restarted: {osdd_alive}"]
 
 
 @scenario("SB", "The plug-in's sandbox: no home folder, no network, its data folder only")
@@ -465,7 +465,7 @@ def sc1():
     me.ctl("place", d / "desk", cp, 120, 80)
     me.ctl("flush")
     lay = {i["name"]: (i["x"], i["y"]) for i in me.ctl("layout", d / "desk").get("result", {}).get("items", [])}
-    # a folder set to keep files gets a .wpobj file
+    # a folder set to keep files gets a .osdobj file
     me.call(d / "keepfiles", "osdSetLocalObjects", "true")
     me.ctl("flush")
     lr = me.ctl("shadow", d / "docs" / "report.txt", d / "keepfiles").get("result", "")
@@ -478,7 +478,7 @@ def sc1():
     ok = addr.startswith("vobj:") and files_in_desk == [] and entry.get("name", "").startswith("\x01vobj:") and \
         entry.get("shadow") is True and entry.get("title") == "Report" and sh.get("class") == "OsdShadow" and \
         (sh.get("target") or {}).get("title") == "Report" and mv == addr and in_desk == [] and len(in_other) == 1 and \
-        cp.startswith("vobj:") and cp != mv and lay.get("\x01" + cp) == (120, 80) and lr.endswith(".wpobj") and bool(gone)
+        cp.startswith("vobj:") and cp != mv and lay.get("\x01" + cp) == (120, 80) and lr.endswith(".osdobj") and bool(gone)
     return ok, [f"shadow made centrally: {addr[:13]}..., files in desk/: {files_in_desk}",
                 f"listed with the folder: shadow={entry.get('shadow')}, title {entry.get('title')!r}; resolves to {(sh.get('target') or {}).get('title')!r}",
                 f"moved to other/ (same ID {mv == addr}): desk lists {len(in_desk)}, other lists {len(in_other)}",

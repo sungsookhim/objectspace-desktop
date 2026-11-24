@@ -14,7 +14,7 @@
 
 #include "ui.h"
 
-#define MIME_FONT "application/x-wps-font"
+#define MIME_FONT "application/x-objectspace-font"
 
 /* what: "menus", "titles", "folders", "warpcenter" (a font for them; ""
  * the interface font again), or "samples" (the palette's list, ";"). */

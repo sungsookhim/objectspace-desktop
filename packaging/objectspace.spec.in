@@ -1,0 +1,173 @@
+# The WPS RPM (v0.2-design 11.3). Made into build/objectspace.spec by `make dist`
+# (@VERSION@ from VERSION, a "-" as "~"; @RELEASE@ 1 for a release, the
+# commit count for a development build).
+
+Name:           objectspace
+Version:        @VERSION@
+Release:        @RELEASE@%{?dist}
+Summary:        Desktop built on the object model of the OS/2 Workplace Shell
+License:        MIT
+URL:            https://github.com/sungsookhim/objectspace-desktop
+Source0:        %{name}-%{version}.tar.gz
+
+ExclusiveArch:  x86_64 aarch64
+
+BuildRequires:  gcc
+BuildRequires:  make
+BuildRequires:  git-core
+BuildRequires:  python3
+BuildRequires:  systemd-rpm-macros
+BuildRequires:  glib2
+BuildRequires:  pam-devel
+# (the unit tests read the MIME database)
+BuildRequires:  shared-mime-info
+BuildRequires:  pkgconfig(sqlite3)
+BuildRequires:  pkgconfig(libsystemd)
+BuildRequires:  pkgconfig(cairo)
+BuildRequires:  pkgconfig(harfbuzz)
+BuildRequires:  pkgconfig(freetype2)
+BuildRequires:  pkgconfig(fontconfig)
+BuildRequires:  pkgconfig(wayland-client)
+BuildRequires:  pkgconfig(wayland-cursor)
+BuildRequires:  pkgconfig(wayland-server)
+BuildRequires:  pkgconfig(wayland-protocols)
+BuildRequires:  pkgconfig(wayland-scanner)
+BuildRequires:  pkgconfig(xkbcommon)
+BuildRequires:  pkgconfig(wlroots-0.20)
+BuildRequires:  pkgconfig(pixman-1)
+BuildRequires:  pkgconfig(libdrm)
+BuildRequires:  pkgconfig(xcb)
+BuildRequires:  pkgconfig(libpipewire-0.3)
+BuildRequires:  pkgconfig(sndfile)
+# the icon themes (make icons: tools/icons, and osdctl icon pack)
+BuildRequires:  python3-pillow
+BuildRequires:  pkgconfig(zlib)
+# icon themes' SVGs (0.4 step 2)
+BuildRequires:  pkgconfig(librsvg-2.0)
+# WPS Terminal (0.4.1)
+BuildRequires:  pkgconfig(vterm)
+
+# The session: X11 programs, drives, settings shared with GNOME, icons
+# made from SVGs, file types and the icon theme; input methods when installed.
+Requires:       xorg-x11-server-Xwayland
+Requires:       udisks2
+Requires:       gsettings-desktop-schemas
+Requires:       glycin-thumbnailer
+Requires:       dbus
+Requires:       shared-mime-info
+Requires:       adwaita-icon-theme
+Recommends:     ibus
+Recommends:     %{name}-gnome-shell-extension = %{version}-%{release}
+%{?systemd_requires}
+
+%description
+A desktop for Linux built on the object model of the OS/2 Workplace Shell:
+every file, folder and abstract item is a persistent object of a class
+that can be extended, with shadows, templates and settings notebooks.
+
+It runs as its own session from the login screen (osd-compositor, its own
+Wayland compositor: the desktop, folder windows, the WarpCenter with its tray,
+notifications and Messages, the Trash Can, Drives, Programs, Startup) or
+inside GNOME with the objectspace-gnome-shell-extension package.
+
+%package devel
+Summary:        The plug-in SDK for WPS: headers, class interfaces and a sample
+Requires:       %{name} = %{version}-%{release}
+Requires:       python3
+Requires:       gcc
+Requires:       make
+
+%description devel
+What a WPS plug-in is built with: the headers it includes, the built-in
+classes' interfaces (.osdi), osdc (the class compiler), and a sample plug-in
+(%{_datadir}/objectspace/sdk/sample). osdctl plugin new NAME makes a skeleton;
+see %{_datadir}/objectspace/sdk/README.md.
+
+%package gnome-shell-extension
+Summary:        Runs the WPS desktop inside GNOME
+BuildArch:      noarch
+Requires:       %{name} = %{version}-%{release}
+Requires:       gnome-shell
+
+%description gnome-shell-extension
+A GNOME Shell extension that runs the WPS desktop (osd-shell) as GNOME's
+desktop: below all windows, on every workspace, out of Alt+Tab and the
+overview. Turn it on with GNOME Extensions (or gnome-extensions enable
+objectspace@sungsookhim.github.io).
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+# (no sanitizers in a package; the distribution's flags after ours)
+%make_build SAN= OPTFLAGS="%{optflags}" PREFIX=%{_prefix} LIBDIR=%{_libdir} \
+    USERUNITDIR=%{_userunitdir} SYSTEMUNITDIR=%{_unitdir} session
+
+%install
+%make_install SAN= OPTFLAGS="%{optflags}" PREFIX=%{_prefix} LIBDIR=%{_libdir} \
+    USERUNITDIR=%{_userunitdir} SYSTEMUNITDIR=%{_unitdir} MANDIR=%{_mandir} INCLUDEDIR=%{_includedir}
+# osdd starts with every graphical session (systemctl --global, by preset)
+install -d %{buildroot}%{_userpresetdir}
+echo "enable osdd.service" > %{buildroot}%{_userpresetdir}/80-objectspace.preset
+
+%check
+%make_build SAN= unit-test
+
+%post
+%systemd_user_post osdd.service
+%systemd_post osd-watchd.service
+
+%preun
+%systemd_user_preun osdd.service
+%systemd_preun osd-watchd.service
+
+%postun
+%systemd_postun_with_restart osd-watchd.service
+
+%files
+%license LICENSE
+%doc README.md docs/roadmap.md
+%{_bindir}/osd
+%{_bindir}/objectspace
+%{_bindir}/osdctl
+%{_bindir}/objectspace-ctl
+%{_bindir}/objectspace-shell
+%{_bindir}/objectspace-terminal
+%{_bindir}/objectspace-session
+%{_bindir}/osd-shell
+%{_bindir}/osd-terminal
+%{_bindir}/osd-session
+%dir %{_libexecdir}/objectspace
+%{_libexecdir}/objectspace/osdd
+%{_libexecdir}/objectspace/osd-watchd
+%{_libexecdir}/objectspace/osd-plughost
+%{_libexecdir}/objectspace/osd-compositor
+%dir %{_libdir}/objectspace
+%dir %{_libdir}/objectspace/plugins
+%{_userunitdir}/osdd.service
+%{_userpresetdir}/80-objectspace.preset
+%{_unitdir}/osd-watchd.service
+%{_datadir}/wayland-sessions/objectspace.desktop
+%{_datadir}/applications/io.github.sungsookhim.Objectspace.Terminal.desktop
+%{_datadir}/objectspace
+%exclude %{_datadir}/objectspace/sdk
+%config(noreplace) %{_sysconfdir}/pam.d/osd-lock
+%{_mandir}/man1/osdctl.1*
+%{_mandir}/man1/osd-shell.1*
+%{_mandir}/man1/osd-session.1*
+%{_mandir}/man1/osd.1*
+%{_mandir}/man1/objectspace*.1*
+%{_mandir}/man1/osd-terminal.1*
+
+%files devel
+%license LICENSE
+%{_includedir}/objectspace
+%{_datadir}/objectspace/sdk
+
+%files gnome-shell-extension
+%license LICENSE
+%{_datadir}/gnome-shell/extensions/objectspace@sungsookhim.github.io
+
+%changelog
+* @DATE@ Sungsoo Khim <calmssea@gmail.com> - @VERSION@-@RELEASE@
+- Built from the repository (see the release notes on GitHub)

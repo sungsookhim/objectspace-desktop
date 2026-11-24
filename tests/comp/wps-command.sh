@@ -4,7 +4,7 @@
 # icon clicked on the desktop), open (a folder: its window), folder.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-cmd-XXXX")
-WPS="$PWD/build/wps"
+WPS="$PWD/build/osd"
 # notes.txt on the desktop at 124,40 (clicked: selected); the ask dialog
 # answered with Enter (its first button) at 6 s.
 cat > "$S/script" <<EOS

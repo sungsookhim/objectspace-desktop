@@ -24,10 +24,10 @@ fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 check "the service answers (GetServerInformation)" "grep -q '^server Workplace Shell' '$T/notify.log'"
 check "capabilities: actions, persistence" "grep -q '^caps.*actions.*persistence' '$T/notify.log'"
-check "the pop-up by the bar, bottom right" "grep -q \"app org.wps.Notice 360x[0-9]*+912+\" '$S/out.txt'"
+check "the pop-up by the bar, bottom right" "grep -q \"app io.github.sungsookhim.Objectspace.Notice 360x[0-9]*+912+\" '$S/out.txt'"
 check "the Reply button reaches the program" "grep -q '^action 1 reply' '$T/notify.log'"
 check "then the notification is closed (dismissed)" "grep -q '^closed 1 2' '$T/notify.log'"
-check "the envelope opens Messages" "grep -q \"app org.wps.Messages\" '$S/out.txt'"
+check "the envelope opens Messages" "grep -q \"app io.github.sungsookhim.Objectspace.Messages\" '$S/out.txt'"
 check "screenshots made" "[ -s '$S/popup.png' ] && [ -s '$S/messages.png' ]"
 echo "$fails failed (screenshots: $S, logs: $T)"
 [ $fails = 0 ]

@@ -26,7 +26,7 @@ char *osd_menu_without(char *menu, const int *ids, int n)
 
 char *OsdDrives__osdModifyPopupMenu(osdo_object *self, const char *menu)
 {
-    static const int gone[] = { OSD_MI_DELETE, OSD_MI_CREATE_ANOTHER };   /* kept by wpsd */
+    static const int gone[] = { OSD_MI_DELETE, OSD_MI_CREATE_ANOTHER };   /* kept by osdd */
     return osd_menu_without(OsdDrives_parent_osdModifyPopupMenu(self, menu), gone, 2);
 }
 

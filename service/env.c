@@ -50,12 +50,12 @@ static int read_line(const char *path, char *buf, size_t n)
 int osd_env_load(osd_env *e, char *err, size_t errlen)
 {
     memset(e, 0, sizeof *e);
-    dir_from(e->config_dir, sizeof e->config_dir, "OSD_CONFIG_DIR", "XDG_CONFIG_HOME", ".config", "/wps");
-    dir_from(e->state_dir, sizeof e->state_dir, "OSD_STATE_DIR", "XDG_DATA_HOME", ".local/share", "/wps");
+    dir_from(e->config_dir, sizeof e->config_dir, "OSD_CONFIG_DIR", "XDG_CONFIG_HOME", ".config", "/objectspace");
+    dir_from(e->state_dir, sizeof e->state_dir, "OSD_STATE_DIR", "XDG_DATA_HOME", ".local/share", "/objectspace");
     const char *rt = getenv("OSD_RUNTIME_DIR");
     if (!rt || !*rt) rt = getenv("XDG_RUNTIME_DIR");
     if (rt && *rt) snprintf(e->runtime_dir, sizeof e->runtime_dir, "%s", rt);
-    else snprintf(e->runtime_dir, sizeof e->runtime_dir, "/tmp/wps-%u", (unsigned)getuid());
+    else snprintf(e->runtime_dir, sizeof e->runtime_dir, "/tmp/objectspace-%u", (unsigned)getuid());
     if (osd_mkdirs(e->config_dir, 0700) < 0 || osd_mkdirs(e->state_dir, 0700) < 0 ||
         osd_mkdirs(e->runtime_dir, 0700) < 0) {
         snprintf(err, errlen, "cannot create directories: %s", strerror(errno));

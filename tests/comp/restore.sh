@@ -27,9 +27,9 @@ cp "$T/state/open-windows" "$S/recorded"
     printf 'N\t%s\t1\t300\t400\n' "$T/desk/notes.txt"
 } >> "$T/state/open-windows"
 KEEP_T=$T SECS=9 tests/comp/run.sh "$S/two" "sleep 1" > "$S/out2" 2>&1
-check "Projects reopens where it was" "grep -q \"window 'Projects - Icon View' app org.wps.shell 640x480+120+206\" '$S/out2'"
-check "a details view at its size and place" "grep -q \"window '.* - Details View' app org.wps.shell 500x300+40+60\" '$S/out2'"
-check "the Find window, its place" "grep -q \"window 'Find' app org.wps.Find [0-9x]*+700+90\" '$S/out2'"
-check "the notebook, its place" "grep -q \"window 'notes.txt - Properties' app org.wps.notebook [0-9x]*+300+400\" '$S/out2'"
+check "Projects reopens where it was" "grep -q \"window 'Projects - Icon View' app io.github.sungsookhim.Objectspace.shell 640x480+120+206\" '$S/out2'"
+check "a details view at its size and place" "grep -q \"window '.* - Details View' app io.github.sungsookhim.Objectspace.shell 500x300+40+60\" '$S/out2'"
+check "the Find window, its place" "grep -q \"window 'Find' app io.github.sungsookhim.Objectspace.Find [0-9x]*+700+90\" '$S/out2'"
+check "the notebook, its place" "grep -q \"window 'notes.txt - Properties' app io.github.sungsookhim.Objectspace.notebook [0-9x]*+300+400\" '$S/out2'"
 echo "$fails failed (logs: $S, $T)"
 [ $fails = 0 ]

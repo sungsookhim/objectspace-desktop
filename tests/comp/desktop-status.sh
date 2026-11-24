@@ -2,13 +2,13 @@
 # The desktop's status line (0.4 step 5), headless: a message (notes.txt
 # moved to the trash) in a box at the bottom of the desktop, gone after a
 # few seconds and not back when the selection changes; an action not done
-# (Messages) shown there too; a click closes it. A script's (wpsctl say)
+# (Messages) shown there too; a click closes it. A script's (osdctl say)
 # shown; the Messages object's setting off: WPS's own not shown, a
 # script's still.
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-dm-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 cat > "$S/script" <<EOS
 3 click 124 40
 3.5 key Delete
@@ -38,7 +38,7 @@ check "moved to the trash: the box" "[ \$(box '$S/msg.png') -gt 50 ]"
 check "after a few seconds: gone (a click on an icon does not bring it back)" "[ \$(box '$S/gone.png') -eq 0 ]"
 check "an action not done: the box again" "[ \$(box '$S/action.png') -gt 50 ]"
 check "clicked: gone" "[ \$(box '$S/clicked.png') -eq 0 ]"
-check "wpsctl say: the box" "grep -q '\"ok\":true' '$T/say.log' && [ \$(box '$S/said.png') -gt 50 ]"
+check "osdctl say: the box" "grep -q '\"ok\":true' '$T/say.log' && [ \$(box '$S/said.png') -gt 50 ]"
 # the setting off (the Messages object's): deleting shows nothing; a script's still shows
 cat > "$S/off" <<EOS
 3 click 124 40

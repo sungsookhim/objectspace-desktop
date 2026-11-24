@@ -1,9 +1,9 @@
 /*
  * G0 prototype: a folder window drawn with our own code (Cairo, HarfBuzz,
- * FreeType) on a plain Wayland surface, fed by wpsd's streaming listing.
+ * FreeType) on a plain Wayland surface, fed by osdd's streaming listing.
  *
  * Design (gui-design.md, Architecture): the input and drawing thread never
- * waits on wpsd or the disk. A service thread fetches pages and stores
+ * waits on osdd or the disk. A service thread fetches pages and stores
  * them in the model under a short lock, then wakes the drawing thread with
  * an eventfd. Rows not loaded yet are drawn as placeholders.
  *
@@ -111,9 +111,9 @@ static int connect_service(void)
     char path[4096];
     const char *s = getenv("OSD_SOCKET"), *rt = getenv("OSD_RUNTIME_DIR"), *x = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
-    else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
-    else if (x && *x) snprintf(path, sizeof path, "%s/wps.sock", x);
-    else snprintf(path, sizeof path, "/tmp/wps-%u/wps.sock", (unsigned)getuid());
+    else if (rt && *rt) snprintf(path, sizeof path, "%s/objectspace.sock", rt);
+    else if (x && *x) snprintf(path, sizeof path, "%s/objectspace.sock", x);
+    else snprintf(path, sizeof path, "/tmp/objectspace-%u/objectspace.sock", (unsigned)getuid());
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     struct sockaddr_un a = { .sun_family = AF_UNIX };
     if (strlen(path) >= sizeof a.sun_path) {
@@ -123,7 +123,7 @@ static int connect_service(void)
     }
     snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
     if (connect(fd, (struct sockaddr *)&a, sizeof a) < 0) {
-        snprintf(service_error, sizeof service_error, "cannot reach wpsd at %s: %s", path, strerror(errno));
+        snprintf(service_error, sizeof service_error, "cannot reach osdd at %s: %s", path, strerror(errno));
         close(fd);
         return -1;
     }
@@ -171,7 +171,7 @@ static void store(const cv *reply, bool details)
     if (!res) {
         const char *m = cv_text(reply, "message");
         pthread_mutex_lock(&mu);
-        snprintf(service_error, sizeof service_error, "wpsd: %s", m ? m : "error");
+        snprintf(service_error, sizeof service_error, "osdd: %s", m ? m : "error");
         pthread_mutex_unlock(&mu);
         return;
     }
@@ -259,7 +259,7 @@ static void *service_main(void *arg)
         }
         pthread_cond_wait(&want_cv, &mu);
     }
-    if (!quitting && !service_error[0]) snprintf(service_error, sizeof service_error, "lost the connection to wpsd");
+    if (!quitting && !service_error[0]) snprintf(service_error, sizeof service_error, "lost the connection to osdd");
     pthread_mutex_unlock(&mu);
     return NULL;
 }
@@ -980,7 +980,7 @@ int main(int argc, char **argv)
     top = xdg_surface_get_toplevel(xsurf);
     xdg_toplevel_add_listener(top, &top_listener, NULL);
     xdg_toplevel_set_title(top, folder);
-    xdg_toplevel_set_app_id(top, "org.wps.folderview");
+    xdg_toplevel_set_app_id(top, "io.github.sungsookhim.Objectspace.folderview");
     wl_surface_commit(surf);
 
     int wfd = wl_display_get_fd(dpy);

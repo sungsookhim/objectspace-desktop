@@ -11,7 +11,7 @@ mkdir -p "${1:?usage: tests/visual/run.sh OUT}"
 OUT=$(readlink -f "$1")
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-visual-XXXX")
 trap 'rm -rf "$S"' EXIT
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 fails=0
 for scheme in classic dark "high contrast"; do
     tag=$(echo "$scheme" | tr ' ' -)

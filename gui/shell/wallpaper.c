@@ -220,8 +220,8 @@ static uint64_t fnv(const char *s, uint64_t h)
 static bool cache_dir(char *out, size_t n)
 {
     const char *c = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
-    if (c && *c) snprintf(out, n, "%s/wps", c);
-    else if (home) snprintf(out, n, "%s/.cache/wps", home);
+    if (c && *c) snprintf(out, n, "%s/objectspace", c);
+    else if (home) snprintf(out, n, "%s/.cache/objectspace", home);
     else return false;
     char p[PATH_MAX];
     snprintf(p, sizeof p, "%s", out);
@@ -260,7 +260,7 @@ static void decoded(void *arg, int fd, short rev)
         loaded(cairo_image_surface_create_from_png(dec_out), dec_uri, dec_size);
     else {
         unlink(dec_tmp);
-        fprintf(stderr, "wps-shell: cannot read the background picture %s\n", dec_uri);
+        fprintf(stderr, "osd-shell: cannot read the background picture %s\n", dec_uri);
         snprintf(src_uri, sizeof src_uri, "%s", dec_uri);   /* do not try it again and again */
         src_size = dec_size;
     }
@@ -316,7 +316,7 @@ static void want_picture(void)
     int e = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ);
     posix_spawn_file_actions_destroy(&fa);
     if (e) {
-        fprintf(stderr, "wps-shell: glycin-thumbnailer is not installed: the background is a colour\n");
+        fprintf(stderr, "osd-shell: glycin-thumbnailer is not installed: the background is a colour\n");
         snprintf(src_uri, sizeof src_uri, "%s", want.uri);
         return;
     }

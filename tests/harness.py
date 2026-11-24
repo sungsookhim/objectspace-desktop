@@ -1,4 +1,4 @@
-"""Shared harness for the scenario suites (tests/m2, tests/m3): real wpsd
+"""Shared harness for the scenario suites (tests/m2, tests/m3): real osdd
 services on the loopback test bed (proto/m0/testbed.sh), as the current
 user or as test users 60001/60002 through setpriv."""
 import json
@@ -17,7 +17,7 @@ BIN = WORK / "bin"
 OUT = ROOT / "build" / os.environ.get("OSD_SUITE", "m2")
 results = []
 scenarios = []
-WATCHD = {"socket": "none"}   # set by a suite to use wps-watchd
+WATCHD = {"socket": "none"}   # set by a suite to use osd-watchd
 
 
 def scenario(num, title):
@@ -55,7 +55,7 @@ LIVE = []   # services started by the running scenario, stopped after it
 
 
 class Service:
-    """One wpsd: a user (None = current user), a computer (host), dirs."""
+    """One osdd: a user (None = current user), a computer (host), dirs."""
 
     def __init__(self, name, user=None, host=None, identity_from=None, extra_env=None):
         self.name, self.user = name, user
@@ -71,7 +71,7 @@ class Service:
         }
         self.env.update(extra_env or {})
         self.proc = None
-        self.log = OUT / f"wpsd-{name}.log"
+        self.log = OUT / f"osdd-{name}.log"
         # The services' parent folder is shared by every test user, like /tmp.
         if not (WORK / "svc").exists():
             run(["sudo", "mkdir", "-p", str(WORK / "svc")], check=True)
@@ -94,7 +94,7 @@ class Service:
             (d / name).write_text(text)
 
     def start(self):
-        cmd = [str(BIN / "wpsd")]
+        cmd = [str(BIN / "osdd")]
         logf = open(self.log, "a")
         if self.user is not None:
             full = ["sudo", "setpriv", f"--reuid={self.user}", "--regid=60000", "--groups=60000", "--", "env"] + \
@@ -107,10 +107,10 @@ class Service:
             if self.ctl("ping").get("ok"):
                 return self
             time.sleep(0.05)
-        raise RuntimeError(f"wpsd {self.name} did not start; see {self.log}")
+        raise RuntimeError(f"osdd {self.name} did not start; see {self.log}")
 
     def ctl(self, *args):
-        p = run([str(BIN / "wpsctl")] + [str(a) for a in args], user=self.user, env=self.env)
+        p = run([str(BIN / "osdctl")] + [str(a) for a in args], user=self.user, env=self.env)
         try:
             return json.loads(p.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
@@ -138,7 +138,7 @@ class Service:
             run(["sudo", "rm", "-f", str(f)])
 
 
-def attr(path, name="user.wps.OsdObject"):
+def attr(path, name="user.osd.OsdObject"):
     p = run(["getfattr", "--only-values", "-n", name, str(path)])
     return p.stdout if p.returncode == 0 else None
 
@@ -175,7 +175,7 @@ def prepare():
     """Check the test bed, copy binaries where test users can run them."""
     # Services left over from an interrupted run: matched by executable path
     # (pkill -f would also match any command line that mentions the path).
-    run(["sudo", "sh", "-c", f'for p in /proc/[0-9]*; do [ "$(readlink $p/exe 2>/dev/null)" = "{BIN / "wpsd"}" ] '
+    run(["sudo", "sh", "-c", f'for p in /proc/[0-9]*; do [ "$(readlink $p/exe 2>/dev/null)" = "{BIN / "osdd"}" ] '
                              f'&& kill ${{p#/proc/}}; done; true'])
     time.sleep(0.3)
     for fs, m in MNT.items():
@@ -183,7 +183,7 @@ def prepare():
             sys.exit(f"{m} is not mounted; run proto/m0/testbed.sh up first")
     OUT.mkdir(parents=True, exist_ok=True)
     BIN.mkdir(parents=True, exist_ok=True)
-    for b in ("wpsd", "wpsctl", "wps-watchd", "wps-plughost"):
+    for b in ("osdd", "osdctl", "osd-watchd", "osd-plughost"):
         if (ROOT / "build" / b).exists():
             shutil.copy(ROOT / "build" / b, BIN / b)
     os.chmod(WORK, 0o755)
@@ -300,7 +300,7 @@ class Conn:
     def __init__(self, svc):
         import socket
         self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.s.connect(svc.env["OSD_RUNTIME_DIR"] + "/wps.sock")
+        self.s.connect(svc.env["OSD_RUNTIME_DIR"] + "/objectspace.sock")
         self.next = 0
         self.queued = []
 

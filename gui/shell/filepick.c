@@ -491,7 +491,7 @@ void filepick_open(const char *for_title, const char *kind, const char *start, f
     }
     pk.up_pressed = pk.use_pressed = false;
     pk.path = ui_entry_new("");
-    pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.FilePicker", 600, 460);
+    pk.s = ui_window_new(app, &pk_ops, NULL, "io.github.sungsookhim.Objectspace.FilePicker", 600, 460);
     ui_window_set_title(pk.s, pk.title);
     pk.cont = ui_container_new(pk.s, &pick_src, NULL, UI_VIEW_ICON);
     ui_container_set_font(pk.cont, UI_FONT_DIALOG);   /* (a dialog's list) */

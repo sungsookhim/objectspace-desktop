@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """WPS's icon themes as packages (roadmap 0.4): every icon of the isometric
 set (tools/icons/make_iso.py, sets A to E) drawn at each size and packed as
-NAME.wpsicon, one theme per variant:
+NAME.osdicon, one theme per variant:
 
   OUTDIR/wps-flat/      the default (the owner's, 2026-11-22)
   OUTDIR/wps-outline/
-each with theme.ini (its name and what it is) and NAME.wpsicon packages: a
-zip of SIZE.png, stored, no manifest (gui/shell/wpsicon.h). The sizes: the
+each with theme.ini (its name and what it is) and NAME.osdicon packages: a
+zip of SIZE.png, stored, no manifest (gui/shell/osdicon.h). The sizes: the
 standard five (256, 128, 96, 64, 32) and the small designs 48, 40 and 16,
 each drawn on its own (--sizes to change them).
 
 The classic theme (0.2's pictures) is packed from data/icons by
-`wpsctl icon pack` (the Makefile's `icons`).
+`osdctl icon pack` (the Makefile's `icons`).
 
 Run from the tree's top (needs Pillow):
   python3 tools/icons/make_theme.py OUTDIR [--variant flat|outline|all] [--sizes ...]"""
@@ -38,7 +38,7 @@ def load_iso():
 
 
 def pack(path, pngs):
-    """A .wpsicon: SIZE.png entries, largest first, stored, a fixed time
+    """A .osdicon: SIZE.png entries, largest first, stored, a fixed time
     (the same pictures make the same file)."""
     tmp = path + ".new"
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:
@@ -70,7 +70,7 @@ def main():
                     buf = io.BytesIO()
                     iso.render(fn, s, variant).save(buf, "PNG", optimize=True)
                     pngs[s] = buf.getvalue()
-                pack(os.path.join(out, name + ".wpsicon"), pngs)
+                pack(os.path.join(out, name + ".osdicon"), pngs)
                 names.append(name)
         with open(os.path.join(out, "theme.ini"), "w") as f:
             f.write(f"[Icon Theme]\nName={title}\nComment={comment}\nVariant={variant}\n"

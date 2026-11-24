@@ -1,5 +1,5 @@
 /*
- * wps-watchd - the system helper that watches whole filesystems with
+ * osd-watchd - the system helper that watches whole filesystems with
  * fanotify and forwards each user's service only the events it may see
  * (design: Change tracking, Per-user filtering in the helper).
  *
@@ -17,7 +17,7 @@
  *                     {mask, dir:{reg,name}, old:{reg,name}|"<hidden>",
  *                      new:{reg,name}|"<hidden>", self:N}
  *
- * usage: wps-watchd [-s SOCKET]      (root; default /run/wps-watchd.sock)
+ * usage: osd-watchd [-s SOCKET]      (root; default /run/osd-watchd.sock)
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -175,7 +175,7 @@ static bool reg_path(struct reg *r, char *out, size_t n)
     if (!f) return false;
     int mfd = fs_open(f);
     if (mfd < 0) {
-        if (getenv("OSD_TRACE")) printf("wps-watchd: fs_open(%s) failed: %s\n", f->mnt, strerror(errno));
+        if (getenv("OSD_TRACE")) printf("osd-watchd: fs_open(%s) failed: %s\n", f->mnt, strerror(errno));
         return false;
     }
     _Alignas(struct file_handle) unsigned char buf[sizeof(struct file_handle) + HSZ];
@@ -187,7 +187,7 @@ static bool reg_path(struct reg *r, char *out, size_t n)
     int e = errno;
     close(mfd);
     if (fd < 0) {
-        if (getenv("OSD_TRACE")) printf("wps-watchd: open_by_handle_at via %s failed: %s\n", f->mnt, strerror(e));
+        if (getenv("OSD_TRACE")) printf("osd-watchd: open_by_handle_at via %s failed: %s\n", f->mnt, strerror(e));
         return false;
     }
     char lp[64];
@@ -214,7 +214,7 @@ static bool reg_valid(struct reg *r)
     char path[PATH_MAX] = "";
     bool found = reg_path(r, path, sizeof path);
     bool ok = found && client_can_open(r->c, path, r->isdir);
-    if (getenv("OSD_TRACE")) printf("wps-watchd: recheck reg %d: found=%d path=%s ok=%d\n", r->idx, found, path, ok);
+    if (getenv("OSD_TRACE")) printf("osd-watchd: recheck reg %d: found=%d path=%s ok=%d\n", r->idx, found, path, ok);
     r->gen = access_gen;
     r->ok = ok;
     if (ok) return true;
@@ -300,7 +300,7 @@ static void do_register(struct client *c, int fd)
                 }
             }
         if (mi) fclose(mi);
-        printf("wps-watchd: watching filesystem of %s %s\n", path, per_folder ? "per folder" : "as a whole");
+        printf("osd-watchd: watching filesystem of %s %s\n", path, per_folder ? "per folder" : "as a whole");
     }
     if (f->per_folder &&
         fanotify_mark(fan, FAN_MARK_ADD, MASK | (isdir ? FAN_EVENT_ON_CHILD : 0), fd, NULL) < 0) {
@@ -451,7 +451,7 @@ static void route(struct fanotify_event_metadata *m)
     char ms[160];
     mask_str(m->mask, ms, sizeof ms);
     if (getenv("OSD_TRACE"))
-        printf("wps-watchd: event %s self=%d dir=%d old=%d new=%d\n", ms, self.present, dir.present, old.present, nw.present);
+        printf("osd-watchd: event %s self=%d dir=%d old=%d new=%d\n", ms, self.present, dir.present, old.present, nw.present);
     for (int s = 0; s < MAX_CLIENTS; s++) {
         struct client *c = clients[s];
         if (!c) continue;
@@ -476,10 +476,10 @@ static void route(struct fanotify_event_metadata *m)
 
 int main(int argc, char **argv)
 {
-    const char *sock = "/run/wps-watchd.sock";
+    const char *sock = "/run/osd-watchd.sock";
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-s") && i + 1 < argc) sock = argv[++i];
-        else { fprintf(stderr, "usage: wps-watchd [-s SOCKET]\n"); return 2; }
+        else { fprintf(stderr, "usage: osd-watchd [-s SOCKET]\n"); return 2; }
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     root_ngroups = getgroups(MAX_GROUPS, root_groups);
@@ -487,18 +487,18 @@ int main(int argc, char **argv)
     /* Unlimited marks: per-folder marks are one per registered folder. */
     fan = fanotify_init(FAN_CLASS_NOTIF | FAN_REPORT_DFID_NAME_TARGET | FAN_CLOEXEC | FAN_UNLIMITED_MARKS,
                         O_RDONLY | O_LARGEFILE);
-    if (fan < 0) { perror("wps-watchd: fanotify_init (needs root)"); return 1; }
+    if (fan < 0) { perror("osd-watchd: fanotify_init (needs root)"); return 1; }
 
     int ls = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
     if (strlen(sock) >= sizeof sa.sun_path) {
-        fprintf(stderr, "wps-watchd: socket path too long: %s\n", sock);
+        fprintf(stderr, "osd-watchd: socket path too long: %s\n", sock);
         return 1;
     }
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", sock);
     unlink(sock);
     if (ls < 0 || bind(ls, (struct sockaddr *)&sa, sizeof sa) < 0 || listen(ls, 64) < 0) {
-        perror("wps-watchd: socket");
+        perror("osd-watchd: socket");
         return 1;
     }
     chmod(sock, 0666);   /* every user's service may connect; the filtering is per user */
@@ -506,7 +506,7 @@ int main(int argc, char **argv)
     sigaction(SIGINT, &sig, NULL);
     sigaction(SIGTERM, &sig, NULL);
     signal(SIGPIPE, SIG_IGN);
-    printf("wps-watchd: ready on %s\n", sock);
+    printf("osd-watchd: ready on %s\n", sock);
 
     static unsigned char ev[256 * 1024] __attribute__((aligned(8)));
     while (!stop) {
@@ -564,7 +564,7 @@ int main(int argc, char **argv)
             if (pf[i].revents & (POLLIN | POLLHUP | POLLERR)) client_read(slot[i]);
         }
     }
-    printf("wps-watchd: stopped (events %lu, forwarded %lu, access checks %lu)\n", st_events, st_forwarded, st_checks);
+    printf("osd-watchd: stopped (events %lu, forwarded %lu, access checks %lu)\n", st_events, st_forwarded, st_checks);
     unlink(sock);
     return 0;
 }

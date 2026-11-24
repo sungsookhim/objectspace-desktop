@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test client for watchd, standing in for one user's wpsd.
+"""Test client for watchd, standing in for one user's osdd.
 
 Connects to watchd's socket and reads commands on stdin:
   open NAME PATH   open PATH and keep the descriptor as NAME

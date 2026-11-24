@@ -420,7 +420,7 @@ bool colorpal_edit(size_t i)
     ec.hex = ui_entry_new(samples[i]);
     ec.pressed = ec.dragging = 0;
     double fr = ui_scheme_now.title_h + 2 * ui_scheme_now.border;
-    ec.s = ui_window_new(app, &ec_ops, NULL, "org.wps.EditColour", EC_W, 3 * M + SQ_H + 10 + ROW + fr);
+    ec.s = ui_window_new(app, &ec_ops, NULL, "io.github.sungsookhim.Objectspace.EditColour", EC_W, 3 * M + SQ_H + 10 + ROW + fr);
     ui_window_set_title(ec.s, "Edit Colour");
     ec_set_focus(0);
     ec_sync_hex();
@@ -656,7 +656,7 @@ void colorpal_open(void)
     size_t rows = (MAX_SAMPLES + COLS - 1) / COLS;
     double w = 2 * M + COLS * CELL_W + 2 * ui_scheme_now.border + 120;
     double h = 2 * M + (double)rows * CELL_H + ROW + 2 * M + STATUS_H + fr;
-    pal.s = ui_window_new(app, &pal_ops, NULL, "org.wps.ColourPalette", w, h);
+    pal.s = ui_window_new(app, &pal_ops, NULL, "io.github.sungsookhim.Objectspace.ColourPalette", w, h);
     ui_window_set_title(pal.s, "Colour Palette");
     events_raise("window.open", "Colour Palette", "window", (ui_rect){ 0, 0, 0, 0 });
 }

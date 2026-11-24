@@ -5,7 +5,7 @@
 #include "defaults.h"
 #include "OsdFolder.h"
 #ifndef OSD_ICONDIR
-#define OSD_ICONDIR "/usr/share/wps/icons"
+#define OSD_ICONDIR "/usr/share/objectspace/icons"
 #endif
 #include "trash.h"
 #include "udisks.h"
@@ -221,7 +221,7 @@ void osd_default_icon(const char *name, char *out, size_t n)
     if (nl > 4 && !strcmp(name + nl - 4, ".png")) { snprintf(out, n, "theme:%.*s", (int)(nl - 4), name); return; }
     snprintf(out, n, "%s/%s", OSD_ICONDIR, name);
     if (access(out, R_OK) == 0) return;
-    /* not installed: the tree's (build/wpsd -> data/icons) */
+    /* not installed: the tree's (build/osdd -> data/icons) */
     char exe[PATH_MAX];
     ssize_t l = readlink("/proc/self/exe", exe, sizeof exe - 1);
     if (l <= 0) return;
@@ -386,7 +386,7 @@ static void detail_work(void *arg)
         }
         size_t nl = strlen(e->name);
         char tid[OSD_ID_LEN + 1];
-        if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".wpobj") &&
+        if (e->type == DT_REG && nl > 6 && !strcmp(e->name + nl - 6, ".osdobj") &&
             osd_shadow_read(p, tid, e->target_path, sizeof e->target_path)) {
             /* A shadow shows its target: its title (or name), kind and path. */
             e->shadow = true;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """M3 scenarios: change tracking (design: Change tracking, Edge cases,
-Detecting saves), run twice: once with inotify only, once with wps-watchd.
+Detecting saves), run twice: once with inotify only, once with osd-watchd.
 
 usage: tests/m3/m3.py [--mode inotify|watchd|both] [scenario ...]
 Needs the test bed (proto/m0/testbed.sh up); uses sudo.
@@ -217,7 +217,7 @@ def s11():
     time.sleep(0.6)
     na = wait_for(lambda: obj(me, d / "a.txt").get("id") not in (None, "", oid) and obj(me, d / "a.txt"))
     nb = obj(me, d / "b.txt")
-    split = run(["getfattr", "--only-values", "-n", "user.wps.OsdObject", str(d / "a.txt")]).stdout
+    split = run(["getfattr", "--only-values", "-n", "user.osd.OsdObject", str(d / "a.txt")]).stdout
     me.stop()
     ok = na and na.get("id") != oid and nb.get("id") == oid and na.get("title") == "Linked" and "split" in split
     return ok, [f"b.txt keeps the original ID: {nb.get('id') == oid}",
@@ -278,7 +278,7 @@ def s15():
         open(nm / f"m{i}.js", "w").close()
     me.call(nm / "m1.js", "osdSetTitle", "should not stick")
     me.ctl("flush")
-    has_id = run(["getfattr", "-n", "user.wps.id", str(nm / "m1.js")]).returncode == 0
+    has_id = run(["getfattr", "-n", "user.osd.id", str(nm / "m1.js")]).returncode == 0
     after = stats(me)
     me.stop()
     ok = not has_id and after.get("rows", 0) == before.get("rows", 0)
@@ -370,15 +370,15 @@ def s36():
     a.stop(); b.stop()
     ok = ia == ib == oid and t == "Shared notes"
     return ok, [f"A and B both see ID {oid}: {ia == ib == oid}", f"title on the new file {t!r}",
-                f"attributes on the new inode: {raw.count('user.wps')} ({'id' if 'user.wps.id' in raw else 'no id'})"]
+                f"attributes on the new inode: {raw.count('user.wps')} ({'id' if 'user.osd.id' in raw else 'no id'})"]
 
 
 # ------------------------------------------------------------------- driver
 
 def start_watchd():
     sock = WORK / "watchd.sock"
-    log = OUT / "wps-watchd.log"
-    p = subprocess.Popen(["sudo", str(BIN / "wps-watchd"), "-s", str(sock)], stdout=open(log, "w"), stderr=subprocess.STDOUT)
+    log = OUT / "osd-watchd.log"
+    p = subprocess.Popen(["sudo", str(BIN / "osd-watchd"), "-s", str(sock)], stdout=open(log, "w"), stderr=subprocess.STDOUT)
     for _ in range(50):
         if sock.exists():
             break
@@ -407,7 +407,7 @@ def main():
         print(f"\n=== mode: {m}")
         run_scenarios(set(args), prefix=f"{m[0]}:")
         if helper:
-            run(["sudo", "pkill", "-TERM", "-x", "wps-watchd"])
+            run(["sudo", "pkill", "-TERM", "-x", "osd-watchd"])
             helper.wait(timeout=10)
     finish()
 

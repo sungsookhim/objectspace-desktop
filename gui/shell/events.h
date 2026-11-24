@@ -1,6 +1,6 @@
 /*
  * Action events (gui-design.md: Every action is an event): one bus in
- * wps-shell. Every user action raises a named event with the object, its
+ * osd-shell. Every user action raises a named event with the object, its
  * class and where on screen it happened; the sound scheme (and later
  * animations and GUI plug-ins) receive them.
  *

@@ -107,7 +107,7 @@ static int replace_shadow(const char *file, const char *id, const char *target_p
     char names[8192];
     ssize_t nl = in >= 0 ? flistxattr(in, names, sizeof names) : -1;
     for (ssize_t o = 0; nl > 0 && o < nl; o += (ssize_t)strlen(names + o) + 1) {
-        if (strncmp(names + o, "user.wps.", 9)) continue;
+        if (strncmp(names + o, "user.osd.", 9)) continue;
         char v[65536];
         ssize_t vl = fgetxattr(in, names + o, v, sizeof v);
         if (vl >= 0) fsetxattr(out, names + o, v, (size_t)vl, 0);
@@ -162,11 +162,11 @@ static void create_work(void *arg)
     const char *base = slash ? slash + 1 : j->tld.path;
     char stem[NAME_MAX - 24];
     snprintf(stem, sizeof stem, "%s", base);
-    if (ends_with(stem, ".wpobj")) stem[strlen(stem) - 6] = 0;   /* a shadow of an abstract object */
-    /* Never overwrite: "name.wpobj", then "name (2).wpobj", ... */
+    if (ends_with(stem, ".osdobj")) stem[strlen(stem) - 6] = 0;   /* a shadow of an abstract object */
+    /* Never overwrite: "name.osdobj", then "name (2).osdobj", ... */
     for (int k = 1; k < 1000; k++) {
-        if (k == 1) snprintf(j->file, sizeof j->file, "%s/%s.wpobj", j->folder, stem);
-        else snprintf(j->file, sizeof j->file, "%s/%s (%d).wpobj", j->folder, stem, k);
+        if (k == 1) snprintf(j->file, sizeof j->file, "%s/%s.osdobj", j->folder, stem);
+        else snprintf(j->file, sizeof j->file, "%s/%s (%d).osdobj", j->folder, stem, k);
         int fd = open(j->file, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
         if (fd < 0 && errno == EEXIST) continue;
         if (fd < 0) { snprintf(j->error, sizeof j->error, "%s", strerror(errno)); j->file[0] = 0; return; }
@@ -303,7 +303,7 @@ static void sjob_work(void *arg)
         struct dirent *de;
         while (d && (de = readdir(d))) {
             if (de->d_type != DT_REG && de->d_type != DT_UNKNOWN) continue;
-            if (!ends_with(de->d_name, ".wpobj")) continue;
+            if (!ends_with(de->d_name, ".osdobj")) continue;
             char p[PATH_MAX + NAME_MAX + 2], id[OSD_ID_LEN + 1];
             snprintf(p, sizeof p, "%s/%s", j->a, de->d_name);
             if (osd_shadow_read(p, id, NULL, 0)) index_put(p, id);
@@ -371,7 +371,7 @@ void osd_shadows_folder_seen(const char *folder)
 
 void osd_shadows_file_seen(const char *path)
 {
-    if (!ends_with(path, ".wpobj") || strstr(path, "/" OSD_SHADOW_TMP)) return;
+    if (!ends_with(path, ".osdobj") || strstr(path, "/" OSD_SHADOW_TMP)) return;
     struct sjob *j = calloc(1, sizeof *j);
     j->kind = S_LEARN;
     snprintf(j->a, sizeof j->a, "%s", path);

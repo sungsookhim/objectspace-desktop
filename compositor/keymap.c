@@ -7,7 +7,7 @@
  * GNOME: an xkb source is a layout (an xkb group); an IBus one (Hangul,
  * Anthy, ...) is set as IBus's engine (`ibus engine`), and going back to
  * a layout sets IBus's engine for that layout, so keys pass as typed. The
- * WPS session starts IBus (tools/wps-session).
+ * WPS session starts IBus (tools/osd-session).
  * Without gsettings (headless tests, OSD_NO_GSETTINGS) XKB_DEFAULT_* or US.
  */
 #define _GNU_SOURCE
@@ -111,13 +111,13 @@ struct xkb_keymap *keymap_new(void)
         struct xkb_rule_names names = { .layout = km.layout, .variant = km.variant,
                                         .options = km.options[0] ? km.options : NULL };
         m = xkb_keymap_new_from_names(ctx, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
-        if (!m) fprintf(stderr, "wps-compositor: keyboard layouts %s (variants %s) cannot be made\n", km.layout, km.variant);
+        if (!m) fprintf(stderr, "osd-compositor: keyboard layouts %s (variants %s) cannot be made\n", km.layout, km.variant);
     }
     if (!m) m = xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);   /* XKB_DEFAULT_* */
     if (!m) {
         /* a layout that cannot be made (a typo, an unknown variant): US,
          * rather than a keyboard that types nothing at all */
-        fprintf(stderr, "wps-compositor: keyboard layout %s cannot be made; US instead\n",
+        fprintf(stderr, "osd-compositor: keyboard layout %s cannot be made; US instead\n",
                 getenv("XKB_DEFAULT_LAYOUT") ? getenv("XKB_DEFAULT_LAYOUT") : "(default)");
         struct xkb_rule_names us = { .layout = "us" };
         m = xkb_keymap_new_from_names(ctx, &us, XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -133,7 +133,7 @@ static void apply_all(void)
     struct keyboard *k;
     wl_list_for_each(k, &server.keyboards, link) wlr_keyboard_set_keymap(k->wlr_keyboard, m);
     xkb_keymap_unref(m);
-    fprintf(stderr, "wps-compositor: %.1f keyboard: %s%s%s%s%s\n", comp_uptime(), km.from_gnome ? km.layout : "(XKB_DEFAULT_*)",
+    fprintf(stderr, "osd-compositor: %.1f keyboard: %s%s%s%s%s\n", comp_uptime(), km.from_gnome ? km.layout : "(XKB_DEFAULT_*)",
             km.variant[0] && strspn(km.variant, ",") != strlen(km.variant) ? " variants " : "",
             km.variant[0] && strspn(km.variant, ",") != strlen(km.variant) ? km.variant : "",
             km.options[0] ? " options " : "", km.options);
@@ -194,7 +194,7 @@ static void use_source(int i)
     for (int j = 0; j < km.nsrc; j++) any_ibus |= km.srcs[j].ibus;
     if (!km.srcs[i].ibus) set_group((xkb_layout_index_t)km.srcs[i].group);
     if (any_ibus) ibus_engine(i);
-    fprintf(stderr, "wps-compositor: %.1f input source %d of %d: %s%s\n", comp_uptime(), i + 1, km.nsrc,
+    fprintf(stderr, "osd-compositor: %.1f input source %d of %d: %s%s\n", comp_uptime(), i + 1, km.nsrc,
             km.srcs[i].ibus ? "IBus " : "", km.srcs[i].name);
     keymap_report();
 }
@@ -277,7 +277,7 @@ void keymap_init(void)
         wl_event_source_timer_update(t, 4000);
     }
     if (km.from_gnome)
-        fprintf(stderr, "wps-compositor: keyboard: %s (GNOME's input sources)%s%s\n", km.layout,
+        fprintf(stderr, "osd-compositor: keyboard: %s (GNOME's input sources)%s%s\n", km.layout,
                 km.options[0] ? " options " : "", km.options);
     if (getenv("OSD_NO_GSETTINGS")) return;
     int p[2];

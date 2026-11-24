@@ -1,4 +1,4 @@
-/* wps-shell: Properties notebooks. */
+/* osd-shell: Properties notebooks. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -156,7 +156,7 @@ static void props_applied(void *arg, const cv *reply)
     const char *code = reply ? cv_text(reply, "error") : NULL, *msg = reply ? cv_text(reply, "message") : NULL;
     char m[300];
     if (code && !strcmp(code, "conflict")) snprintf(m, sizeof m, "Changed elsewhere meanwhile: these are the current values");
-    else snprintf(m, sizeof m, "Not changed: %s", msg ? msg : reply ? "refused" : "lost the connection to wpsd");
+    else snprintf(m, sizeof m, "Not changed: %s", msg ? msg : reply ? "refused" : "lost the connection to osdd");
     ui_notebook_set_status(p->nb, m);
     props_refresh(p);
 }
@@ -300,7 +300,7 @@ static void got_settings(void *arg, const cv *reply)
     if (!p) return;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) {
-        fprintf(stderr, "wps-shell: no settings for %s: %s\n", p->target, reply ? cv_text(reply, "message") : "no service");
+        fprintf(stderr, "osd-shell: no settings for %s: %s\n", p->target, reply ? cv_text(reply, "message") : "no service");
         props_closed(p);
         return;
     }

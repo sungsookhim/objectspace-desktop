@@ -1,7 +1,7 @@
 /*
  * Idle: the screens go off after a while without input, the lock screen
  * follows (GNOME's settings: idle-delay, lock-enabled, lock-delay, given
- * by tools/wps-session as OSD_IDLE_DELAY, OSD_LOCK_ENABLED and
+ * by tools/osd-session as OSD_IDLE_DELAY, OSD_LOCK_ENABLED and
  * OSD_LOCK_DELAY, in seconds; 0 delay: never), and programs may hold the
  * screens on (idle-inhibit: video players, presentations) or hear of
  * idleness (ext-idle-notify). In the WPS session logind's requests are
@@ -57,11 +57,11 @@ static void screens(bool on)
         wlr_output_state_init(&st);
         wlr_output_state_set_enabled(&st, on);
         if (!wlr_output_commit_state(o->wlr_output, &st))
-            fprintf(stderr, "wps-compositor: %s: could not turn the screen %s\n", o->wlr_output->name, on ? "on" : "off");
+            fprintf(stderr, "osd-compositor: %s: could not turn the screen %s\n", o->wlr_output->name, on ? "on" : "off");
         wlr_output_state_finish(&st);
         if (on) wlr_output_schedule_frame(o->wlr_output);
     }
-    fprintf(stderr, "wps-compositor: %.1f screens %s\n", comp_uptime(), on ? "on" : "off (idle)");
+    fprintf(stderr, "osd-compositor: %.1f screens %s\n", comp_uptime(), on ? "on" : "off (idle)");
 }
 
 #ifdef HAVE_SD_BUS
@@ -165,14 +165,14 @@ static int on_prepare_for_sleep(sd_bus_message *m, void *data, sd_bus_error *err
     int going = 0;
     if (sd_bus_message_read(m, "b", &going) < 0) return 0;
     if (going) {
-        fprintf(stderr, "wps-compositor: %.1f going to sleep: locking\n", comp_uptime());
+        fprintf(stderr, "osd-compositor: %.1f going to sleep: locking\n", comp_uptime());
         lock_screen();
         /* a moment for the lock screen to be drawn, then sleep may go on */
         struct wl_event_source **src = malloc(sizeof *src);
         *src = wl_event_loop_add_timer(server.loop, release_sleep, src);
         wl_event_source_timer_update(*src, 300);
     } else {
-        fprintf(stderr, "wps-compositor: %.1f awake\n", comp_uptime());
+        fprintf(stderr, "osd-compositor: %.1f awake\n", comp_uptime());
         take_sleep_delay();
         idle_activity();
     }
@@ -182,7 +182,7 @@ static int on_prepare_for_sleep(sd_bus_message *m, void *data, sd_bus_error *err
 static int on_lock(sd_bus_message *m, void *data, sd_bus_error *err)
 {
     (void)m; (void)data; (void)err;
-    fprintf(stderr, "wps-compositor: %.1f logind asks to lock\n", comp_uptime());
+    fprintf(stderr, "osd-compositor: %.1f logind asks to lock\n", comp_uptime());
     lock_screen();
     return 0;
 }
@@ -216,7 +216,7 @@ static void logind_init(void)
     take_sleep_delay();
     idle.bus_src = wl_event_loop_add_fd(server.loop, sd_bus_get_fd(idle.bus), WL_EVENT_READABLE, on_bus, NULL);
     on_bus(0, 0, NULL);
-    fprintf(stderr, "wps-compositor: logind: session %s%s\n", idle.session[0] ? idle.session : "(not found)",
+    fprintf(stderr, "osd-compositor: logind: session %s%s\n", idle.session[0] ? idle.session : "(not found)",
             idle.sleep_fd >= 0 ? ", locks before sleep" : "");
 }
 #endif
@@ -241,7 +241,7 @@ void idle_init(void)
     idle.timer = wl_event_loop_add_timer(server.loop, on_timer, NULL);
     arm();
     if (idle.idle_s > 0)
-        fprintf(stderr, "wps-compositor: screens off after %d s idle%s\n", idle.idle_s,
+        fprintf(stderr, "osd-compositor: screens off after %d s idle%s\n", idle.idle_s,
                 idle.lock_s < 0 ? "" : idle.lock_s == 0 ? ", then locked" : ", then locked after a delay");
 #ifdef HAVE_SD_BUS
     if (server.session) logind_init();

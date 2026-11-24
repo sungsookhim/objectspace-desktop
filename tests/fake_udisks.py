@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""A fake udisks2 for wpsd's drive tests (v0.2-plan step 4), on a private
+"""A fake udisks2 for osdd's drive tests (v0.2-plan step 4), on a private
 bus: tests/fake_udisks.py ADDRESS MOUNT_ROOT
 
 It has a system disk (root, mounted at "/"), a USB stick (not mounted), and
 a LUKS volume (passphrase "secret"). Mounting makes MOUNT_ROOT/<label> and
-reports it. Test controls on org.wps.FakeUDisks at /org/wps/Fake:
+reports it. Test controls on io.github.sungsookhim.Objectspace.FakeUDisks at /org/objectspace/Fake:
 Plug(name), Pull(name) for "stick"; SetBusy(bool): Unmount fails busy;
 SetAuth(bool): Mount fails not authorized."""
 import os
@@ -165,27 +165,27 @@ class Manager(dbus.service.Object):
 
 
 class Control(dbus.service.Object):
-    @dbus.service.method("org.wps.FakeUDisks", in_signature="s")
+    @dbus.service.method("io.github.sungsookhim.Objectspace.FakeUDisks", in_signature="s")
     def Plug(self, name):
         manager.plug(name)
 
-    @dbus.service.method("org.wps.FakeUDisks", in_signature="s")
+    @dbus.service.method("io.github.sungsookhim.Objectspace.FakeUDisks", in_signature="s")
     def Pull(self, name):
         manager.pull(name)
 
-    @dbus.service.method("org.wps.FakeUDisks", in_signature="b")
+    @dbus.service.method("io.github.sungsookhim.Objectspace.FakeUDisks", in_signature="b")
     def SetBusy(self, on):
         global busy
         busy = bool(on)
 
-    @dbus.service.method("org.wps.FakeUDisks", in_signature="b")
+    @dbus.service.method("io.github.sungsookhim.Objectspace.FakeUDisks", in_signature="b")
     def SetAuth(self, on):
         global auth
         auth = bool(on)
 
 
 manager = Manager()
-Control(bus, "/org/wps/Fake")
+Control(bus, "/org/objectspace/Fake")
 manager.add(P + "/drives/Disk0", {UD + ".Drive": drive("sata", False)})
 manager.add(P + "/block_devices/sda1", {
     UD + ".Block": block("/dev/sda1", "EFI-0000", "", "vfat", "filesystem", 600 * 10**6, P + "/drives/Disk0", ignore=True),

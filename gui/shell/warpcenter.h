@@ -1,6 +1,6 @@
 /*
  * The WarpCenter (v0.2-design 8; OS/2 Warp 4's bar): a WPS window
- * (org.wps.WarpCenter) of the desktop process, in the WPS session only.
+ * (io.github.sungsookhim.Objectspace.WarpCenter) of the desktop process, in the WPS session only.
  * The compositor puts it along the first screen's bottom (or top) edge,
  * full width, above other windows, and takes its height from the usable
  * screen area.

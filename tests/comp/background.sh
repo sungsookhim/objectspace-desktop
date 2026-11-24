@@ -20,7 +20,7 @@ cat > "$S/script" <<EOS
 13 shot $S/three.png
 13.5 quit
 EOS
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
     "sleep 4; '$W' settings_set \"\$T/desk\" bg_gnome=false bg_image='$S/다운로드/green.webp' bg_mode=4 > \"\$T/set.log\" 2>&1;
      '$W' settings_set \"\$T/desk/Projects\" bg_color='#ff00ff' >> \"\$T/set.log\" 2>&1;

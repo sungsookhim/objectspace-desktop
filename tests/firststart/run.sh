@@ -13,17 +13,17 @@ for part in new old; do
     mkdir -p "$T/desk" "$T/config" "$T/templates" "$T/home"
     export HOME="$T/home"   # (step 9 shadows the home folder: never the real one)
     [ $part = old ] && printf 'version 6\n' > "$T/config/desktop-made"
-    [ $part = old ] && mkdir -p "$T/xdg/data/wps/System/Computer/Drives" && echo x > "$T/xdg/data/wps/System/Computer/kept.txt"
+    [ $part = old ] && mkdir -p "$T/xdg/data/objectspace/System/Computer/Drives" && echo x > "$T/xdg/data/objectspace/System/Computer/kept.txt"
     export T OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
     export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" XDG_DATA_DIRS="$T/share" OSD_TEMPLATES_DIR="$T/templates"
     export OSD_UDISKS_BUS="unix:path=$RT/none"
-    "$REPO/build/wpsd" 2> "$T/wpsd.log" &
+    "$REPO/build/osdd" 2> "$T/osdd.log" &
     WP=$!
-    for i in $(seq 50); do "$REPO/build/wpsctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
+    for i in $(seq 50); do "$REPO/build/osdctl" ping >/dev/null 2>&1 && break; sleep 0.1; done
     python3 tests/firststart/scenario.py $part || R=1
     [ $part = new ] && { python3 tests/firststart/scenario.py startup || R=1; }
     [ $part = new ] && { python3 tests/firststart/scenario.py restore || R=1; }
-    "$REPO/build/wpsctl" shutdown >/dev/null 2>&1; wait $WP
-    [ $R = 0 ] && rm -rf "$T" "$RT" || { echo "kept: $T"; tail -5 "$T/wpsd.log"; rm -rf "$RT"; }
+    "$REPO/build/osdctl" shutdown >/dev/null 2>&1; wait $WP
+    [ $R = 0 ] && rm -rf "$T" "$RT" || { echo "kept: $T"; tail -5 "$T/osdd.log"; rm -rf "$RT"; }
 done
 exit $R

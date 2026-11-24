@@ -11,7 +11,7 @@
  *   (font: GNOME's interface font and text scaling, followed; WPS has no
  *   font setting of its own yet)
  *
- * Every wps-shell follows GNOME's font. One process, the desktop, keeps
+ * Every osd-shell follows GNOME's font. One process, the desktop, keeps
  * the rest in step both ways (following `gsettings monitor`): a value is
  * written only where it differs, so a change never echoes back. When the
  * desktop starts, GNOME's values win (other programs follow them already).
@@ -36,7 +36,7 @@ void gnome_osd_value(const char *cls, const char *key, const char *value);
 void gnome_osd_read(void);
 
 /* `gsettings get SCHEMA KEY`, unquoted ("uint32 " dropped), into out; false
- * if there is none. The one reader of GNOME's settings in wps-shell (the
+ * if there is none. The one reader of GNOME's settings in osd-shell (the
  * wallpaper's, the sound theme's, these). */
 bool gnome_get(const char *schema, const char *key, char *out, size_t n);
 

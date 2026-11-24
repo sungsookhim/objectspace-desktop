@@ -5,7 +5,7 @@
 # program's status until Enter.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-term-XXXX")
-TERM_BIN="$PWD/build/wps-terminal-asan"
+TERM_BIN="$PWD/build/osd-terminal-asan"
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 run() {   # NAME SCRIPT COMMAND...: one terminal in the headless compositor

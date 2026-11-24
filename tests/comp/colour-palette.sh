@@ -8,7 +8,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-cpal-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 # The shadow lands at 570,40; the palette opens at 412,164: its first
 # sample at 447,215, red (the 7th) at 444,255.
 # Projects (54,30) opens at 320,106: its title bar at y 121, right of the

@@ -39,7 +39,7 @@ cat > "$S/script" <<EOS
 19 quit
 EOS
 REPO=$PWD
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 # (at 12 s: the LaunchPad made vertical, its drawers on the right; at 15 s on the left)
 DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_LAUNCHPAD=1" SECS=21 tests/comp/run.sh "$S/script" \
     "sleep 11.5; A=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"OsdLaunchPad\"][\"address\"])');
@@ -61,7 +61,7 @@ check "Super alone: the WPS menu (above the Desktop button)" "[ \"\$(px '$S/supe
 check "the menu closed by a click elsewhere" "[ \"\$(px '$S/closed.png' 150 700)\" != '204 204 204' ]"
 check "Super again: the menu closed" "[ \"\$(px '$S/super-twice.png' 150 700)\" != '204 204 204' ]"
 # (vertical, kept on the screen: 168x309+520+460; its first drawer arrow at 674..686 x 640..682 on the right, 523..535 on the left)
-check "vertical: placed on the screen" "grep -q \"LaunchPad' app org.wps.LaunchPad 168x309+520+460\" '$S/out.txt'"
+check "vertical: placed on the screen" "grep -q \"LaunchPad' app io.github.sungsookhim.Objectspace.LaunchPad 168x309+520+460\" '$S/out.txt'"
 check "drawers on the right: one opens out to the right" "[ \"\$(px '$S/right.png' 760 668)\" = '204 204 204' ] && [ \"\$(px '$S/right.png' 450 668)\" != '204 204 204' ]"
 check "drawers on the left: out to the left" "[ \"\$(px '$S/left.png' 450 668)\" = '204 204 204' ] && [ \"\$(px '$S/left.png' 760 668)\" != '204 204 204' ]"
 # (the drawer, on the left, spans x 323..520; a cascade from its folder opens left of it)

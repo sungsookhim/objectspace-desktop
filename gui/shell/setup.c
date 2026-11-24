@@ -1,4 +1,4 @@
-/* wps-shell: The bench report; the settings objects (System, Sound, Mouse, schemes, fonts, LaunchPad, WarpCenter) applied. */
+/* osd-shell: The bench report; the settings objects (System, Sound, Mouse, schemes, fonts, LaunchPad, WarpCenter) applied. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -126,7 +126,7 @@ void color_apply(const char *what, const char *hex)
             svc_settings_set(scheme_addrs[i], what, &v, -1, ignore_reply, NULL);   /* (every window, when it comes back) */
             return;
         }
-    fprintf(stderr, "wps-shell: no scheme object for %s: %s not kept\n", ui_scheme_now.name, what);
+    fprintf(stderr, "osd-shell: no scheme object for %s: %s not kept\n", ui_scheme_now.name, what);
 }
 
 void color_dropped_bar(const char *hex) { color_apply("bar", hex); }
@@ -239,7 +239,7 @@ static void defaults_restored(void *arg, const cv *reply)
     if (!res) {
         char m[512];
         snprintf(m, sizeof m, "The default objects could not be restored: %s",
-                 reply && cv_text(reply, "message") ? cv_text(reply, "message") : "no answer from wpsd");
+                 reply && cv_text(reply, "message") ? cv_text(reply, "message") : "no answer from osdd");
         ui_dialog_open(app, "Restore Desktop", m, ok, 1, 0, NULL, NULL);
         return;
     }
@@ -297,7 +297,7 @@ static void sounds_imported(void *arg, const cv *reply)
     (void)arg;
     const cv *ok = reply ? cv_get(reply, "ok") : NULL;
     if (ok && ok->k == CV_BOOL && ok->b) events_conf_imported();
-    else fprintf(stderr, "wps-shell: sounds.conf not moved into the Sound object: %s\n", reply ? cv_text(reply, "message") : "no wpsd");
+    else fprintf(stderr, "osd-shell: sounds.conf not moved into the Sound object: %s\n", reply ? cv_text(reply, "message") : "no osdd");
 }
 
 void got_setup(void *arg, const cv *reply)

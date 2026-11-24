@@ -5,7 +5,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-themes-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 cat > "$S/script" <<EOS
 4 move 700 600
 4.5 shot $S/flat.png

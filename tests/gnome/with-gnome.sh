@@ -28,7 +28,7 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 # The command runs with the caller's settings (OSD_*), but this session's
-# display and runtime folder; a wpsd it needs must use the same runtime
+# display and runtime folder; a osdd it needs must use the same runtime
 # folder, so OSD_RUNTIME_DIR is kept as given.
 PIPEWIRE_RUNTIME_DIR="$PARENT_RT" XDG_RUNTIME_DIR="$RT" XDG_CONFIG_HOME="$T/config" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" \
     dbus-run-session -- sh -c '

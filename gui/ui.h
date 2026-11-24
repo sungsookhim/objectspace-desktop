@@ -350,7 +350,7 @@ void ui_surface_stats(ui_surface *s, const ui_frame_stat **stats, size_t *n);
  * window's owner inside its draw callback with these helpers. */
 typedef enum { UI_HIT_NONE, UI_HIT_CLIENT, UI_HIT_TITLE, UI_HIT_SYSMENU, UI_HIT_MIN, UI_HIT_MAX, UI_HIT_CLOSE, UI_HIT_BORDER } ui_hit;
 /* A frame apart from any surface (ui_framepaint.c): what the toolkit's
- * windows use, and what wps-compositor draws around other programs'. */
+ * windows use, and what osd-compositor draws around other programs'. */
 typedef struct {
     double w, h;               /* the whole window, frame included */
     bool frameless, maximized, activated, pointer_inside;
@@ -510,11 +510,11 @@ const char *ui_clipboard_text(void);
  * sets it. Empty, `preview` ("#rrggbb") is the colour used then: the
  * swatch shows it, marked "default". A file field's `preview`: a PNG
  * shown small beside its path (a picture's). */
-#define UI_MIME_COLOR "application/x-wps-color"   /* "#rrggbb" */
+#define UI_MIME_COLOR "application/x-objectspace-color"   /* "#rrggbb" */
 /* A text field whose key ends in "font" takes a font dragged from the Font
  * Palette (UI_MIME_FONT, "12.Helvetica") as if typed; dropped anywhere else
  * on a notebook, the Dialogs font's drop (ui_set_font_drop). */
-#define UI_MIME_FONT "application/x-wps-font"
+#define UI_MIME_FONT "application/x-objectspace-font"
 typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO,
                UI_FIELD_FILE, UI_FIELD_COLOR } ui_field_kind;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */

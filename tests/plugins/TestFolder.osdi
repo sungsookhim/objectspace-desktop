@@ -1,4 +1,4 @@
-# A test plug-in: replaces OsdFolder; runs in a sandboxed wps-plughost.
+# A test plug-in: replaces OsdFolder; runs in a sandboxed osd-plughost.
 class TestFolder : OsdFolder
 version 1.0
 override osdModifyPopupMenu

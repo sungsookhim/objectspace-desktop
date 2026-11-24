@@ -1,6 +1,6 @@
 /*
  * Messages (v0.2-design 9): the list window of the OsdMessages object and
- * of the WarpCenter's envelope. wpsd keeps the messages (every GUI sees
+ * of the WarpCenter's envelope. osdd keeps the messages (every GUI sees
  * the same list); this shows them newest first, with program, time,
  * summary and body, unread ones in bold. A message's actions are buttons
  * while its program still has the notification; Delete, Delete all and

@@ -1,12 +1,12 @@
-/* wps-shell: Folder windows: their model (the service's listing, a page at a time), backgrounds, following a folder and the service's events. */
+/* osd-shell: Folder windows: their model (the service's listing, a page at a time), backgrounds, following a folder and the service's events. */
 #define _GNU_SOURCE
 #include "shell.h"
 
 /*
- * wps-shell: the WPS GUI (G1: folder windows). One process draws every
- * WPS window (gui-design.md: Processes); the object service is wpsd.
+ * osd-shell: the WPS GUI (G1: folder windows). One process draws every
+ * WPS window (gui-design.md: Processes); the object service is osdd.
  *
- * usage: wps-shell [--details] [--bench SECONDS] FOLDER...
+ * usage: osd-shell [--details] [--bench SECONDS] FOLDER...
  *   --bench: scroll the first window by itself, print frame statistics as
  *   JSON, and exit (OSD_UI_SCALE and OSD_SHELL_SIZE=WxH help measure).
  */
@@ -125,7 +125,7 @@ static void bg_loaded(void *ctx, const char *png)
         if (f->bg_img) cairo_surface_destroy(f->bg_img);
         f->bg_img = png ? cairo_image_surface_create_from_png(png) : NULL;
         if (f->bg_img && cairo_surface_status(f->bg_img) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(f->bg_img); f->bg_img = NULL; }
-        if (!f->bg_img) fprintf(stderr, "wps-shell: %s: cannot read the background picture %s\n", f->path, l->path);
+        if (!f->bg_img) fprintf(stderr, "osd-shell: %s: cannot read the background picture %s\n", f->path, l->path);
         bg_show(f);
     }
     free(l);
@@ -738,7 +738,7 @@ void got_page(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) {
         const char *msg = reply ? cv_text(reply, "message") : NULL;   /* {ok:false, error, message} */
-        snprintf(f->error, sizeof f->error, "%s", msg ? msg : reply ? "the folder cannot be read" : "lost the connection to wpsd");
+        snprintf(f->error, sizeof f->error, "%s", msg ? msg : reply ? "the folder cannot be read" : "lost the connection to osdd");
         m->growing = false;
         if (shadow) { model_free(f->sh); free(f->sh); f->sh = NULL; }
         damage_status(f);
@@ -901,7 +901,7 @@ void on_event(void *arg, const cv *ev)
     if (!name || !cv_int(ev, "sub", &sub)) return;
     if (findwin_event(ev)) return;   /* a search's results (its own IDs) */
     if (osd_command_event(ev)) return;   /* the wps command: ask, selection, show */
-    if (!strcmp(name, "say")) {   /* wpsctl say: on the desktop (a script's: shown with the setting off too) */
+    if (!strcmp(name, "say")) {   /* osdctl say: on the desktop (a script's: shown with the setting off too) */
         const cv *st = cv_get(ev, "stay");
         if (cv_text(ev, "text")) desktop_say(cv_text(ev, "text"), st && st->k == CV_BOOL && st->b);
         return;

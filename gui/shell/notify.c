@@ -38,7 +38,7 @@ struct note {
     bool transient, resident;
     double deadline;            /* when its pop-up goes (0: when closed) */
     double shown_at;            /* 0: no pop-up */
-    int64_t msg;                /* its message in wpsd, once known */
+    int64_t msg;                /* its message in osdd, once known */
 };
 
 static ui_app *app;
@@ -372,7 +372,7 @@ static void layout_pop(void)
     for (size_t j = 0; j < ns; j++) h += note_h(sh[j]);
     pop_h = h;
     if (!pop) {
-        pop = ui_window_new(app, &pop_ops, NULL, "org.wps.Notice", POP_W, h);
+        pop = ui_window_new(app, &pop_ops, NULL, "io.github.sungsookhim.Objectspace.Notice", POP_W, h);
         ui_window_set_frameless(pop, true);
         ui_window_set_title(pop, "Messages");
     }
@@ -543,7 +543,7 @@ static int m_caps(sd_bus_message *m, void *ud, sd_bus_error *err)
 static int m_info(sd_bus_message *m, void *ud, sd_bus_error *err)
 {
     (void)ud; (void)err;
-    return sd_bus_reply_method_return(m, "ssss", "Workplace Shell", "wps-linux", OSD_VERSION, "1.2");
+    return sd_bus_reply_method_return(m, "ssss", "Workplace Shell", "objectspace-desktop", OSD_VERSION, "1.2");
 }
 
 static const sd_bus_vtable vtable[] = {
@@ -579,7 +579,7 @@ static void bus_process(void *arg)
     int r;
     while ((r = sd_bus_process(bus, NULL)) > 0) {}
     if (r < 0) {
-        fprintf(stderr, "wps-shell: notifications: the bus went away (%s)\n", strerror(-r));
+        fprintf(stderr, "osd-shell: notifications: the bus went away (%s)\n", strerror(-r));
         ui_app_unwatch_fd(app, sd_bus_get_fd(bus));
         bus = sd_bus_flush_close_unref(bus);
     }
@@ -593,10 +593,10 @@ bool notify_init(ui_app *a)
     const char *e = getenv("OSD_NOTIFY");
     if (e ? strcmp(e, "1") : !getenv("OSD_SESSION")) return false;
     int r = sd_bus_open_user(&bus);
-    if (r < 0) { fprintf(stderr, "wps-shell: notifications: no session bus (%s)\n", strerror(-r)); bus = NULL; return false; }
+    if (r < 0) { fprintf(stderr, "osd-shell: notifications: no session bus (%s)\n", strerror(-r)); bus = NULL; return false; }
     if ((r = sd_bus_add_object_vtable(bus, NULL, NPATH, NIFACE, vtable, NULL)) < 0 ||
         (r = sd_bus_request_name(bus, NIFACE, 0)) < 0) {
-        fprintf(stderr, "wps-shell: notifications: cannot serve %s (%s): another notification service?\n", NIFACE, strerror(-r));
+        fprintf(stderr, "osd-shell: notifications: cannot serve %s (%s): another notification service?\n", NIFACE, strerror(-r));
         bus = sd_bus_flush_close_unref(bus);
         return false;
     }
@@ -610,7 +610,7 @@ bool notify_init(ui_app *a)
         ui_app_watch_fd(app, tick_fd, POLLIN, on_tick, NULL);
     }
     bus_process(NULL);
-    fprintf(stderr, "wps-shell: notifications: serving %s\n", NIFACE);
+    fprintf(stderr, "osd-shell: notifications: serving %s\n", NIFACE);
     return true;
 }
 

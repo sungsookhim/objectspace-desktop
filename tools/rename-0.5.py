@@ -86,7 +86,7 @@ STAGES = {
         # files and folders: wps.sock, wps.desktop, wps.spec, 80-wps.preset, .../wps/...
         (B + r"wps\.(sock|desktop|spec|preset)" + E, r"objectspace.\1"),
         (r"(?<=-)wps\.preset", "objectspace.preset"),
-        (r"(?<=/)wps(?=/|\"|'|\s|$|\))", "objectspace"),
+        (r"(?<=/)wps(?=/|\"|'|\s|$|\)|\}|;|%|\\)", "objectspace"),
         (r"(?<=/\.config/)wps|(?<=/\.local/share/)wps|(?<=/\.local/state/)wps", "objectspace"),
         # the scripts' command itself (wps open, $(B)/wps): left for review by --check
     ],

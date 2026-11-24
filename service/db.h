@@ -105,7 +105,7 @@ typedef void (*osd_db_job_fn)(int64_t id, const char *kind, const char *src, con
 int osd_db_jobs_list(osd_db *db, osd_db_job_fn fn, void *user);
 
 /* Central objects (decided 2026-11-18): WPS-only objects kept here rather
- * than as .wpobj files. Locator "vobj:<id>"; their own rows under class
+ * than as .osdobj files. Locator "vobj:<id>"; their own rows under class
  * "WPS": folder (the folder's object ID), class, and target (shadows). Their
  * settings use the ordinary rows. Rows on a portable volume travel in its
  * database like any other. */

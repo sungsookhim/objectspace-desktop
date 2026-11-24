@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-hatch-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 cat > "$S/script" <<EOS
 4 dclick 54 30
 5.5 move 1200 700

@@ -1,6 +1,6 @@
-/* Icon themes (osd_themes.h): folders of .wpsicon packages with a
- * theme.ini (Name=), in the user's $XDG_DATA_HOME/wps/icon-themes, the
- * system's (beside OSD_ICONDIR: /usr/share/wps/icon-themes), and a build
+/* Icon themes (osd_themes.h): folders of .osdicon packages with a
+ * theme.ini (Name=), in the user's $XDG_DATA_HOME/objectspace/icon-themes, the
+ * system's (beside OSD_ICONDIR: /usr/share/objectspace/icon-themes), and a build
  * tree's build/icon-themes (a program run from it). The user's first. */
 #define _GNU_SOURCE
 #include "osd_themes.h"
@@ -14,22 +14,22 @@
 #include <unistd.h>
 
 #ifndef OSD_ICONDIR
-#define OSD_ICONDIR "/usr/share/wps/icons"
+#define OSD_ICONDIR "/usr/share/objectspace/icons"
 #endif
 
 static size_t roots(char out[][PATH_MAX], size_t max)
 {
     size_t n = 0;
     const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-    if (xdg && *xdg) snprintf(out[n++], PATH_MAX, "%s/wps/icon-themes", xdg);
-    else if (home && *home) snprintf(out[n++], PATH_MAX, "%s/.local/share/wps/icon-themes", home);
+    if (xdg && *xdg) snprintf(out[n++], PATH_MAX, "%s/objectspace/icon-themes", xdg);
+    else if (home && *home) snprintf(out[n++], PATH_MAX, "%s/.local/share/objectspace/icon-themes", home);
     const char *sys = getenv("OSD_ICON_THEMES");   /* (tests, and a checkout: one more folder) */
     if (sys && *sys && n < max) snprintf(out[n++], PATH_MAX, "%s", sys);
     char icondir[PATH_MAX];
     snprintf(icondir, sizeof icondir, "%s", OSD_ICONDIR);
     char *sl = strrchr(icondir, '/');
     if (sl && n < max) { *sl = 0; snprintf(out[n++], PATH_MAX, "%s/icon-themes", icondir); }
-    /* a program run from a build tree (build/wpsd, build/wps-shell) */
+    /* a program run from a build tree (build/osdd, build/osd-shell) */
     char exe[PATH_MAX];
     ssize_t l = readlink("/proc/self/exe", exe, sizeof exe - 1);
     if (l > 0 && n < max) {

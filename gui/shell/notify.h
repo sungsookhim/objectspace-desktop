@@ -3,12 +3,12 @@
  * process owns org.freedesktop.Notifications on the session bus (sd-bus;
  * only in the WPS session, or with OSD_NOTIFY=1: GNOME has its own).
  *
- * Notify shows a pop-up near the WarpCenter (a window org.wps.Notice the
+ * Notify shows a pop-up near the WarpCenter (a window io.github.sungsookhim.Objectspace.Notice the
  * compositor puts in the usable area's corner by the bar): icon, summary,
  * body (simple markup taken out) and the actions as buttons. It stays the
  * notification's timeout (the Messages object's "Pop-ups stay", 6 s by
  * default; critical ones until closed). Every notification is also kept
- * in Messages (wpsd), unless it is "transient". Capabilities: body,
+ * in Messages (osdd), unless it is "transient". Capabilities: body,
  * body-markup, actions, persistence, icon-static. Its actions stay usable
  * from the Messages list until the program closes the notification or
  * leaves the bus. "Do not disturb" keeps the pop-ups away; the messages

@@ -5,7 +5,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-sounds-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 printf '6 quit\n' > "$S/script"
 PRE="printf '# old settings\nvolume = 40\nwindow.open = bell\nmenu.open = none\n' > \"\$T/config/sounds.conf\"" \
 DESKENV="OSD_WARPCENTER=1 OSD_NO_LAUNCHPAD=1 OSD_NO_GSETTINGS=1" SECS=9 tests/comp/run.sh "$S/script" \

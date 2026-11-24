@@ -2,11 +2,11 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: **version 0.4.1** (2026-11-24): icons, folders and objects. Every setting is a property of an object, set for one object, a file type or a whole class (OS/2's Class... and Default), with actions on events and schemes as objects; icon themes and sizes with open icons; OS/2's free icon layout; folder windows that remember where they were; Prevent delete; OS/2's Colour Palette and fonts in every window; Work Area folders; WPS Terminal, WPS's own terminal for text-mode programs and the command line, and a `wps` command for scripts; a plug-in SDK (`wps-devel`). Built on 0.3 (daily use and OS/2 fidelity), 0.2 (the OS/2 desktop, installable as an RPM for Fedora 45) and 0.1's object core and GUI, inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). See the [release notes](docs/release-notes-0.4.1.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
+Status: **version 0.4.1** (2026-11-24): icons, folders and objects. Every setting is a property of an object, set for one object, a file type or a whole class (OS/2's Class... and Default), with actions on events and schemes as objects; icon themes and sizes with open icons; OS/2's free icon layout; folder windows that remember where they were; Prevent delete; OS/2's Colour Palette and fonts in every window; Work Area folders; WPS Terminal, WPS's own terminal for text-mode programs and the command line, and a `wps` command for scripts; a plug-in SDK (`objectspace-devel`). Built on 0.3 (daily use and OS/2 fidelity), 0.2 (the OS/2 desktop, installable as an RPM for Fedora 45) and 0.1's object core and GUI, inside GNOME or as its own session from the login screen (`osd-compositor` on wlroots). See the [release notes](docs/release-notes-0.4.1.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
 
 ## Installing
 
-On Fedora 45, download the two RPMs from the [latest release](https://github.com/sungsookhim/wps-linux/releases/latest) and run `sudo dnf install ./wps-*.rpm`. Reboot, then choose **WPS** on the login screen, or in GNOME run `gnome-extensions enable wps@wps-linux` and log in again. `make rpm` builds the RPMs from a checkout (needs `rpm-build` and the build dependencies below).
+On Fedora 45, download the two RPMs from the [latest release](https://github.com/sungsookhim/objectspace-desktop/releases/latest) and run `sudo dnf install ./wps-*.rpm`. Reboot, then choose **WPS** on the login screen, or in GNOME run `gnome-extensions enable objectspace@sungsookhim.github.io` and log in again. `make rpm` builds the RPMs from a checkout (needs `rpm-build` and the build dependencies below).
 
 ## Documents
 
@@ -35,11 +35,11 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 
 1. M0: kernel-behaviour and per-user filtering prototypes. Done; findings folded into design v0.4.
 2. M1: object runtime, main loop, class generator, core classes. Done.
-3. M2: persistence, identity, concurrency, `wpsd` and `wpsctl`, state that travels with removable volumes. Done.
-4. M3: change tracking with `wps-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
+3. M2: persistence, identity, concurrency, `osdd` and `osdctl`, state that travels with removable volumes. Done.
+4. M3: change tracking with `osd-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
 5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
 6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
-7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `wps-compositor` and the WPS session. Done: version 0.1.
+7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `osd-compositor` and the WPS session. Done: version 0.1.
 8. Version 0.2 ([design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md), [release notes](docs/release-notes-0.2.md)): the OS/2 desktop, installable. Done.
 9. Version 0.3 ([design](docs/v0.3-design.md), [plan](docs/v0.3-plan.md), [release notes](docs/release-notes-0.3.md)): daily use and OS/2 fidelity. Done.
 10. Version 0.4.1 ([design](docs/v0.4-design.md), [the command line](docs/cli-design.md), [plan](docs/v0.4-plan.md), [release notes](docs/release-notes-0.4.1.md)): icons, folders and objects, on the object-property base; WPS Terminal and the `wps` command. Done.
@@ -53,11 +53,11 @@ Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible sec
 |---|---|
 | `runtime/` | `libwpo`: the object runtime (`osdo.h`, `osdo.c`: C11, C library only), the main loop (`osdo_loop.h`, POSIX implementation) and plug-in loading |
 | `tools/osdc.py` | Generates C headers and registration code from `.osdi` class files |
-| `service/` | `wpsd` (the per-user object service), `wpsctl` (its command-line client), `wps-watchd` (the optional root helper), `wps-plughost` (runs one plug-in package, sandboxed), change tracker, attribute store, database and volume sync, CBOR protocol |
+| `service/` | `osdd` (the per-user object service), `osdctl` (its command-line client), `osd-watchd` (the optional root helper), `osd-plughost` (runs one plug-in package, sandboxed), change tracker, attribute store, database and volume sync, CBOR protocol |
 | `classes/` | The core classes: `OsdObject`, `OsdFileSystem`, `OsdDataFile`, `OsdFolder`, `OsdAbstract`, `OsdProgram`, `OsdShadow` |
 | `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
 | `proto/m0/` | M0 kernel and filtering prototypes |
-| `gui/` | `libwpsui` (the widget set: windows, frames, containers, menus, scroll layers) and `gui/shell/wps-shell` |
+| `gui/` | `libwpsui` (the widget set: windows, frames, containers, menus, scroll layers) and `gui/shell/osd-shell` |
 | `proto/g0/` | G0 GUI prototypes: a folder window drawn with Cairo and HarfBuzz on Wayland, sound latency through PipeWire |
 
 ## Building
@@ -70,7 +70,7 @@ sudo dnf install gcc make python3 sqlite-devel cairo-devel harfbuzz-devel freety
     wlroots-devel libinput-devel libseat-devel pixman-devel libdrm-devel libxcb-devel xorg-x11-server-Xwayland \
     pam-devel glycin-thumbnailer xdg-user-dirs libasan libubsan gdb
 make && make gui && make compositor
-tools/install-extension.sh             # the desktop in GNOME (and the wpsd user service)
+tools/install-extension.sh             # the desktop in GNOME (and the osdd user service)
 sudo tools/install-session.sh          # "WPS" on the login screen; then reboot (GDM reads its list at start)
 ```
 
@@ -82,12 +82,12 @@ make          # runtime, classes, service, plug-ins, tests (needs gcc, python3, 
 make test     # unit tests
 make check    # unit tests + strict C11 core check + ThreadSanitizer run of the loop
 make m2       # M2 scenarios: real services on loopback ext4/btrfs/FAT, several users (uses sudo)
-make m3       # M3 change-tracking scenarios, with inotify and with wps-watchd (uses sudo)
+make m3       # M3 change-tracking scenarios, with inotify and with osd-watchd (uses sudo)
 tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB sparse volume)
 tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-in hosts
 make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, wayland, xkbcommon, pipewire -devel)
-make gui      # wps-shell (optimised) and wps-shell-asan
-make compositor     # wps-compositor (G5, wlroots) and its test clients
+make gui      # osd-shell (optimised) and osd-shell-asan
+make compositor     # osd-compositor (G5, wlroots) and its test clients
 make session        # everything the WPS session runs: after a pull, this
 make install DESTDIR=... PREFIX=/usr   # into /usr (or a staging root): programs, user service, session, PAM file, GNOME extension
 make install-check  # install into a scratch root and run a headless session from it
@@ -97,19 +97,19 @@ tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private hea
 tests/gnome/with-gnome.sh -- tests/gui/selftest.sh MODE [SETUP]   # one GUI self-test, in a private headless GNOME
 ```
 
-The WPS desktop in your GNOME session: `tools/install-extension.sh` installs the `wps@wps-linux` GNOME Shell extension (which starts `wps-shell --desktop`) and a systemd user unit for `wpsd`; then log out and back in. `tools/install-extension.sh --uninstall` removes both. To try it first without logging out: `tools/try-desktop.sh` runs a nested GNOME Shell in a window, with the extension and private settings (needs `mutter-devkit`). Without the extension, `wps-shell` with no folder shows the desktop as an ordinary full-screen window.
+The WPS desktop in your GNOME session: `tools/install-extension.sh` installs the `objectspace@sungsookhim.github.io` GNOME Shell extension (which starts `osd-shell --desktop`) and a systemd user unit for `osdd`; then log out and back in. `tools/install-extension.sh --uninstall` removes both. To try it first without logging out: `tools/try-desktop.sh` runs a nested GNOME Shell in a window, with the extension and private settings (needs `mutter-devkit`). Without the extension, `osd-shell` with no folder shows the desktop as an ordinary full-screen window.
 
 The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.
 
 Try the service by hand:
 
 ```
-build/wpsd &                                  # socket in $XDG_RUNTIME_DIR/wps.sock
-build/wpsctl call ~/notes.txt osdSetTitle "My notes"
-build/wpsctl resolve ~/notes.txt
+build/osdd &                                  # socket in $XDG_RUNTIME_DIR/objectspace.sock
+build/osdctl call ~/notes.txt osdSetTitle "My notes"
+build/osdctl resolve ~/notes.txt
 getfattr -d -m user.wps ~/notes.txt           # the title travels with the file
-build/wps-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 tree, Ctrl+3 details)
-build/wpsctl shutdown
+build/osd-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 tree, Ctrl+3 details)
+build/osdctl shutdown
 ```
 
 ## Authorship and license

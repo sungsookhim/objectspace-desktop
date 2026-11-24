@@ -1,6 +1,6 @@
 /* The SDK's sample plug-in (OsdImageFile.osdi). Build: make (the SDK's
- * Makefile); install: copy osdimagefile.so to ~/.config/wps/plugins and log
- * in again. It runs in its own sandboxed host (wps-plughost): what it
+ * Makefile); install: copy osdimagefile.so to ~/.config/objectspace/plugins and log
+ * in again. It runs in its own sandboxed host (osd-plughost): what it
  * changes in an object's state goes back to WPS. */
 #include "OsdImageFile.h"
 

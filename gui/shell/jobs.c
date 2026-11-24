@@ -1,4 +1,4 @@
-/* wps-shell: Delete and the System's confirmations; the service's jobs (progress, questions, errors). */
+/* osd-shell: Delete and the System's confirmations; the service's jobs (progress, questions, errors). */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -15,8 +15,8 @@ void load_system_conf(void)
     char path[4096];
     const char *cfg = getenv("OSD_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (cfg && *cfg) snprintf(path, sizeof path, "%s/system.conf", cfg);
-    else if (xdg && *xdg) snprintf(path, sizeof path, "%s/wps/system.conf", xdg);
-    else snprintf(path, sizeof path, "%s/.config/wps/system.conf", home ? home : "");
+    else if (xdg && *xdg) snprintf(path, sizeof path, "%s/objectspace/system.conf", xdg);
+    else snprintf(path, sizeof path, "%s/.config/objectspace/system.conf", home ? home : "");
     FILE *fp = fopen(path, "r");
     if (!fp) return;
     char line[256];
@@ -26,7 +26,7 @@ void load_system_conf(void)
         bool on = !strcasecmp(v, "yes") || !strcasecmp(v, "true") || !strcmp(v, "1");
         if (!strcmp(k, "confirm_delete")) confirm_delete = on;
         else if (!strcmp(k, "confirm_folder_delete")) confirm_folder_delete = on;
-        else fprintf(stderr, "wps-shell: %s: unknown setting \"%s\"\n", path, k);
+        else fprintf(stderr, "osd-shell: %s: unknown setting \"%s\"\n", path, k);
     }
     fclose(fp);
 }
@@ -72,7 +72,7 @@ static void vdeleted(void *arg, const cv *reply)
     long folder = (long)(intptr_t)arg;
     if (!reply || !cv_get(reply, "result")) {
         char m[300];
-        snprintf(m, sizeof m, "Cannot delete: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Cannot delete: %s", reply ? cv_text(reply, "message") : "lost the connection to osdd");
         set_status(folder, m);
     }
 }
@@ -202,13 +202,13 @@ static void startup_added(void *arg, const cv *reply)
         raise_in(folder_by_id(folder), "object.create", NULL, "");
     } else {
         char m[600];
-        snprintf(m, sizeof m, "Cannot add to Startup: %s", reply && cv_text(reply, "message") ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Cannot add to Startup: %s", reply && cv_text(reply, "message") ? cv_text(reply, "message") : "lost the connection to osdd");
         report_error(folder, m);
     }
 }
 
 /* Dropped on Startup: programs and scripts become autostart entries,
- * other objects shadows (wpsd decides); nothing moves. */
+ * other objects shadows (osdd decides); nothing moves. */
 void startup_dropped(struct folder *f, const char *mime, const char *data)
 {
     char *copy = strdup(data), *save = NULL;

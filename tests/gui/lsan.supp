@@ -1,4 +1,4 @@
-# Leak-checker suppressions for wps-shell-asan: allocations PipeWire's
+# Leak-checker suppressions for osd-shell-asan: allocations PipeWire's
 # own plug-ins keep for the life of the process (not WPS code).
 leak:libspa-
 leak:/spa-0.2/

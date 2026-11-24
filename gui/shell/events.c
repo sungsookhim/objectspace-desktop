@@ -61,8 +61,8 @@ static void config_path(char *out, size_t n, const char *file)
 {
     const char *cfg = getenv("OSD_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (cfg && *cfg) snprintf(out, n, "%s/%s", cfg, file);
-    else if (xdg && *xdg) snprintf(out, n, "%s/wps/%s", xdg, file);
-    else snprintf(out, n, "%s/.config/wps/%s", home ? home : "", file);
+    else if (xdg && *xdg) snprintf(out, n, "%s/objectspace/%s", xdg, file);
+    else snprintf(out, n, "%s/.config/objectspace/%s", home ? home : "", file);
 }
 
 static void load(void)
@@ -92,7 +92,7 @@ static void load(void)
         if (!strcmp(k, "volume")) { int x = atoi(val); volume = (float)(x < 0 ? 0 : x > 100 ? 100 : x) / 100.0f; }
         else if (!strcmp(k, "enabled")) enabled = !strcmp(val, "yes") || !strcmp(val, "true") || !strcmp(val, "1");
         else if (strchr(k, '.')) set(k, !strcmp(val, "none") ? "" : val);
-        else fprintf(stderr, "wps-shell: %s: unknown setting \"%s\"\n", path, k);
+        else fprintf(stderr, "osd-shell: %s: unknown setting \"%s\"\n", path, k);
     }
     if (f) fclose(f);
 }

@@ -99,7 +99,7 @@ static bool image_ext(const char *n, bool any)
 {
     const char *d = strrchr(n, '.');
     if (!d) return false;
-    if (!strcasecmp(d, ".png") || !strcasecmp(d, ".svg") || !strcasecmp(d, ".wpsicon")) return true;
+    if (!strcasecmp(d, ".png") || !strcasecmp(d, ".svg") || !strcasecmp(d, ".osdicon")) return true;
     if (!any) return false;
     static const char *const more[] = { ".jpg", ".jpeg", ".ico", ".icns", ".webp", ".gif", ".bmp", ".jxl", ".avif", ".tif", ".tiff", ".xpm" };
     for (size_t i = 0; i < sizeof more / sizeof *more; i++) if (!strcasecmp(d, more[i])) return true;
@@ -217,7 +217,7 @@ static void *scan_thread(void *arg)
         DIR *d = opendir(th[t].dir);
         for (struct dirent *e; d && (e = readdir(d));) {
             size_t l = strlen(e->d_name);
-            if (l < 9 || strcmp(e->d_name + l - 8, ".wpsicon")) continue;
+            if (l < 9 || strcmp(e->d_name + l - 8, ".osdicon")) continue;
             char name[256], p[PATH_MAX];
             snprintf(name, sizeof name, "%s: %.*s", th[t].name, (int)(l - 8), e->d_name);
             if ((size_t)snprintf(p, sizeof p, "%s/%s", th[t].dir, e->d_name) >= sizeof p) continue;
@@ -597,7 +597,7 @@ void iconpick_open(const char *for_title, iconpick_fn chosen, long owner, const 
     snprintf(pk.key, sizeof pk.key, "%s", key);
     snprintf(pk.title, sizeof pk.title, "Choose an Icon%s%s", for_title && *for_title ? " - " : "", for_title ? for_title : "");
     pk.find = ui_entry_new("");
-    pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.IconPicker", 600, 460);
+    pk.s = ui_window_new(app, &pk_ops, NULL, "io.github.sungsookhim.Objectspace.IconPicker", 600, 460);
     ui_window_set_title(pk.s, pk.title);
     pk.cont = ui_container_new(pk.s, &pick_src, NULL, UI_VIEW_ICON);
     ui_container_set_font(pk.cont, UI_FONT_DIALOG);   /* (a dialog's list) */

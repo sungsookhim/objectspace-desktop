@@ -178,7 +178,7 @@ static void on_inotify(int fd, short rev, void *arg)
     }
 }
 
-/* -------------------------------------------------------- wps-watchd */
+/* -------------------------------------------------------- osd-watchd */
 
 static int helper_fd = -1;
 static char **reg_pending;        /* paths waiting for their registration reply, in order */
@@ -252,9 +252,9 @@ static void on_helper(int fd, short rev, void *arg)
                 /* The helper cannot watch this folder (for example a btrfs
                  * subvolume on an older kernel): fall back to inotify here. */
                 const char *why = cv_text(&m, "error");
-                fprintf(stderr, "wpsd: wps-watchd refused %s (%s); using inotify for it\n", w->path, why ? why : "?");
+                fprintf(stderr, "osdd: osd-watchd refused %s (%s); using inotify for it\n", w->path, why ? why : "?");
                 inotify_add(w);
-                stats.mode = "wps-watchd + inotify";
+                stats.mode = "osd-watchd + inotify";
             }
             free(reg_pending[0]);
             memmove(reg_pending, reg_pending + 1, --nreg_pending * sizeof *reg_pending);
@@ -290,12 +290,12 @@ static void helper_connect(void)
 {
     const char *p = getenv("OSD_WATCHD_SOCKET");
     char path[PATH_MAX];
-    snprintf(path, sizeof path, "%s", p && *p ? p : "/run/wps-watchd.sock");
+    snprintf(path, sizeof path, "%s", p && *p ? p : "/run/osd-watchd.sock");
     if (strcmp(path, "none") == 0) return;
     int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
     if (strlen(path) >= sizeof sa.sun_path) {
-        fprintf(stderr, "wpsd: helper socket path too long: %s\n", path);
+        fprintf(stderr, "osdd: helper socket path too long: %s\n", path);
         if (fd >= 0) close(fd);
         return;
     }
@@ -612,7 +612,7 @@ static void job_done(void *arg)
     if (trace) {
         static const char *k[] = { "probe-create", "probe-over", "transfer", "new-id", "dup-check", "adopt",
                                    "forget", "seek", "verify" };
-        fprintf(stderr, "wpsd: job %s %s err=%d id=%.8s owner_gone=%d owner=%s target=%s ndups=%zu\n", k[j->kind],
+        fprintf(stderr, "osdd: job %s %s err=%d id=%.8s owner_gone=%d owner=%s target=%s ndups=%zu\n", k[j->kind],
                 j->path, j->err, j->id, j->owner_gone, j->owner_path, j->target ? j->target->path : "-", ndups);
     }
     switch (j->kind) {
@@ -836,7 +836,7 @@ static void apply(const tev *e)
         else if (e->k == E_MOVE && tmp_old) osd_on_fs_event('c', "", e->path);
         else if (e->k == E_MOVE) osd_on_fs_event('m', e->from, e->path);
     }
-    if (!tmp_path && (e->k == E_CREATE || e->k == E_MOVE)) osd_shadows_file_seen(e->path);   /* only .wpobj files */
+    if (!tmp_path && (e->k == E_CREATE || e->k == E_MOVE)) osd_shadows_file_seen(e->path);   /* only .osdobj files */
     /* A folder that was itself moved or deleted: its own listing is gone. */
     if ((e->k == E_DELETE || e->k == E_MOVE) && e->isdir) {
         if (e->from[0]) osd_listing_invalidate(e->from);
@@ -844,7 +844,7 @@ static void apply(const tev *e)
     }
     if (trace) {
         static const char *k[] = { "CREATE", "DELETE", "MOVE", "ATTRIB", "WRITE", "OVERFLOW" };
-        fprintf(stderr, "wpsd: event %s%s %s%s%s\n", k[e->k], e->isdir ? " (dir)" : "", e->from,
+        fprintf(stderr, "osdd: event %s%s %s%s%s\n", k[e->k], e->isdir ? " (dir)" : "", e->from,
                 e->from[0] ? " -> " : "", e->path);
     }
     if (e->k == E_OVERFLOW) { stats.overflows++; scan_soon(); return; }
@@ -1155,7 +1155,7 @@ void osd_tracker_init(osdo_loop *l, const osd_env *e, osd_db *d)
     osd_on_saved = on_saved;
     trace = getenv("OSD_TRACE") && *getenv("OSD_TRACE") == '1';
     helper_connect();
-    stats.mode = helper_fd >= 0 ? "wps-watchd" : "inotify";
+    stats.mode = helper_fd >= 0 ? "osd-watchd" : "inotify";
     scan_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     osdo_loop_watch_fd(loop, scan_timer, POLLIN, on_scan_timer, NULL);
     osd_tracker_scan(NULL, NULL);   /* catch up with what happened while we were not running */

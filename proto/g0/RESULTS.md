@@ -2,11 +2,11 @@
 
 Prototypes for the GUI design ([docs/gui-design.md](../../docs/gui-design.md)), run on Fedora with GNOME Shell 51.1 under Wayland, monitor at scale 1 and 60 Hz.
 
-- `folderview`: a details-view folder window drawn with our own code (Cairo, HarfBuzz, FreeType, fontconfig, xkbcommon) on a plain `xdg-shell` surface, with a square, Warp 4-style frame drawn by the client (GNOME does not draw frames for Wayland clients). It reads the folder from `wpsd` on a service thread, a page at a time, while the drawing thread only reads the model under a short lock.
+- `folderview`: a details-view folder window drawn with our own code (Cairo, HarfBuzz, FreeType, fontconfig, xkbcommon) on a plain `xdg-shell` surface, with a square, Warp 4-style frame drawn by the client (GNOME does not draw frames for Wayland clients). It reads the folder from `osdd` on a service thread, a page at a time, while the drawing thread only reads the model under a short lock.
 - `soundlat`: a PipeWire stream kept open writing silence, playing a click when an action asks for it.
-- `bench.sh`: runs `folderview --bench` cold, warm, and at 2× scale against a fresh `wpsd`.
+- `bench.sh`: runs `folderview --bench` cold, warm, and at 2× scale against a fresh `osdd`.
 
-Build with `make g0`. Run by hand: `build/wpsd &` then `build/g0/folderview ~/some/folder`.
+Build with `make g0`. Run by hand: `build/osdd &` then `build/g0/folderview ~/some/folder`.
 
 ## Folder window over 1,000,000 entries
 
@@ -42,4 +42,4 @@ The only output on the test machine is PipeWire's Dummy Output, so the device's 
 
 ## Bugs found in the object core
 
-- **Socket paths longer than 107 bytes were cut short silently** (a socket address holds 107 bytes plus the terminator). `wpsd` removed a stale socket at the full path but bound to the shortened one, so after one crash it refused to start ("Address already in use"). `wpsd`, `wpsctl`, `wps-watchd` and the tracker now refuse such a path with a clear message.
+- **Socket paths longer than 107 bytes were cut short silently** (a socket address holds 107 bytes plus the terminator). `osdd` removed a stale socket at the full path but bound to the shortened one, so after one crash it refused to start ("Address already in use"). `osdd`, `osdctl`, `osd-watchd` and the tracker now refuse such a path with a clear message.

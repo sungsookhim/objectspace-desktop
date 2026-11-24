@@ -1,4 +1,4 @@
-/* wps-shell: A folder window: its search field, drawing, layout, pointer and keys, closing. */
+/* osd-shell: A folder window: its search field, drawing, layout, pointer and keys, closing. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -218,7 +218,7 @@ static void desk_msg_show(struct folder *f, bool sticky)
 }
 
 /* The Messages object's "Show WPS's messages on the desktop" (on unless
- * turned off): its own messages; a script's (wpsctl say) show anyway. */
+ * turned off): its own messages; a script's (osdctl say) show anyway. */
 static bool desk_msgs_on = true;
 
 void desktop_messages_enable(bool on) { desk_msgs_on = on; }

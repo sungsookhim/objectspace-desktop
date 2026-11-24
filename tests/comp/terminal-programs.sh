@@ -6,11 +6,11 @@
 # on (the window goes with the program) and off (it stays, ended).
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-termprog-XXXX")
-W="$PWD/build/wpsctl"
+W="$PWD/build/osdctl"
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # the user's shell, for Command prompt here: says where it is, then waits
-printf '#!/bin/sh\necho "$PWD|$OSD_FOLDER" > "%s/prompt.txt"\ncommand -v wps > "%s/wps.txt"\nsleep 30\n' "$S" "$S" > "$S/shell.sh"
+printf '#!/bin/sh\necho "$PWD|$OSD_FOLDER" > "%s/prompt.txt"\ncommand -v osd > "%s/wps.txt"\nsleep 30\n' "$S" "$S" > "$S/shell.sh"
 chmod +x "$S/shell.sh"
 # Projects (its icon at 54,30) opens at 320,106: hello.sh at 372,176. The
 # Projects icon's menu: Command prompt here at 148,156. The terminals open
@@ -36,18 +36,18 @@ cat > "$S/blocks.py" <<'EOP'
 import sys
 blocks = []
 for l in open(sys.argv[1]):
-    if l.startswith("wps-compositor: windows now:"): blocks.append([])
-    elif l.startswith("wps-compositor: window '") and blocks: blocks[-1].append(l.strip())
+    if l.startswith("osd-compositor: windows now:"): blocks.append([])
+    elif l.startswith("osd-compositor: window '") and blocks: blocks[-1].append(l.strip())
 for i, b in enumerate(blocks):
     for l in b:
-        if "app org.wps.Terminal" in l: print(i, l.split("'")[1], "minimized" if l.endswith("minimized") else "shown")
+        if "app io.github.sungsookhim.Objectspace.Terminal" in l: print(i, l.split("'")[1], "minimized" if l.endswith("minimized") else "shown")
 EOP
 python3 "$S/blocks.py" "$S/one.txt" > "$S/blocks.txt"
 check "a script object runs in WPS Terminal, titled by it" "grep -q \"^0 hello.sh shown\" '$S/blocks.txt'"
 check "its object is in use while it runs" "python3 -c \"import json,sys; d = json.load(open('$T/list.txt')); e = [x for x in d['result']['items'] if x['name'] == 'hello.sh']; sys.exit(0 if e and e[0].get('in_use') else 1)\""
 check "Command prompt here: the user's shell in WPS Terminal" "grep -q \"^0 Command Prompt - Projects shown\" '$S/blocks.txt'"
 check "... in the folder, OSD_FOLDER set" "[ \"\$(cat '$S/prompt.txt' 2>/dev/null)\" = \"\$T/desk/Projects|\$T/desk/Projects\" ]"
-check "... and WPS's commands on its PATH (wps)" "[ \"\$(cat '$S/wps.txt' 2>/dev/null)\" = '$PWD/build/wps' ]"
+check "... and the commands on its PATH (osd)" "[ \"\$(cat '$S/wps.txt' 2>/dev/null)\" = '$PWD/build/osd' ]"
 check "both minimized with the work area" "[ \$(grep -c '^1 .* minimized' '$S/blocks.txt') = 2 ]"
 cp "$T/shell.log" "$S/shell1.log" 2>/dev/null
 rm -rf "$T"
@@ -65,7 +65,7 @@ PRE="printf '#!/bin/sh\nexit 0\n' > \"\$T/desk/Projects/quick.sh\"; printf '#!/b
     env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/two" "sleep 60" > "$S/two.txt" 2>&1
 T2=$(sed -n 's/^T=//p' "$S/two.txt")
 check "Close window on exit on: the window goes with the program" "! grep -q \"window 'quick.sh\" '$S/two.txt'"
-check "Close window on exit off: the window stays, ended" "grep -q \"window 'held.sh (ended)' app org.wps.Terminal\" '$S/two.txt'"
+check "Close window on exit off: the window stays, ended" "grep -q \"window 'held.sh (ended)' app io.github.sungsookhim.Objectspace.Terminal\" '$S/two.txt'"
 check "no sanitizer reports" "! grep -q Sanitizer '$S/shell1.log' '$T2/shell.log'"
 [ $fails = 0 ] && rm -rf "$S" "$T2" || echo "logs: $S $T2"
 exit $fails

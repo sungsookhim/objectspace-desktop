@@ -10,7 +10,7 @@ override osdSaveState
 override osdRestoreProperties
 method osdQuerySortOrder() -> int
 method osdSetSortOrder(int order) -> bool
-# WPS-only objects (shadows and others) made here are kept as .wpobj files
+# WPS-only objects (shadows and others) made here are kept as .osdobj files
 # in the folder, instead of centrally (decided 2026-11-18).
 method osdQueryLocalObjects() -> bool
 method osdSetLocalObjects(bool on) -> bool

@@ -103,8 +103,8 @@ void ui_mouse_load(void)
     char path[4096];
     const char *cfg = getenv("OSD_CONFIG_DIR"), *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (cfg && *cfg) snprintf(path, sizeof path, "%s/mouse.conf", cfg);
-    else if (xdg && *xdg) snprintf(path, sizeof path, "%s/wps/mouse.conf", xdg);
-    else snprintf(path, sizeof path, "%s/.config/wps/mouse.conf", home ? home : "");
+    else if (xdg && *xdg) snprintf(path, sizeof path, "%s/objectspace/mouse.conf", xdg);
+    else snprintf(path, sizeof path, "%s/.config/objectspace/mouse.conf", home ? home : "");
     FILE *f = fopen(path, "r");
     if (!f) return;
     char line[256];

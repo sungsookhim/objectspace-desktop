@@ -107,7 +107,7 @@ static void command(const char *cmd, const char *id)
     char *line = NULL;
     int n = asprintf(&line, "%s\t%s\n", cmd, id);
     if (n < 0) return;
-    if (write(cmd_fd, line, (size_t)n) != n) fprintf(stderr, "wps-shell: the window command was not sent\n");
+    if (write(cmd_fd, line, (size_t)n) != n) fprintf(stderr, "osd-shell: the window command was not sent\n");
     free(line);
 }
 
@@ -190,7 +190,7 @@ static void src_item(void *ctx, size_t i, ui_item *out)
     const struct win *w = &wins[l->rows[i]];
     out->loaded = out->detailed = true;
     /* the app's own icon; WPS's folder windows as folders */
-    out->kind = !strcmp(w->app, "org.wps.shell") || !strcmp(w->app, "org.wps.MinimizedViewer") ? UI_KIND_FOLDER : UI_KIND_PROGRAM;
+    out->kind = !strcmp(w->app, "io.github.sungsookhim.Objectspace.shell") || !strcmp(w->app, "io.github.sungsookhim.Objectspace.MinimizedViewer") ? UI_KIND_FOLDER : UI_KIND_PROGRAM;
     out->image = w->icon;
     out->name = w->app;
     out->title = w->title;
@@ -333,7 +333,7 @@ void winlist_open(bool minimized_only)
     /* The Window List's app ID keeps it out of the list it shows (the
      * compositor and the extension skip it); the viewer is an ordinary
      * window there, as in OS/2. */
-    l->s = ui_window_new(app, &lw_ops, l, minimized_only ? "org.wps.MinimizedViewer" : "org.wps.WindowList", minimized_only ? 520 : 420, minimized_only ? 300 : 360);
+    l->s = ui_window_new(app, &lw_ops, l, minimized_only ? "io.github.sungsookhim.Objectspace.MinimizedViewer" : "io.github.sungsookhim.Objectspace.WindowList", minimized_only ? 520 : 420, minimized_only ? 300 : 360);
     ui_window_set_title(l->s, minimized_only ? "Minimized Window Viewer" : "Window List");
     l->cont = ui_container_new(l->s, &list_src, l, minimized_only ? UI_VIEW_ICON : UI_VIEW_TREE);
     ui_container_set_font(l->cont, UI_FONT_DIALOG);   /* (a dialog's list) */

@@ -3,11 +3,11 @@
 #include "icons.h"
 
 #ifndef OSD_ICONDIR
-#define OSD_ICONDIR "/usr/share/wps/icons"
+#define OSD_ICONDIR "/usr/share/objectspace/icons"
 #endif
 
 #include <math.h>
-#include "wpsicon.h"
+#include "osdicon.h"
 #include "osd_themes.h"
 #include "launchpad.h"
 #include "mime.h"
@@ -44,8 +44,8 @@ void icons_init(ui_app *a) { app = a; }
 static void data_dir(const char *sub, char *out, size_t n)
 {
     const char *x = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-    if (x && *x) snprintf(out, n, "%s/wps/%s", x, sub);
-    else snprintf(out, n, "%s/.local/share/wps/%s", home ? home : "/tmp", sub);
+    if (x && *x) snprintf(out, n, "%s/objectspace/%s", x, sub);
+    else snprintf(out, n, "%s/.local/share/objectspace/%s", home ? home : "/tmp", sub);
     /* made, parents and all */
     char tmp[PATH_MAX];
     snprintf(tmp, sizeof tmp, "%s", out);
@@ -110,7 +110,7 @@ static void finished(void *arg, int fd, short rev)
             if (WIFEXITED(st) && WEXITSTATUS(st))
                 snprintf(import_error, sizeof import_error, "glycin-thumbnailer could not read it (exit %d; see the log)", WEXITSTATUS(st));
             else snprintf(import_error, sizeof import_error, "glycin-thumbnailer made nothing (see the log)");
-            fprintf(stderr, "wps-shell: cannot make an icon of that image: %s\n", import_error);
+            fprintf(stderr, "osd-shell: cannot make an icon of that image: %s\n", import_error);
         }
     }
     j->done(j->ctx, ok ? j->out : NULL);
@@ -173,12 +173,12 @@ void icons_import(const char *src, void (*done)(void *ctx, const char *png), voi
     clock_gettime(CLOCK_REALTIME, &ts);
     snprintf(j->out, sizeof j->out, "%s/%s-%lld%03ld.png", dir, stem, (long long)ts.tv_sec, ts.tv_nsec / 1000000);
     size_t l = strlen(src);
-    if (l > 8 && !strcasecmp(src + l - 8, ".wpsicon")) {
+    if (l > 8 && !strcasecmp(src + l - 8, ".osdicon")) {
         /* an icon package (0.4): kept as it is, all its sizes (and SVG) */
-        wpsicon *w = wpsicon_open(src);
+        osdicon *w = osdicon_open(src);
         bool ok = w != NULL;
-        wpsicon_free(w);
-        snprintf(j->out + strlen(j->out) - 4, 9, ".wpsicon");
+        osdicon_free(w);
+        snprintf(j->out + strlen(j->out) - 4, 9, ".osdicon");
         if (ok) {
             FILE *in = fopen(src, "rb"), *o = fopen(j->out, "wb");
             char buf[65536];
@@ -235,7 +235,7 @@ static void convert(struct job *j, const char *src, int size)
     if (e || j->fd < 0) {
         if (!e) waitpid(j->pid, NULL, 0);
         snprintf(import_error, sizeof import_error, "glycin-thumbnailer is not installed");
-        fprintf(stderr, "wps-shell: glycin-thumbnailer is needed to make icons\n");
+        fprintf(stderr, "osd-shell: glycin-thumbnailer is needed to make icons\n");
         j->done(j->ctx, NULL);
         free(j);
         return;
@@ -260,8 +260,8 @@ bool icons_preview(const char *src, int size, char *out, size_t n, void (*done)(
     if (stat(src, &st) != 0) return false;
     const char *x = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
     char dir[PATH_MAX];
-    if (x && *x) snprintf(dir, sizeof dir, "%s/wps/icon-previews", x);
-    else snprintf(dir, sizeof dir, "%s/.cache/wps/icon-previews", home ? home : "/tmp");
+    if (x && *x) snprintf(dir, sizeof dir, "%s/objectspace/icon-previews", x);
+    else snprintf(dir, sizeof dir, "%s/.cache/objectspace/icon-previews", home ? home : "/tmp");
     char tmp[PATH_MAX];
     snprintf(tmp, sizeof tmp, "%s", dir);
     for (char *p = tmp + 1; *p; p++) if (*p == '/') { *p = 0; mkdir(tmp, 0755); *p = '/'; }
@@ -305,7 +305,7 @@ static bool package_in(const char *theme, const char *name, char *out, size_t n)
 {
     char dir[PATH_MAX];
     if (!osd_icon_theme_dir(theme, dir, sizeof dir)) return false;
-    snprintf(out, n, "%s/%s.wpsicon", dir, name);
+    snprintf(out, n, "%s/%s.osdicon", dir, name);
     return access(out, R_OK) == 0;
 }
 
@@ -319,9 +319,9 @@ static cairo_surface_t *package_at(const char *path, int px)
         if (!tcache[i].key) { victim = i; break; }
         if (tcache[i].used < tcache[victim].used) victim = i;
     }
-    wpsicon *w = wpsicon_open(path);
-    cairo_surface_t *s = w ? wpsicon_render(w, px, NULL) : NULL;   /* (drawn once per size: cached) */
-    wpsicon_free(w);
+    osdicon *w = osdicon_open(path);
+    cairo_surface_t *s = w ? osdicon_render(w, px, NULL) : NULL;   /* (drawn once per size: cached) */
+    osdicon_free(w);
     free(tcache[victim].key);
     if (tcache[victim].s) cairo_surface_destroy(tcache[victim].s);
     tcache[victim].key = strdup(key);
@@ -361,19 +361,19 @@ cairo_surface_t *icons_object(const char *theme, const char *icon, int px)
     if (px < 8) px = 64;
     if (!strncmp(icon, "theme:", 6)) return icons_theme(theme, icon + 6, px);
     size_t l = strlen(icon);
-    if (l > 8 && !strcmp(icon + l - 8, ".wpsicon")) return package_at(icon, px);   /* its own, a package */
+    if (l > 8 && !strcmp(icon + l - 8, ".osdicon")) return package_at(icon, px);   /* its own, a package */
     return icons_get(icon);
 }
 
 const char *icons_name_for_type(const char *m) { return osd_icon_name_for_type(m); }
 
-/* $XDG_CACHE_HOME/wps/theme-icons, made (each level: a new home has no
+/* $XDG_CACHE_HOME/objectspace/theme-icons, made (each level: a new home has no
  * ~/.cache yet) */
 static void theme_cache_dir(char *dir, size_t n)
 {
     const char *cache = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
-    if (cache && *cache) snprintf(dir, n, "%s/wps/theme-icons", cache);
-    else snprintf(dir, n, "%s/.cache/wps/theme-icons", home && *home ? home : "/tmp");
+    if (cache && *cache) snprintf(dir, n, "%s/objectspace/theme-icons", cache);
+    else snprintf(dir, n, "%s/.cache/objectspace/theme-icons", home && *home ? home : "/tmp");
     for (char *c = dir + 1; *c; c++)
         if (*c == '/') { *c = 0; mkdir(dir, 0700); *c = '/'; }
     mkdir(dir, 0700);
@@ -429,7 +429,7 @@ bool icons_object_png(const char *icon, int px, char *out, size_t n)
     if (!icon) return false;
     if (!strncmp(icon, "theme:", 6)) return icons_theme_png(NULL, icon + 6, px, out, n);
     size_t l = strlen(icon);
-    if (l < 9 || strcmp(icon + l - 8, ".wpsicon")) return false;
+    if (l < 9 || strcmp(icon + l - 8, ".osdicon")) return false;
     cairo_surface_t *s = package_at(icon, px);
     if (!s) return false;
     char dir[PATH_MAX];

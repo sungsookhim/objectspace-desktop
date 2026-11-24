@@ -1,7 +1,7 @@
-/* WPS Terminal's looks from WPS's settings objects (wpsd's "setup"): the
+/* WPS Terminal's looks from WPS's settings objects (osdd's "setup"): the
  * scheme in use (the Scheme Palette's: colours, frame sizes), the System's
  * frame options, and its Terminal font. Asked once, as the window opens;
- * without wpsd (started by hand, outside WPS) Classic and the defaults. */
+ * without osdd (started by hand, outside WPS) Classic and the defaults. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <stdio.h>
@@ -33,15 +33,15 @@ static int connect_osdd(void)
     char path[4096];
     const char *s = getenv("OSD_SOCKET"), *rt = getenv("OSD_RUNTIME_DIR"), *xr = getenv("XDG_RUNTIME_DIR");
     if (s && *s) snprintf(path, sizeof path, "%s", s);
-    else if (rt && *rt) snprintf(path, sizeof path, "%s/wps.sock", rt);
-    else if (xr && *xr) snprintf(path, sizeof path, "%s/wps.sock", xr);
-    else snprintf(path, sizeof path, "/tmp/wps-%u/wps.sock", (unsigned)getuid());
+    else if (rt && *rt) snprintf(path, sizeof path, "%s/objectspace.sock", rt);
+    else if (xr && *xr) snprintf(path, sizeof path, "%s/objectspace.sock", xr);
+    else snprintf(path, sizeof path, "/tmp/objectspace-%u/objectspace.sock", (unsigned)getuid());
     struct sockaddr_un sa = { .sun_family = AF_UNIX };
     if (strlen(path) >= sizeof sa.sun_path) return -1;
     snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) return -1;
-    struct timeval tv = { 2, 0 };   /* (a busy or stuck wpsd: the defaults after 2 s) */
+    struct timeval tv = { 2, 0 };   /* (a busy or stuck osdd: the defaults after 2 s) */
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
     if (connect(fd, (struct sockaddr *)&sa, sizeof sa) != 0) { close(fd); return -1; }

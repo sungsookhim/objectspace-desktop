@@ -1,4 +1,4 @@
-/* wps-shell: The icon and details views' source (the container's items) and the icons' layout and arrangement. */
+/* osd-shell: The icon and details views' source (the container's items) and the icons' layout and arrangement. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -170,7 +170,7 @@ void opened(void *arg, const cv *reply)
     struct folder *f = from_arg(arg);
     if (!f) return;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
-    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
+    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to osdd";
     if (res && cv_get(res, "needs_confirmation")) {
         confirm_program(f, res);
         return;
@@ -377,7 +377,7 @@ static size_t *name_order(struct folder *f)
 {
     size_t n = f->m.total, *o = malloc((n ? n : 1) * sizeof *o);
     for (size_t i = 0; i < n; i++) o[i] = i;
-    if (f->sort_choice > 0) return o;   /* (listed in its sort order by wpsd: that order, names read or not) */
+    if (f->sort_choice > 0) return o;   /* (listed in its sort order by osdd: that order, names read or not) */
     sort_folder = f;
     qsort(o, n, sizeof *o, cmp_index_name);
     return o;
@@ -389,7 +389,7 @@ void layout_follow(struct folder *f, bool full)
     if (!f->lay_started) { layout_set_cols(f->lay, cols_now(f)); f->lay_started = true; }
     /* A small folder with no stored positions opens arranged by name (not
      * in the order the directory happens to list), once it is all read. */
-    if (f->m.complete && !f->arranged_by_name && f->m.total <= 100000 && f->sort_choice >= 0 && !is_tree(f)) {   /* (its sort known: wpsd's order, or by name) */
+    if (f->m.complete && !f->arranged_by_name && f->m.total <= 100000 && f->sort_choice >= 0 && !is_tree(f)) {   /* (its sort known: osdd's order, or by name) */
         f->arranged_by_name = true;
         layout_reset(f->lay, cols_now(f));
         size_t *o = name_order(f);
@@ -532,7 +532,7 @@ void placed_reply(void *arg, const cv *reply)
     const cv *ok = reply ? cv_get(reply, "ok") : NULL;
     if (!(ok && ok->k == CV_BOOL && ok->b)) {
         char m[300];
-        snprintf(m, sizeof m, "Positions not kept: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Positions not kept: %s", reply ? cv_text(reply, "message") : "lost the connection to osdd");
         struct folder *f = from_arg(arg);
         if (f) { snprintf(f->error, sizeof f->error, "%s", m); damage_status(f); }
         return;

@@ -1,6 +1,6 @@
 #!/bin/bash
 # G0 folder-window benchmark: cold cache, warm, and 2x scale, each against a
-# fresh wpsd with scratch state. usage: proto/g0/bench.sh FOLDER [SECONDS]
+# fresh osdd with scratch state. usage: proto/g0/bench.sh FOLDER [SECONDS]
 set -u
 FOLDER=$1; SECS=${2:-20}
 S=${G0_STATE:-$(mktemp -d)}
@@ -8,8 +8,8 @@ S=${G0_STATE:-$(mktemp -d)}
 # to 107 bytes, and the state folder may be deeper than that.
 export OSD_CONFIG_DIR=$S/config OSD_STATE_DIR=$S/state OSD_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp}/wps-g0 OSD_WATCHD_SOCKET=none
 mkdir -p "$OSD_RUNTIME_DIR"; chmod 700 "$OSD_RUNTIME_DIR"
-start() { build/wpsd 2>> "$S/wpsd.log" & sleep 1; }
-stop() { build/wpsctl shutdown > /dev/null 2>&1; wait; }
+start() { build/osdd 2>> "$S/osdd.log" & sleep 1; }
+stop() { build/osdctl shutdown > /dev/null 2>&1; wait; }
 for cfg in "cold 1" "warm 1" "warm 2"; do
     set -- $cfg
     if [ "$1" = cold ]; then sync; echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null; fi
@@ -18,4 +18,4 @@ for cfg in "cold 1" "warm 1" "warm 2"; do
     FOLDERVIEW_SCALE=$2 timeout 120 build/g0/folderview "$FOLDER" --bench "$SECS"
     stop
 done
-grep -E "watchdog|ERROR" "$S/wpsd.log" || echo "wpsd: no watchdog or sanitizer reports"
+grep -E "watchdog|ERROR" "$S/osdd.log" || echo "osdd: no watchdog or sanitizer reports"

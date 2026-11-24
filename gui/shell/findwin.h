@@ -5,7 +5,7 @@
  * look in, whether to include its subfolders, and the type of object
  * (any, folders, files, programs), as OS/2's Find asked; the results below,
  * in a details view (title, the folder it is in, size, date), filled in as
- * wpsd finds them. Each change of the name starts the search again (a
+ * osdd finds them. Each change of the name starts the search again (a
  * modern search field); Enter or Find starts it with the other fields. A
  * double click opens a result; its menu also opens the folder it is in.
  *
@@ -33,7 +33,7 @@ void findwin_show(const char *folder, bool fresh);
 /* Where Save results as folder puts its folder (the desktop's). */
 void findwin_set_desktop(const char *dir);
 
-/* A "found" event from wpsd: true if it was a search's. */
+/* A "found" event from osdd: true if it was a search's. */
 bool findwin_event(const cv *ev);
 
 /* Self-tests (the most recent window). */

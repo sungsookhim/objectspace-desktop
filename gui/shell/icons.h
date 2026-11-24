@@ -1,7 +1,7 @@
 /*
  * Objects' own icons (G4): loading them, and making them from any image.
  *
- * An object's icon is a PNG in WPS's icons folder ($XDG_DATA_HOME/wps/
+ * An object's icon is a PNG in WPS's icons folder ($XDG_DATA_HOME/objectspace/
  * icons), named after the image it was made from and when, so a new icon
  * never has the old one's name (nothing cached goes stale). Any image
  * GNOME's glycin reads (PNG, JPEG, SVG, ICO, WebP, JPEG XL, ...) is
@@ -29,9 +29,9 @@ cairo_surface_t *icons_theme(const char *theme, const char *name, int px);
 /* The desktop's theme: menus, the LaunchPad and the WarpCenter use it. */
 void icons_set_default_theme(const char *theme);
 const char *icons_default_theme(void);
-/* An object's icon: its own (a PNG, a .wpsicon package) or a theme's name
+/* An object's icon: its own (a PNG, a .osdicon package) or a theme's name
  * ("theme:NAME"), in `theme` (NULL: the desktop's), at px device pixels
- * (the package's exact size if it has one; wpsicon's rules otherwise). */
+ * (the package's exact size if it has one; osdicon's rules otherwise). */
 cairo_surface_t *icons_object(const char *theme, const char *icon, int px);
 /* A theme's icon (NULL theme: the desktop's) drawn in r, centred, pad
  * inside its edges, at the pixels it covers; false if the theme has none. */
@@ -48,7 +48,7 @@ const char *icons_name_for_type(const char *mime);
 /* A theme's icon as a PNG file (for what reads files: the notebook's Icon
  * field), made once in the cache; false if there is none. */
 bool icons_theme_png(const char *theme, const char *name, int px, char *out, size_t n);
-/* The same for any object's icon: a theme's name, or a .wpsicon package;
+/* The same for any object's icon: a theme's name, or a .osdicon package;
  * false for anything else (a PNG is one already). */
 bool icons_object_png(const char *icon, int px, char *out, size_t n);
 

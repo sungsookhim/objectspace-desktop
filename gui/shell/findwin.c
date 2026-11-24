@@ -115,7 +115,7 @@ static void got_find(void *arg, const cv *reply)
         else {
             w->searching = false;
             snprintf(w->error, sizeof w->error, "%s", reply ? (cv_text(reply, "message") ? cv_text(reply, "message") : "failed")
-                                                             : "no connection to wpsd");
+                                                             : "no connection to osdd");
             damage_status(w);
         }
     } else if (ok) {
@@ -227,8 +227,8 @@ static void opened(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { open_folder(cv_text(res, "folder")); return; }
     if (svc_reply_view(reply)) return;
-    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
-    if (!res && msg) fprintf(stderr, "wps-shell: Find: %s\n", msg);
+    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to osdd";
+    if (!res && msg) fprintf(stderr, "osd-shell: Find: %s\n", msg);
 }
 
 static void open_result(struct fw *w, size_t i)
@@ -295,7 +295,7 @@ static void folder_made(void *arg, const cv *reply)
     const char *p = res ? cv_text(res, "path") : NULL;
     if (!p) {
         struct fw *w = by_wid(sv->wid);
-        if (w) set_error(w, reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        if (w) set_error(w, reply ? cv_text(reply, "message") : "lost the connection to osdd");
         save_free(sv);
         return;
     }
@@ -725,7 +725,7 @@ void findwin_open(const char *folder, const char *name)
     w->folder = ui_entry_new(shown);
     w->next = wins;
     wins = last = w;
-    w->s = ui_window_new(app, &fw_ops, w, "org.wps.Find", 620, 440);
+    w->s = ui_window_new(app, &fw_ops, w, "io.github.sungsookhim.Objectspace.Find", 620, 440);
     ui_window_set_title(w->s, "Find");
     w->cont = ui_container_new(w->s, &res_src, w, UI_VIEW_DETAILS);
     ui_container_set_font(w->cont, UI_FONT_DIALOG);   /* (a dialog's list) */

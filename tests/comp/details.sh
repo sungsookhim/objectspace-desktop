@@ -1,6 +1,6 @@
 #!/bin/sh
 # The details view, headless (v0.3-plan step 4): a heading clicked sorts
-# the folder (again: reversed; folders first), the order coming from wpsd's
+# the folder (again: reversed; folders first), the order coming from osdd's
 # listing; over a column's edge the pointer is the resize one (0.4 step 5);
 # a column's edge dragged keeps its width; a column turned off.
 cd "$(dirname "$0")/../.."
@@ -23,7 +23,7 @@ cat > "$S/script" <<EOS
 13 shot $S/end.png
 13.5 quit
 EOS
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 order() { echo "'$W' list \"\$T/desk/Projects\" | python3 -c 'import json,sys; print(\" \".join(i[\"name\"] for i in json.load(sys.stdin)[\"result\"][\"items\"]))' >> \"\$T/order.log\""; }
 PRE='cd "$T/desk/Projects" && head -c 300 /dev/zero > b.txt && head -c 100 /dev/zero > a.png && head -c 200 /dev/zero > c.md && mkdir z m' \
 DESKENV="OSD_WARPCENTER=1 OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=16 tests/comp/run.sh "$S/script" \

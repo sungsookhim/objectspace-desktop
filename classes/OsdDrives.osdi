@@ -1,5 +1,5 @@
 # Drives (v0.2-design 5): a live folder of OsdDrive objects, one per
-# volume, kept in step with udisks2 by wpsd.
+# volume, kept in step with udisks2 by osdd.
 class OsdDrives : OsdFolder
 version 1.0
 override osdModifyPopupMenu

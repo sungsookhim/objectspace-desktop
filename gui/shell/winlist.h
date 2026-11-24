@@ -4,7 +4,7 @@
  * Window Viewer).
  *
  * In a GNOME session a program cannot see other programs' windows; the
- * wps@wps-linux extension can, and tells the desktop process about every
+ * objectspace@sungsookhim.github.io extension can, and tells the desktop process about every
  * window on its standard input ("W" lines: add, change, remove, with an
  * ID, the app, the title, minimized, focused, the icon, maximized). Commands go back on the
  * desktop's standard output (activate, restore, minimize, maximize,

@@ -1,5 +1,5 @@
 /*
- * A test client for wps-compositor: one xdg toplevel that asks for a
+ * A test client for osd-compositor: one xdg toplevel that asks for a
  * server-side frame (xdg-decoration) and fills itself with a colour, at
  * whatever size it is configured to (400x300 when the compositor leaves
  * it the choice). It logs every configure and exits when asked to close.
@@ -113,7 +113,7 @@ int main(int argc, char **argv)
     top = xdg_surface_get_toplevel(xs);
     xdg_toplevel_add_listener(top, &top_l, NULL);
     xdg_toplevel_set_title(top, title);
-    xdg_toplevel_set_app_id(top, "org.wps.test.ssd");
+    xdg_toplevel_set_app_id(top, "io.github.sungsookhim.Objectspace.test.ssd");
     if (deco_mgr && !csd) {
         struct zxdg_toplevel_decoration_v1 *deco = zxdg_decoration_manager_v1_get_toplevel_decoration(deco_mgr, top);
         zxdg_toplevel_decoration_v1_add_listener(deco, &deco_l, NULL);

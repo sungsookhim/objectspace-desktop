@@ -1,5 +1,5 @@
 /*
- * Drives (v0.2-design 5): wpsd's udisks2 client.
+ * Drives (v0.2-design 5): osdd's udisks2 client.
  *
  * A thread of its own holds a D-Bus connection to udisks2 (the system
  * bus, or $OSD_UDISKS_BUS for tests), reads its objects (Block,

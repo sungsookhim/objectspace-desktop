@@ -1,10 +1,10 @@
 /*
  * Messages (v0.2-design 9): what programs and WPS itself told the user,
- * kept by wpsd so every GUI sees the same list, in
- * $XDG_STATE_HOME/wps/messages (a CBOR array; the last 500, newest
+ * kept by osdd so every GUI sees the same list, in
+ * $XDG_STATE_HOME/objectspace/messages (a CBOR array; the last 500, newest
  * last). Loop thread only.
  *
- * A message: id (wpsd's), time (Unix seconds), app, icon, summary, body,
+ * A message: id (osdd's), time (Unix seconds), app, icon, summary, body,
  * urgency (0 low, 1 normal, 2 critical), read, the notification's ID and
  * its sender on the session bus (nid, sender: for its actions), actions
  * ([key, label, ...]) and closed (its program closed it: the actions are

@@ -3,7 +3,7 @@
  * button (the desktop's "lock" command) or Super+L.
  *
  * The compositor covers every screen and takes all input until the user's
- * password is typed. The password is checked by PAM (service "wps-lock",
+ * password is typed. The password is checked by PAM (service "osd-lock",
  * installed by tools/install-session.sh, or "system-auth"), in a child
  * process, so the compositor never waits; a wrong password is said so,
  * and the next try waits a second. Built without PAM (pam-devel), the
@@ -143,7 +143,7 @@ static bool pam_check(const char *password)
     pam_pw = password;
     struct pam_conv c = { conv, NULL };
     pam_handle_t *h;
-    const char *service = access("/etc/pam.d/wps-lock", R_OK) == 0 ? "wps-lock" : "system-auth";
+    const char *service = access("/etc/pam.d/osd-lock", R_OK) == 0 ? "osd-lock" : "system-auth";
     if (pam_start(service, pw->pw_name, &c, &h) != PAM_SUCCESS) return false;
     int r = pam_authenticate(h, 0);
     if (r == PAM_SUCCESS) pam_setcred(h, PAM_REFRESH_CRED);
@@ -158,7 +158,7 @@ static void unlock(void)
     explicit_bzero(lk.pw, sizeof lk.pw);
     lk.len = 0;
     wlr_scene_node_set_enabled(&lk.tree->node, false);
-    fprintf(stderr, "wps-compositor: unlocked\n");
+    fprintf(stderr, "osd-compositor: unlocked\n");
     comp_after_unlock();
 }
 
@@ -236,7 +236,7 @@ bool lock_screen(void)
 {
 #ifndef HAVE_PAM
     if (!(getenv("OSD_COMP_TEST_PASSWORD") && wlr_backend_is_headless(server.backend))) {
-        fprintf(stderr, "wps-compositor: lock: built without PAM (sudo dnf install pam-devel, then make compositor)\n");
+        fprintf(stderr, "osd-compositor: lock: built without PAM (sudo dnf install pam-devel, then make compositor)\n");
         return false;
     }
 #endif
@@ -255,6 +255,6 @@ bool lock_screen(void)
     lock_layout();
     draw();
     comp_before_lock();
-    fprintf(stderr, "wps-compositor: locked\n");
+    fprintf(stderr, "osd-compositor: locked\n");
     return true;
 }

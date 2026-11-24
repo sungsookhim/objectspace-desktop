@@ -176,7 +176,7 @@ static int got_props(sd_bus_message *m, void *ud, sd_bus_error *err)
     free(key);
     if (!it) return 0;
     if (sd_bus_message_is_method_error(m, NULL)) {
-        fprintf(stderr, "wps-shell: tray: %s: %s\n", it->key, sd_bus_message_get_error(m)->message);
+        fprintf(stderr, "osd-shell: tray: %s: %s\n", it->key, sd_bus_message_get_error(m)->message);
         return 0;
     }
     int r = sd_bus_message_enter_container(m, 'a', "{sv}");
@@ -186,7 +186,7 @@ static int got_props(sd_bus_message *m, void *ud, sd_bus_error *err)
         if ((r = read_prop(m, it, k)) < 0) break;
         r = sd_bus_message_exit_container(m);
     }
-    if (r < 0) fprintf(stderr, "wps-shell: tray: %s: bad properties (%s)\n", it->key, strerror(-r));
+    if (r < 0) fprintf(stderr, "osd-shell: tray: %s: bad properties (%s)\n", it->key, strerror(-r));
     changed();
     return 0;
 }
@@ -307,7 +307,7 @@ static void bus_process(void)
     int r;
     while ((r = sd_bus_process(bus, NULL)) > 0) {}
     if (r < 0) {
-        fprintf(stderr, "wps-shell: tray: the bus went away (%s)\n", strerror(-r));
+        fprintf(stderr, "osd-shell: tray: the bus went away (%s)\n", strerror(-r));
         ui_app_unwatch_fd(app, sd_bus_get_fd(bus));
         bus = sd_bus_flush_close_unref(bus);
         while (nitems) item_free(items[--nitems]);
@@ -329,10 +329,10 @@ bool tray_init(ui_app *a, void (*fn)(void))
     app = a;
     on_changed = fn;
     int r = sd_bus_open_user(&bus);
-    if (r < 0) { fprintf(stderr, "wps-shell: tray: no session bus (%s)\n", strerror(-r)); bus = NULL; return false; }
+    if (r < 0) { fprintf(stderr, "osd-shell: tray: no session bus (%s)\n", strerror(-r)); bus = NULL; return false; }
     if ((r = sd_bus_add_object_vtable(bus, NULL, WPATH, WIFACE, vtable, NULL)) < 0 ||
         (r = sd_bus_request_name(bus, WIFACE, 0)) < 0) {
-        fprintf(stderr, "wps-shell: tray: cannot serve %s (%s): another tray?\n", WIFACE, strerror(-r));
+        fprintf(stderr, "osd-shell: tray: cannot serve %s (%s): another tray?\n", WIFACE, strerror(-r));
         bus = sd_bus_flush_close_unref(bus);
         return false;
     }
@@ -345,7 +345,7 @@ bool tray_init(ui_app *a, void (*fn)(void))
     ui_app_watch_fd(app, sd_bus_get_fd(bus), POLLIN, on_bus, NULL);
     emit("StatusNotifierHostRegistered", NULL);
     bus_process();
-    fprintf(stderr, "wps-shell: tray: serving %s\n", WIFACE);
+    fprintf(stderr, "osd-shell: tray: serving %s\n", WIFACE);
     return true;
 }
 
@@ -513,7 +513,7 @@ static int got_layout(sd_bus_message *m, void *ud, sd_bus_error *err)
     struct pending_menu *pm = ud;
     struct item *it = by_key(pm->key);
     if (!it || sd_bus_message_is_method_error(m, NULL)) {
-        if (it) fprintf(stderr, "wps-shell: tray: %s: no menu (%s)\n", it->key, sd_bus_message_get_error(m)->message);
+        if (it) fprintf(stderr, "osd-shell: tray: %s: no menu (%s)\n", it->key, sd_bus_message_get_error(m)->message);
         free(pm);
         return 0;
     }
@@ -525,7 +525,7 @@ static int got_layout(sd_bus_message *m, void *ud, sd_bus_error *err)
     int r = sd_bus_message_read(m, "u", &rev);
     if (r >= 0) r = read_node(m, &id, &root, &vis, &kids, &nkids);
     free(root.label);
-    if (r < 0) fprintf(stderr, "wps-shell: tray: %s: bad menu (%s)\n", it->key, strerror(-r));
+    if (r < 0) fprintf(stderr, "osd-shell: tray: %s: bad menu (%s)\n", it->key, strerror(-r));
     else if (nkids) {
         snprintf(menu_service, sizeof menu_service, "%s", it->service);
         snprintf(menu_path, sizeof menu_path, "%s", it->menu);

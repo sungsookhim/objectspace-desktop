@@ -418,7 +418,7 @@ bool fontpal_edit(size_t i)
     snprintf(ps, sizeof ps, "%d", pt);
     ef.size = ui_entry_new(ps);
     ef.pressed = 0;
-    ef.s = ui_window_new(app, &ef_ops, NULL, "org.wps.EditFont", EF_W, EF_H);
+    ef.s = ui_window_new(app, &ef_ops, NULL, "io.github.sungsookhim.Objectspace.EditFont", EF_W, EF_H);
     ui_window_set_title(ef.s, "Edit Font");
     ef.list = ui_container_new(ef.s, &ef_src, NULL, UI_VIEW_DETAILS);
     ui_container_set_font(ef.list, UI_FONT_DIALOG);   /* (a dialog's list) */
@@ -683,7 +683,7 @@ void fontpal_open(void)
     /* (the frame's title bar and borders on top of the client) */
     double fr = ui_scheme_now.title_h + 2 * ui_scheme_now.border;
     double w = 2 * M + COLS * CELL_W + 2 * ui_scheme_now.border, h = 2 * M + 4 * CELL_H + ROW + 2 * M + STATUS_H + fr;
-    pal.s = ui_window_new(app, &pal_ops, NULL, "org.wps.FontPalette", w, h);
+    pal.s = ui_window_new(app, &pal_ops, NULL, "io.github.sungsookhim.Objectspace.FontPalette", w, h);
     ui_window_set_title(pal.s, "Font Palette");
     events_raise("window.open", "Font Palette", "window", (ui_rect){ 0, 0, 0, 0 });
 }

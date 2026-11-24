@@ -1,4 +1,4 @@
-/* wps-shell: The self-tests (OSD_SHELL_SELFTEST=MODE): scenarios run in the window's frame callback. */
+/* osd-shell: The self-tests (OSD_SHELL_SELFTEST=MODE): scenarios run in the window's frame callback. */
 #define _GNU_SOURCE
 #include "shell.h"
 

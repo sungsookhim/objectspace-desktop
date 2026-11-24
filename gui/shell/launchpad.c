@@ -85,7 +85,7 @@ static struct {
     bool vertical, small, text, float_top, close_drawer;
     bool drawers_left;         /* vertical: the drawer arrows (and drawers) on the left */
     void (*open_props)(const char *addr);
-    objmenu *obj_menu_m;       /* (unused: object menus come from wpsd) */
+    objmenu *obj_menu_m;       /* (unused: object menus come from osdd) */
 } lp = { .pressed = -1, .drop_at = -1, .r_press = -1, .dragging = -1, .text = true, .float_top = true, .close_drawer = true };
 
 static void reload(void);
@@ -219,7 +219,7 @@ static void layout(void)
     ui_surface_damage_all(lp.s);
 }
 
-/* The buttons' order is the LaunchPad folder's icon positions (wpsd keeps
+/* The buttons' order is the LaunchPad folder's icon positions (osdd keeps
  * them, as for any folder): left to right by x. Objects with no position
  * (just added) go after the others, and every button gets x = its place
  * times a cell, so the order outlives the session and the folder, opened,
@@ -324,8 +324,8 @@ static void opened(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { lp.open_folder(cv_text(res, "folder")); return; }
     if (svc_reply_view(reply)) return;
-    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to wpsd";
-    if (!res && msg) fprintf(stderr, "wps-shell: LaunchPad: %s\n", msg);
+    const char *msg = reply ? cv_text(reply, "message") : "lost the connection to osdd";
+    if (!res && msg) fprintf(stderr, "osd-shell: LaunchPad: %s\n", msg);
 }
 
 static void open_entry(const char *dir, const struct entry *e)
@@ -349,14 +349,14 @@ static void press_sys(size_t i, unsigned mods)
         return;
     }
     if (!winlist_ext(sys_cmds[i], NULL))
-        fprintf(stderr, "wps-shell: LaunchPad: %s needs the WPS GNOME Shell extension\n", sys_names[i]);
+        fprintf(stderr, "osd-shell: LaunchPad: %s needs the WPS GNOME Shell extension\n", sys_names[i]);
 }
 
 static void removed(void *arg, const cv *reply)
 {
     (void)arg;
     if (!reply || !cv_get(reply, "result"))
-        fprintf(stderr, "wps-shell: LaunchPad: cannot remove: %s\n", reply ? cv_text(reply, "message") : "no wpsd");
+        fprintf(stderr, "osd-shell: LaunchPad: cannot remove: %s\n", reply ? cv_text(reply, "message") : "no osdd");
     reload();
 }
 
@@ -844,7 +844,7 @@ static void lp_pointer(ui_surface *s, const ui_pointer_event *e)
 }
 
 /* An object button's menu: the object's own (as a folder's icon has it:
- * wpsd's), then the LaunchPad's items. */
+ * osdd's), then the LaunchPad's items. */
 enum { LP_REMOVE = 9001, LP_FOLDER = 9002 };
 struct obj_menu { size_t i; double x, y; char addr[PATH_MAX + 32]; };
 
@@ -925,7 +925,7 @@ static void button_menu(ui_surface *s, size_t h, double x, double y, uint32_t se
     }
 }
 
-#define MIME_WPS "application/x-wps-objects"
+#define MIME_WPS "application/x-objectspace-objects"
 #define MIME_URIS "text/uri-list"
 
 /* An object button dragged: dropped on the bar it goes to that place
@@ -998,7 +998,7 @@ static void reorder(size_t from, size_t to)
         memmove(&lp.items[to + 1], &lp.items[to], (from - to) * sizeof moved);
         lp.items[to] = moved;
     }
-    /* the order is the positions: every button's x, kept by wpsd */
+    /* the order is the positions: every button's x, kept by osdd */
     char *t[MAX_ITEMS];
     int64_t px[MAX_ITEMS], py[MAX_ITEMS];
     for (size_t k = 0; k < lp.n; k++) {
@@ -1020,7 +1020,7 @@ static void opened_with(void *arg, const cv *reply)
     (void)arg;
     const cv *ok = reply ? cv_get(reply, "ok") : NULL;
     if (!(ok && ok->k == CV_BOOL && ok->b))
-        fprintf(stderr, "wps-shell: LaunchPad: cannot start it: %s\n", reply ? cv_text(reply, "message") : "no wpsd");
+        fprintf(stderr, "osd-shell: LaunchPad: cannot start it: %s\n", reply ? cv_text(reply, "message") : "no osdd");
 }
 
 static void (*on_color)(const char *hex);
@@ -1208,7 +1208,7 @@ static void first_next(void *arg, const cv *reply)
     if (reply) {
         const char *link = cv_text(reply, "result");
         if (link && *link) snprintf(first_link[ifirst - 1], sizeof first_link[0], "%s", link);
-        else fprintf(stderr, "wps-shell: LaunchPad: a shadow was not made: %s\n", cv_text(reply, "message"));
+        else fprintf(stderr, "osd-shell: LaunchPad: a shadow was not made: %s\n", cv_text(reply, "message"));
     }
     if (ifirst < nfirst) { ifirst++; svc_shadow(first[ifirst - 1], lp.dir, first_next, NULL); return; }
     const char *t[3];
@@ -1230,8 +1230,8 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
     lp.open_folder = open_folder;
     const char *d = getenv("OSD_LAUNCHPAD_DIR"), *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     if (d && *d) snprintf(lp.dir, sizeof lp.dir, "%s", d);
-    else if (xdg && *xdg) snprintf(lp.dir, sizeof lp.dir, "%s/wps/LaunchPad", xdg);
-    else snprintf(lp.dir, sizeof lp.dir, "%s/.local/share/wps/LaunchPad", home ? home : "");
+    else if (xdg && *xdg) snprintf(lp.dir, sizeof lp.dir, "%s/objectspace/LaunchPad", xdg);
+    else snprintf(lp.dir, sizeof lp.dir, "%s/.local/share/objectspace/LaunchPad", home ? home : "");
     snprintf(lp.drawers, sizeof lp.drawers, "%s Drawers", lp.dir);
     struct stat st;
     if (stat(lp.dir, &st) != 0) {
@@ -1243,9 +1243,9 @@ void launchpad_open(ui_app *a, void (*open_folder)(const char *path), const char
         first_filling = true;
         first_next(NULL, NULL);
     }
-    /* floating on top: the compositor keeps org.wps.LaunchPad above the
+    /* floating on top: the compositor keeps io.github.sungsookhim.Objectspace.LaunchPad above the
      * windows (the WPS session); else an ordinary window's place */
-    lp.s = ui_window_new(a, &lp_ops, NULL, lp.float_top ? "org.wps.LaunchPad" : "org.wps.LaunchPadWindow", bar_w(), bar_h());
+    lp.s = ui_window_new(a, &lp_ops, NULL, lp.float_top ? "io.github.sungsookhim.Objectspace.LaunchPad" : "io.github.sungsookhim.Objectspace.LaunchPadWindow", bar_w(), bar_h());
     ui_a11y_window(lp.s, UI_ROLE_TOOL_BAR, "OS/2's buttons, then objects");
     ui_window_set_title(lp.s, "LaunchPad");
     ui_window_set_frameless(lp.s, true);
@@ -1314,7 +1314,7 @@ void launchpad_setting(const char *key, const char *val)
     tooltip_hide();
     if (was_float != lp.float_top) {   /* another kind of window: made again */
         ui_surface_destroy(lp.s);
-        lp.s = ui_window_new(lp.app, &lp_ops, NULL, lp.float_top ? "org.wps.LaunchPad" : "org.wps.LaunchPadWindow", bar_w(), bar_h());
+        lp.s = ui_window_new(lp.app, &lp_ops, NULL, lp.float_top ? "io.github.sungsookhim.Objectspace.LaunchPad" : "io.github.sungsookhim.Objectspace.LaunchPadWindow", bar_w(), bar_h());
         ui_a11y_window(lp.s, UI_ROLE_TOOL_BAR, "OS/2's buttons, then objects");
         ui_window_set_title(lp.s, "LaunchPad");
         ui_window_set_frameless(lp.s, true);

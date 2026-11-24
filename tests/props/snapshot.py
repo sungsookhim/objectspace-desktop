@@ -1,4 +1,4 @@
-"""Every object's settings pages and menu, as wpsd gives them, written to
+"""Every object's settings pages and menu, as osdd gives them, written to
 OUT/<n>-<title>.txt (run by tests/props/run.sh). For the refactor
 (docs/object-properties-design.md 4): the pages made from declared
 properties must read as the hand-written ones did."""
@@ -63,7 +63,7 @@ open(DESK + "/editor.desktop", "w").write("[Desktop Entry]\nType=Application\nNa
 c.request(op="first_start", desktop=DESK)
 # (its last step, Prevent delete on WPS's own objects, comes a moment after the reply)
 for _ in range(50):
-    r = c.request(op="get", target=T + "/xdg/data/wps/Programs", name="no_delete")
+    r = c.request(op="get", target=T + "/xdg/data/objectspace/Programs", name="no_delete")
     if str(r.get("result")).lower() in ("1", "true"):
         break
     time.sleep(0.1)
@@ -75,7 +75,7 @@ n = 0
 seen = set()
 # the desktop and Projects, then the folders their shadows stand for that
 # WPS made (System, System Setup, My Storages, Templates, ...): two levels
-queue = [(DESK, 0), (DESK + "/Projects", 0), (T + "/xdg/data/wps", 0), (T + "/templates", 1), (T + "/xdg/data/wps/System/System Setup/Schemes", 1)]
+queue = [(DESK, 0), (DESK + "/Projects", 0), (T + "/xdg/data/objectspace", 0), (T + "/templates", 1), (T + "/xdg/data/objectspace/System/System Setup/Schemes", 1)]
 n += 1
 dump(n, "the desktop", DESK)
 seen.add(DESK)

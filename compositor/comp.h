@@ -1,4 +1,4 @@
-/* wps-compositor's shared structures (wps-compositor.c: the core;
+/* osd-compositor's shared structures (osd-compositor.c: the core;
  * desktop.c: the link to WPS's desktop process). */
 #ifndef OSD_COMP_H
 #define OSD_COMP_H
@@ -130,9 +130,9 @@ struct tag { int type; struct toplevel *t; };   /* type 1: a frame */
 extern struct server server;
 extern bool comp_debug;
 double comp_uptime(void);   /* seconds since the start, for the log */
-#define DBG(...) do { if (comp_debug) { fprintf(stderr, "wps-compositor: %.3f ", comp_uptime()); fprintf(stderr, __VA_ARGS__); } } while (0)
+#define DBG(...) do { if (comp_debug) { fprintf(stderr, "osd-compositor: %.3f ", comp_uptime()); fprintf(stderr, __VA_ARGS__); } } while (0)
 
-/* wps-compositor.c: a window, Wayland or X11 */
+/* osd-compositor.c: a window, Wayland or X11 */
 const char *view_title(struct toplevel *t);
 const char *view_app(struct toplevel *t);
 struct wl_client *view_client(struct toplevel *t);

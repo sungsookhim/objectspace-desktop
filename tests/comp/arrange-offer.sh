@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-ao-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 # Projects opens at 320,96 (640x480); its status line at y 562..584, the
 # link after the offer's words (about x 611..660).
 cat > "$S/script" <<EOS

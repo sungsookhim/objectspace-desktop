@@ -1,5 +1,5 @@
 /*
- * wps-shell's connection to wpsd (gui-design.md: Threads). The UI thread
+ * osd-shell's connection to osdd (gui-design.md: Threads). The UI thread
  * never waits: requests go to a writer thread; a reader thread decodes
  * replies and hands each to its callback on the UI thread. Requests are
  * pipelined (matched by ID), so a slow page never holds up a menu.
@@ -86,7 +86,7 @@ void svc_on_event(svc_fn fn, void *arg);
 void svc_subscribe_folder(const char *folder, svc_fn fn, void *arg);
 void svc_subscribe_objects(const char *const *targets, size_t n, svc_fn fn, void *arg);
 /* The settings objects' values: {folder, objects:{<class>:{address, settings}}}. */
-/* The desktop's first-start steps (wpsd: once each, versioned). */
+/* The desktop's first-start steps (osdd: once each, versioned). */
 void svc_first_start(const char *desktop, svc_fn fn, void *arg);
 /* The Trash Can: an item back where it was; the home trash emptied (a job). */
 /* A drive (its object or a shadow): mount, unmount, eject, poweroff, unlock
@@ -97,7 +97,7 @@ void svc_empty_trash(svc_fn fn, void *arg);
 void svc_setup(svc_fn fn, void *arg);
 void svc_unsubscribe(int64_t sub);
 
-/* Messages (wpsd's list; a "messages_changed" event follows each change).
+/* Messages (osdd's list; a "messages_changed" event follows each change).
  * actions: key, label, key, label, ... */
 typedef struct {
     const char *app, *icon, *summary, *body, *sender;

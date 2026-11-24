@@ -26,7 +26,7 @@ WORK = Path(os.environ.get("WORK", f"/var/tmp/wps-m0-{os.environ.get('USER', os.
 MNT = {fs: WORK / "mnt" / fs for fs in ("ext4", "btrfs", "fat")}
 BIN = ROOT / "build" / "m0"
 LOG = BIN / "events.jsonl"
-ID = "user.wps.id"
+ID = "user.osd.id"
 
 results = []
 scenarios = []
@@ -273,7 +273,7 @@ def s_sed():
              "events:"] + summarize(evs, MNT["ext4"]))
 
 
-@scenario(6, "Which tools keep user.wps.id")
+@scenario(6, "Which tools keep user.osd.id")
 def s_tools():
     e, b, ft = fresh_dir("ext4", "s6"), fresh_dir("btrfs", "s6"), fresh_dir("fat", "s6")
     rows = []
@@ -393,7 +393,7 @@ def s_perms():
     run(["sudo", "rm", "-rf", str(root / "s10")])
     run(["mkdir", str(root / "s10")], user=60001, check=True)
     base = root / "s10"
-    py = "import os,sys; p=sys.argv[1]\ntry:\n os.setxattr(p,'user.wps.t',b'1'); print('ok')\nexcept OSError as e: print(e.strerror)"
+    py = "import os,sys; p=sys.argv[1]\ntry:\n os.setxattr(p,'user.osd.t',b'1'); print('ok')\nexcept OSError as e: print(e.strerror)"
     for mode in ("0644", "0664"):
         f = base / f"file{mode}"
         run(["sh", "-c", f"echo x > {f} && chmod {mode} {f}"], user=60001, check=True)

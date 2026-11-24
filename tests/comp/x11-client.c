@@ -1,5 +1,5 @@
 /*
- * An X11 test client for wps-compositor (XWayland): one window with a
+ * An X11 test client for osd-compositor (XWayland): one window with a
  * title and a class, filled with a colour; with "popup", also an
  * override-redirect window (as an X11 menu is) 40 pixels inside it. It
  * logs its size when the window manager configures it, and exits when

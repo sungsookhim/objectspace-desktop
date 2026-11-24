@@ -6,7 +6,7 @@
  * jobs); everything that touches objects runs on the loop thread.
  *
  * Where each property goes when saved:
- *   - the file's user.wps.<Class> attribute, merged under the file's lock,
+ *   - the file's user.osd.<Class> attribute, merged under the file's lock,
  *     when the filesystem supports attributes and the user may write;
  *   - otherwise the user's database (an overlay that only this user sees),
  *     keyed by the object's locator. The same applies when the file's lock
@@ -48,7 +48,7 @@ typedef struct {
     char link_target[PATH_MAX];
     char shadow_of[OSD_ID_LEN + 1];
     /* Abstract objects stored as files (design: Abstract objects are files):
-     * a .desktop file is a OsdProgram; a .wpobj file names its class. */
+     * a .desktop file is a OsdProgram; a .osdobj file names its class. */
     char obj_class[64];
     char desk_name[256];
     char desk_exec[1024];
@@ -91,7 +91,7 @@ typedef struct sobj {
     bool queued, saving;
     bool retry;                  /* some keys went to the overlay because the file was busy */
     bool forgotten;              /* removed while a save was running; freed when it ends */
-    char declared_class[64];     /* a .wpobj's class, if it is not installed here */
+    char declared_class[64];     /* a .osdobj's class, if it is not installed here */
     bool central;                /* a central object: no file, rows only */
     char folder_id[OSD_ID_LEN + 1];
     int retry_delay_ms;
@@ -117,7 +117,7 @@ void osd_sobj_snapshot(sobj *s, osd_loaded *out);
 extern void (*osd_on_saved)(sobj *s);
 
 /* The file name for a new object of class `cls` titled `title` in `folder`
- * (".desktop" for programs, ".wpobj" for other abstract classes). */
+ * (".desktop" for programs, ".osdobj" for other abstract classes). */
 void osd_object_filename(const char *folder, const char *cls, const char *title, int n, char *out, size_t len);
 /* Worker: a new central object of class `cls` in the folder with object ID
  * `folder_id` on `vol`, with extra rows under class WPS (e.g. "target").

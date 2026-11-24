@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=WPS
+Comment=The Workplace Shell desktop (objectspace-desktop)
+Exec=@BINDIR@/osd-session
+TryExec=@BINDIR@/osd-session
+Type=Application
+DesktopNames=WPS
+X-GDM-CanRunHeadless=true

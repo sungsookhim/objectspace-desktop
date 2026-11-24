@@ -1,4 +1,4 @@
-/* wps-shell: The desktop: the user's folders, the Trash corner, the first start, windows restored at login, opening windows. */
+/* osd-shell: The desktop: the user's folders, the Trash corner, the first start, windows restored at login, opening windows. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -30,7 +30,7 @@ void user_dir(const char *key, const char *fallback, char *out, size_t n)
 static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", out, n); }
 
 /* The desktop's first start (the Templates and System folders' shadows,
- * and 0.2's objects): wpsd does it, once each step, versioned. */
+ * and 0.2's objects): osdd does it, once each step, versioned. */
 /* First-start step 7 (0.2): the Trash Can in the desktop's lower right
  * corner, as on OS/2. Done by the desktop, which knows its size: a moment
  * after the first start (the WarpCenter has taken its edge by then, and
@@ -112,8 +112,8 @@ static void open_windows_file(char *out, size_t n)
     const char *sd = getenv("OSD_STATE_DIR"), *xs = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
     char dir[PATH_MAX];
     if (sd && *sd) snprintf(dir, sizeof dir, "%s", sd);
-    else if (xs && *xs) snprintf(dir, sizeof dir, "%s/wps", xs);
-    else snprintf(dir, sizeof dir, "%s/.local/state/wps", home ? home : "");
+    else if (xs && *xs) snprintf(dir, sizeof dir, "%s/objectspace", xs);
+    else snprintf(dir, sizeof dir, "%s/.local/state/objectspace", home ? home : "");
     char *q = dir;
     while ((q = strchr(q + 1, '/'))) { *q = 0; mkdir(dir, 0700); *q = '/'; }
     mkdir(dir, 0700);
@@ -149,7 +149,7 @@ static void rec_find(void *ctx, const char *folder, const char *name, ui_surface
 {
     int x, y;
     bool mx;
-    where_is(s, "org.wps.Find", &x, &y, &mx);
+    where_is(s, "io.github.sungsookhim.Objectspace.Find", &x, &y, &mx);
     if (plain(folder) && plain(name)) rec_add(ctx, "S\t%s\t%s\t%d\t%d\n", folder, name, x, y);
 }
 
@@ -168,7 +168,7 @@ static char *describe_windows(void)
         if (f->desktop || f->closing || !plain(f->path)) continue;
         int x, y;
         bool mx;
-        where_is(f->win, "org.wps.shell", &x, &y, &mx);
+        where_is(f->win, "io.github.sungsookhim.Objectspace.shell", &x, &y, &mx);
         /* (then whether it is a work area, and the one it was opened from: 0.4 step 10) */
         rec_add(&r, "F\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", f->path, (int)ui_container_view(f->cont), (int)ui_surface_width(f->win),
                 (int)ui_surface_height(f->win), x, y, mx || ui_window_maximized(f->win), f->work_area, f->wa_group);
@@ -179,7 +179,7 @@ static char *describe_windows(void)
         if (!p->nb || !plain(p->target)) continue;
         int x, y;
         bool mx;
-        where_is(ui_notebook_surface(p->nb), "org.wps.notebook", &x, &y, &mx);
+        where_is(ui_notebook_surface(p->nb), "io.github.sungsookhim.Objectspace.notebook", &x, &y, &mx);
         rec_add(&r, "N\t%s\t%zu\t%d\t%d\n", p->target, ui_notebook_page(p->nb), x, y);
     }
     return r.buf;
@@ -255,13 +255,13 @@ void windows_at_login(void)
             struct folder *nf = open_window(fl[1], v == 1 ? UI_VIEW_DETAILS : v == 2 ? UI_VIEW_TREE : UI_VIEW_ICON, false);
             if (nf && k >= 10) workarea_join(nf, fl[9]);   /* (its work area's group again) */
             /* (asked once it has its title; it shows only after a round trip) */
-            if (nf) place_next("org.wps.shell", ui_window_title(nf->win), atoi(fl[5]), atoi(fl[6]));
+            if (nf) place_next("io.github.sungsookhim.Objectspace.shell", ui_window_title(nf->win), atoi(fl[5]), atoi(fl[6]));
             if (nf && atoi(fl[7])) ui_window_set_maximized(nf->win);
         } else if (k >= 5 && !strcmp(fl[0], "S")) {
-            place_next("org.wps.Find", "Find", atoi(fl[3]), atoi(fl[4]));
+            place_next("io.github.sungsookhim.Objectspace.Find", "Find", atoi(fl[3]), atoi(fl[4]));
             findwin_open(fl[1], fl[2]);
         } else if (k >= 5 && !strcmp(fl[0], "N")) {
-            place_next("org.wps.notebook", "", atoi(fl[3]), atoi(fl[4]));   /* (its title comes with its pages) */
+            place_next("io.github.sungsookhim.Objectspace.notebook", "", atoi(fl[3]), atoi(fl[4]));   /* (its title comes with its pages) */
             if (open_properties(fl[1])) props_open->want_page = (size_t)atoll(fl[2]);
         }
     }
@@ -271,7 +271,7 @@ void windows_at_login(void)
 
 /* ---- folder windows as they were last closed (0.4 step 5)
  *
- * Each view's window is kept on the folder (per user: wpsd's properties,
+ * Each view's window is kept on the folder (per user: osdd's properties,
  * with no field): win_icon, win_details, win_tree as "x,y,w,h,maximized,
  * scroll" (x -1: not known, as inside GNOME), and win_view, the view it
  * was last closed in (what a plain Open opens). In the WPS session the
@@ -313,7 +313,7 @@ static void got_win(void *arg, const cv *reply)
     f = open_window(r->path, v, false);
     if (f) workarea_join(f, r->group);   /* opened from a work area: its group's */
     if (f && have) {
-        place_next("org.wps.shell", ui_window_title(f->win), x, y);
+        place_next("io.github.sungsookhim.Objectspace.shell", ui_window_title(f->win), x, y);
         if (mx) ui_window_set_maximized(f->win);
         f->want_scroll = v == UI_VIEW_TREE ? 0 : sc;
     }
@@ -351,7 +351,7 @@ void folder_window_save(struct folder *f)
     ui_view v = ui_container_view(f->cont);
     int x = -1, y = -1;
     bool mx = false;
-    if (!winlist_where("org.wps.shell", ui_window_title(f->win), &x, &y, &mx)) x = y = -1;
+    if (!winlist_where("io.github.sungsookhim.Objectspace.shell", ui_window_title(f->win), &x, &y, &mx)) x = y = -1;
     mx = mx || ui_window_maximized(f->win);
     double w = ui_surface_width(f->win), h = ui_surface_height(f->win);
     if (mx && f->open_w > 0) { w = f->open_w; h = f->open_h; }   /* (its size when not maximized) */
@@ -410,12 +410,12 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
         /* Its app ID tells the GNOME Shell extension which window to make
          * GNOME's desktop (below everything, on every workspace). */
         snprintf(f->title, sizeof f->title, "Desktop");
-        f->win = ui_window_new(app, &win_ops, f, "org.wps.Desktop", w, h);
+        f->win = ui_window_new(app, &win_ops, f, "io.github.sungsookhim.Objectspace.Desktop", w, h);
         ui_window_set_frameless(f->win, true);
         ui_a11y_window(f->win, UI_ROLE_DESKTOP, NULL);   /* for screen readers: the desktop */
         ui_window_set_maximized(f->win);
     } else {
-        f->win = ui_window_new(app, &win_ops, f, "org.wps.shell", w, h);
+        f->win = ui_window_new(app, &win_ops, f, "io.github.sungsookhim.Objectspace.shell", w, h);
     }
     f->lay = layout_new(UI_CELL_W, UI_CELL_H);
     f->whole_titles = true;   /* (until its Icon view page says otherwise) */
@@ -441,7 +441,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     if (!desktop) raise_in(f, "window.open", NULL, "folder");
     notify_in_use(f->path);
     svc_subscribe_folder(f->path, got_sub, as_arg(f));
-    if (!desktop) bg_follow(f);   /* (the desktop's after its first start: then wpsd knows it is the desktop) */
+    if (!desktop) bg_follow(f);   /* (the desktop's after its first start: then osdd knows it is the desktop) */
     svc_layout(f->path, got_layout, as_arg(f));
     request_more(f, false);
     return f;

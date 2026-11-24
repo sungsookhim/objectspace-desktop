@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """M0b: per-user event filtering in the helper.
 
-Starts watchd (as root) and two clients standing in for two users' wpsd:
+Starts watchd (as root) and two clients standing in for two users' osdd:
 A is UID 60001, B is UID 60002; both are in group 60000. Each client
 registers folders by passing open descriptors. The scenarios check that
 each user receives events only for what they can see, that revoking access

@@ -102,7 +102,7 @@ static void got_list(void *arg, const cv *reply)
             for (size_t k = 0; a && a->k == CV_ARRAY && k < a->n && m->nact < MAX_ACT; k++)
                 if (a->items[k].k == CV_TEXT) m->actions[m->nact++] = strdup(a->items[k].s);
         }
-        /* wpsd's own new ones (an action not done): on the desktop for a
+        /* osdd's own new ones (an action not done): on the desktop for a
          * moment too (not those there at the start) */
         static int64_t seen = -1;
         int64_t top = seen;
@@ -434,7 +434,7 @@ void messages_open(void)
     w.sel = 0;
     w.scroll = 0;
     w.pressed = -1;
-    w.s = ui_window_new(app, &mw_ops, NULL, "org.wps.Messages", 560, 380);
+    w.s = ui_window_new(app, &mw_ops, NULL, "io.github.sungsookhim.Objectspace.Messages", 560, 380);
     ui_window_set_title(w.s, "Messages");
     events_raise("window.open", "", "window", (ui_rect){ 0, 0, 0, 0 });
     fetch();

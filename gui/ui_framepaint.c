@@ -1,6 +1,6 @@
 /* The window frame's geometry and painting, apart from any surface
  * (ui.h: ui_frame_geom): the toolkit's windows draw their own frames with
- * it, and wps-compositor draws other programs' frames with it, so both
+ * it, and osd-compositor draws other programs' frames with it, so both
  * look the same. Square by default (gui-design.md: Appearance). */
 #include <math.h>
 #include <stdio.h>

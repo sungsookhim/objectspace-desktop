@@ -1,4 +1,4 @@
-"""Programs: wpsd's keeper of the Programs folder (run by run.sh)."""
+"""Programs: osdd's keeper of the Programs folder (run by run.sh)."""
 import os
 import sys
 import time
@@ -9,7 +9,7 @@ import harness  # noqa: E402
 T = os.environ["T"]
 APPS = T + "/share/applications"
 MINE = T + "/xdg/data/applications"
-PROGS = T + "/xdg/data/wps/Programs"
+PROGS = T + "/xdg/data/objectspace/Programs"
 
 
 def entry(path, name, extra=""):

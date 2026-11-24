@@ -268,7 +268,7 @@ static ui_dialog *open_dialog(ui_app *a, const char *title, const char *message,
     wrap(d, message, w - 2 * MARGIN - 8);
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 2 * MARGIN + (double)d->nlines * LINE_H + 16 + BUTTON_H + MARGIN;
     if (entry) h += ENTRY_H + 10;
-    d->win = ui_window_new(a, &dlg_ops, d, "org.wps.dialog", w, h);
+    d->win = ui_window_new(a, &dlg_ops, d, "io.github.sungsookhim.Objectspace.dialog", w, h);
     ui_window_set_title(d->win, title);
     ui_a11y_window(d->win, UI_ROLE_DIALOG, message);   /* a screen reader reads the message with the title */
     a11y_button(d);

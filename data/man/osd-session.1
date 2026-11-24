@@ -1,0 +1,32 @@
+.TH WPS-SESSION 1 "@DATE@" "WPS @VERSION@" "User Commands"
+.SH NAME
+osd-session \- the WPS session, from the login screen
+.SH SYNOPSIS
+.B osd-session
+.SH DESCRIPTION
+.B osd-session
+is what
+.B WPS
+on the login screen starts: osd-compositor on the screens and input
+devices, the WPS desktop in it, and osdd. GNOME's settings (keyboard
+layouts, input methods, the pointer, light or dark) are shared with the
+GNOME session.
+.PP
+It needs a real seat (a console, or a virtual machine's screen); it does
+not run over remote desktop logins. Never start it inside another running
+session.
+.SH FILES
+.TP
+.I ~/.local/state/objectspace/session.log
+The session's log (the one before:
+.IR session.log.old ).
+.TP
+.I ~/.config/objectspace/session.env
+Settings for the session, one
+.IB NAME = value
+a line (for example
+.B WLR_RENDERER=pixman
+to draw in software).
+.SH SEE ALSO
+.BR osd-shell (1),
+.BR osdctl (1)

@@ -94,7 +94,7 @@ export default class Probe {
                     console.log(`probe: ${tag} on the Window List`);
                 };
                 if (GLib.getenv('PROBE_MENU') === 'aside')   // nothing but the desktop under the list
-                    at(9.2, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell')?.move_frame(true, 0, 400));
+                    at(9.2, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.shell')?.move_frame(true, 0, 400));
                 at(10, () => rowClick(1, 'button 1'));
                 at(10.6, () => rowClick(1, 'button 1'));
                 at(11.2, () => rowClick(3, 'button 2'));
@@ -111,7 +111,7 @@ export default class Probe {
                     });
                 });
                 at(12.8, () => {
-                    const p = global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell');
+                    const p = global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.shell');
                     console.log(`probe: after the menu: Projects maximized ${p?.is_maximized()}`);
                 });
             }
@@ -144,7 +144,7 @@ export default class Probe {
                 });
             };
             const arrow = () => {
-                const lp = global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad');
+                const lp = global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad');
                 if (!lp) return null;
                 const r = lp.get_frame_rect();
                 return [r.x + 12 + 4 * 40 + 8 + 27, r.y + 3 + 5];
@@ -174,7 +174,7 @@ export default class Probe {
             const t = () => GLib.get_monotonic_time();
             const key = (sym, down) => kb.notify_keyval(t(), sym, down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
             at(9, () => {
-                const w = global.display.list_all_windows().find(x => x.get_wm_class() === 'org.wps.shell');
+                const w = global.display.list_all_windows().find(x => x.get_wm_class() === 'io.github.sungsookhim.Objectspace.shell');
                 w?.activate(global.display.get_current_time_roundtrip());
             });
             at(10, () => { key(Clutter.KEY_Control_L, true); key(Clutter.KEY_f, true); key(Clutter.KEY_f, false); key(Clutter.KEY_Control_L, false); });
@@ -205,10 +205,10 @@ export default class Probe {
                 kb.notify_keyval(t(), sym, Clutter.KeyState.RELEASED);
                 if (mod) kb.notify_keyval(t(), mod, Clutter.KeyState.RELEASED);
             };
-            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad')?.get_frame_rect();
+            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad')?.get_frame_rect();
             dev.notify_absolute_motion(t(), 640, 400);   // off the hot corner from the start
             // focused as a click gives it (clicks are unreliable headless)
-            at(10.5, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad')?.activate(global.display.get_current_time_roundtrip()));
+            at(10.5, () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad')?.activate(global.display.get_current_time_roundtrip()));
             at(11.5, () => { console.log(`probe: focused ${global.display.focus_window?.get_title()}`); key(Clutter.KEY_Home); key(Clutter.KEY_Right); key(Clutter.KEY_Right); });
             at(12, () => { if (out) shoot(out.replace('.png', '-focus.png')); });
             at(12.5, () => key(Clutter.KEY_Return));
@@ -251,7 +251,7 @@ export default class Probe {
                 });
             };
             const key = sym => { kb.notify_keyval(t(), sym, Clutter.KeyState.PRESSED); kb.notify_keyval(t(), sym, Clutter.KeyState.RELEASED); };
-            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.LaunchPad')?.get_frame_rect();
+            const lp = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.LaunchPad')?.get_frame_rect();
             at(8, () => dev.notify_absolute_motion(t(), 640, 400));   // off the hot corner
             // a first click on Window list (the first is lost headless; if not, a list opens)
             at(10, () => { const r = lp(); if (r) click(r.x + 12 + 3 * 40 + 18, r.y + r.height / 2 + 5); });
@@ -272,7 +272,7 @@ export default class Probe {
             const seat = global.backend?.get_default_seat?.() ?? global.stage.context.get_backend().get_default_seat();
             const dev = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
             this._dev = dev;
-            const other = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell');
+            const other = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.shell');
             at(2, () => dev.notify_absolute_motion(GLib.get_monotonic_time(), 640, 700));
             at(8.5, () => { if (out) shoot(`${out}-before.png`); });
             at(9, () => {
@@ -297,7 +297,7 @@ export default class Probe {
         if (GLib.getenv('PROBE_MODE') !== 'interact') {
             // Another program's window (the folder window run.sh opens) through
             // minimize, restore, maximize and unmaximize: window events.
-            const other = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'org.wps.shell');
+            const other = () => global.display.list_all_windows().find(w => w.get_wm_class() === 'io.github.sungsookhim.Objectspace.shell');
             at(9, () => other()?.minimize());
             at(10, () => other()?.unminimize());
             at(11, () => other()?.maximize());

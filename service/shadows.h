@@ -4,7 +4,7 @@
  * A shadow is a WPS object file, as in OS/2, where a shadow was a WPS
  * object and not a file-system link:
  *
- *   <name>.wpobj      [WPS Object]
+ *   <name>.osdobj      [WPS Object]
  *                     Class=OsdShadow
  *                     Target=<the target's object ID>
  *                     TargetPath=<where the target was last seen>
@@ -42,7 +42,7 @@ void osd_shadow_create(const char *target, const char *folder,
 void osd_shadows_target_moved(const char *id, const char *newpath);
 void osd_shadows_prefix_moved(const char *oldpath, const char *newpath);
 void osd_shadows_target_deleted(const char *id);
-/* A .wpobj file was created, moved in, loaded or listed: index it if it
+/* A .osdobj file was created, moved in, loaded or listed: index it if it
  * is a shadow (any thread). */
 void osd_shadows_file_seen(const char *path);
 /* A folder came into view: index the shadow files in it (any user's). */

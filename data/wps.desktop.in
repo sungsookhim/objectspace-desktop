@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=WPS
-Comment=The Workplace Shell desktop (wps-linux)
-Exec=@BINDIR@/wps-session
-TryExec=@BINDIR@/wps-session
-Type=Application
-DesktopNames=WPS
-X-GDM-CanRunHeadless=true

@@ -1,6 +1,6 @@
 # G1 results (2026-11-18)
 
-G1 builds the first part of the widget set ([gui-design.md](../docs/gui-design.md), Widget set 1–3) and `wps-shell` folder windows over `wpsd`. Measured on Fedora with GNOME Shell 51.1 (Wayland, 60 Hz, monitor at 1×; 2× forced with `OSD_UI_SCALE=2`).
+G1 builds the first part of the widget set ([gui-design.md](../docs/gui-design.md), Widget set 1–3) and `osd-shell` folder windows over `osdd`. Measured on Fedora with GNOME Shell 51.1 (Wayland, 60 Hz, monitor at 1×; 2× forced with `OSD_UI_SCALE=2`).
 
 ## What is in G1
 
@@ -8,11 +8,11 @@ G1 builds the first part of the widget set ([gui-design.md](../docs/gui-design.m
 - Window frame: sizing border with resize cursors, title bar, system menu button (Maximize/Restore, Minimize, Close), minimize, maximize and close buttons. Square by default; `OSD_UI_CORNER_RADIUS` and `OSD_UI_BUTTONS=hover` try the appearance settings until the scheme objects exist (G3).
 - Containers: icon view (arranged in a grid) and details view (Title, Name, Size, Last write), over a model of any size. Selection with click, Ctrl, Shift, rubber band (icon view) and keyboard (arrows, Page Up/Down, Home/End, Space, Ctrl+/ and Ctrl+A select all, Ctrl+\ deselect all, Enter opens, Shift+F10 or Menu key for the pop-up menu). Warp-style scroll bar with arrow buttons.
 - Pop-up menus from the service's menu data, with cascades, keyboard navigation and first-letter selection. Folders now have an "Open" cascade (Icon view, Tree view, Details view) as in Warp 4. The GUI carries out well-known items itself (`classes/osd_menu_ids.h`); others go to the service as `menu_select`.
-- `wps-shell FOLDER...`: folder windows that stream the folder from `wpsd`, fetch details for what is on screen, open folders in new windows (double click or Enter), open files and programs through the service, and show the object's title. Ctrl+1 / Ctrl+2 switch between icon and details view; Ctrl+W closes.
+- `osd-shell FOLDER...`: folder windows that stream the folder from `osdd`, fetch details for what is on screen, open folders in new windows (double click or Enter), open files and programs through the service, and show the object's title. Ctrl+1 / Ctrl+2 switch between icon and details view; Ctrl+W closes.
 
 ## Speed: a folder of 1,000,000 entries
 
-`wps-shell --bench 15`: a fling of three rows a frame for 3 s, then a jump to a random place every 0.5 s (as if dragging the scroll bar thumb).
+`osd-shell --bench 15`: a fling of three rows a frame for 3 s, then a jump to a random place every 0.5 s (as if dragging the scroll bar thumb).
 
 | Scale, window | View | fps | Our time per frame p50 / p99 / max | Frame interval p99 | Late frames |
 | --- | --- | --- | --- | --- | --- |
@@ -61,7 +61,7 @@ G0 drew the same 2× full-screen window in 14.5 ms a frame (47 fps). The target 
 
 ## Not yet (later milestones)
 
-- Interactive use has not been checked by a person: menus, clicks, keyboard, resizing and opening windows were built against the protocol but only the benchmark has driven them. Please try `wps-shell` by hand.
+- Interactive use has not been checked by a person: menus, clicks, keyboard, resizing and opening windows were built against the protocol but only the benchmark has driven them. Please try `osd-shell` by hand.
 - Tree view, in-place rename, free icon placement and Arrange (G2).
 - The settings notebook (Properties) and confirmation dialogs (G2).
 - Incremental live updates for very large folders (G2); for now a change re-reads the folder.

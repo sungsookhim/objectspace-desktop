@@ -6,7 +6,7 @@
 #include <stddef.h>
 
 /* The scheme in use and the System's frame options applied; the System's
- * Terminal font into font ("" left as it was). False: no wpsd. */
+ * Terminal font into font ("" left as it was). False: no osdd. */
 bool term_setup_read(char *font, size_t fn);
 
 #endif

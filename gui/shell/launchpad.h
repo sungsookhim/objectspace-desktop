@@ -1,7 +1,7 @@
 /*
  * The LaunchPad (G4; OS/2 Warp 3/4): a floating palette of buttons.
  *
- * Its buttons are the objects in a folder ($XDG_DATA_HOME/wps/LaunchPad;
+ * Its buttons are the objects in a folder ($XDG_DATA_HOME/objectspace/LaunchPad;
  * OSD_LAUNCHPAD_DIR for tests), mostly shadows: drop any object on the
  * palette to add a button, remove one from its menu. Each button has a
  * drawer (the arrow above it): a folder in "<LaunchPad folder> Drawers"
@@ -33,7 +33,7 @@ void launchpad_icons_changed(void);
 void launchpad_close(void);
 void launchpad_raise(void);
 
-/* An event from wpsd: true if it was the LaunchPad's (its folder changed). */
+/* An event from osdd: true if it was the LaunchPad's (its folder changed). */
 bool launchpad_event(const char *name, int64_t sub);
 
 /* Self-tests. */

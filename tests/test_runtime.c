@@ -128,7 +128,7 @@ TEST(parent_calls)
     osdo_unref(d);
     osdo_object *f = osdo_new(OsdDataFileClass);
     m = OsdObject_osdModifyPopupMenu(f, "");
-    CHECK_STR(m, "1\tOpen\n2\tProperties\n41\tCreate another\n40\tDelete...\n");   /* (Open With: wpsd adds the cascade) */
+    CHECK_STR(m, "1\tOpen\n2\tProperties\n41\tCreate another\n40\tDelete...\n");   /* (Open With: osdd adds the cascade) */
     free(m);
     osdo_unref(f);
 }

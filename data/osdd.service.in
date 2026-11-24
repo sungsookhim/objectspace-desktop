@@ -1,0 +1,11 @@
+[Unit]
+Description=WPS object service (osdd)
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+
+[Service]
+ExecStart=@LIBEXECDIR@/osdd
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

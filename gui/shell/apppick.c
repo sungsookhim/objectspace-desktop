@@ -269,7 +269,7 @@ void apppick_open(const char *title, const char *target, apppick_fn chosen, long
         return;
     }
     pk.read = false;
-    pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.OpenWith", 560, 420);
+    pk.s = ui_window_new(app, &pk_ops, NULL, "io.github.sungsookhim.Objectspace.OpenWith", 560, 420);
     ui_window_set_title(pk.s, pk.title);
     pk.cont = ui_container_new(pk.s, &pick_src, NULL, UI_VIEW_ICON);
     ui_container_set_font(pk.cont, UI_FONT_DIALOG);   /* (a dialog's list) */

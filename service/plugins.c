@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #ifndef OSD_PLUGINDIR
-#define OSD_PLUGINDIR "/usr/lib/wps/plugins"
+#define OSD_PLUGINDIR "/usr/lib/objectspace/plugins"
 #endif
 #include "plugins.h"
 
@@ -109,7 +109,7 @@ static struct host *host_of_class(const char *cls)
     return NULL;
 }
 
-/* Register a proxy for a class a host reported: inside wpsd it behaves like
+/* Register a proxy for a class a host reported: inside osdd it behaves like
  * its parent; its own and overridden methods run remotely. */
 static void register_proxy(struct host *h, const cv *c)
 {
@@ -142,7 +142,7 @@ static void register_proxy(struct host *h, const cv *c)
         defs[i].impl = (osdo_fn)impl_unavailable;
     }
     /* its properties, events and file types: the proxy declares them, so
-     * pages, get, set, props, the chain and actions work in wpsd (a
+     * pages, get, set, props, the chain and actions work in osdd (a
      * property's value kept by WPS; methods named for it run nowhere here:
      * left out) */
     const cv *ps = cv_get(c, "props"), *es = cv_get(c, "events"), *ts = cv_get(c, "types");
@@ -217,14 +217,14 @@ static void host_start(struct host *h)
         ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 32);
         exe[n < 0 ? 0 : n] = 0;
         char *slash = strrchr(exe, '/');
-        snprintf(slash ? slash + 1 : exe, 32, "wps-plughost");
+        snprintf(slash ? slash + 1 : exe, 32, "osd-plughost");
     }
     snprintf(data, sizeof data, "%s/plugins/%s", env->state_dir, h->name);
     osd_mkdirs(data, 0700);   /* the only place the sandboxed host may write */
     pid_t pid = fork();
     if (pid == 0) {
         dup2(sv[1], 3);   /* clears CLOEXEC on the copy */
-        execl(exe, "wps-plughost", h->plugin, data, (char *)NULL);
+        execl(exe, "osd-plughost", h->plugin, data, (char *)NULL);
         _exit(127);
     }
     close(sv[1]);
@@ -254,7 +254,7 @@ static void host_stop(struct host *h)
 
 static void host_restart(struct host *h, const char *why)
 {
-    fprintf(stderr, "wpsd: plug-in %s: %s; restarting its host\n", h->name, why);
+    fprintf(stderr, "osdd: plug-in %s: %s; restarting its host\n", h->name, why);
     host_stop(h);
     h->restarts++;
     for (size_t i = 0; i < h->nremote; i++) free(h->remote[i]);
@@ -307,14 +307,14 @@ static void on_host(int fd, short rev, void *arg)
                  sb ? cv_text(sb, "network") : "?", sb ? cv_text(sb, "filesystem") : "?");
         if (err) {
             snprintf(h->error, sizeof h->error, "%s", err);
-            fprintf(stderr, "wpsd: plug-in %s refused: %s\n", h->name, err);
+            fprintf(stderr, "osdd: plug-in %s refused: %s\n", h->name, err);
         } else {
             const cv *cs = cv_get(&m, "classes"), *rs = cv_get(&m, "replaces");
             for (size_t i = 0; cs && cs->k == CV_ARRAY && i < cs->n; i++) register_proxy(h, &cs->items[i]);
             for (size_t i = 0; rs && rs->k == CV_ARRAY && i < rs->n; i++)
                 osdo_replace_class(cv_text(&rs->items[i], "original"), cv_text(&rs->items[i], "replacement"));
             h->ready = true;
-            fprintf(stderr, "wpsd: plug-in %s ready (%zu classes; %s)\n", h->name, h->nclasses, h->sandbox);
+            fprintf(stderr, "osdd: plug-in %s ready (%zu classes; %s)\n", h->name, h->nclasses, h->sandbox);
         }
     } else {
         int64_t id;
@@ -492,7 +492,7 @@ void osd_plugins_init(osdo_loop *l, const osd_env *e)
         char p[PATH_MAX + 16];
         snprintf(p, sizeof p, "%s/plugins", env->config_dir);
         scan_dir(p);
-        scan_dir(OSD_PLUGINDIR);   /* the installed ones (make install: $(LIBDIR)/wps/plugins) */
+        scan_dir(OSD_PLUGINDIR);   /* the installed ones (make install: $(LIBDIR)/objectspace/plugins) */
     }
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     struct itimerspec its = { .it_interval = { 0, 100 * 1000 * 1000 }, .it_value = { 0, 100 * 1000 * 1000 } };

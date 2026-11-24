@@ -1,7 +1,7 @@
 # Writing a WPS plug-in
 
 A plug-in adds classes to WPS: new kinds of objects, or new behaviour for
-existing ones. It runs in its own sandboxed process (`wps-plughost`: no
+existing ones. It runs in its own sandboxed process (`osd-plughost`: no
 network, files limited to the system's libraries, the plug-in and its data
 folder), and a call that takes longer than 2 seconds falls back to the
 parent class's behaviour. See `docs/object-properties-design.md`, 2.7.
@@ -9,11 +9,11 @@ parent class's behaviour. See `docs/object-properties-design.md`, 2.7.
 ## Start
 
 ```
-wpsctl plugin new MyNotes OsdDataFile     # a folder MyNotes/ with a skeleton
-cd MyNotes && make && make install       # into ~/.config/wps/plugins
+osdctl plugin new MyNotes OsdDataFile     # a folder MyNotes/ with a skeleton
+cd MyNotes && make && make install       # into ~/.config/objectspace/plugins
 ```
 
-Log out and in again (or restart `wpsd`): `wpsctl stats` lists it under
+Log out and in again (or restart `osdd`): `osdctl stats` lists it under
 `plugins`.
 
 ## What a class declares (its `.osdi`)
@@ -30,7 +30,7 @@ classoverride osdclsQueryTitle
 ```
 
 - **Properties** are kept by WPS: they appear on the object's notebook,
-  can be set with setup strings (`wpsctl set FILE 'rating=4'`), and for
+  can be set with setup strings (`osdctl set FILE 'rating=4'`), and for
   all objects of the class or a type through Class... (`class:OsdImageFile`),
   with no code. Its own code reads them from the object's state
   (`osd_state_get_str(self, "OsdImageFile", "rating", &v)`) and changes

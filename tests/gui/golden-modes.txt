@@ -1,11 +1,11 @@
-# The wps-shell self-tests for tests/gui/golden.sh: one per line, fields
+# The osd-shell self-tests for tests/gui/golden.sh: one per line, fields
 # separated by TABs: MODE, RUNNER, ENV, SETUP, STATUS.
-#   RUNNER  comp: the headless wps-compositor (a private D-Bus, no gsettings);
+#   RUNNER  comp: the headless osd-compositor (a private D-Bus, no gsettings);
 #           gnome: tests/gnome/with-gnome.sh (a private GNOME Shell);
 #           a11y: with-gnome.sh and tests/gui/a11y-run.sh; gnomerun: tests/gnome/run.sh
 #   ENV     settings for selftest.sh (SHELL_ARGS, TEMPLATES=1, AFTER=, ...), or -
 #   SETUP   a command run in the fresh folder <D> (see the mode's comment in
-#           gui/shell/wps-shell.c), or -
+#           gui/shell/osd-shell.c), or -
 #   STATUS  stable; sorted (stable once its lines are sorted: printed by
 #           concurrent callbacks); unstable (compared, never fails: a timing's
 #           in-between states); or skip (not run)

@@ -5,7 +5,7 @@
  *
  * Pictures are decoded by glycin-thumbnailer (GNOME's sandboxed image
  * loaders: JPEG XL, AVIF, WebP, HEIC, ...) in the background, once per
- * picture and size, into a PNG cache in $XDG_CACHE_HOME/wps; PNG files
+ * picture and size, into a PNG cache in $XDG_CACHE_HOME/objectspace; PNG files
  * are read directly. Until a picture is ready, and without one, the
  * background is GNOME's primary colour. Changes made in GNOME Settings
  * are followed through `gsettings monitor`.

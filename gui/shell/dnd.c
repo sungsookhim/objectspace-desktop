@@ -1,4 +1,4 @@
-/* wps-shell: Drag and drop: between windows, the desktop and other programs; the drop menu; transfers. */
+/* osd-shell: Drag and drop: between windows, the desktop and other programs; the drop menu; transfers. */
 #define _GNU_SOURCE
 #include "shell.h"
 
@@ -364,7 +364,7 @@ static void got_job(void *arg, const cv *reply)
         jobs = t;
     } else {
         char m[300];
-        snprintf(m, sizeof m, "Cannot %s: %s", x->kind, reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Cannot %s: %s", x->kind, reply ? cv_text(reply, "message") : "lost the connection to osdd");
         report_error(x->folder, m);
     }
     xfer_free(x);
@@ -752,7 +752,7 @@ void made_new(void *arg, const cv *reply)
     if (!addr || !*addr) addr = path;
     if (!res || !addr || !*addr) {
         char m[300];
-        snprintf(m, sizeof m, "Not made: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Not made: %s", reply ? cv_text(reply, "message") : "lost the connection to osdd");
         set_status(l->folder, m);
         free(l);
         return;
@@ -785,7 +785,7 @@ static void landed(void *arg, const cv *reply)
     const char *addr = reply ? cv_text(reply, "result") : NULL;
     if (!(ok && ok->k == CV_BOOL && ok->b) || !addr) {
         char m[300];
-        snprintf(m, sizeof m, "Not done: %s", reply ? cv_text(reply, "message") : "lost the connection to wpsd");
+        snprintf(m, sizeof m, "Not done: %s", reply ? cv_text(reply, "message") : "lost the connection to osdd");
         set_status(l->folder, m);
     } else if (l->place && f) {
         const char *t[1] = { addr };

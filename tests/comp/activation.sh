@@ -2,11 +2,11 @@
 # Programs come to the front (0.4 step 6), headless: an executable opened
 # from the desktop gets the click's xdg-activation token, as
 # XDG_ACTIVATION_TOKEN and DESKTOP_STARTUP_ID (the window asks the
-# compositor for it and sends it with open; wpsd sets them).
+# compositor for it and sends it with open; osdd sets them).
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-act-XXXX")
-W="$REPO/build/wpsctl"
+W="$REPO/build/osdctl"
 printf '#!/bin/sh\necho "$XDG_ACTIVATION_TOKEN|$DESKTOP_STARTUP_ID" > "%s/tok.txt"\n' "$S" > "$S/tool"
 cat > "$S/script" <<EOS
 3 dclick 54 30

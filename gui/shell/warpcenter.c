@@ -625,7 +625,7 @@ static void opened(void *arg, const cv *reply)
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (res && cv_text(res, "folder")) { wc.open_folder(cv_text(res, "folder")); return; }
     if (svc_reply_view(reply)) return;
-    if (!res && reply && cv_text(reply, "message")) fprintf(stderr, "wps-shell: WarpCenter: %s\n", cv_text(reply, "message"));
+    if (!res && reply && cv_text(reply, "message")) fprintf(stderr, "osd-shell: WarpCenter: %s\n", cv_text(reply, "message"));
 }
 
 static void menu_chosen(void *arg, int64_t id)
@@ -794,7 +794,7 @@ static uint32_t wc_drag_motion(ui_surface *s, double x, double y, const char *co
 {
     (void)s; (void)x; (void)y; (void)src_actions; (void)mods;
     for (size_t i = 0; i < n; i++)
-        if (!strcmp(mimes[i], "application/x-wps-font") || !strcmp(mimes[i], UI_MIME_COLOR)) { *mime = mimes[i]; return UI_DND_COPY; }
+        if (!strcmp(mimes[i], "application/x-objectspace-font") || !strcmp(mimes[i], UI_MIME_COLOR)) { *mime = mimes[i]; return UI_DND_COPY; }
     return 0;
 }
 
@@ -810,7 +810,7 @@ static uint32_t wc_drop(ui_surface *s, double x, double y, const char *mime, con
         on_color(hex);
         return UI_DND_COPY;
     }
-    if (strcmp(mime, "application/x-wps-font") || !on_font) return 0;
+    if (strcmp(mime, "application/x-objectspace-font") || !on_font) return 0;
     char spec[128];
     snprintf(spec, sizeof spec, "%.*s", (int)strcspn(data, "\r\n"), data);
     if (!ui_font_valid(spec)) return 0;
@@ -834,7 +834,7 @@ void warpcenter_open(ui_app *a, const char *desktop, bool top, void (*open_folde
     wc.h = bar_h();
     winlist_ext("panel", top ? "top" : "bottom");
     ui_press_hook = any_press;
-    wc.s = ui_window_new(a, &wc_ops, NULL, "org.wps.WarpCenter", wc.w, wc.h);
+    wc.s = ui_window_new(a, &wc_ops, NULL, "io.github.sungsookhim.Objectspace.WarpCenter", wc.w, wc.h);
     ui_window_set_frameless(wc.s, true);
     ui_window_set_title(wc.s, "WarpCenter");
     wc.timer = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);

@@ -22,8 +22,8 @@ class Svc:
 
 
 c = harness.Conn(Svc())
-fake = dbus.Interface(dbus.bus.BusConnection(os.environ["FAKE_BUS"]).get_object("org.freedesktop.UDisks2", "/org/wps/Fake"),
-                      "org.wps.FakeUDisks")
+fake = dbus.Interface(dbus.bus.BusConnection(os.environ["FAKE_BUS"]).get_object("org.freedesktop.UDisks2", "/org/objectspace/Fake"),
+                      "io.github.sungsookhim.Objectspace.FakeUDisks")
 
 
 def drives():
@@ -90,7 +90,7 @@ fake.SetAuth(True)
 
 
 # ---- the objects: Computer and Drives (first start), kept in step
-SYS = T + "/xdg/data/wps/System"
+SYS = T + "/xdg/data/objectspace/System"
 c.request(op="first_start", desktop=T + "/desk")
 
 

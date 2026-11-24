@@ -1,4 +1,4 @@
-/* Messages kept by wpsd (messages.h). */
+/* Messages kept by osdd (messages.h). */
 #define _GNU_SOURCE
 #include "messages.h"
 
@@ -96,7 +96,7 @@ static void save(void)
     }
     if (fd >= 0 && close(fd) != 0) ok = false;
     if (ok && rename(tmp, file) == 0) { cb_free(&b); return; }
-    fprintf(stderr, "wpsd: messages: cannot write %s: %s\n", file, strerror(errno));
+    fprintf(stderr, "osdd: messages: cannot write %s: %s\n", file, strerror(errno));
     unlink(tmp);
     cb_free(&b);
 }
@@ -128,7 +128,7 @@ static void load(void)
         }
         cv_free(&v);
     } else {
-        fprintf(stderr, "wpsd: messages: %s could not be read; starting a new list\n", file);
+        fprintf(stderr, "osdd: messages: %s could not be read; starting a new list\n", file);
     }
     free(buf);
 }

@@ -46,7 +46,7 @@
 #define OSD_MI_LOCK_POS       72
 /* A folder's (0.4.1): the System's terminal with the user's shell, there. */
 #define OSD_MI_PROMPT_HERE    73
-/* A data file's Open cascade (v0.3-design 7), from wpsd: its type's
+/* A data file's Open cascade (v0.3-design 7), from osdd: its type's
  * programs (opened with "app_index" = id - OSD_MI_OPEN_APP), then Other
  * program... (a picker). */
 #define OSD_MI_OPEN_OTHER    199

@@ -225,7 +225,7 @@ static void write_record(struct sync *s)
     snprintf(tmp, sizeof tmp, "%s.new", record);
     FILE *f = fopen(tmp, "w");
     if (!f) return;
-    fprintf(f, "# Programs wpsd made (desktop file ID, category, entry, shadow): a shadow\n"
+    fprintf(f, "# Programs osdd made (desktop file ID, category, entry, shadow): a shadow\n"
                "# deleted by the user is not made again while its line is here.\n");
     for (size_t i = 0; i < s->nm; i++)
         if (s->m[i].keep) fprintf(f, "%s\t%s\t%s\t%s\n", s->m[i].id, s->m[i].cat, s->m[i].path, s->m[i].link);
@@ -328,7 +328,7 @@ static void made_one(void *arg, const char *link, const char *error)
         snprintf(m->link, sizeof m->link, "%s", link);
         m->keep = true;
     } else {
-        fprintf(stderr, "wpsd: programs: no shadow of %s: %s\n", en->path, error ? error : "?");
+        fprintf(stderr, "osdd: programs: no shadow of %s: %s\n", en->path, error ? error : "?");
     }
     free(o);
     if (--s->pending == 0) sync_finish(s);

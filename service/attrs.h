@@ -1,7 +1,7 @@
 /*
  * Object state in extended attributes (design: Persistence, Concurrency).
  *
- * Each class stores its settings in its own attribute, user.wps.<Class>, as
+ * Each class stores its settings in its own attribute, user.osd.<Class>, as
  * a small tagged list of properties with a format version and a change
  * counter. Unknown keys and types are kept on rewrite, so older code never
  * deletes newer settings.
@@ -23,8 +23,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define OSD_ATTR_PREFIX "user.wps."
-#define OSD_ATTR_ID     "user.wps.id"
+#define OSD_ATTR_PREFIX "user.osd."
+#define OSD_ATTR_ID     "user.osd.id"
 #define OSD_ID_LEN      36
 
 typedef struct {
@@ -70,12 +70,12 @@ typedef enum {
 
 const char *osd_astatus_str(osd_astatus st);
 
-/* Read user.wps.<cls> of `path` (no symlink following). A missing attribute
+/* Read user.osd.<cls> of `path` (no symlink following). A missing attribute
  * gives empty properties and OSD_A_OK. */
 osd_astatus osd_attr_read(const char *path, const char *cls, osd_props *out);
 
 /*
- * Merge `set` into user.wps.<cls> and remove the keys in `removed` (NULL-
+ * Merge `set` into user.osd.<cls> and remove the keys in `removed` (NULL-
  * terminated, may be NULL), under the file's lock. The counter is
  * incremented. If `expect` is not NULL, the update happens only when the
  * stored counter equals *expect; otherwise OSD_A_ERROR is returned with

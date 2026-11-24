@@ -7,7 +7,7 @@
 # them, its folders still its group's.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-workarea-XXXX")
-W="$PWD/build/wpsctl"
+W="$PWD/build/osdctl"
 C="$PWD/build/tests/ssd-client"
 # Projects (its icon at 54,30) opens at 320,106 (640x480): away (a link to
 # a folder elsewhere) at 372,176, one.desktop at 460,176, two.desktop at
@@ -44,8 +44,8 @@ PRE="mkdir -p \"\$T/away\" \"\$T/zfolder\"; echo z > \"\$T/away/z.txt\"; ln -s \
     env -u OSD_SESSION DESKENV="OSD_NO_GSETTINGS=1 OSD_NO_LAUNCHPAD=1" SECS=24 tests/comp/run.sh "$S/one" \
     "sleep 2; '$W' shadow \"\$T/zfolder\" \"\$T/desk/Projects\" > /dev/null; sleep 60" > "$S/one.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/one.txt")
-cp "$T/wpsd.log" "$S/wpsd1.log"   # (the second run writes its own)
-# what the folder kept when wpsd stopped (as at logout)
+cp "$T/osdd.log" "$S/wpsd1.log"   # (the second run writes its own)
+# what the folder kept when osdd stopped (as at logout)
 KEEP_T=$T NODESK=1 PRE="'$W' get \"\$T/desk/Projects\" work_area_open > \"\$T/kept.txt\" 2>&1" SECS=4 \
     tests/comp/run.sh "$S/one" true > "$S/two.txt" 2>&1
 # The next login, with the System's Restore open windows at login off (a
@@ -67,8 +67,8 @@ cat > "$S/blocks.py" <<'EOP'
 import sys
 blocks = []
 for l in open(sys.argv[1]):
-    if l.startswith("wps-compositor: windows now:"): blocks.append([])
-    elif l.startswith("wps-compositor: window '") and blocks: blocks[-1].append(l.strip())
+    if l.startswith("osd-compositor: windows now:"): blocks.append([])
+    elif l.startswith("osd-compositor: window '") and blocks: blocks[-1].append(l.strip())
 for i, b in enumerate(blocks):
     for l in b:
         if "'One'" in l or "'Two'" in l or "'away - " in l or "'zfolder - " in l:

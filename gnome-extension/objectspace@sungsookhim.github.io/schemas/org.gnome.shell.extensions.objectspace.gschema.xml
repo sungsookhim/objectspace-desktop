@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.objectspace" path="/org/gnome/shell/extensions/objectspace/">
+    <key name="window-list" type="as">
+      <default><![CDATA[['<Control>Escape']]]></default>
+      <summary>Open the WPS Window List</summary>
+      <description>OS/2's Ctrl+Esc: the Window List of the WPS desktop.</description>
+    </key>
+  </schema>
+</schemalist>

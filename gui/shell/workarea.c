@@ -1,8 +1,8 @@
-/* wps-shell: Work Area folders (0.4 step 9, v0.4-design 11). A work area
+/* osd-shell: Work Area folders (0.4 step 9, v0.4-design 11). A work area
  * folder's window takes what was opened from it along: minimized, its
  * group's windows are minimized (its folders' windows too); restored,
  * restored; closed, its programs are asked to close (what was open is kept,
- * and opened again when the window opens again). wpsd knows the group
+ * and opened again when the window opens again). osdd knows the group
  * (its processes and scopes); the compositor finds their windows (the WPS
  * session; inside GNOME, the extension: part 2). */
 #define _GNU_SOURCE
@@ -52,7 +52,7 @@ static void got(void *arg, const cv *reply)
     struct wa_req *q = arg;
     const cv *res = reply ? cv_get(reply, "result") : NULL;
     if (!res) {
-        fprintf(stderr, "wps-shell: work area %s: %s\n", q->path, reply && cv_text(reply, "message") ? cv_text(reply, "message") : "no reply");
+        fprintf(stderr, "osd-shell: work area %s: %s\n", q->path, reply && cv_text(reply, "message") ? cv_text(reply, "message") : "no reply");
         free(q);
         return;
     }
@@ -72,11 +72,11 @@ static void got(void *arg, const cv *reply)
         free(line);
     }
     const cv *re0 = cv_get(res, "reopen");
-    fprintf(stderr, "wps-shell: work area %s: %s, %zu programs, %zu to open again\n", q->path, q->act, np,
+    fprintf(stderr, "osd-shell: work area %s: %s, %zu programs, %zu to open again\n", q->path, q->act, np,
             re0 && re0->k == CV_ARRAY ? re0->n : 0);
     /* its folders' windows go with it: those in it, and those opened from
      * it (shadows of folders, links to them) - closed too (kept, as its
-     * programs: wpsd had their paths with the request) */
+     * programs: osdd had their paths with the request) */
     if (!strcmp(q->act, "minimize") || !strcmp(q->act, "restore"))
         for (struct folder *g = folders; g; g = g->next) {
             if (!member(g, q->path)) continue;
@@ -145,7 +145,7 @@ void workarea_window(const char *title, bool minimized)
 /* ------------------------------------------------ the wps command (0.4.1)
  *
  * `wps ask`, `wps selection` and `wps open` on a folder reach the desktop
- * through wpsd ("ask", "selection", "show" events); the answer goes back
+ * through osdd ("ask", "selection", "show" events); the answer goes back
  * as svc_answer. Only the process with the desktop answers. */
 
 static long active_folder;   /* the folder window that had the keyboard last */

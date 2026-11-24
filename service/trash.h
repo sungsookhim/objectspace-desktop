@@ -30,7 +30,7 @@ void osd_trash_forget_info(const char *path);
  * gone, "name (2)" if taken). 0, or a negative errno value. */
 #include <stdbool.h>
 void osd_trash_home(char *out, size_t n);
-/* The home trash's files/ and info/ made (at wpsd's start): a Trash Can
+/* The home trash's files/ and info/ made (at osdd's start): a Trash Can
  * window opened before the first delete follows a folder that is there. */
 bool osd_trash_home_ready(void);
 bool osd_is_trash_files_dir(const char *folder);

@@ -1,6 +1,6 @@
 """Declared properties over the protocol (object-properties-design.md 2.5):
 get, set with setup strings, props with origins (run by tests/props/run.sh
-after the snapshot, on the same wpsd)."""
+after the snapshot, on the same osdd)."""
 import os
 import sys
 

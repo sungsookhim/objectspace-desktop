@@ -2,7 +2,7 @@
  * WPS's desktop process, as the compositor runs it (comp.h).
  *
  * The same arrangement as the GNOME extension's (gnome-extension/
- * wps@wps-linux), so wps-shell needs nothing new: the compositor starts
+ * objectspace@sungsookhim.github.io), so osd-shell needs nothing new: the compositor starts
  * `COMMAND --events-stdin` on a Wayland connection of its own (a socket
  * pair: only that process can be the desktop), writes to its standard
  * input
@@ -210,7 +210,7 @@ static int icons_ready(void *data)
 /* The PNG for an app's icon ("" while there is none, or it is being made). */
 static const char *icon_for(const char *app)
 {
-    if (!app || !*app || !strncmp(app, "org.wps.", 8)) return "";   /* WPS's own: WPS's icons */
+    if (!app || !*app || !strncmp(app, "io.github.sungsookhim.Objectspace.", 8)) return "";   /* WPS's own: WPS's icons */
     for (size_t i = 0; i < nicons; i++)
         if (!strcmp(icons[i].app, app)) {
             if (!icons[i].png[0] || exists(icons[i].png)) return icons[i].png;
@@ -335,8 +335,8 @@ static bool listable(struct toplevel *t)
     if (!t->mapped || !view_app(t)) return t->mapped;
     const char *a = view_app(t);
     bool osd_own = desktop_is(view_client(t));
-    return !(osd_own && (!strcmp(a, "org.wps.Desktop") || !strcmp(a, "org.wps.WindowList") || !strcmp(a, "org.wps.LaunchPad") ||
-                         !strcmp(a, "org.wps.WarpCenter") || !strcmp(a, "org.wps.Notice")));
+    return !(osd_own && (!strcmp(a, "io.github.sungsookhim.Objectspace.Desktop") || !strcmp(a, "io.github.sungsookhim.Objectspace.WindowList") || !strcmp(a, "io.github.sungsookhim.Objectspace.LaunchPad") ||
+                         !strcmp(a, "io.github.sungsookhim.Objectspace.WarpCenter") || !strcmp(a, "io.github.sungsookhim.Objectspace.Notice")));
 }
 
 void desktop_window(struct toplevel *t, const char *change)
@@ -419,7 +419,7 @@ static void command(char *line)
             char *argv[] = { "systemctl", !strcmp(arg, "reboot") ? "reboot" : "poweroff", NULL };
             comp_spawn(argv, NULL, NULL);
         } else {
-            fprintf(stderr, "wps-compositor: %s: only in the WPS session (nested, it ends only this)\n", arg);
+            fprintf(stderr, "osd-compositor: %s: only in the WPS session (nested, it ends only this)\n", arg);
             wl_display_terminate(server.display);
         }
         return;
@@ -501,7 +501,7 @@ static void command(char *line)
         else wl_client_get_credentials(view_client(t), &pid, NULL, NULL);
         DBG("terminate %u: pid %d\n", t->id, (int)pid);
         if (pid > 0 && pid != getpid() && !desktop_is(view_client(t))) kill(pid, SIGKILL);
-        else if (t->xw) fprintf(stderr, "wps-compositor: terminate: the X11 program gives no process ID; closing instead\n"), comp_close(t);
+        else if (t->xw) fprintf(stderr, "osd-compositor: terminate: the X11 program gives no process ID; closing instead\n"), comp_close(t);
     }
 }
 
@@ -544,7 +544,7 @@ static void stopped(void)
     if (d.stopping) return;
     /* quickly again if it ran a while; longer while it keeps failing */
     d.delay_ms = now_ms() - d.started > 30000 ? 1000 : d.delay_ms ? (d.delay_ms * 2 > 30000 ? 30000 : d.delay_ms * 2) : 1000;
-    fprintf(stderr, "wps-compositor: the desktop ended; started again in %d ms\n", d.delay_ms);
+    fprintf(stderr, "osd-compositor: the desktop ended; started again in %d ms\n", d.delay_ms);
     if (!d.restart) d.restart = wl_event_loop_add_timer(server.loop, on_restart, NULL);
     wl_event_source_timer_update(d.restart, d.delay_ms);
 }
@@ -573,7 +573,7 @@ static void start(void)
 {
     int sv[2], in[2], out[2];
     if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sv) || pipe2(in, O_CLOEXEC) || pipe2(out, O_CLOEXEC)) {
-        fprintf(stderr, "wps-compositor: cannot start the desktop: %s\n", strerror(errno));
+        fprintf(stderr, "osd-compositor: cannot start the desktop: %s\n", strerror(errno));
         return;
     }
     d.started = now_ms();
@@ -597,7 +597,7 @@ static void start(void)
     fcntl(d.in_fd, F_SETFL, fcntl(d.in_fd, F_GETFL) | O_NONBLOCK);
     fcntl(d.out_fd, F_SETFL, fcntl(d.out_fd, F_GETFL) | O_NONBLOCK);
     d.out_src = wl_event_loop_add_fd(server.loop, d.out_fd, WL_EVENT_READABLE, on_readable, NULL);
-    fprintf(stderr, "wps-compositor: started the desktop: %s\n", d.command);
+    fprintf(stderr, "osd-compositor: started the desktop: %s\n", d.command);
     /* what is open already */
     struct toplevel *t;
     wl_list_for_each(t, &server.toplevels, link) {

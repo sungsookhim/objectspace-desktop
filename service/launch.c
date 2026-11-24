@@ -161,8 +161,8 @@ void osd_launch_shutdown(void)
 
 static char last_unit[96];   /* the scope spawn just made ("" none) */
 
-/* WPS's own commands for programs and scripts (wps, wpsctl, wps-terminal):
- * a build's folder put first on the PATH when wpsd runs from one (an
+/* WPS's own commands for programs and scripts (wps, osdctl, osd-terminal):
+ * a build's folder put first on the PATH when osdd runs from one (an
  * installed WPS has them in bin, on the PATH already). "" when not needed. */
 static const char *tools_path(void)
 {
@@ -177,7 +177,7 @@ static const char *tools_path(void)
     if (!sl) return env;
     *sl = 0;
     char wps[PATH_MAX + 8];
-    snprintf(wps, sizeof wps, "%s/wps", exe);
+    snprintf(wps, sizeof wps, "%s/osd", exe);
     if (access(wps, X_OK) != 0) return env;
     const char *path = getenv("PATH");
     char copy[8192];
@@ -250,9 +250,9 @@ static pid_t spawn(char **argv, const char *cwd, const char *display, const char
         if (!(gnome_only && !strncmp(envs[j], "XDG_CURRENT_DESKTOP=", 20))) env[k++] = (char *)envs[j];
     if (env && gnome_only) env[k++] = "XDG_CURRENT_DESKTOP=GNOME";
     /* Each program in a group of its own (app.slice, as GNOME's are), not
-     * in wpsd's: its memory is its own (a program using too much is what
-     * the kernel stops, not wpsd with all the others), and it outlives
-     * wpsd. systemd-run --scope becomes the program (the same process). */
+     * in osdd's: its memory is its own (a program using too much is what
+     * the kernel stops, not osdd with all the others), and it outlives
+     * osdd. systemd-run --scope becomes the program (the same process). */
     char *sargv[80], unit[96];
     char **run = argv;
     static unsigned serial;
@@ -589,7 +589,7 @@ void osd_terminal_choose(const char *choice, const char *command)
 }
 
 /* WPS Terminal: beside this program (a build: build/), else on the PATH
- * (installed: wpsd in libexec, wps-terminal in bin). */
+ * (installed: osdd in libexec, osd-terminal in bin). */
 static const char *osd_term_path(void)
 {
     static char p[PATH_MAX];
@@ -599,10 +599,10 @@ static const char *osd_term_path(void)
     char *sl = strrchr(exe, '/');
     if (sl) {
         *sl = 0;
-        snprintf(p, sizeof p, "%s/wps-terminal", exe);
+        snprintf(p, sizeof p, "%s/osd-terminal", exe);
         if (access(p, X_OK) == 0) return p;
     }
-    return on_path("wps-terminal") ? "wps-terminal" : NULL;
+    return on_path("osd-terminal") ? "osd-terminal" : NULL;
 }
 
 /* WPS Terminal for text-mode programs: chosen (the default), found, and no
