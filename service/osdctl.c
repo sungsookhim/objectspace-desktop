@@ -324,11 +324,19 @@ int main(int argc, char **argv)
         cb_text(&b, "all"); cb_bool(&b, argc > 4 && !strcmp(argv[4], "all"));
     } else if (!strcmp(op, "open")) {
         if (argc < 3 || argc > 4) return usage();
-        cb_map(&b, 4);
+        /* on this session's display, as osd does (osdd may have started before it) */
+        static char disp[4096];
+        const char *wd = getenv("WAYLAND_DISPLAY"), *rt = getenv("XDG_RUNTIME_DIR"), *x11 = getenv("DISPLAY");
+        disp[0] = 0;
+        if (wd && *wd) snprintf(disp, sizeof disp, "%s%s%s", wd[0] == '/' || !rt ? "" : rt, wd[0] == '/' || !rt ? "" : "/", wd);
+        bool x = x11 && *x11;
+        cb_map(&b, 4 + (disp[0] ? 1 : 0) + (x ? 1 : 0));
         cb_text(&b, "id"); cb_int(&b, 1);
         cb_text(&b, "op"); cb_text(&b, "open");
         cb_text(&b, "target"); cb_text(&b, argv[2]);
         cb_text(&b, "confirm"); cb_bool(&b, argc == 4 && !strcmp(argv[3], "confirm"));
+        if (disp[0]) { cb_text(&b, "display"); cb_text(&b, disp); }
+        if (x) { cb_text(&b, "x11"); cb_text(&b, x11); }
     } else if (!strcmp(op, "restore-defaults")) {
         if (argc > 3) return usage();
         cb_map(&b, argc == 3 ? 3 : 2);

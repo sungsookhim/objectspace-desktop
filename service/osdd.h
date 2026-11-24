@@ -54,6 +54,7 @@
 #include "OsdDrive.h"
 #include "OsdMinWinViewer.h"
 #include "OsdRestoreDesktop.h"
+#include "OsdCommandPrompt.h"
 #include "OsdMessages.h"
 #include "OsdLauncher.h"
 #include "OsdTheBar.h"
@@ -248,9 +249,11 @@ struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*go
  *   8: Restore Desktop in System;
  *   9 (0.3): the home folder in Computer (a shadow);
  *  10 (0.3): titles (the owner's): System "My System - <host name>",
- *      Computer "My Storages" (unless titled already).
+ *      Computer "My Storages" (unless titled already);
+ *  11 (0.4): Prevent delete on Objectspace's own objects;
+ *  12 (0.5): Command Prompt in System.
  * After it, the default objects in place are noted (restore_defaults). */
-#define FIRST_START_VERSION 11
+#define FIRST_START_VERSION 12
 
 struct first_start {
     struct client *c;
@@ -261,6 +264,7 @@ struct first_start {
     int ngone;
     char viewer[OSD_ID_LEN + 1];    /* the Minimized Window Viewer, made */
     char restorer[OSD_ID_LEN + 1];  /* Restore Desktop, made (step 8) */
+    char prompter[OSD_ID_LEN + 1];  /* Command Prompt, made (step 12) */
     char sys[PATH_MAX], autostart[PATH_MAX];
     osd_loaded asld;                /* the autostart folder (titled Startup) */
     osd_loaded sysld, compld;       /* step 10: System and Computer, titled */
@@ -282,8 +286,8 @@ struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; struct fs_shadow *ne
 #define SETUP_IN_SYSTEM 6   /* setup_classes from this one on */
 
 /* ---- the default objects (0.2): System, Programs and the Trash Can on the
- * desktop; Templates, Startup, the Minimized Window Viewer and Restore
- * Desktop in System; the settings objects where they belong. Each is
+ * desktop; Templates, Startup, the Minimized Window Viewer, Restore
+ * Desktop and Command Prompt in System; the settings objects where they belong. Each is
  * noted by ID once it is in place (locator "osd-defaults", class Objectspace, one
  * prop per object), so {op:"restore_defaults", desktop} can put back the
  * very object the user moved or deleted (a central object moved gets a
@@ -291,7 +295,7 @@ struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; struct fs_shadow *ne
  * default folders are made again. Each desktop open notes the ones in
  * place ({op:"first_start"}). */
 #define DEFAULTS_LOC "osd-defaults"
-#define NDEFAULTS 8
+#define NDEFAULTS 9
 
 struct defobj {
     const char *name, *title;

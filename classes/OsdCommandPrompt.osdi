@@ -1,0 +1,7 @@
+# Command Prompt (0.5): opening it starts the user's shell in the System's
+# terminal (Objectspace Terminal by default), in the home folder or the
+# folder its Program page names - as a folder's Command prompt here does.
+class OsdCommandPrompt : OsdAbstract
+version 1.0
+classoverride osdclsQueryTitle
+property start_in : text page Program label "Start in (empty: the home folder)"

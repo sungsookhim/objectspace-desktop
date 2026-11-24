@@ -159,6 +159,24 @@ void do_open(struct req *r, osdo_object *o)
     const cv *pr = cv_get(&r->msg, "prompt");
     bool prompt = pr && pr->k == CV_BOOL && pr->b && osdo_is_a(o, OsdFolderClass) && path[0];
     static char prompt_track[PATH_MAX + 16], prompt_env[PATH_MAX + 16], prompt_title[PATH_MAX + 32];
+    /* Command Prompt (0.5, in System): the same, in the home folder or the
+     * folder its Program page names (gone: home) */
+    static char prompt_dir[PATH_MAX];
+    if (osdo_is_a(o, OsdCommandPromptClass)) {
+        const char *home = getenv("HOME");
+        char *si = OsdObject_osdQueryProperty(o, "start_in");
+        snprintf(prompt_dir, sizeof prompt_dir, "%s", home && *home ? home : "/");
+        if (si && *si) {
+            char want[PATH_MAX];
+            if (si[0] == '~') snprintf(want, sizeof want, "%s%s", home ? home : "", si + 1);
+            else snprintf(want, sizeof want, "%s", si);
+            struct stat ws;
+            if (want[0] == '/' && stat(want, &ws) == 0 && S_ISDIR(ws.st_mode)) snprintf(prompt_dir, sizeof prompt_dir, "%s", want);
+        }
+        free(si);
+        path = prompt_dir;
+        prompt = true;
+    }
     if (osdo_is_a(o, OsdFolderClass) && !prompt) {
         free(fire_event(o, path, "object.open", NULL, NULL, NULL, 0));   /* its actions (its window has its own sound) */
         reply_folder(r, path);

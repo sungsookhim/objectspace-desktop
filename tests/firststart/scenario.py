@@ -99,6 +99,7 @@ if PART == "restore":
     PROG, TRASH = T + "/xdg/data/objectspace/Programs", T + "/xdg/data/Trash/files"
     c.request(op="first_start", desktop=DESK)
     check("Restore Desktop is in System", wait(lambda: len(titled(SYS, "Restore Desktop")) == 1), items(SYS))
+    check("Command Prompt is in System", wait(lambda: len(titled(SYS, "Command Prompt")) == 1), items(SYS))
     time.sleep(0.5)
 
     def vobj(it):
@@ -183,7 +184,7 @@ check("first start answers its step", r.get("result") == (6 if PART == "old" els
 check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_shadows(SYS))
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
-    check("the desktop is at step 11", "version 11" in f.read())
+    check("the desktop is at step 12", "version 12" in f.read())
 COMP = SYS + "/Storages"
 if PART == "old":   # (run.sh made 0.2's Computer, with a file in it)
     check("0.2's Computer is moved to Storages, its contents with it", os.path.exists(COMP + "/kept.txt")
@@ -206,7 +207,7 @@ for own in (DESK, TPL):   # XDG user folders: their titles only (user-dirs.dirs 
     check("renaming %s: its title only" % os.path.basename(own), r.get("ok") and os.path.isdir(own) and title_of(own) == "Renamed", r)
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
-check("a second start changes nothing", r.get("result") == 11 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
+check("a second start changes nothing", r.get("result") == 12 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
       and len(shadows_of(COMP, os.environ["HOME"])) == 1, r)
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

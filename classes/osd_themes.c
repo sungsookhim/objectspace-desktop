@@ -139,6 +139,7 @@ const char *osd_icon_name_for_class(const char *cls)
         { "OsdSchemePalette", "scheme-palette" }, { "OsdScheme", "scheme-palette" }, { "OsdFontPalette", "file-font" }, { "OsdColorPalette", "scheme-palette" },
         { "OsdLauncher", "launcher" }, { "OsdTheBar", "thebar" }, { "OsdMessages", "messages" },
         { "OsdMinWinViewer", "minwin-viewer" }, { "OsdRestoreDesktop", "restore-desktop" },
+        { "OsdCommandPrompt", "program-text" },
     };
     for (size_t i = 0; cls && i < sizeof map / sizeof *map; i++) if (!strcmp(cls, map[i][0])) return map[i][1];
     return NULL;

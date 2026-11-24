@@ -178,6 +178,15 @@ void first_start_work(void *arg)
             j->restorer[0] = 0;
         osd_loaded_free(&sy);
     }
+    if (j->from < 12) {
+        /* step 12 (0.5): Command Prompt in System (the user's shell, in the
+         * home folder) */
+        osd_loaded sy;
+        osd_load(j->sys, true, &sy);
+        if (sy.err || !sy.id[0] || osd_central_create(sy.vol, sy.id, "OsdCommandPrompt", "Command Prompt", NULL, j->prompter) != 0)
+            j->prompter[0] = 0;
+        osd_loaded_free(&sy);
+    }
     if (j->from < 7 && j->from >= 1 && osd_templates_dir()[0]) {
         /* step 7 (0.2): the desktop's Templates shadows into System */
         osd_loaded sy, fl;
@@ -273,6 +282,7 @@ void first_start_done(void *arg)
             if (!j->tpl_in_system && !j->ntpl && td[0]) first_start_shadow(td, j->sys);
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
+        if (j->prompter[0]) on_central_change(j->sys, j->prompter, 'c');
         if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
         if (j->from < 11) protect_pending = true;   /* step 11 (0.4): Prevent delete, once they are noted (defaults_done) */
         const char *home = getenv("HOME");
@@ -611,6 +621,8 @@ static int defaults_list(const char *desk, struct defobj *d)
     d[n] = (struct defobj){ "system.viewer", "Minimized Window Viewer", "OsdMinWinViewer", "", "" };
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
     d[n] = (struct defobj){ "system.restore", "Restore Desktop", "OsdRestoreDesktop", "", "" };
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    d[n] = (struct defobj){ "system.prompt", "Command Prompt", "OsdCommandPrompt", "", "" };
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
     const char *uh = getenv("HOME");
     if (uh && *uh) {
