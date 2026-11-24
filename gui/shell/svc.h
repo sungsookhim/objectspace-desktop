@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osd-shell's connection to osdd (gui-design.md: Threads). The UI thread
  * never waits: requests go to a writer thread; a reader thread decodes

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Damage planning for buffer reuse (gui-design.md, G0 findings).
  *

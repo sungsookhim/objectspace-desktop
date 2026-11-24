@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """A fake udisks2 for osdd's drive tests (v0.2-plan step 4), on a private
 bus: tests/fake_udisks.py ADDRESS MOUNT_ROOT
 

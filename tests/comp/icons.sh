@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Icons, headless: System's own icon, set while the desktop runs (as its
 # notebook does), shows on the desktop's shadow of it at once (it showed
 # only after osdd started again).

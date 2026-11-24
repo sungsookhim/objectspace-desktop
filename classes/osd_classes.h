@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The core Objectspace classes. */
 #ifndef OSD_CLASSES_H
 #define OSD_CLASSES_H

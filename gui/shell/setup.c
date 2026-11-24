@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: The bench report; the settings objects (System, Sound, Mouse, schemes, fonts, Launcher, TheBar) applied. */
 #define _GNU_SOURCE
 #include "shell.h"

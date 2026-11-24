@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: Delete and the System's confirmations; the service's jobs (progress, questions, errors). */
 #define _GNU_SOURCE
 #include "shell.h"

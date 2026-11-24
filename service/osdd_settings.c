@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: Menus and settings pages as data; their setters. */
 #define _GNU_SOURCE
 #include "osdd.h"

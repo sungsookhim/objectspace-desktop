@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The details view, headless (v0.3-plan step 4): a heading clicked sorts
 # the folder (again: reversed; folders first), the order coming from osdd's
 # listing; over a column's edge the pointer is the resize one (0.4 step 5);

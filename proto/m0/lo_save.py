@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Open, edit and save a document with LibreOffice, through its UNO bridge.
 
 Runs a separate headless LibreOffice with its own profile, so it does not

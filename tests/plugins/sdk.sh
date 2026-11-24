@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The plug-in SDK as its users get it (sdk/README.md): installed into a
 # scratch root (make install-sdk), a skeleton from osdctl plugin new built
 # against it (and the sample), loaded by a private osdd.

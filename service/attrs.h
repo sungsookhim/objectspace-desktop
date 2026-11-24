@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Object state in extended attributes (design: Persistence, Concurrency).
  *

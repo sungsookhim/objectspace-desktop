@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Plug-ins as the SDK's users write them (docs/object-properties-design.md
 # 2.7): the sample OsdImageFile (sdk/sample) loaded by a private osdd, in its
 # sandboxed host; played by tests/plugins/sample.py. No sudo needed.

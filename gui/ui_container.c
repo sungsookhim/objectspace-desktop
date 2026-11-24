@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Containers: icon and details views over a model of any size
  * (gui-design.md, Widget set 2). Rows are fetched through the source as
  * they come into view; unloaded rows are placeholders. */

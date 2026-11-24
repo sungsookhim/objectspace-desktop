@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: Work Area folders (0.4 step 9, v0.4-design 11).
  *
  * A folder whose File page has Work area on groups what is opened from it

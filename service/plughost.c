@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osd-plughost - runs one plug-in package's classes outside osdd
  * (design: Plug-in isolation; decided 2026-11-18: never in-process,

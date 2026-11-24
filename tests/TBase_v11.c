@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Implementation of the installed TBase, version 1.1. */
 #include "TBase.h"
 

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Unit tests for libwpo and the core classes. */
 #include <stdint.h>
 #include <stdlib.h>

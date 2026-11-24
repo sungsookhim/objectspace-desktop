@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Run COMMAND inside a private, headless GNOME Shell (its own D-Bus,
 # dconf, runtime folder and Wayland display; no extensions), then stop it
 # and everything it started. For GUI self-tests: they need a compositor

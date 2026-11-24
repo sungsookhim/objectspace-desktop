@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Every object's settings pages and menu, as osdd gives them, written to
 OUT/<n>-<title>.txt (run by tests/props/run.sh). For the refactor
 (docs/object-properties-design.md 4): the pages made from declared

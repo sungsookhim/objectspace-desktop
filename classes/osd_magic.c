@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A file's type from its contents (osd_magic.h): shared-mime-info's magic
  * rules (/usr/share/mime/magic), read once, matched against the file's
  * first 4 KB; with none matching, an empty file or text (no zero bytes, no

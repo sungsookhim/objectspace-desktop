@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The osd command (0.4.1 step 14), headless, against a running desktop:
 # get, set, create, shadow, say, ask (answered with Enter), selection (an
 # icon clicked on the desktop), open (a folder: its window), folder.

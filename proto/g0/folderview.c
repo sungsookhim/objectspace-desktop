@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * G0 prototype: a folder window drawn with our own code (Cairo, HarfBuzz,
  * FreeType) on a plain Wayland surface, fed by osdd's streaming listing.

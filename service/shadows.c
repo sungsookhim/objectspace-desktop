@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Shadows as Objectspace object files (decided 2026-11-18; see shadows.h). */
 #define _GNU_SOURCE
 #include "shadows.h"

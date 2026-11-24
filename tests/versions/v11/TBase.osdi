@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Test class, version 1.1: the installed version. Adds data and a method
 # at the end, which must not break plug-ins built against 1.0.
 class TBase

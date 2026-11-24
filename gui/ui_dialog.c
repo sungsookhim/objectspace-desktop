@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Message dialogs: a message and a row of buttons (gui-design.md, Widget
  * set 5). Enter chooses the focused button, Escape the last one (by
  * convention the cancelling one), Tab and the arrows move between them.

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: The protocol's ops: a handler each, and the table handle() looks them up in. */
 #define _GNU_SOURCE
 #include "osdd.h"

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Unit tests for the main loop, queues, workers and watchdog. */
 #define _GNU_SOURCE
 #include <poll.h>

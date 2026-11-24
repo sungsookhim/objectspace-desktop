@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * File types for drops on programs (gui/shell): a file's type from its
  * name (shared-mime-info's glob table; no match: its contents, as the

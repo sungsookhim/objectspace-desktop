@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* TheBar (see thebar.h). */
 #define _GNU_SOURCE
 #include "thebar.h"

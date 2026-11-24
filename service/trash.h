@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The trash, as the freedesktop.org Trash specification has it, so that
  * other desktops and file managers see what Objectspace put there and can restore

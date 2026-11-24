@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The System object: windows' look, confirmations.
 class OsdSystem : OsdSetup
 version 1.0

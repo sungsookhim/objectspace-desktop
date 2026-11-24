@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """A folder's sort order (run by run.sh): osdd's listing in the folder's
 order - folders first, then name, type, size or last write, ascending or
 descending; additions and renames read in the order again; none: the

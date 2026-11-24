@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """osdc - generate C bindings from Objectspace class interface files (.osdi).
 
 A .osdi file describes one class:

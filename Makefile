@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Objectspace: object core.
 #
 #   make          build the runtime, the core classes and the tests
@@ -195,6 +197,7 @@ check: test
 	@extra=$$(nm -u $(TV)/osdo_c11.o | awk '{print $$2}' | grep -vxE '$(subst $(eval) ,|,$(CORE_LIBC))'); \
 	 if [ -n "$$extra" ]; then echo "core uses more than the C library subset: $$extra"; exit 1; fi; \
 	 echo "core: strict C11, C library subset only"
+	@if [ -d .git ]; then $(PYTHON) tools/spdx.py; else echo "not a git checkout: licence lines not checked"; fi
 ifeq ($(TSAN_OK),yes)
 	$(CC) -O1 -g -std=gnu11 -fsanitize=thread $(INC) -o $(TV)/test_loop_tsan tests/test_loop.c runtime/src/osdo_loop_posix.c -lpthread
 	$(TV)/test_loop_tsan
@@ -272,7 +275,7 @@ $(G0)/soundlat: proto/g0/soundlat.c
 
 g0: $(G0)/folderview $(G0)/soundlat
 
-# The GUI: libwpsui (gui/ui_*.c) and osd-shell. Optimised for timing; the
+# The GUI: the widget set (gui/ui_*.c) and osd-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
 UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_menupaint.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_ibus.c gui/ui_a11y.c
 SHELLSRC := gui/shell/osd-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launcher.c gui/shell/session.c gui/shell/thebar.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/colorpal.c gui/shell/workarea.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/osdicon.c classes/osd_magic.c classes/osd_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c

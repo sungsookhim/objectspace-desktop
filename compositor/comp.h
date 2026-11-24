@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-compositor's shared structures (osd-compositor.c: the core;
  * desktop.c: the link to Objectspace's desktop process). */
 #ifndef OSD_COMP_H

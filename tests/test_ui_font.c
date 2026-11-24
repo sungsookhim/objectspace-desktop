@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Font Palette names with styles ("10.Noto Sans SemiBold"), against a
  * made-up font list (not the machine's fonts). */
 #include <stdbool.h>

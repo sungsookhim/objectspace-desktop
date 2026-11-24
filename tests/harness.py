@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Shared harness for the scenario suites (tests/m2, tests/m3): real osdd
 services on the loopback test bed (proto/m0/testbed.sh), as the current
 user or as test users 60001/60002 through setpriv."""

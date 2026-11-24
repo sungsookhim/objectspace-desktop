@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Programs: osdd's keeper of the Programs folder (run by run.sh)."""
 import os
 import sys

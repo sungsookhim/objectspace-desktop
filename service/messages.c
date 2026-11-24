@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Messages kept by osdd (messages.h). */
 #define _GNU_SOURCE
 #include "messages.h"

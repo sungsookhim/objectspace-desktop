@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """The 0.5 rename's rules (tools/rename-0.5.py) on samples of each kind of name."""
 import importlib.util
 import re

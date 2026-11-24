@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The desktop's own menu, headless (v0.3-plan step 2): System setup (opens
 # the System Setup folder), Shut down...
 # (its dialog; cancelled, never confirmed), and Lockup now (the lock

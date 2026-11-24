@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The Launcher (launcher.h). */
 #define _GNU_SOURCE
 #include "launcher.h"

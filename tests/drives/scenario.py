@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Drives: the udisks2 client against tests/fake_udisks.py (run by run.sh)."""
 import os
 import sys

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Restore Desktop (0.2): opening it puts the default objects back where
 # they belong - System, Programs and the Trash Can on the desktop;
 # Templates, Startup, the Minimized Window Viewer and the settings objects

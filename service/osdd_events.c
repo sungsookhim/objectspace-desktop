@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: Subscriptions and events (design: Service API, Events). */
 #define _GNU_SOURCE
 #include "osdd.h"

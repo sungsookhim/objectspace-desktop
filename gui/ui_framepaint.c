@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The window frame's geometry and painting, apart from any surface
  * (ui.h: ui_frame_geom): the toolkit's windows draw their own frames with
  * it, and osd-compositor draws other programs' frames with it, so both

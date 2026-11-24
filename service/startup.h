@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Startup (v0.2-design 7.1): the XDG autostart folder
  * ($XDG_CONFIG_HOME/autostart), titled Startup, in System.

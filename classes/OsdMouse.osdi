@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Mouse object: what each mouse action is.
 class OsdMouse : OsdSetup
 version 1.0

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 #include "OsdMinWinViewer.h"
 
 #include "osd_classes.h"

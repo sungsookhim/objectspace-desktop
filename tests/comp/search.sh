@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A folder window's search field, headless (v0.3-plan step 5): Ctrl+F shows
 # it, typing filters (the matches flow from the top left, in name order),
 # Escape takes it away and every icon is back in its place; Ctrl+Shift+F

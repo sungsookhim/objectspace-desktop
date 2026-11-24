@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Test client for watchd, standing in for one user's osdd.
 
 Connects to watchd's socket and reads commands on stdin:

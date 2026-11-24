@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Tests for the attribute store: encoding, merge, locking, IDs, errors. */
 #define _GNU_SOURCE
 #include <errno.h>

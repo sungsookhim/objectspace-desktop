@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Test plug-in for M5: menu item, a slow path, a settings change, and a
  * probe of the sandbox it runs in. */
 #include "TestFolder.h"

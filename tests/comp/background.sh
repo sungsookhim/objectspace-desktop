@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Backgrounds, headless (v0.3-plan step 3): the desktop's own picture
 # (Use GNOME's background off, stretched), a folder window's colour, then
 # its picture centred, then GNOME's background on the desktop again; set

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # osd-compositor, headless, with Objectspace's desktop (a private osdd and folder)
 # and other programs, played by a script (see osd-compositor.c).
 #   tests/comp/run.sh SCRIPT [COMMAND...]

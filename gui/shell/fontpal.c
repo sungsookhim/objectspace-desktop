@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The Font Palette (fontpal.h). */
 #define _GNU_SOURCE
 #include "fontpal.h"

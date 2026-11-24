@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Scroll layers: scrolling without moving pixels (gui-design.md, G1
  * findings).

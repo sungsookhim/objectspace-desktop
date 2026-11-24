@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osd-watchd - the system helper that watches whole filesystems with
  * fanotify and forwards each user's service only the events it may see

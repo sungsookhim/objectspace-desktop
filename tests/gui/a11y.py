@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """What a screen reader sees of osd-shell (G4 accessibility): listens on
 AT-SPI, as Orca does, for focus and window events, prints each with the
 object's role, name, description and position in its set; at the end,

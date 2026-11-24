@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * libwpo core: classes, metaclasses, method tables, dispatch, replacement,
  * pending results. Uses only the C library.

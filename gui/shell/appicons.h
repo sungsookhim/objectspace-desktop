@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Programs' own icons (v0.2 step 5): a desktop entry's Icon=, found in the
  * icon themes (the user's, hicolor, Adwaita; Flatpak's exports) or

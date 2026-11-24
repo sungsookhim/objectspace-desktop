@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Find: objects by name under a folder (find.h). */
 #define _GNU_SOURCE
 #include "find.h"

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Objectspace Terminal's looks from Objectspace's settings objects (osdd's "setup"): the
  * scheme in use (the Scheme Palette's: colours, frame sizes), the System's
  * frame options, and its Terminal font. Asked once, as the window opens;

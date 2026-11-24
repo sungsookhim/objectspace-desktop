@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The desktop's background: GNOME's (org.gnome.desktop.background, with
  * the dark picture when the colour scheme prefers dark), so that it is

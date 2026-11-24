@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Positions from 0.2 (0.4 step 5), headless: two icons placed over each
 # other (their long titles overlapping): the folder's status line offers
 # Arrange (a link), nothing moved; the link arranges them; opened again,

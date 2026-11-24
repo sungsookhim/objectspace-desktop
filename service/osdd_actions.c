@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: events' actions (object-properties-design.md 2.4). An object's
  * on:EVENT property, resolved through the chain like any other (its own,
  * its type's, its class's, ...), holds actions separated by "|":

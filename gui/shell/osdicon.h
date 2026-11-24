@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Icon packages (roadmap 0.4, the owner's spec): NAME.osdicon, a zip of
  * PNGs named by their size ("256.png", square, any size) and optionally

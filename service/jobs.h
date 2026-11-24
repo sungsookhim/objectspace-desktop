@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Selections and bulk jobs (design: Scale, Selections and drag and drop,
  * Bulk jobs, Simultaneous operations).

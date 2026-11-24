@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Objectspace Terminal's looks from Objectspace's settings objects (term_setup.c). */
 #ifndef OSD_TERM_SETUP_H
 #define OSD_TERM_SETUP_H

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Idle: the screens go off after a while without input, the lock screen
  * follows (GNOME's settings: idle-delay, lock-enabled, lock-delay, given

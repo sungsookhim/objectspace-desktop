@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Messages (v0.2-design 9): what programs and Objectspace itself told the user,
  * kept by osdd so every GUI sees the same list, in

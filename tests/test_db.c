@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Tests for the database and git-style volume synchronisation. Two
  * "computers" (two main databases with different writers) share one volume
  * database, as a USB disk moved between them would. */

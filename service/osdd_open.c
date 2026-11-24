@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: list (a page of a folder), open (programs and files), from_template. */
 #define _GNU_SOURCE
 #include "osdd.h"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A scheme (OS/2's Scheme Palette's schemes; object-properties-design.md
 # 2.3): the colours and sizes every Objectspace window is drawn with. Classic, Dark
 # and High contrast are made in System Setup's Schemes folder; a copy of one

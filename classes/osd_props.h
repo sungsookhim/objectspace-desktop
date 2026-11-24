@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Declared properties (object-properties-design.md 2.1; osd_props.c). */
 #ifndef OSD_PROPS_H
 #define OSD_PROPS_H

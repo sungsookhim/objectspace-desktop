@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """M0b: per-user event filtering in the helper.
 
 Starts watchd (as root) and two clients standing in for two users' osdd:

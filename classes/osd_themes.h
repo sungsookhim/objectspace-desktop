@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Icon themes (0.4 step 2; osd_themes.c), for the service and the window. */
 #ifndef OSD_THEMES_H
 #define OSD_THEMES_H

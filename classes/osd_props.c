@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Declared properties (object-properties-design.md 2.1): their values, kept
  * in the object's state or reached through the class's methods, and the
  * settings pages made from them. OsdObject's osdQueryProperty, osdSetProperty,

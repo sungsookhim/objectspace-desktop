@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Leak-checker suppressions for osd-shell-asan: allocations PipeWire's
 # own plug-ins keep for the life of the process (not Objectspace code).
 leak:libspa-

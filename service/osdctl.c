@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osdctl - command-line client for osdd. Prints each reply as one line of
  * JSON and exits 0 if the reply was ok, 1 if not, 2 on usage errors.

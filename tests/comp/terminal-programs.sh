@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Program objects in Objectspace Terminal (0.4.1 step 13), headless: a script in a
 # work area runs in Objectspace Terminal (the System's default), in use while it
 # runs; Command prompt here opens the user's shell there ($OSD_FOLDER set),

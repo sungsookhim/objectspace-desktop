@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Settings notebooks (gui-design.md, Widget set 4), laid out as in Warp 4:
  * tabs across the top, the page's fields with their labels, and Undo,

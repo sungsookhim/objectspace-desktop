@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: Work Area folders (0.4 step 9, v0.4-design 11). A work area
  * folder's window takes what was opened from it along: minimized, its
  * group's windows are minimized (its folders' windows too); restored,

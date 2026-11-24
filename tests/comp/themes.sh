@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Icon themes (0.4 step 2), headless: the desktop in Objectspace (flat); all folders
 # switched to Objectspace (outline) from the System object, live; one folder with
 # a theme of its own (Classic) while the desktop keeps outline.

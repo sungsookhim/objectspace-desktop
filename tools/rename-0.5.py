@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """rename-0.5: WPS's names to Objectspace's (docs/v0.5-names.md, docs/v0.5-plan.md).
 
     tools/rename-0.5.py STAGE [--dry]    apply a stage's rules to the tree

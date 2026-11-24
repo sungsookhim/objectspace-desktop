@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A minimal test harness: CHECK records failures and keeps going. */
 #ifndef CHECK_H
 #define CHECK_H

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Objectspace Terminal's core (gui/terminal/term_core.c): the screen into cells,
  * keys into bytes, the scrollback, selections, paths quoted. */
 #include <stdlib.h>

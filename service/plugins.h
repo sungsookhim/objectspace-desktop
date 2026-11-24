@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Plug-in classes, run in sandboxed osd-plughost processes (design:
  * Plug-in isolation; decided 2026-11-18: never in-process).

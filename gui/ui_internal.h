@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Internal to libwpsui: surface and app structures. */
 #ifndef OSD_UI_INTERNAL_H
 #define OSD_UI_INTERNAL_H

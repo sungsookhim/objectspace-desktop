@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The keyboard layouts: GNOME's input sources (the xkb ones, up to four,
  * as xkb's groups) and its xkb options, read from GNOME's settings and

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Every osd-shell self-test, its output kept as a "golden" file to compare
 # across a refactor (docs/object-properties-design.md 4):
 #   tests/gui/golden.sh OUT [MODE...]      (default: every mode in golden-modes.txt)

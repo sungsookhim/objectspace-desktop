@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Programs (v0.2-design 6): category folders with shadows of the installed
 # programs, kept in step by osdd (service/programs.c); the user's own
 # objects in it are left alone.

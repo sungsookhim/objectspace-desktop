@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Object menus (TheBar's, v0.3-design 11): a folder's objects as
  * a menu with their icons, its folders as cascades (each with Open

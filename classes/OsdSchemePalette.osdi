@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Scheme Palette: the colour scheme.
 class OsdSchemePalette : OsdSetup
 version 1.0

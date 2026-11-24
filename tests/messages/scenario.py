@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Messages: osdd's list (run by run.sh: part 1, then 2 after a restart)."""
 import os
 import sys

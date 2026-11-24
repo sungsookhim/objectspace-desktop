@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The desktop's first start, step 7 (0.2): Templates in System; and
 # Startup (drops make entries or shadows; Start at login). Part
 # "new": a new desktop; part "old": a desktop at step 6 with Templates on

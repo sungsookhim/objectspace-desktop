@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Sound object: which sound each action event plays.
 class OsdSound : OsdSetup
 version 1.0

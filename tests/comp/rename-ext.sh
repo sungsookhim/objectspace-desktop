@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A rename that changes the extension (0.4 step 6), headless: notes.txt
 # renamed memo.md asks (Use .md / Keep .txt / Cancel): Keep gives memo.txt;
 # renamed memo.md again, Use gives memo.md; renamed memo (the extension

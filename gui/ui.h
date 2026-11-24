@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * libwpsui: the Objectspace widget set (gui-design.md: Toolkit, Widget set).
  *

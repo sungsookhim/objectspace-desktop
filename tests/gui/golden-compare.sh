@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Compares two runs of tests/gui/golden.sh, mode by mode:
 #   tests/gui/golden-compare.sh BASE NEW
 # A mode marked unstable in golden-modes.txt is shown but never fails;

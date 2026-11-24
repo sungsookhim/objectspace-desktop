@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Tests for starting files with their default application: Exec lines,
  * the handler lookup, and lock files. */
 #define _GNU_SOURCE

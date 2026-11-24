@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The owner's 0.4 notes, headless: a pop-up menu's object outlined (OS/2's
 # source emphasis: an icon's cell; the folder's own area; the desktop's),
 # gone when the menu closes; a scroll bar's trough held pages until the

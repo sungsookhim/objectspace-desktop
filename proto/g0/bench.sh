@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # G0 folder-window benchmark: cold cache, warm, and 2x scale, each against a
 # fresh osdd with scratch state. usage: proto/g0/bench.sh FOLDER [SECONDS]
 set -u

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Well-known menu item IDs. Classes put these items in their menus; the
  * GUI carries them out itself (opening views, the settings notebook), and

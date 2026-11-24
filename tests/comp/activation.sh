@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Programs come to the front (0.4 step 6), headless: an executable opened
 # from the desktop gets the click's xdg-activation token, as
 # XDG_ACTIVATION_TOKEN and DESKTOP_STARTUP_ID (the window asks the

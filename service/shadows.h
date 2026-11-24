@@ -1,8 +1,10 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Shadows (design: Links; decided 2026-11-18: Objectspace object files).
  *
- * A shadow is an Objectspace object file, as in OS/2, where a shadow was an Objectspace
- * object and not a file-system link:
+ * A shadow is an Objectspace object file, as in OS/2, where a shadow was a
+ * Workplace Shell object and not a file-system link:
  *
  *   <name>.osdobj      [Objectspace Object]
  *                     Class=OsdShadow

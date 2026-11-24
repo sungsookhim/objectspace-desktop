@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Drag and drop through Wayland's data device, both ways (gui-design.md,
  * Drag and drop), and the file-descriptor watching it needs: the same

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Objectspace Terminal (0.4.1 step 12), headless: true colours and Korean drawn,
 # vim edits and saves a file, a resize reaches the program, htop runs and
 # quits (the window closing with it), --hold keeps the window with the

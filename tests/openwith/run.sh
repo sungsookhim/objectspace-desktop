@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Open With (v0.3-plan step 7): osdd with desktop entries, mimeapps.list
 # and MIME subclasses in a private XDG_DATA_DIRS, played by
 # tests/openwith/scenario.py.

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 Sungsoo Khim -->
 <schemalist>
   <schema id="org.gnome.shell.extensions.objectspace" path="/org/gnome/shell/extensions/objectspace/">
     <key name="window-list" type="as">

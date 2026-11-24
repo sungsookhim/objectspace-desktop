@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Test bed for the M0 prototype: three loopback filesystems.
 #
 #   testbed.sh up     create and mount ext4, btrfs and FAT images

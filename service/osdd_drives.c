@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: Drives, the Trash Can (putting back, emptying), Drives kept in step. */
 #define _GNU_SOURCE
 #include "osdd.h"

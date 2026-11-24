@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Command Prompt (0.5): opening it starts the user's shell in the System's
 # terminal (Objectspace Terminal by default), in the home folder or the
 # folder its Program page names - as a folder's Command prompt here does.

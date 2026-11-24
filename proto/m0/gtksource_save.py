@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Save a file the way GNOME Text Editor or gedit does, through their
 GtkSourceView FileLoader and FileSaver (the same library calls the editors
 make), with no window.

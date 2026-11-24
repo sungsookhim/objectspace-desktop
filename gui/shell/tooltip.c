@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Tooltips (tooltip.h). */
 #define _GNU_SOURCE
 #include "tooltip.h"

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Ending and locking the session, for TheBar, the Launcher and the
  * desktop's menu (v0.3-design 2): through the compositor's link in the Objectspace

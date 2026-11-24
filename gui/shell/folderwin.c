@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: Folder windows: their model (the service's listing, a page at a time), backgrounds, following a folder and the service's events. */
 #define _GNU_SOURCE
 #include "shell.h"

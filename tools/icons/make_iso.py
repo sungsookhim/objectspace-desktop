@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Objectspace's isometric icon set (set A: System Setup objects; set B: special folders; set C: data files; set D: the basic kinds; set E: Objectspace's own icons redrawn).
 
 Style: isometric pixel art after BeOS / OS/2 Warp 4, 2:1 lines (2 across

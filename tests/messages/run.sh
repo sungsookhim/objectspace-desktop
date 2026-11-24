@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Messages (v0.2-plan step 7): osdd's message list, kept across a
 # restart, and the Messages, Launcher and TheBar objects; played by
 # tests/messages/scenario.py (part 1, a restart, part 2).

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * An X11 test client for osd-compositor (XWayland): one window with a
  * title and a class, filled with a colour; with "popup", also an

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A program to start (a .desktop file in M5).
 class OsdProgram : OsdAbstract
 version 1.0

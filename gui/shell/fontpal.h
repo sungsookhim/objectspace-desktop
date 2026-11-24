@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The Font Palette (OS/2's, v0.3-design 10): a window of font samples
  * ("12.Helvetica"), each drawn in its font. Dragged onto a folder window

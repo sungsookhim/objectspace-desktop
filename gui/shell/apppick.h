@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Other program... (Open With, v0.3-design 7): the installed programs in
  * an icon view, by name, and Always use for this type. A double click (or

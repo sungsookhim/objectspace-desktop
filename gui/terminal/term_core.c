@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Objectspace Terminal's core (term_core.h). */
 #define _GNU_SOURCE
 #include "term_core.h"

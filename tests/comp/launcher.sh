@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Launcher and TheBar in 0.3 (v0.3-plan step 10), headless:
 # tooltips after resting on a Launcher button and on the clock; Super
 # pressed alone opens the Objectspace menu, again closes it, Super with a click in

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Icon packages (osdicon.h): a small zip reader and writer (stored and
  * deflated entries, through zlib), and the size rules with cairo. */
 #define _GNU_SOURCE

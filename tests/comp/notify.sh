@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Objectspace session's notification service, headless (v0.2-plan step 7): a
 # program (notify_client.py) on a private session bus sends two
 # notifications; the pop-up goes by the bar, its Reply button reaches the

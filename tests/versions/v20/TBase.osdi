@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Test class, version 2.0: an incompatible major version.
 class TBase
 version 2.0

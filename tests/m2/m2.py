@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """M2 scenarios: persistence, identity, concurrency, users, travelling volumes.
 
 Runs real osdd services against the loopback test bed (proto/m0/testbed.sh

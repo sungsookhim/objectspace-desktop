@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # sounds.conf (before the Sound object, 0.1) moved into the Sound object at
 # the desktop's first start with it, and kept aside as sounds.conf.imported
 # (docs/object-properties-design.md 2.4).

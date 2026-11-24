@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: The desktop's first start, the settings objects, the default objects, Startup. */
 #define _GNU_SOURCE
 #include "osdd.h"

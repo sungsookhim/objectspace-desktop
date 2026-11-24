@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The desktop's status line (0.4 step 5), headless: a message (notes.txt
 # moved to the trash) in a box at the bottom of the desktop, gone after a
 # few seconds and not back when the selection changes; an action not done

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Mouse mappings (as OS/2's Mouse object): parsing, matching, loading. */
 #include <stdio.h>
 #include <stdlib.h>

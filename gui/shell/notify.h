@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The Objectspace session's notification service (v0.2-design 9): the desktop
  * process owns org.freedesktop.Notifications on the session bus (sd-bus;

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: Selections and jobs. */
 #define _GNU_SOURCE
 #include "osdd.h"

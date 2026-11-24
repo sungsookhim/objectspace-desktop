@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Action events (gui-design.md: Every action is an event): one bus in
  * osd-shell. Every user action raises a named event with the object, its

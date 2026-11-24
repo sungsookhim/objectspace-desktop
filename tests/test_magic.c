@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A file's type from its contents (classes/osd_magic.h), with the system's
  * shared-mime-info magic rules. */
 #include <stdio.h>

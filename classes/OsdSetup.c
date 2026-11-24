@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Settings objects: System, Sound, Mouse, Scheme Palette (OsdSetup.osdi). */
 #include "OsdSetup.h"
 

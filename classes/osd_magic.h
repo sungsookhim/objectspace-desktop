@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A file's type from its contents (osd_magic.c), for names that say nothing. */
 #ifndef OSD_MAGIC_H
 #define OSD_MAGIC_H

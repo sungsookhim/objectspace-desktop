@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # TheBar's tray, headless (v0.2-plan step 8): programs' status
 # icons (tray_item.py, on a private session bus) register with the
 # desktop's StatusNotifierWatcher. Item A shows its red pixmap, then blue

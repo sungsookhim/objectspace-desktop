@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Open With (run by run.sh): a data file's Open cascade lists its type's
 programs (the default first, checked; added and declared ones; its parent
 types'), Other program... last; opening with one of them; Always use for

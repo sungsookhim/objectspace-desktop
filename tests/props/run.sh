@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Every object's settings pages and menu (tests/props/snapshot.py) into OUT,
 # from a private osdd; get, set and props (tests/props/ops.py); then, with
 # BASE, the snapshot compared with an earlier one.

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: A folder window: its search field, drawing, layout, pointer and keys, closing. */
 #define _GNU_SOURCE
 #include "shell.h"

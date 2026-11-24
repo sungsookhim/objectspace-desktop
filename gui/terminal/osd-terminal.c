@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Objectspace Terminal (docs/cli-design.md 1): a program on a pseudo-terminal in a
  * Objectspace window. libvterm keeps the screen (term_core.c); this draws it with

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Install the Objectspace desktop for this user's GNOME session:
 #   - the GNOME Shell extension objectspace@sungsookhim.github.io, pointed at this build's osd-shell;
 #   - a systemd user unit that starts this build's osdd at login.

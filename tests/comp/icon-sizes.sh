@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Icon sizes and the open icon (0.4 step 3), headless: the desktop at the
 # Default set (64), switched live to Large (96) and Small (32) from the
 # System object; Projects opened: its icon the theme's folder-open while

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Programs (v0.2-plan step 5): osdd with desktop entries in a private
 # XDG_DATA_DIRS, played by tests/programs/scenario.py.
 cd "$(dirname "$0")/../.."

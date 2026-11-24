@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osd: Objectspace for scripts (docs/cli-design.md 2). Plain text out, one value a
  * line; exit status 0 on success, 1 otherwise (a message on stderr). The

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osdo_loop for Linux: poll() on an eventfd plus watched descriptors,
  * three task queues, and a pthread worker pool.

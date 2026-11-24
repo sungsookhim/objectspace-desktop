@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Folder windows remember (0.4 step 5), headless in the Objectspace session: a
 # folder resized, scrolled down a page and moved, then closed and opened
 # again, comes back the same (place, size, scroll).

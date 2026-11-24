@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A scheme (OsdScheme.osdi): its colours and sizes are its declared
  * properties; the GUI draws with the one the Scheme Palette chooses. */
 #include "OsdScheme.h"

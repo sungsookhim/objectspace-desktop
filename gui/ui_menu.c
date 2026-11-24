@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Pop-up menus with cascades, as Wayland popups (gui-design.md, Widget
  * set 3). Items come from the service's menu data. */
 #define _GNU_SOURCE

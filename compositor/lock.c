@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The lock screen (G5 step 4; OS/2's Lockup): the Launcher's Lockup
  * button (the desktop's "lock" command) or Super+L.

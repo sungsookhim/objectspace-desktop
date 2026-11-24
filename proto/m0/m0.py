@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """M0: check the kernel behaviour the object core design relies on.
 
 Runs each scenario against the loopback test bed (testbed.sh up), with

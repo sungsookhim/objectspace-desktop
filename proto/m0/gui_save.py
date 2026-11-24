@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Save a file in a real GUI editor, driven through the accessibility bus.
 
 Starts the editor on PATH, waits for its window to appear on the AT-SPI

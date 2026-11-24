@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """M5 scenarios: events, menus and settings as data, programs, templates,
 file types, root sessions, the plug-in host.
 

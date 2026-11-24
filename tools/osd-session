@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Objectspace session (G5 step 4): what "Objectspace" on the login screen starts
 # (/usr/share/wayland-sessions/objectspace.desktop, from tools/install-session.sh).
 #

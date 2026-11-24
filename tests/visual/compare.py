@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Compares two sets of shots from tests/visual/run.sh, pixel by pixel.
 
     tests/visual/compare.py BASE NEW [DIFFS]

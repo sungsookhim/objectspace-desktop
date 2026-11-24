@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * osd-compositor (G5, stage 2): a Wayland compositor on wlroots for the
  * Objectspace session.

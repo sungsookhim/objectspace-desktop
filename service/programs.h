@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Programs (v0.2-design 6): osdd keeps the Programs folder in step with
  * the installed programs' desktop entries.

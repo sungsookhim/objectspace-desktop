@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * TheBar's tray (v0.2-design 10, v0.2-plan step 8): other
  * programs' status icons. The desktop process is the session's

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The icon picker (G4, the Icon page's Choose...): icons from the system's
  * icon themes (/usr/share/icons and ~/.local/share/icons: Adwaita, hicolor,

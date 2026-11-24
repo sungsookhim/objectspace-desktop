@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The Colour Palette (OS/2's, v0.4-design 9): a window of colour samples.
  * Dragged (UI_MIME_COLOR, "#rrggbb") onto a folder window's or the

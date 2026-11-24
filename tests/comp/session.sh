@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Lockup, Shut down and Log off from TheBar's menu, headless
 # (gui/shell/session.c; v0.3-plan step 1). Shut down's dialog is
 # cancelled (never confirmed: nothing may power off); Log off is confirmed

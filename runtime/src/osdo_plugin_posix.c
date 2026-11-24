@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Plug-in loading for POSIX systems (dlopen). A plug-in exports
  *     osdo_status osdo_plugin_init(uint32_t abi_version);

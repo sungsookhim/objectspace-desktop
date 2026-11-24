@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Programs' status icons for TheBar's tray (tests/comp/tray.sh): item
 A registers by bus name, with a red IconPixmap and a dbusmenu menu; item B
 by object path (as Ayatana's libraries do), with a theme icon; item C is

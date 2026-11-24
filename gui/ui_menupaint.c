@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Menus' looks and geometry, shared by the toolkit's pop-up menus
  * (ui_menu.c) and the compositor's system menu: one menu, drawn one way,
  * in the menu font. */

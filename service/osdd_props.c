@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: declared properties over the protocol (object-properties-design.md
  * 2.5): get one, set some with a setup string, list them all.
  *   {op:"get", target, name}              its value, as text

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Input methods through IBus directly (G5), as GTK's IBus module does:
  * where the session asks programs to use IBus (GTK_IM_MODULE=ibus, the

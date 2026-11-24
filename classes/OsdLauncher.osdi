@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Launcher object (v0.2-design 10): the Launcher's settings, in
 # System; the desktop applies them.
 class OsdLauncher : OsdSetup

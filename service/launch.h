@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Programs and files Objectspace starts, tracked while they run, for in-use
  * emphasis (design: decided 2026-11-18, In-use emphasis for files).

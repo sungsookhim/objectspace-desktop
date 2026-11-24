@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The service's objects: finding, loading and saving file-backed objects
  * (design: Object identity, Persistence, Concurrency).

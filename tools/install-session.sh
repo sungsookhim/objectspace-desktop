@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Put "Objectspace" on the login screen (G5 step 4). Run with sudo, from your
 # checkout (it stays there: the session runs tools/osd-session from it):
 #   sudo tools/install-session.sh            install

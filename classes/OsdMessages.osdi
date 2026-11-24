@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Messages object (v0.2-design 9): opening it shows the messages
 # programs and Objectspace sent (the desktop's list window); its settings are the
 # notification pop-ups' (Do not disturb, how long they stay).

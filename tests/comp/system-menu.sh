@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Another program's system menu, drawn by the compositor as the toolkit's
 # menus are (0.4 step 8: one menu implementation), in the menu font:
 # Minimize from it; with the System's menu font 18.Sans, a taller menu.

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # One GUI self-test (OSD_SHELL_SELFTEST=MODE): a private osdd, then the
 # ASan shell in that mode on a fresh folder <D> prepared by SETUP (run in
 # <D>). Run it inside a compositor that shows its windows, e.g.

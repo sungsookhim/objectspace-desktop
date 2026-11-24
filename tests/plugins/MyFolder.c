@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Plug-in: adds a menu item to every folder once it replaces OsdFolder. */
 #include "MyFolder.h"
 

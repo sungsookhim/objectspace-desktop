@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The in-use hatching (0.4 step 3, the owner's), headless: an open folder
 # shows its open icon unhatched; the System's "Hatch open icons too" adds
 # the hatching behind it, live; an object's Properties notebook hatches

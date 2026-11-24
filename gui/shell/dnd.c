@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: Drag and drop: between windows, the desktop and other programs; the drop menu; transfers. */
 #define _GNU_SOURCE
 #include "shell.h"

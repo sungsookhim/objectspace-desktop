@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: Properties notebooks. */
 #define _GNU_SOURCE
 #include "shell.h"

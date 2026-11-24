@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """First start, step 7: Templates in System (run by run.sh)."""
 import os
 import sys

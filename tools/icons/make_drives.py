@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Draws the drive icons (data/icons/drive-KIND.png and drive-KIND-off.png:
 mounted, a green lamp; not mounted, grey), the Computer's
 (computer.png) and Programs' (programs.png), 128 pixels, in the style of make_trash.py.

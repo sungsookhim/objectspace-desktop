@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The text entry's editing, without a display. */
 #include <string.h>
 #include <xkbcommon/xkbcommon-keysyms.h>

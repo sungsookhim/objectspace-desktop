@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The looks, headless, for the refactor (docs/object-properties-design.md 4):
 # one fixed scene (the desktop with TheBar and the Launcher, the
 # desktop's menu, a folder window, an object's menu, the desktop's notebook

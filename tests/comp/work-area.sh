@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Work Area folders (0.4 steps 9 and 10), headless (Objectspace session): Projects
 # is a work area; two test programs, a link to a folder and a shadow of a
 # folder opened from it are minimized and restored with its window, closed

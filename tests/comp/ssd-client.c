@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * A test client for osd-compositor: one xdg toplevel that asks for a
  * server-side frame (xdg-decoration) and fills itself with a colour, at

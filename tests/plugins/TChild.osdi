@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A plug-in class built against whichever TBase version is on the include path.
 class TChild : TBase
 version 1.0

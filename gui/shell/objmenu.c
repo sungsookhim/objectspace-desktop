@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Object menus (objmenu.h), from TheBar's Desktop menu (0.2). */
 #define _GNU_SOURCE
 #include "objmenu.h"

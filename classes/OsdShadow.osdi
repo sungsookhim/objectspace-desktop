@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A pointer to another object (a managed symlink in M4).
 class OsdShadow : OsdAbstract
 version 1.0

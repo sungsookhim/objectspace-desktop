@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Other program... (apppick.h). */
 #define _GNU_SOURCE
 #include "apppick.h"

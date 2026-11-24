@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The window frame: sizing border, title bar, system menu and window
  * buttons, square by default (gui-design.md: Appearance). */
 #include <math.h>

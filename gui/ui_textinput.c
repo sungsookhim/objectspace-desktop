@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Input methods (G4): Wayland's text-input-v3, which GNOME gives to IBus.
  *

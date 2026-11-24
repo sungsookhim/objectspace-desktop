@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The file picker (v0.3-design 1: a notebook's file field's Browse...): a
  * folder's contents in an icon view, folders first, then the files of the

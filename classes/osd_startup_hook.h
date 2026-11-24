@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Startup (v0.2-design 7.1): whether a program object is an autostart
  * entry (a .desktop file in ~/.config/autostart) and whether it starts at
  * login (not Hidden, not X-GNOME-Autostart-enabled=false); the service

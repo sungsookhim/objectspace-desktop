@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd, the object service: what its files share - clients, requests,
  * replies, subscriptions and every function and variable used across them.
  * Split from osdd.c (refactor R1); see each file's top for its part. */

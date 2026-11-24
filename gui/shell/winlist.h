@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * The Window List and the Minimized Window Viewer (G4; OS/2's window list,
  * Ctrl+Esc or a mouse button on the desktop, and Warp 4's Minimized

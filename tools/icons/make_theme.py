@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Objectspace's icon themes as packages (roadmap 0.4): every icon of the isometric
 set (tools/icons/make_iso.py, sets A to E) drawn at each size and packed as
 NAME.osdicon, one theme per variant:

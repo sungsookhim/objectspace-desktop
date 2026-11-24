@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The desktop's background, as GNOME has it (wallpaper.h). */
 #define _GNU_SOURCE
 #include "wallpaper.h"

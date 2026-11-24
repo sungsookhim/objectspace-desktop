@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Icon packages (gui/shell/osdicon.h): packing (the standard sizes added),
  * reading back, and the size rules. */
 #include <cairo.h>

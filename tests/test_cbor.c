@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Tests for the CBOR codec: round trips, RFC 8949 vectors, hostile input. */
 #include <stdlib.h>
 #include <string.h>

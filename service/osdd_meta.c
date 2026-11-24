@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: describe, stats, flush, sync, shutdown; volumes (scan, portable ones attached, vanished ones detached). */
 #define _GNU_SOURCE
 #include "osdd.h"

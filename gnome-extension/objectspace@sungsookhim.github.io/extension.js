@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Sungsoo Khim
 // The Objectspace desktop in a GNOME session (gui-design.md: Coexisting with
 // GNOME, stage 1).
 //

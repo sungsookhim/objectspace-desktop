@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The clipboard between Objectspace's text fields and other programs (wl-copy and
 # wl-paste, from wl-clipboard), headless: text copied in a folder's search
 # field is pasted elsewhere; text copied elsewhere is pasted in the field.

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A drive's state, for OsdDrive's menu and notebook (v0.2-design 5): the
  * service fills it from udisks2 (service/udisks.c); NULL: no drives. */
 #ifndef OSD_DRIVE_HOOK_H

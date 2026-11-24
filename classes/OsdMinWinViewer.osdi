@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # OS/2's Minimized Window Viewer (v0.2-design 7): opening it shows the
 # minimized windows (the desktop's Window List, minimized ones only).
 class OsdMinWinViewer : OsdAbstract

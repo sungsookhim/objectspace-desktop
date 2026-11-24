@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # An Objectspace plug-in, built with the SDK (the objectspace-devel package): make, then
 # make install (your own plug-ins: ~/.config/objectspace/plugins), and log in again.
 # (osdctl plugin new NAME makes one like this; OSD_SDK and OSD_INC say

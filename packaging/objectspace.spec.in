@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Objectspace RPM (v0.2-design 11.3). Made into build/objectspace.spec by `make dist`
 # (@VERSION@ from VERSION, a "-" as "~"; @RELEASE@ 1 for a release, the
 # commit count for a development build).
@@ -5,7 +7,7 @@
 Name:           objectspace
 Version:        @VERSION@
 Release:        @RELEASE@%{?dist}
-Summary:        Desktop built on the object model of the OS/2 Objectspace
+Summary:        An object desktop inspired by OS/2's Workplace Shell
 License:        MIT
 URL:            https://github.com/sungsookhim/objectspace-desktop
 Source0:        %{name}-%{version}.tar.gz
@@ -61,7 +63,8 @@ Recommends:     %{name}-gnome-shell-extension = %{version}-%{release}
 %{?systemd_requires}
 
 %description
-A desktop for Linux built on the object model of the OS/2 Objectspace:
+A desktop for Linux inspired by the Workplace Shell of OS/2 (no
+affiliation with IBM, whose trademarks OS/2 and Workplace Shell are):
 every file, folder and abstract item is a persistent object of a class
 that can be extended, with shadows, templates and settings notebooks.
 
@@ -125,7 +128,7 @@ echo "enable osdd.service" > %{buildroot}%{_userpresetdir}/80-objectspace.preset
 %systemd_postun_with_restart osd-watchd.service
 
 %files
-%license LICENSE
+%license LICENSE NOTICE
 %doc README.md docs/roadmap.md
 %{_bindir}/osd
 %{_bindir}/objectspace

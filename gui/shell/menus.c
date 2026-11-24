@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: Menus: object and folder menus, their choices, Drives' actions, emptying the Trash Can. */
 #define _GNU_SOURCE
 #include "shell.h"

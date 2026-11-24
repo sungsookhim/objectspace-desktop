@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Class and type settings: the chain's levels between an object and its
  * declared default (object-properties-design.md 2.2; defaults.c). Scopes
  * are "class:NAME" and "type:MIME" ("type:image/\*" for a whole kind).

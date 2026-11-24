@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osdd: properties Linux keeps (object-properties-design.md 2.6). A
  * property declared with `backing` is read from and written to its place,
  * not the object's state - so Objectspace and every other program see the same:

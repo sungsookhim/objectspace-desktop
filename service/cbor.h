@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * A small CBOR (RFC 8949) encoder and decoder for the service protocol.
  * Supports what the protocol uses: integers, floats, text, byte strings,

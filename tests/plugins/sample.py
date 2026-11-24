@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """The SDK's sample plug-in (sdk/sample/OsdImageFile) in a private osdd (run
 by tests/plugins/run.sh): a class for a file type, its declared property,
 its own menu item handled in its host."""

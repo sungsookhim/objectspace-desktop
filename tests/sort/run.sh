@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # A folder's sort order in osdd's listing (v0.3-plan step 4), played by
 # tests/sort/scenario.py on a private osdd.
 cd "$(dirname "$0")/../.."

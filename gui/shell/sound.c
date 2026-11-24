@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Sounds for action events (sound.h). */
 #define _GNU_SOURCE
 #include "sound.h"

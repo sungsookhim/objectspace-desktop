@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Drives against a fake udisks2 on a private bus (v0.2-plan step 4):
 #   tests/drives/run.sh [SCENARIO.py]   (default: tests/drives/scenario.py)
 # Runs a private dbus-daemon, tests/fake_udisks.py on it, and osdd with

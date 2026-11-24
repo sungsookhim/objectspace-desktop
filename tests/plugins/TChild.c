@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Plug-in: a subclass of TBase, compiled against an older or newer TBase. */
 #include "TChild.h"
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Sungsoo Khim
 // Test probe for tests/gnome/run.sh (never installed for real use).
 //
 // PROBE_MODE unset: after 14 s, log what GNOME sees (Alt+Tab list,

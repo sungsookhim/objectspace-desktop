@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The screen reader test (G4): in a headless GNOME session, the AT-SPI bus
 # and registry (started by hand: the private session cannot activate
 # them), tests/gui/a11y.py listening, and the shell's a11y self-test.

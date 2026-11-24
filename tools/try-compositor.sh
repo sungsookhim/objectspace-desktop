@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Try osd-compositor (G5) without logging out: it runs in a window of your
 # session, with Objectspace's desktop inside on FOLDER (default: a scratch folder
 # with a few files), a private osdd and private Objectspace state. Start programs

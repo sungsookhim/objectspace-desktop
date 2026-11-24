@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Tooltips (v0.3-design 11): a line of text in a small box beside what
  * the pointer rests on, after a moment (0.6 s), gone when it moves off,

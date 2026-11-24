@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 #define _GNU_SOURCE
 #ifndef OSD_PLUGINDIR
 #define OSD_PLUGINDIR "/usr/lib/objectspace/plugins"

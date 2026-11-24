@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Damage planning: a simulated surface must always match the truth. */
 #include <stdint.h>
 #include <stdlib.h>

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Objectspace desktop inside a private, headless GNOME Shell (its own D-Bus,
 # dconf, runtime folder and Wayland socket; the user's session is not
 # touched). The extension starts the desktop; a probe extension logs what

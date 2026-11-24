@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The Launcher's Close (its bar's right-click menu), headless: the
 # Launcher (above TheBar: 520..870 x 695..768) gone after it.
 cd "$(dirname "$0")/../.."

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Open windows restored at login (v0.2-plan step 7), headless: a first
 # login opens Projects and drags it; the desktop records it. Then the list
 # gets a details view of a given size, a Find window and a notebook, and a

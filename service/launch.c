@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Programs and files Objectspace starts, tracked while they run (see launch.h). */
 #define _GNU_SOURCE
 #include "launch.h"

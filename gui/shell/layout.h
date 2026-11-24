@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Icon view layout with icons placed anywhere (layout.c). */
 #ifndef OSD_SHELL_LAYOUT_H
 #define OSD_SHELL_LAYOUT_H

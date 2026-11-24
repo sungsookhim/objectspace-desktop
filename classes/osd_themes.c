@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Icon themes (osd_themes.h): folders of .osdicon packages with a
  * theme.ini (Name=), in the user's $XDG_DATA_HOME/objectspace/icon-themes, the
  * system's (beside OSD_ICONDIR: /usr/share/objectspace/icon-themes), and a build

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Messages (v0.2-design 9): the list window of the OsdMessages object and
  * of TheBar's envelope. osdd keeps the messages (every GUI sees

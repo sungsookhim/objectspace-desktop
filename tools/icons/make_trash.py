@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """Draws the Trash Can's two default icons (data/icons/trash-empty.png,
 trash-full.png), 128 pixels, in the flat, outlined style of Objectspace's folders.
 Run from the tree's top: python3 tools/icons/make_trash.py (needs Pillow)."""

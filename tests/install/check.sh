@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # make install into a scratch root: the files expected, then a headless
 # session from the installed programs (the desktop up, its windows listed).
 #   tests/install/check.sh

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* TheBar's tray: a StatusNotifierWatcher and host (tray.h). */
 #define _GNU_SOURCE
 #include "tray.h"

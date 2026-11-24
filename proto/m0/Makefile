@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 BUILD := ../../build/m0
 CFLAGS := -O2 -Wall -Wextra -std=gnu11
 

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Icon layout: spots kept by name, placed icons, area queries. */
 #include <stdio.h>
 #include <stdlib.h>

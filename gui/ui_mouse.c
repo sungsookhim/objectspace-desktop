@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Mouse mappings, as on OS/2's Mouse object (Mappings and Setup pages):
  * what each action is bound to, handedness, double-click time and wheel

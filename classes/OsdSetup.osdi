@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Settings objects (gui-design.md: these settings are objects themselves,
 # like OS/2's System, Sound and Mouse objects and the Scheme Palette): one
 # of each per user, kept centrally in the System Setup folder. Each

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Schemes as objects (docs/object-properties-design.md 2.3), headless: the
 # Classic scheme object's desktop colour changed while the desktop runs; a
 # scheme of the user's made in the Schemes folder and chosen in the Scheme

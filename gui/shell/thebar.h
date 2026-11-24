@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * TheBar (v0.2-design 8; OS/2 Warp 4's bar): an Objectspace window
  * (io.github.sungsookhim.Objectspace.TheBar) of the desktop process, in the Objectspace session only.

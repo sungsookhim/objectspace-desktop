@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The search field's place (0.4 step 5), headless: a folder's View page
 # Search field at the bottom (a row over the status line), then floating
 # (a box over the list's lower right, changed while shown), which stays

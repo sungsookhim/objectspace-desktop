@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """M3 scenarios: change tracking (design: Change tracking, Edge cases,
 Detecting saves), run twice: once with inotify only, once with osd-watchd.
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Objects that are not ordinary files or folders.
 class OsdAbstract : OsdObject
 version 1.0

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Mounted volumes: identity (filesystem UUID), mount point, and whether the
  * volume is portable, i.e. carries per-user state with it (design: State

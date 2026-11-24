@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* A one-line text entry: a plain object that draws into a rectangle and
  * handles keys and pointer events, so it works on a notebook page or
  * inside a container row (in-place rename). */

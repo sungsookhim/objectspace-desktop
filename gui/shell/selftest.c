@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* osd-shell: The self-tests (OSD_SHELL_SELFTEST=MODE): scenarios run in the window's frame callback. */
 #define _GNU_SOURCE
 #include "shell.h"

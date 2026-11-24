@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Class and type settings (object-properties-design.md 2.2): the levels of
  * the chain between an object and its class's declared default - "all
  * folders" (class:OsdFolder), "all PNG files" (type:image/png), "all images"

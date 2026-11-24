@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Settings shared with GNOME (gui-design.md: Settings shared with GNOME).
  * Where Objectspace and GNOME's Settings overlap, a change in either shows in both:

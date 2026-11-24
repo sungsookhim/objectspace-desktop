@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /*
  * Objectspace Terminal's core (docs/cli-design.md 1): libvterm's screen with a
  * scrollback, keys turned into the bytes a program reads, cells' colours,

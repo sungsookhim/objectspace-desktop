@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # Try the Objectspace desktop without logging out: a nested GNOME Shell in a window
 # of your session, with the objectspace@sungsookhim.github.io extension, a private osdd, and
 # private settings (your own GNOME settings, extensions and Objectspace state are

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* Schemes, text (HarfBuzz + FreeType + fontconfig) and drawing helpers. */
 #define _GNU_SOURCE
 #include <cairo-ft.h>

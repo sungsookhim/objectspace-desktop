@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 """M4 scenarios: shadows, trash, abstract objects as files, scale, jobs.
 
 usage: tests/m4/m4.py [--mode inotify|watchd] [scenario ...]

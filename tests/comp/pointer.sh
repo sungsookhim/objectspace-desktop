@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
 # The pointer's implicit grab, headless: a rubber band started in a folder
 # window and let go outside it ends (the window still gets the release),
 # instead of following the pointer afterwards.

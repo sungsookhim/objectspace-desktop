@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Sungsoo Khim */
 /* The Wayland side: connection, surfaces, buffers, damage-based drawing,
  * input. */
 #define _GNU_SOURCE
