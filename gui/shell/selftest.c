@@ -2,6 +2,9 @@
 #define _GNU_SOURCE
 #include "shell.h"
 
+#include <spawn.h>
+#include <sys/wait.h>
+
 static void selftest_record(const wps_event *e, void *ctx)
 {
     char *seen = ctx;
@@ -2324,6 +2327,65 @@ void win_frame(ui_surface *s, double now)
             step++;
         }
         #undef ROWS
+        return;
+    }
+    if (st && !strcmp(st, "group")) {
+        /* A work area's group inside GNOME (0.4 step 10): the extension's
+         * group command finds a program's window by its process - here a
+         * shell that started the test client, so by its parent - and
+         * minimizes, restores and closes it. */
+        static double t0;
+        static int step;
+        static pid_t pid;
+        static char ids[32];
+        if (!f->desktop) return;
+        if (!t0) { t0 = now; return; }
+        double t = now - t0;
+        bool mn = false, mx = false;
+        char line[96];
+        if (step == 0 && t > 1500) {
+            char exe[PATH_MAX], client[PATH_MAX + 32];
+            ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+            exe[n > 0 ? n : 0] = 0;
+            char *sl = strrchr(exe, '/');
+            if (sl) *sl = 0;
+            snprintf(client, sizeof client, "%s/tests/ssd-client Grouped 3060a0; true", exe);   /* (a child of the shell, not it) */
+            const char *disp = getenv("WPS_SELFTEST_DISPLAY");
+            char env_disp[128];
+            snprintf(env_disp, sizeof env_disp, "WAYLAND_DISPLAY=%s", disp && *disp ? disp : "wps-hl");
+            char *argv[] = { "env", env_disp, "sh", "-c", client, NULL };
+            extern char **environ;
+            if (posix_spawnp(&pid, "env", NULL, NULL, argv, environ) != 0) pid = 0;
+            snprintf(ids, sizeof ids, "%d", (int)pid);
+            fprintf(stderr, "selftest: group: a program started %d\n", pid > 0);
+            step++;
+            t0 = now;
+        } else if (step == 1 && t > 3000) {
+            fprintf(stderr, "selftest: group: its window %s\n", winlist_state("Grouped", &mn, &mx) ? "shown" : "missing");
+            snprintf(line, sizeof line, "minimize\t%s\t", ids);
+            winlist_ext("group", line);
+            step++;
+            t0 = now;
+        } else if (step == 2 && t > 1500) {
+            winlist_state("Grouped", &mn, &mx);
+            fprintf(stderr, "selftest: group: minimized with it %d\n", mn);
+            snprintf(line, sizeof line, "restore\t%s\t", ids);
+            winlist_ext("group", line);
+            step++;
+            t0 = now;
+        } else if (step == 3 && t > 1500) {
+            winlist_state("Grouped", &mn, &mx);
+            fprintf(stderr, "selftest: group: restored with it %d\n", !mn);
+            snprintf(line, sizeof line, "close\t%s\t", ids);
+            winlist_ext("group", line);
+            step++;
+            t0 = now;
+        } else if (step == 4 && t > 2000) {
+            fprintf(stderr, "selftest: group: closed with it %d\n", !winlist_state("Grouped", &mn, &mx));
+            if (pid > 0) waitpid(pid, NULL, WNOHANG);
+            ui_app_quit(app);
+            step++;
+        }
         return;
     }
     if (st && !strcmp(st, "live")) { selftest_live(f, now); return; }

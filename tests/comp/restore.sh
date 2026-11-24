@@ -19,7 +19,7 @@ SECS=12 tests/comp/run.sh "$S/one" "sleep 1" > "$S/out1" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out1")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
-check "the moved folder window is recorded, with its place" "grep -q \"^F	$T/desk/Projects	0	640	480	120	206	0\$\" '$T/state/open-windows'"
+check "the moved folder window is recorded, with its place" "grep -q \"^F	$T/desk/Projects	0	640	480	120	206	0	0	\$\" '$T/state/open-windows'"
 cp "$T/state/open-windows" "$S/recorded"
 {
     printf 'F\t%s\t1\t500\t300\t40\t60\t0\n' "$T/desk"

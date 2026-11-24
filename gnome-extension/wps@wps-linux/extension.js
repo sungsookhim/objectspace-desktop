@@ -30,6 +30,9 @@
 //     activate TAB <id>   minimize TAB <id>   maximize TAB <id>
 //     lock   find   shutdown TAB poweroff|reboot|logout
 //     restore TAB <id>    close TAB <id>      terminate TAB <id>
+//     group TAB minimize|restore|close TAB <pid>,... TAB <scope>,...
+//         a work area's programs' windows (v0.4 step 10): those of these
+//         processes, of processes they started, or in these systemd scopes
 // (only this process can: the pipes are the ones the extension made).
 
 import Gio from 'gi://Gio';
@@ -292,6 +295,7 @@ export default class WpsExtension extends Extension {
             // The LaunchPad's own buttons (no window): Lockup, Find, Shut down.
             if (cmd === 'lock') { Main.screenShield?.lock(true); next(); return; }
             if (cmd === 'find') { Main.overview.show(); next(); return; }
+            if (cmd === 'group') { this._group(line.split('\t')); next(); return; }
             if (cmd === 'shutdown') {
                 // The desktop has asked already (its Shut Down dialog):
                 // power off, restart or log out without GNOME asking again
@@ -334,6 +338,44 @@ export default class WpsExtension extends Extension {
             next();
         });
         next();
+    }
+
+    // A work area's group (v0.4 step 10): its programs' windows, found by
+    // their process (Mutter knows each window's), its parents', or its
+    // systemd scope (the cgroup's last part); never WPS's own windows.
+    _group([, act, pidList, scopeList]) {
+        const pids = new Set((pidList ?? '').split(',').filter(x => x).map(Number));
+        const scopes = new Set((scopeList ?? '').split(',').filter(x => x));
+        const read = path => {
+            try {
+                const [ok, bytes] = GLib.file_get_contents(path);
+                return ok ? new TextDecoder().decode(bytes) : '';
+            } catch (e) {
+                return '';
+            }
+        };
+        const inGroup = pid => {
+            for (let p = pid, depth = 0; p > 1 && depth < 32; depth++) {
+                if (pids.has(p)) return true;
+                const stat = read(`/proc/${p}/stat`);
+                const after = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                p = Number(after[1] ?? 0);
+            }
+            if (!scopes.size) return false;
+            return read(`/proc/${pid}/cgroup`).split('\n').some(l => scopes.has(l.slice(l.lastIndexOf('/') + 1)));
+        };
+        const now = global.display.get_current_time_roundtrip();
+        const all = global.display.list_all_windows();
+        // (WPS's own: the desktop process's windows)
+        const own = new Set(all.filter(w => w.get_wm_class() === DESKTOP_APP_ID).map(w => w.get_pid()));
+        const hits = all.filter(w => w.get_window_type() === Meta.WindowType.NORMAL && w.get_pid() > 0 &&
+            !own.has(w.get_pid()) && inGroup(w.get_pid()));
+        if (GLib.getenv('WPS_DEBUG_COMMANDS')) console.log(`wps: command group ${act}: ${JSON.stringify(hits.map(w => w.get_title()))}`);
+        for (const w of hits) {
+            if (act === 'minimize') w.minimize();
+            else if (act === 'restore' && w.minimized) w.unminimize();
+            else if (act === 'close') w.delete(now);   // asked: one that refuses keeps its window
+        }
     }
 
     // Writes one at a time (a stream takes one outstanding write), never

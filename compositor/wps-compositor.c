@@ -2321,6 +2321,7 @@ static struct wl_event_source *script_timer;
 static void log_windows(void)
 {
     struct toplevel *t;
+    fprintf(stderr, "wps-compositor: windows now:\n");   /* (each answer apart, for the tests) */
     wl_list_for_each(t, &server.toplevels, link) {
         struct wlr_box b = window_box(t);
         fprintf(stderr, "wps-compositor: window '%s' app %s %dx%d+%d+%d%s%s%s%s%s\n", view_title(t) ? view_title(t) : "",

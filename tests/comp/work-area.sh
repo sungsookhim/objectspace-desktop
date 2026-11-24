@@ -1,9 +1,10 @@
 #!/bin/sh
-# Work Area folders, part 1 (0.4 step 9), headless (WPS session): Projects
+# Work Area folders (0.4 steps 9 and 10), headless (WPS session): Projects
 # is a work area; two test programs, a link to a folder and a shadow of a
 # folder opened from it are minimized and restored with its window, closed
 # with it, and opened again when it opens again; what was open at the end
-# (logout) is kept on the folder.
+# (logout) is kept on the folder, and at the next login it opens again with
+# them, its folders still its group's.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/wps-workarea-XXXX")
 W="$PWD/build/wpsctl"
@@ -47,19 +48,34 @@ cp "$T/wpsd.log" "$S/wpsd1.log"   # (the second run writes its own)
 # what the folder kept when wpsd stopped (as at logout)
 KEEP_T=$T NODESK=1 PRE="'$W' get \"\$T/desk/Projects\" work_area_open > \"\$T/kept.txt\" 2>&1" SECS=4 \
     tests/comp/run.sh "$S/one" true > "$S/two.txt" 2>&1
-# Each "windows" answer: its lines up to the desktop's.
-python3 - "$S/one.txt" > "$S/blocks.txt" <<'EOP'
+# The next login, with the System's Restore open windows at login off (a
+# work area opens again all the same): Projects and its folders open again
+# (the open windows' list), its programs with it (what it kept);
+# minimized, they all go.
+cat > "$S/three" <<EOS
+7 windows
+7.3 click 700 118
+7.6 click 903 118
+8.6 windows
+9 quit
+EOS
+KEEP_T=$T PRE="a=\$('$W' setup | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"objects\"][\"WPSystem\"][\"address\"])')
+     '$W' settings_set \"\$a\" 'restore_windows=0' > /dev/null" \
+    env -u WPS_SESSION DESKENV="WPS_NO_GSETTINGS=1 WPS_NO_LAUNCHPAD=1" SECS=12 tests/comp/run.sh "$S/three" "sleep 60" > "$S/three.txt" 2>&1
+# Each "windows" answer: its lines after its "windows now:".
+cat > "$S/blocks.py" <<'EOP'
 import sys
-blocks, cur = [], []
+blocks = []
 for l in open(sys.argv[1]):
-    if l.startswith("wps-compositor: window '"):
-        cur.append(l.strip())
-        if "app org.wps.Desktop" in l: blocks.append(cur); cur = []
+    if l.startswith("wps-compositor: windows now:"): blocks.append([])
+    elif l.startswith("wps-compositor: window '") and blocks: blocks[-1].append(l.strip())
 for i, b in enumerate(blocks):
     for l in b:
         if "'One'" in l or "'Two'" in l or "'away - " in l or "'zfolder - " in l:
             print(i, l.split("'")[1], "minimized" if l.endswith("minimized") else "shown")
 EOP
+python3 "$S/blocks.py" "$S/one.txt" > "$S/blocks.txt"
+python3 "$S/blocks.py" "$S/three.txt" > "$S/login.txt"
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 check "two programs, a linked folder and a shadow of a folder opened from it" "[ \$(grep -c '^0 ' '$S/blocks.txt') = 4 ]"
@@ -68,6 +84,8 @@ check "restored with it" "[ \$(grep -c '^2 .* shown' '$S/blocks.txt') = 4 ]"
 check "closed with it" "! grep -q '^3 ' '$S/blocks.txt'"
 check "opened again when it opens again (the folders too)" "[ \$(grep -c '^4 .* shown' '$S/blocks.txt') = 4 ]"
 check "what was open at the end is kept on the folder" "grep -q one.desktop '$T/kept.txt' && grep -q two.desktop '$T/kept.txt'"
+check "at the next login: open again with its programs and folders" "[ \$(grep -c '^0 .* shown' '$S/login.txt') = 4 ]"
+check "... and they are still its group" "[ \$(grep -c '^1 .* minimized' '$S/login.txt') = 4 ]"
 check "no sanitizer reports" "! grep -q 'Sanitizer' '$S/wpsd1.log' '$T/shell.log'"
 [ $fails = 0 ] && rm -rf "$S" "$T" || echo "logs: $S $T"
 exit $fails

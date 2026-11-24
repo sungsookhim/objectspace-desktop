@@ -169,8 +169,9 @@ static char *describe_windows(void)
         int x, y;
         bool mx;
         where_is(f->win, "org.wps.shell", &x, &y, &mx);
-        rec_add(&r, "F\t%s\t%d\t%d\t%d\t%d\t%d\t%d\n", f->path, (int)ui_container_view(f->cont), (int)ui_surface_width(f->win),
-                (int)ui_surface_height(f->win), x, y, mx || ui_window_maximized(f->win));
+        /* (then whether it is a work area, and the one it was opened from: 0.4 step 10) */
+        rec_add(&r, "F\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", f->path, (int)ui_container_view(f->cont), (int)ui_surface_width(f->win),
+                (int)ui_surface_height(f->win), x, y, mx || ui_window_maximized(f->win), f->work_area, f->wa_group);
     }
     free(all);
     findwin_each(rec_find, &r);
@@ -234,19 +235,25 @@ void windows_at_login(void)
     if ((m = fopen(marker, "w"))) { fprintf(m, "%s\n", sid ? sid : ""); fclose(m); }
     char path[PATH_MAX];
     open_windows_file(path, sizeof path);
-    FILE *f = again || !restore_windows || getenv("WPS_NO_RESTORE") ? NULL : fopen(path, "r");
-    char line[PATH_MAX * 2 + 128];
+    /* (work areas, and the folders opened from them, open again even with
+     * restoring off: v0.4-design 11) */
+    bool all = restore_windows && !getenv("WPS_NO_RESTORE");
+    FILE *f = again || getenv("WPS_NO_RESTORE") ? NULL : fopen(path, "r");
+    char line[PATH_MAX * 3 + 128];
     while (f && fgets(line, sizeof line, f)) {
         line[strcspn(line, "\n")] = 0;
-        char *fl[9] = { 0 };
+        char *fl[11] = { 0 };
         int k = 0;
-        for (char *p = line, *t; k < 9 && (t = strsep(&p, "\t"));) fl[k++] = t;
+        for (char *p = line, *t; k < 11 && (t = strsep(&p, "\t"));) fl[k++] = t;
         struct stat st;
+        bool wa = k >= 10 && (!strcmp(fl[8], "1") || fl[9][0]);
+        if (!all && !wa) continue;
         if (k >= 8 && !strcmp(fl[0], "F") && stat(fl[1], &st) == 0 && S_ISDIR(st.st_mode)) {
             int v = atoi(fl[2]);
             next_w = atof(fl[3]);
             next_h = atof(fl[4]);
             struct folder *nf = open_window(fl[1], v == 1 ? UI_VIEW_DETAILS : v == 2 ? UI_VIEW_TREE : UI_VIEW_ICON, false);
+            if (nf && k >= 10) workarea_join(nf, fl[9]);   /* (its work area's group again) */
             /* (asked once it has its title; it shows only after a round trip) */
             if (nf) place_next("org.wps.shell", ui_window_title(nf->win), atoi(fl[5]), atoi(fl[6]));
             if (nf && atoi(fl[7])) ui_window_set_maximized(nf->win);
