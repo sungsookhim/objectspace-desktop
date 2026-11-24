@@ -286,6 +286,19 @@ $(B)/wps-shell: $(UIDEPS)
 $(B)/wps-shell-asan: $(UIDEPS)
 	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) $(SHFLAGS) -o $@ $(UISRC) $(SHELLSRC) $(UILIBS) $(SHLIBS)
 
+# WPS Terminal (docs/cli-design.md): the toolkit and libvterm.
+TERMSRC := gui/terminal/wps-terminal.c gui/terminal/term_core.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
+TERMLIBS = $(shell pkg-config --libs vterm) -lutil
+$(B)/wps-terminal: $(UIDEPS) $(TERMSRC) gui/terminal/term_core.h
+	$(CC) $(G0FLAGS) $(UIFLAGS) -Igui/terminal -o $@ $(UISRC) $(TERMSRC) $(LDFLAGS) $(UILIBS) $(TERMLIBS)
+
+$(B)/wps-terminal-asan: $(UIDEPS) $(TERMSRC) gui/terminal/term_core.h
+	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) -Igui/terminal -o $@ $(UISRC) $(TERMSRC) $(UILIBS) $(TERMLIBS)
+
+$(TV)/test_term: tests/test_term.c gui/terminal/term_core.c gui/terminal/term_core.h
+	@mkdir -p $(TV)
+	$(CC) $(G0FLAGS) $(SAN) $(UIFLAGS) -Igui/terminal -Itests -o $@ tests/test_term.c gui/terminal/term_core.c $(UILIBS) $(TERMLIBS)
+
 # G5: the compositor (wlroots 0.20). It draws frames with the toolkit's
 # frame code (gui/ui_framepaint.c), so it links the drawing part of it.
 COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig xcb libsystemd
@@ -301,7 +314,7 @@ $(G0)/xdg-decoration-unstable-v1-protocol.c: $(DECOXML)
 	wayland-scanner private-code $< $@
 
 # Everything the WPS session runs (tools/wps-session): after a pull, make session.
-session: all $(B)/wps-shell $(B)/wps-compositor icons
+session: all $(B)/wps-shell $(B)/wps-terminal $(B)/wps-compositor icons
 .PHONY: session
 
 compositor: $(B)/wps-compositor $(TV)/ssd-client $(TV)/x11-client
@@ -351,19 +364,20 @@ $(ICONTHEMES)/.stamp: tools/icons/make_iso.py tools/icons/make_theme.py $(wildca
 	@touch $@
 .PHONY: icons
 
-gui: $(B)/wps-shell $(B)/wps-shell-asan $(TV)/test_ui_entry $(TV)/test_ui_font $(TV)/test_ui_mouse $(TV)/test_layout $(TV)/test_wpsicon
+gui: $(B)/wps-shell $(B)/wps-shell-asan $(B)/wps-terminal $(B)/wps-terminal-asan $(TV)/test_term $(TV)/test_ui_entry $(TV)/test_ui_font $(TV)/test_ui_mouse $(TV)/test_layout $(TV)/test_wpsicon
 
 # GUI unit tests (need the GUI's -devel packages, unlike make test)
 gui-test: gui
 	$(TV)/test_ui_damage
 	$(TV)/test_ui_entry
 	$(TV)/test_ui_font
+	$(TV)/test_term
 	$(TV)/test_ui_mouse
 	$(TV)/test_layout
 	$(TV)/test_wpsicon
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes tray work-area
+COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launchpad launchpad-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal tray work-area
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \
@@ -382,13 +396,13 @@ visual-check: session gui compositor
 # make install DESTDIR=... PREFIX=/usr: the programs, the user service,
 # the session on the login screen, the lock screen's PAM file and the
 # GNOME Shell extension (which then starts wps-shell from the PATH).
-INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-shell $(B)/wps-compositor
+INSTALLED := $(B)/wpsd $(B)/wpsctl $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-shell $(B)/wps-terminal $(B)/wps-compositor
 EXT := gnome-extension/wps@wps-linux
 EXTDIR = $(DATADIR)/gnome-shell/extensions/wps@wps-linux
 subst = sed -e 's|@BINDIR@|$(BINDIR)|g' -e 's|@LIBEXECDIR@|$(LIBEXECDIR)|g'
 install: $(INSTALLED) icons install-sdk
 	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins
-	install -m 755 $(B)/wpsctl $(B)/wps-shell $(DESTDIR)$(BINDIR)/
+	install -m 755 $(B)/wpsctl $(B)/wps-shell $(B)/wps-terminal $(DESTDIR)$(BINDIR)/
 	install -m 755 $(B)/wpsd $(B)/wps-watchd $(B)/wps-plughost $(B)/wps-compositor $(DESTDIR)$(LIBEXECDIR)/
 	$(subst) tools/wps-session > $(DESTDIR)$(BINDIR)/wps-session && chmod 755 $(DESTDIR)$(BINDIR)/wps-session
 	install -d $(DESTDIR)$(USERUNITDIR) $(DESTDIR)$(SYSTEMUNITDIR) $(DESTDIR)$(DATADIR)/wayland-sessions $(DESTDIR)$(SYSCONFDIR)/pam.d
@@ -426,7 +440,7 @@ install-check: $(INSTALLED)
 	tests/install/check.sh
 
 uninstall:
-	rm -f $(addprefix $(DESTDIR)$(BINDIR)/,wpsctl wps-shell wps-session)
+	rm -f $(addprefix $(DESTDIR)$(BINDIR)/,wpsctl wps-shell wps-terminal wps-session)
 	rm -f $(addprefix $(DESTDIR)$(LIBEXECDIR)/,wpsd wps-watchd wps-plughost wps-compositor)
 	rm -f $(DESTDIR)$(USERUNITDIR)/wpsd.service $(DESTDIR)$(SYSTEMUNITDIR)/wps-watchd.service
 	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock

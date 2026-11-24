@@ -44,6 +44,8 @@ BuildRequires:  python3-pillow
 BuildRequires:  pkgconfig(zlib)
 # icon themes' SVGs (0.4 step 2)
 BuildRequires:  pkgconfig(librsvg-2.0)
+# WPS Terminal (0.4.1)
+BuildRequires:  pkgconfig(vterm)
 
 # The session: X11 programs, drives, settings shared with GNOME, icons
 # made from SVGs, file types and the icon theme; input methods when installed.
@@ -127,6 +129,7 @@ echo "enable wpsd.service" > %{buildroot}%{_userpresetdir}/80-wps.preset
 %doc README.md docs/roadmap.md
 %{_bindir}/wpsctl
 %{_bindir}/wps-shell
+%{_bindir}/wps-terminal
 %{_bindir}/wps-session
 %dir %{_libexecdir}/wps
 %{_libexecdir}/wps/wpsd
