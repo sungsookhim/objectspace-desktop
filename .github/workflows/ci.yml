@@ -32,7 +32,7 @@ jobs:
             'pkgconfig(wayland-scanner)' 'pkgconfig(xkbcommon)' 'pkgconfig(wlroots-0.20)' \
             'pkgconfig(pixman-1)' 'pkgconfig(libdrm)' 'pkgconfig(xcb)' 'pkgconfig(libpipewire-0.3)' \
             'pkgconfig(sndfile)' 'pkgconfig(zlib)' 'pkgconfig(librsvg-2.0)' 'pkgconfig(vterm)'
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Prepare
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -56,7 +56,7 @@ jobs:
         run: su tester -c "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR make comp-test"
       - name: Logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-logs
           path: |

@@ -172,5 +172,5 @@ echo "enable osdd.service" > %{buildroot}%{_userpresetdir}/80-objectspace.preset
 %{_datadir}/gnome-shell/extensions/objectspace@sungsookhim.github.io
 
 %changelog
-* @DATE@ Sungsoo Khim <calmssea@gmail.com> - @VERSION@-@RELEASE@
+* @DATE@ Sungsoo Khim <sungsookhim@gmail.com> - @VERSION@-@RELEASE@
 - Built from the repository (see the release notes on GitHub)

@@ -25,7 +25,7 @@ XML = ("<!-- ", " -->")
 BY_SUFFIX = {
     ".c": C_STYLE, ".h": C_STYLE, ".js": JS,
     ".sh": HASH, ".py": HASH, ".osdi": HASH, ".in": HASH, ".pam": HASH,
-    ".service": HASH, ".supp": HASH, ".1": ROFF, ".xml": XML,
+    ".service": HASH, ".supp": HASH, ".1": ROFF, ".xml": XML, ".yml": HASH,
 }
 BY_NAME = {"Makefile": HASH, "osd-session": HASH}
 KEEP_FIRST = ("#!", "#%PAM", "<?xml")

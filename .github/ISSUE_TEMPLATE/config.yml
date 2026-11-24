@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+blank_issues_enabled: true
+contact_links:
+  - name: A security problem
+    url: https://github.com/sungsookhim/objectspace-desktop/security/advisories/new
+    about: Please report security problems privately (see SECURITY.md).

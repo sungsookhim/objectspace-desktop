@@ -1,119 +1,116 @@
 # Objectspace
 
-> **A note on the history.** Up to 0.4.1 this project was private and named WPS (a Workplace Shell for Linux). 0.5, its first public version, took its own name, Objectspace, for that reason. The older documents in `docs/` say WPS and use the old names; they are kept as they were. See [docs/HISTORY.md](docs/HISTORY.md).
+**An object desktop for Linux, inspired by the Workplace Shell of OS/2.**
 
-A desktop for Linux inspired by the Workplace Shell of OS/2 (OS/2 and Workplace Shell are IBM's trademarks; Objectspace is not affiliated with IBM). Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
+Every file, folder and program on the desktop is an object: it has a class, settings that stay with it when it is moved or copied, and a properties notebook. Objects can have shadows (links that follow them), templates make new ones, and a setting can be made for one object, for a file type, or for a whole class. Objectspace draws its own desktop, folder windows, menus and notebooks, and runs as its own Wayland session or as the desktop inside GNOME.
 
-Status: **version 0.4.1** (2026-11-24): icons, folders and objects. Every setting is a property of an object, set for one object, a file type or a whole class (OS/2's Class... and Default), with actions on events and schemes as objects; icon themes and sizes with open icons; OS/2's free icon layout; folder windows that remember where they were; Prevent delete; OS/2's Colour Palette and fonts in every window; Work Area folders; Objectspace Terminal, Objectspace's own terminal for text-mode programs and the command line, and an `osd` command for scripts; a plug-in SDK (`objectspace-devel`). Built on 0.3 (daily use and OS/2 fidelity), 0.2 (the OS/2 desktop, installable as an RPM for Fedora 45) and 0.1's object core and GUI, inside GNOME or as its own session from the login screen (`osd-compositor` on wlroots). See the [release notes](docs/release-notes-0.4.1.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
+![The desktop: a folder window, TheBar at the bottom, the Trash Can in its corner](docs/screenshots/desktop.png)
+
+| An object's menu | Its properties notebook |
+|---|---|
+| ![An object's pop-up menu in a folder window](docs/screenshots/menu.png) | ![A folder's properties notebook, on its General page](docs/screenshots/notebook.png) |
+
+OS/2 and Workplace Shell are trademarks of IBM. Objectspace is not affiliated with or endorsed by IBM, and uses no OS/2 code, pictures or sounds: it is a new implementation of the ideas, for Linux.
+
+> **A note on the history.** Up to version 0.4.1 this project was private and named WPS (a Workplace Shell for Linux). 0.5, its first public version, took a name of its own for that reason. The older documents in `docs/` say WPS and use the old names; they are kept as they were written. See [docs/HISTORY.md](docs/HISTORY.md).
+
+## What it does
+
+- **Objects that last.** Titles, icons, positions and settings are kept with each file (in extended attributes) and in a per-user database, and follow it when it is moved, copied or renamed, by Objectspace or by any other program. Removable drives carry their objects' state with them.
+- **Folders as OS/2 had them.** Icon, tree and details views; icons placed anywhere (OS/2's free layout) or arranged; whole titles; open icons and hatching; folder windows that remember their size, place and view; Work Area folders, whose windows open, minimize and close together.
+- **Settings at every level.** Each setting is a property, looked up from the object, then its file type, its class and the classes above it, the scheme, and the default. **Class...** on any notebook opens the settings of all objects of that class.
+- **Actions on events.** What happens when an object is opened, made, put in the Trash Can or deleted: a sound, a command, a method or settings.
+- **The desktop's own objects.** My System (System Setup: schemes, fonts, sounds, the mouse, icon themes), the Trash Can, Drives, Programs (the installed programs), Startup, Templates, the Colour and Font Palettes, Messages, a Command Prompt.
+- **TheBar** at the screen's edge: the desktop's menu, the window list, programs, status icons, messages and the clock. A **Launcher** palette for favourite objects.
+- **Its own session.** `osd-compositor` (on wlroots) runs the desktop with OS/2-style window frames for every program, a lock screen and idle handling; or the GNOME Shell extension puts the desktop inside GNOME.
+- **Objectspace Terminal and the `osd` command**, for text-mode programs and for scripts that work with objects (as REXX did on OS/2).
+- **A plug-in SDK** (`objectspace-devel`): new classes of objects, in C, run in a sandboxed host.
+
+## Status
+
+Version **0.5** is the first public version. It runs on **Fedora 45 (x86_64)**, which is where it is built and tested; other distributions with wlroots 0.20 may work but are not tried. It is young software, used daily by its author, with known gaps listed in [docs/open-issues.md](docs/open-issues.md) and plans in [docs/roadmap.md](docs/roadmap.md).
 
 ## Installing
 
-On Fedora 45, download the two RPMs from the [latest release](https://github.com/sungsookhim/objectspace-desktop/releases/latest) and run `sudo dnf install ./objectspace-*.rpm`. Reboot, then choose **Objectspace** on the login screen, or in GNOME run `gnome-extensions enable objectspace@sungsookhim.github.io` and log in again. `make rpm` builds the RPMs from a checkout (needs `rpm-build` and the build dependencies below).
+On Fedora 45, download the RPMs from the [latest release](https://github.com/sungsookhim/objectspace-desktop/releases/latest), then:
+
+```
+sudo dnf install ./objectspace-*.rpm
+```
+
+Reboot (the login screen reads its list of sessions at start), then choose **Objectspace** on the login screen. Or, to have the desktop inside GNOME, log in to GNOME and run `gnome-extensions enable objectspace@sungsookhim.github.io`, then log out and in.
+
+To remove it: `sudo dnf remove objectspace objectspace-gnome-shell-extension objectspace-devel`. Your objects' state in `~/.local/share/objectspace` and `~/.config/objectspace` is kept.
+
+## Building from source
+
+The packages, on Fedora 45:
+
+```
+sudo dnf install gcc make git-core python3 python3-pillow sqlite-devel cairo-devel harfbuzz-devel \
+    freetype-devel fontconfig-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
+    pipewire-devel systemd-devel wlroots-devel pixman-devel libdrm-devel libxcb-devel \
+    libsndfile-devel librsvg2-devel libvterm-devel zlib-devel pam-devel \
+    xorg-x11-server-Xwayland glycin-thumbnailer xdg-user-dirs libasan libubsan
+```
+
+Then, in the checkout:
+
+```
+make && make gui && make session        # everything the session runs (after a pull, this again)
+sudo tools/install-session.sh           # "Objectspace" on the login screen; then reboot
+tools/install-extension.sh              # or: the desktop inside GNOME (and the osdd user service)
+```
+
+The session needs a real seat (a console, or a virtual machine's screen). To try it without logging out: `tools/try-compositor.sh` runs the compositor in a window of your session, and `tools/try-desktop.sh` a nested GNOME Shell with the extension (needs `mutter-devkit`).
+
+`make rpm` builds the RPMs from a checkout (needs `rpm-build`); `make install DESTDIR=... PREFIX=/usr` installs into a staging root.
+
+## Tests
+
+```
+make check          # unit tests, the service's scenarios, the strict C11 core check, the licence lines
+make gui-test       # the widget set's unit tests
+make comp-test      # the compositor and the desktop, headless, played by scripts
+make install-check  # an install into a scratch root, run headless
+make visual-baseline && make visual-check   # screenshots in each scheme, compared
+```
+
+`tests/gui/golden.sh OUT` runs every GUI self-test and `tests/gui/golden-compare.sh BASE OUT` compares two runs. The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed. Continuous integration runs the build and these tests on Fedora 45 for every push.
 
 ## Documents
 
 | Document | What it holds |
 |---|---|
-| [docs/HISTORY.md](docs/HISTORY.md) | The project's history and its old name, WPS; the old names and today's |
-| [docs/object-core-design.md](docs/object-core-design.md) | Object core design v0.17: principles, responsiveness, runtime, classes, identity, persistence, concurrency, multiple logged-in users, links, change tracking, scale, API, tests, milestones |
-| [docs/gui-design.md](docs/gui-design.md) | GUI design v0.6: OS/2 Warp 4–4.52 base, modern features, configurable appearance, action events; coexists with GNOME; own drawing; proposed architecture and milestones |
-| [docs/roadmap.md](docs/roadmap.md) | Version 0.1's baseline, every open and deferred item, and a proposed order for what follows |
-| [docs/v0.2-design.md](docs/v0.2-design.md) | Version 0.2's design: the default desktop, live folders, Trash Can, Computer and Drives, Programs, the System folder and Startup, TheBar, Messages, settings objects, installation and versions |
-| [docs/v0.2-plan.md](docs/v0.2-plan.md) | Version 0.2's implementation plan: nine steps, their checks, order and risks |
-| [docs/release-notes-0.2.md](docs/release-notes-0.2.md) | Version 0.2's release notes: installing, what is new, known issues |
-| [docs/v0.3-design.md](docs/v0.3-design.md) | Version 0.3's design: the desktop's menu, backgrounds, sorting and columns, search, icon layout and locks, Open With, program settings, templates, fonts and sounds, the Launcher (Work Area folders designed for 0.4) |
-| [docs/v0.3-plan.md](docs/v0.3-plan.md) | Version 0.3's implementation plan: eleven steps, their checks, order and risks |
-| [docs/release-notes-0.3.md](docs/release-notes-0.3.md) | Version 0.3's release notes: installing and upgrading, what is new, known issues |
-| [docs/v0.4-design.md](docs/v0.4-design.md) | Version 0.4's design: icon packages and themes, icon sizes and the open icon, OS/2's free layout, folder windows remembered, Prevent delete, the Colour Palette, fonts everywhere, Work Area folders |
-| [docs/cli-design.md](docs/cli-design.md) | The command line (0.4.1): Objectspace Terminal, Command prompt here, the `osd` command (`wps` there) |
-| [docs/v0.4-plan.md](docs/v0.4-plan.md) | Version 0.4's implementation plan: eleven steps, their checks, order and risks |
-| [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md) | Version 0.4.1's release notes: installing and upgrading, what is new, known issues |
-| [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
-| [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
-| [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
-
-The repository copy is the source of truth. The Claude doc at https://claude.ai/artifact/1ucowX5KxZNaXLJaHGXZr4 holds v0.1 with a drawn architecture diagram.
-
-## Plan
-
-1. M0: kernel-behaviour and per-user filtering prototypes. Done; findings folded into design v0.4.
-2. M1: object runtime, main loop, class generator, core classes. Done.
-3. M2: persistence, identity, concurrency, `osdd` and `osdctl`, state that travels with removable volumes. Done.
-4. M3: change tracking with `osd-watchd` or inotify; saves, moves, copies, hard links; catch-up scan. Done.
-5. M4: shadows (managed symlinks), trash, programs and objects as files, streaming listings, selections and jobs. Done.
-6. M5: subscriptions and events, menus and settings as data, programs, templates, file types, root sessions, sandboxed plug-in hosts. Done.
-7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, Launcher, Find, accessibility, input methods; G5 `osd-compositor` and the Objectspace session. Done: version 0.1.
-8. Version 0.2 ([design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md), [release notes](docs/release-notes-0.2.md)): the OS/2 desktop, installable. Done.
-9. Version 0.3 ([design](docs/v0.3-design.md), [plan](docs/v0.3-plan.md), [release notes](docs/release-notes-0.3.md)): daily use and OS/2 fidelity. Done.
-10. Version 0.4.1 ([design](docs/v0.4-design.md), [the command line](docs/cli-design.md), [plan](docs/v0.4-plan.md), [release notes](docs/release-notes-0.4.1.md)): icons, folders and objects, on the object-property base; Objectspace Terminal and the `osd` command. Done.
-11. Next: 0.5, ready to be public: a name of its own, the repository's licenses and documents, a welcome for contributors (see the [roadmap](docs/roadmap.md)).
-
-Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
+| [docs/object-core-design.md](docs/object-core-design.md) | The object core: runtime, classes, identity, persistence, concurrency, change tracking, links, the service and its protocol |
+| [docs/gui-design.md](docs/gui-design.md) | The GUI: OS/2 Warp 4 as the base, the widget set, coexisting with GNOME, the compositor |
+| [docs/object-properties-design.md](docs/object-properties-design.md) | Settings as properties of objects, events and actions, plug-ins |
+| [docs/cli-design.md](docs/cli-design.md) | Objectspace Terminal and the `osd` command |
+| [docs/roadmap.md](docs/roadmap.md) | What is open, deferred or not yet designed, and the order proposed for it |
+| [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps |
+| [docs/HISTORY.md](docs/HISTORY.md) | The project's history, its old name, and the old names next to today's |
+| `docs/v0.*-design.md`, `docs/v0.*-plan.md`, `docs/release-notes-*.md` | Each version's design, plan and release notes |
+| [sdk/README.md](sdk/README.md) | Writing plug-ins |
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `runtime/` | `libwpo`: the object runtime (`osdo.h`, `osdo.c`: C11, C library only), the main loop (`osdo_loop.h`, POSIX implementation) and plug-in loading |
-| `tools/osdc.py` | Generates C headers and registration code from `.osdi` class files |
-| `service/` | `osdd` (the per-user object service), `osdctl` (its command-line client), `osd-watchd` (the optional root helper), `osd-plughost` (runs one plug-in package, sandboxed), change tracker, attribute store, database and volume sync, CBOR protocol |
-| `classes/` | The core classes: `OsdObject`, `OsdFileSystem`, `OsdDataFile`, `OsdFolder`, `OsdAbstract`, `OsdProgram`, `OsdShadow` |
-| `tests/` | Unit tests, test plug-ins, and one test class in four versions for compatibility checks |
-| `proto/m0/` | M0 kernel and filtering prototypes |
-| `gui/` | The widget set, `gui/ui_*.c` (windows, frames, containers, menus, scroll layers) and `gui/shell/osd-shell` |
-| `proto/g0/` | G0 GUI prototypes: a folder window drawn with Cairo and HarfBuzz on Wayland, sound latency through PipeWire |
+| `runtime/` | The object runtime (`osdo.h`, `osdo.c`: C11, the C library only), the main loop and plug-in loading |
+| `classes/` | The classes, each an `.osdi` interface file and its C |
+| `tools/osdc.py` | Generates C bindings from `.osdi` files |
+| `service/` | `osdd` (the per-user object service), `osdctl` and `osd` (its command-line clients), `osd-watchd` (an optional root helper for change tracking), `osd-plughost` (runs a plug-in, sandboxed) |
+| `gui/` | The widget set (`gui/ui_*.c`), the desktop and folder windows (`gui/shell/`, `osd-shell`), Objectspace Terminal (`gui/terminal/`) |
+| `compositor/` | `osd-compositor`, the session's Wayland compositor (wlroots) |
+| `gnome-extension/` | The GNOME Shell extension that runs the desktop inside GNOME |
+| `data/`, `packaging/` | Pictures, man pages, session and service files; the RPM spec |
+| `sdk/` | The plug-in SDK and a sample plug-in |
+| `tests/` | Unit tests, scenarios, headless compositor and GUI tests |
+| `proto/` | The first prototypes (kernel behaviour, a folder window, sound latency) and their findings |
 
-## Building
+## Contributing
 
-On a new Fedora machine (45; GNOME), the packages for everything here:
-
-```
-sudo dnf install gcc make python3 sqlite-devel cairo-devel harfbuzz-devel freetype-devel fontconfig-devel \
-    wayland-devel wayland-protocols-devel libxkbcommon-devel pipewire-devel systemd-devel \
-    wlroots-devel libinput-devel libseat-devel pixman-devel libdrm-devel libxcb-devel xorg-x11-server-Xwayland \
-    pam-devel glycin-thumbnailer xdg-user-dirs libasan libubsan gdb
-make && make gui && make compositor
-tools/install-extension.sh             # the desktop in GNOME (and the osdd user service)
-sudo tools/install-session.sh          # "Objectspace" on the login screen; then reboot (GDM reads its list at start)
-```
-
-The Objectspace session needs a real seat (a console, or a virtual machine's screen): over RDP, GDM starts sessions headless, which only GNOME's own compositor can serve (docs/open-issues.md).
-
-
-```
-make          # runtime, classes, service, plug-ins, tests (needs gcc, python3, sqlite-devel)
-make test     # unit tests
-make check    # unit tests + strict C11 core check + ThreadSanitizer run of the loop
-make m2       # M2 scenarios: real services on loopback ext4/btrfs/FAT, several users (uses sudo)
-make m3       # M3 change-tracking scenarios, with inotify and with osd-watchd (uses sudo)
-tests/m4/m4.py  # M4 scenarios (needs the test bed up; scale ones create a 6 GB sparse volume)
-tests/m5/m5.py  # M5 scenarios: events, menus, programs, templates, root, plug-in hosts
-make g0       # G0 GUI prototypes (needs cairo, harfbuzz, freetype, fontconfig, wayland, xkbcommon, pipewire -devel)
-make gui      # osd-shell (optimised) and osd-shell-asan
-make compositor     # osd-compositor (G5, wlroots) and its test clients
-make session        # everything the Objectspace session runs: after a pull, this
-make install DESTDIR=... PREFIX=/usr   # into /usr (or a staging root): programs, user service, session, PAM file, GNOME extension
-make install-check  # install into a scratch root and run a headless session from it
-tests/comp/run.sh SCRIPT  # the compositor headless, with Objectspace's desktop, played by a script
-tools/try-compositor.sh   # the compositor nested in a window of your session
-tests/gnome/run.sh  # the desktop and its GNOME Shell extension in a private headless GNOME Shell
-tests/gnome/with-gnome.sh -- tests/gui/selftest.sh MODE [SETUP]   # one GUI self-test, in a private headless GNOME
-```
-
-The Objectspace desktop in your GNOME session: `tools/install-extension.sh` installs the `objectspace@sungsookhim.github.io` GNOME Shell extension (which starts `osd-shell --desktop`) and a systemd user unit for `osdd`; then log out and back in. `tools/install-extension.sh --uninstall` removes both. To try it first without logging out: `tools/try-desktop.sh` runs a nested GNOME Shell in a window, with the extension and private settings (needs `mutter-devkit`). Without the extension, `osd-shell` with no folder shows the desktop as an ordinary full-screen window.
-
-The tests use AddressSanitizer and UBSan when `libasan` and `libubsan` are installed.
-
-Try the service by hand:
-
-```
-build/osdd &                                  # socket in $XDG_RUNTIME_DIR/objectspace.sock
-build/osdctl call ~/notes.txt osdSetTitle "My notes"
-build/osdctl resolve ~/notes.txt
-getfattr -d -m user.osd ~/notes.txt           # the title travels with the file
-build/osd-shell ~/Documents                   # a folder window (Ctrl+1 icons, Ctrl+2 tree, Ctrl+3 details)
-build/osdctl shutdown
-```
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for building, testing and the code's style. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Authorship and license
 
@@ -121,4 +118,4 @@ This project started from fond memories of using OS/2, from Warp 3.0 through WSe
 
 Objectspace is designed and built by Sungsoo Khim. Its code was written with the assistance of Claude (Anthropic's AI model) through Claude Code; the design, decisions and testing are the author's.
 
-Released under the MIT License: see [LICENSE](LICENSE).
+Released under the MIT License: see [LICENSE](LICENSE) and [NOTICE](NOTICE).
