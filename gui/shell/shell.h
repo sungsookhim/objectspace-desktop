@@ -461,6 +461,7 @@ void got_title(void *arg, const cv *reply);
 void lp_props(const char *addr);
 const char *setup_addr(const char *cls);
 void font_apply(const char *what, const char *spec);
+void font_dropped_dialogs(const char *spec, unsigned mods);
 void font_dropped_wc(const char *spec);
 /* The Colour Palette's (colorpal.h): its samples kept; a colour for the
  * scheme in use ("title_active", "bar": a title bar, the WarpCenter or

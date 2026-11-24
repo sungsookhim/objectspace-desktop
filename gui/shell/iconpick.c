@@ -19,9 +19,9 @@
 #include "icons.h"
 
 #define M 8
-#define ROW 24
-#define BTN_W 110
-#define STATUS_H 20
+#define ROW (24 + ui_dialog_grow())
+#define BTN_W (110 * ui_dialog_wider())
+#define STATUS_H (20 + ui_dialog_grow())
 #define PREVIEW 64
 #define MAX_LOADING 4        /* previews being made at once */
 
@@ -387,8 +387,8 @@ static void button(cairo_t *cr, ui_rect b, const char *t, bool down, bool on, bo
     ui_fill(cr, b, on ? k->selection : k->face);
     ui_bevel(cr, b, !(down || on));
     ui_set_color(cr, on ? k->selection_text : k->text);
-    double tw = ui_text_width(UI_FONT_REGULAR, t);
-    ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2, b.y + (b.h + ui_text_ascent()) / 2 - 1, t, b.w - 6);
+    double tw = ui_text_width(UI_FONT_DIALOG, t);
+    ui_text_draw(cr, UI_FONT_DIALOG, b.x + (b.w - tw) / 2, b.y + (b.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, t, b.w - 6);
     if (focused) focus_ring(cr, b);
 }
 
@@ -405,7 +405,7 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         button(cr, r.themes, "Icon themes", pk.pressed == F_THEMES, !pk.library, pk.focus == F_THEMES);
         button(cr, r.library, "Icon library", pk.pressed == F_LIBRARY, pk.library, pk.focus == F_LIBRARY);
         ui_set_color(cr, k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, r.find_l.x, r.find_l.y + (ROW + ui_text_ascent()) / 2 - 1, "Find:", 40);
+        ui_text_draw(cr, UI_FONT_DIALOG, r.find_l.x, r.find_l.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, "Find:", 40);
         ui_entry_draw(pk.find, cr, r.find, pk.focus == F_FIND);
         if (pk.library) button(cr, r.open, "Open library folder", pk.pressed == F_OPEN, false, pk.focus == F_OPEN);
     }
@@ -421,7 +421,7 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_save(cr);
     cairo_rectangle(cr, r.status.x + 2, r.status.y + 2, r.status.w - 4, r.status.h - 4);
     cairo_clip(cr);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.status.x + 6, r.status.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, r.status.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.status.x + 6, r.status.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, msg, r.status.w - 12);
     cairo_restore(cr);
 }
 
@@ -600,6 +600,7 @@ void iconpick_open(const char *for_title, iconpick_fn chosen, long owner, const 
     pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.IconPicker", 600, 460);
     ui_window_set_title(pk.s, pk.title);
     pk.cont = ui_container_new(pk.s, &pick_src, NULL, UI_VIEW_ICON);
+    ui_container_set_font(pk.cont, UI_FONT_DIALOG);   /* (a dialog's list) */
     ui_container_layout(pk.cont, rects().list);
     events_raise("window.open", "Choose an Icon", "window", (ui_rect){ 0, 0, 0, 0 });
     if (!pk.themes_ready && !pk.scanning) {

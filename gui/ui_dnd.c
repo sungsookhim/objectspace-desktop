@@ -481,3 +481,34 @@ void ui_dnd_init(ui_app *a)
 }
 
 void ui_dnd_renegotiate(ui_app *a) { negotiate(a, a->drag_serial); }
+
+/* ------------------------------------------------- fonts on dialog windows */
+
+static void (*font_drop_fn)(const char *spec, unsigned mods);
+void ui_set_font_drop(void (*fn)(const char *spec, unsigned mods)) { font_drop_fn = fn; }
+
+void ui_font_dropped(const char *spec, unsigned mods)
+{
+    if (font_drop_fn && ui_font_valid(spec)) font_drop_fn(spec, mods);
+}
+
+uint32_t ui_font_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n,
+                             uint32_t src_actions, unsigned mods, const char **mime)
+{
+    (void)s; (void)x; (void)y; (void)src_actions; (void)mods;
+    for (size_t i = 0; i < n; i++)
+        if (!strcmp(mimes[i], UI_MIME_FONT) && font_drop_fn) { *mime = mimes[i]; return UI_DND_COPY; }
+    return 0;
+}
+
+uint32_t ui_font_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
+                      uint32_t action, uint32_t start_action, unsigned mods)
+{
+    (void)s; (void)x; (void)y; (void)action; (void)start_action;
+    if (strcmp(mime, UI_MIME_FONT)) return 0;
+    char spec[200];
+    snprintf(spec, sizeof spec, "%.*s", (int)(len < sizeof spec ? strcspn(data, "\r\n") : 0), data);
+    if (!ui_font_valid(spec)) return 0;
+    ui_font_dropped(spec, mods);
+    return UI_DND_COPY;
+}

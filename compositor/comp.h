@@ -142,6 +142,7 @@ void comp_minimize(struct toplevel *t, bool on);
 void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);
 void comp_redraw_frames(void);
+void comp_set_menu_font(ui_font f);   /* its system menu's (the Font Palette's menu font) */
 double comp_scale_at(double x, double y);   /* the scale of the screen there */
 void comp_panel_edge(bool top);
 /* The desktop's next window with this app ID (and title, if one is

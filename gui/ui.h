@@ -53,6 +53,8 @@ typedef struct {
     ui_color meter_cpu, meter_memory, meter_disk, meter_network;
     double font_px;
     double border, title_h, button_w, button_h;
+#define UI_SCHEME_TEXT_MAX 96
+    char font_dialogs[UI_SCHEME_TEXT_MAX];   /* (0.4 step 8) the Dialogs font, "" the interface font */
     double corner_radius;      /* 0: square (the default) */
     bool buttons_on_hover;     /* false: always visible (the default) */
     int shadows;               /* 0 off (the default), 1 subtle, 2 strong */
@@ -88,7 +90,8 @@ void ui_set_color(cairo_t *cr, ui_color c);
 /* ------------------------------------------------------------------ text */
 
 typedef int ui_font;
-enum { UI_FONT_REGULAR, UI_FONT_BOLD };   /* the interface font; others by name: */
+enum { UI_FONT_REGULAR, UI_FONT_BOLD,      /* the interface font; others by name: */
+       UI_FONT_DIALOG = -2, UI_FONT_DIALOG_BOLD = -3 };   /* the Dialogs font (ui_set_dialog_font) */
 
 void ui_text_init(void);
 /* The interface font: a fontconfig family and a size in pixels (GNOME's,
@@ -107,6 +110,36 @@ ui_font ui_font_named(const char *spec);
 void ui_menu_set_font(ui_font f);          /* all menus */
 void ui_frame_set_title_font(ui_font f);   /* all title bars WPS draws */
 bool ui_font_valid(const char *spec);
+/* The Dialogs font (notebooks, dialogs, Find, the window list, the
+ * palettes): a Font Palette name, "" the interface font. */
+void ui_set_dialog_font(const char *spec);
+bool ui_dialog_font_is_set(void);
+bool ui_font_is_interface(ui_font f);
+/* A font from the Font Palette dropped on a notebook, a dialog or another
+ * dialog window (Find, the window list, the palettes): fn sets the
+ * Dialogs font (the shell: the scheme's). A window's ops can take such
+ * drops with these two as its drag_motion and drop. */
+void ui_set_font_drop(void (*fn)(const char *spec, unsigned mods));
+void ui_font_dropped(const char *spec, unsigned mods);
+struct ui_surface;
+uint32_t ui_font_drag_motion(struct ui_surface *s, double x, double y, const char *const *mimes, size_t n,
+                             uint32_t src_actions, unsigned mods, const char **mime);
+uint32_t ui_font_drop(struct ui_surface *s, double x, double y, const char *mime, const char *data, size_t len,
+                      uint32_t action, uint32_t start_action, unsigned mods);   /* the interface font (the Dialogs font when not set) */
+/* Dialogs' sizes, made for a 13-pixel font: rows this much taller, widths
+ * this many times wider (0 and 1 at it). */
+double ui_dialog_grow(void);
+double ui_dialog_wider(void);
+/* GNOME's text scaling factor: named fonts' sizes times it. */
+void ui_text_set_scale(double scale);
+double ui_text_scale(void);
+/* A name's family and style ("Noto Sans SemiBold": "Noto Sans",
+ * "SemiBold"; "Sans Bold": "Sans", bold); has: is there such a family
+ * (style NULL) or such a style of it. */
+bool ui_font_split(const char *name, bool (*has)(const char *family, const char *style),
+                   char *fam, size_t fn, char *style, size_t sn, bool *bold, bool *italic);
+/* A family's styles from fontconfig, by weight; returns how many. */
+size_t ui_font_styles(const char *family, char (*out)[64], size_t max);
 double ui_font_ascent(ui_font f);
 double ui_font_px(ui_font f);
 double ui_font_line_h(ui_font f);   /* a line of it */
@@ -226,6 +259,7 @@ typedef struct {
 } ui_surface_ops;
 
 ui_surface *ui_window_new(ui_app *a, const ui_surface_ops *ops, void *data, const char *app_id, double w, double h);
+void ui_app_restyle(ui_app *a);   /* every window laid out at its size again, and drawn */
 void ui_window_set_title(ui_surface *s, const char *title);
 const char *ui_window_title(ui_surface *s);
 /* No frame at all, the client area the whole window (the desktop). */
@@ -361,6 +395,22 @@ typedef void (*ui_menu_fn)(void *arg, int64_t id);   /* id -1: closed with no ch
 void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, double x, double y, uint32_t serial,
                    ui_menu_fn fn, void *arg);
 void ui_menu_items_free(ui_menu_item *items, size_t n);
+/* A menu's looks and geometry (ui_menupaint.c), shared with the
+ * compositor's system menu: items, the room left for icons (0: none),
+ * the icon set's small size, and what draws an item's icon. */
+typedef struct {
+    const ui_menu_item *items;
+    size_t n;
+    double room, icon_small;
+    bool (*icon)(void *arg, const ui_menu_item *it, cairo_t *cr, double x, double y, double size);
+    void *arg;
+} ui_menu_look;
+double ui_menu_look_item_h(const ui_menu_look *l);
+double ui_menu_look_item_y(const ui_menu_look *l, size_t i);
+int ui_menu_look_item_at(const ui_menu_look *l, double w, double x, double y);   /* -1: none, a separator */
+void ui_menu_look_size(const ui_menu_look *l, double *w, double *h);
+void ui_menu_look_draw(cairo_t *cr, const ui_menu_look *l, double w, double h, int hot);
+ui_font ui_menu_font(void);
 /* The same, with an object's icon left of each label for which icon_fn
  * fills `item` (a ui_item) and returns true (the WarpCenter's lists); a cascade's item
  * is asked by its id too. Drawn as ui_draw_item_icon draws it. */
@@ -382,7 +432,8 @@ extern void (*ui_press_hook)(ui_surface *s);
  * pointer events to it and redraws on anything but UI_ENTRY_NONE. */
 typedef struct ui_entry ui_entry;
 typedef enum { UI_ENTRY_NONE, UI_ENTRY_REDRAW, UI_ENTRY_CHANGED, UI_ENTRY_COMMIT, UI_ENTRY_CANCEL } ui_entry_result;
-ui_entry *ui_entry_new(const char *text);
+ui_entry *ui_entry_new(const char *text);   /* in the Dialogs font */
+void ui_entry_set_font(ui_entry *e, ui_font f);
 void ui_entry_free(ui_entry *e);
 const char *ui_entry_text(ui_entry *e);
 void ui_entry_set_text(ui_entry *e, const char *text);
@@ -460,6 +511,10 @@ const char *ui_clipboard_text(void);
  * swatch shows it, marked "default". A file field's `preview`: a PNG
  * shown small beside its path (a picture's). */
 #define UI_MIME_COLOR "application/x-wps-color"   /* "#rrggbb" */
+/* A text field whose key ends in "font" takes a font dragged from the Font
+ * Palette (UI_MIME_FONT, "12.Helvetica") as if typed; dropped anywhere else
+ * on a notebook, the Dialogs font's drop (ui_set_font_drop). */
+#define UI_MIME_FONT "application/x-wps-font"
 typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO,
                UI_FIELD_FILE, UI_FIELD_COLOR } ui_field_kind;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */

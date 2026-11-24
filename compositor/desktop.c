@@ -378,6 +378,8 @@ static void command(char *line)
         if (!eq || (size_t)(eq - arg) >= sizeof key) return;
         snprintf(key, sizeof key, "%.*s", (int)(eq - arg), arg);
         if (!strcmp(key, "title_font")) { ui_frame_set_title_font(ui_font_named(eq + 1)); comp_redraw_frames(); return; }   /* the Font Palette's */
+        if (!strcmp(key, "menu_font")) { comp_set_menu_font(ui_font_named(eq + 1)); return; }   /* (its system menu: the toolkit's) */
+        if (!strcmp(key, "text_scale")) { ui_text_set_scale(atof(eq + 1)); comp_redraw_frames(); return; }   /* GNOME's */
         if (ui_scheme_set_option(key, eq + 1)) comp_redraw_frames();
         return;
     }

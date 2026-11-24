@@ -16,10 +16,10 @@
 #include "icons.h"
 
 #define M 8
-#define ROW 24
+#define ROW (24 + ui_dialog_grow())
 #define UP_W 60
 #define USE_W 120         /* a folder's: Use this folder */
-#define STATUS_H 20
+#define STATUS_H (20 + ui_dialog_grow())
 #define PREVIEW 64
 #define MAX_LOADING 4         /* previews being made at once */
 #define MAX_ENTRIES 20000     /* a huge folder: the first ones */
@@ -305,18 +305,18 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_fill(cr, r.up, k->face);
         ui_bevel(cr, r.up, !pk.up_pressed);
         ui_set_color(cr, strcmp(pk.folder, "/") ? k->text : k->disabled_text);
-        double tw = ui_text_width(UI_FONT_REGULAR, "Up");
-        ui_text_draw(cr, UI_FONT_REGULAR, r.up.x + (r.up.w - tw) / 2 + pk.up_pressed,
-                     r.up.y + (ROW + ui_text_ascent()) / 2 - 1 + pk.up_pressed, "Up", r.up.w - 6);
+        double tw = ui_text_width(UI_FONT_DIALOG, "Up");
+        ui_text_draw(cr, UI_FONT_DIALOG, r.up.x + (r.up.w - tw) / 2 + pk.up_pressed,
+                     r.up.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + pk.up_pressed, "Up", r.up.w - 6);
         if (pk.focus == F_UP) focus_ring(cr, r.up);
         if (folder_kind()) {
             ui_fill(cr, r.use, k->face);
             ui_bevel(cr, r.use, !pk.use_pressed);
             ui_set_color(cr, k->text);
             const char *u = "Use this folder";
-            double uw = ui_text_width(UI_FONT_REGULAR, u);
-            ui_text_draw(cr, UI_FONT_REGULAR, r.use.x + (r.use.w - uw) / 2 + pk.use_pressed,
-                         r.use.y + (ROW + ui_text_ascent()) / 2 - 1 + pk.use_pressed, u, r.use.w - 6);
+            double uw = ui_text_width(UI_FONT_DIALOG, u);
+            ui_text_draw(cr, UI_FONT_DIALOG, r.use.x + (r.use.w - uw) / 2 + pk.use_pressed,
+                         r.use.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + pk.use_pressed, u, r.use.w - 6);
             if (pk.focus == F_USE) focus_ring(cr, r.use);
         }
         ui_entry_draw(pk.path, cr, r.path, pk.focus == F_PATH);
@@ -336,7 +336,7 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_save(cr);
     cairo_rectangle(cr, r.status.x + 2, r.status.y + 2, r.status.w - 4, r.status.h - 4);
     cairo_clip(cr);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.status.x + 6, r.status.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, r.status.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.status.x + 6, r.status.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, msg, r.status.w - 12);
     cairo_restore(cr);
 }
 
@@ -494,6 +494,7 @@ void filepick_open(const char *for_title, const char *kind, const char *start, f
     pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.FilePicker", 600, 460);
     ui_window_set_title(pk.s, pk.title);
     pk.cont = ui_container_new(pk.s, &pick_src, NULL, UI_VIEW_ICON);
+    ui_container_set_font(pk.cont, UI_FONT_DIALOG);   /* (a dialog's list) */
     ui_container_layout(pk.cont, rects().list);
     events_raise("window.open", "Choose a File", "window", (ui_rect){ 0, 0, 0, 0 });
     if (!read_folder(start && *start ? start : "/")) read_folder("/");

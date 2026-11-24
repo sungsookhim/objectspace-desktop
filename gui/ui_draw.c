@@ -112,6 +112,7 @@ static void apply_opts(void)
 
 #define SCHEME_COLOR(f) { #f, offsetof(ui_scheme, f), 'c' }
 #define SCHEME_NUMBER(f) { #f, offsetof(ui_scheme, f), 'n' }
+#define SCHEME_TEXT(f) { #f, offsetof(ui_scheme, f), 's' }
 static const struct { const char *key; size_t off; char type; } scheme_keys[] = {
     SCHEME_COLOR(face), SCHEME_COLOR(light), SCHEME_COLOR(shadow), SCHEME_COLOR(dark), SCHEME_COLOR(text),
     SCHEME_COLOR(disabled_text), SCHEME_COLOR(title_active), SCHEME_COLOR(title_inactive), SCHEME_COLOR(title_text),
@@ -123,6 +124,7 @@ static const struct { const char *key; size_t off; char type; } scheme_keys[] = 
     SCHEME_COLOR(bar), SCHEME_COLOR(bar_text), SCHEME_COLOR(meter_cpu), SCHEME_COLOR(meter_memory), SCHEME_COLOR(meter_disk),
     SCHEME_COLOR(meter_network),
     SCHEME_NUMBER(font_px), SCHEME_NUMBER(border), SCHEME_NUMBER(title_h), SCHEME_NUMBER(button_w), SCHEME_NUMBER(button_h),
+    SCHEME_TEXT(font_dialogs),
 };
 
 #define MAX_DEFINED 32
@@ -181,6 +183,7 @@ bool ui_scheme_define(const char *name, const char *base, const char *settings)
                     if (ok && !strcmp(scheme_keys[i].key, "bar")) bar = true;
                     if (ok && !strcmp(scheme_keys[i].key, "bar_text")) bar_text = true;
                 }
+                else if (scheme_keys[i].type == 's') snprintf(at, UI_SCHEME_TEXT_MAX, "%.*s", (int)vl, eq + 1);
                 else if (vl) *(double *)at = atof(eq + 1);
             }
         }
@@ -205,6 +208,8 @@ char *ui_scheme_describe(const char *name)
             const ui_color *c = (const ui_color *)at;
             n += (size_t)snprintf(out + n, cap - n, "%s=#%02x%02x%02x;", scheme_keys[i].key, (int)(c->r * 255 + 0.5),
                                   (int)(c->g * 255 + 0.5), (int)(c->b * 255 + 0.5));
+        } else if (scheme_keys[i].type == 's') {
+            n += (size_t)snprintf(out + n, cap - n, "%s=%s;", scheme_keys[i].key, at);
         } else {
             n += (size_t)snprintf(out + n, cap - n, "%s=%g;", scheme_keys[i].key, *(const double *)at);
         }
@@ -294,6 +299,7 @@ struct face {
 static struct slot {
     char spec[160];          /* "" for the interface font's */
     char family[128];
+    char style[64];          /* fontconfig's style ("SemiBold"), or "" and bold, italic */
     bool bold, italic;
     double pt;               /* 0: the interface font's size */
     double px;
@@ -378,6 +384,7 @@ static uint32_t utf8_cp(const char *p)
 }
 
 static char family[256];
+static double text_scale = 1;
 
 static bool load_pair(struct face *fc, const char *file, int index, double px)
 {
@@ -394,11 +401,21 @@ static bool load_pair(struct face *fc, const char *file, int index, double px)
     return true;
 }
 
-static struct slot *slot_of(ui_font font) { return font >= 0 && font < nslots && slots[font].loaded ? &slots[font] : &slots[0]; }
+/* The Dialogs font (notebooks, dialogs, Find, the window list, the
+ * palettes): an alias of a slot, the interface font's unless set. */
+static ui_font dialog_font = UI_FONT_REGULAR, dialog_bold = UI_FONT_BOLD;
+static ui_font real_font(ui_font f) { return f == UI_FONT_DIALOG ? dialog_font : f == UI_FONT_DIALOG_BOLD ? dialog_bold : f; }
+
+static struct slot *slot_of(ui_font font)
+{
+    font = real_font(font);
+    return font >= 0 && font < nslots && slots[font].loaded ? &slots[font] : &slots[0];
+}
 
 static void slot_pattern(const struct slot *sl, char *out, size_t n)
 {
-    snprintf(out, n, "%s%s%s", sl->family, sl->bold ? ":bold" : "", sl->italic ? ":italic" : "");
+    if (sl->style[0]) snprintf(out, n, "%s:style=%s", sl->family, sl->style);
+    else snprintf(out, n, "%s%s%s", sl->family, sl->bold ? ":bold" : "", sl->italic ? ":italic" : "");
 }
 
 /* The font for the character at s[at]: the slot's font when it has it (or
@@ -452,6 +469,7 @@ static struct face *face_for(ui_font font, const char *s, size_t at, size_t len)
 
 static struct run *shape(ui_font font, const char *s)
 {
+    font = real_font(font);
     uint64_t h = hash(font, s);
     /* Four-way set: the least recently used of four slots is replaced. */
     size_t base = (size_t)(h % (CACHE_SLOTS / 4)) * 4, victim = base;
@@ -553,6 +571,17 @@ static void reload_all(void)
     }
 }
 
+/* GNOME's text scaling factor: the Font Palette's sizes (points) are
+ * times it, as the interface font's are. */
+void ui_text_set_scale(double scale)
+{
+    if (scale < 0.5 || scale > 3) scale = 1;
+    if (scale == text_scale) return;
+    text_scale = scale;
+    reload_all();
+}
+double ui_text_scale(void) { return text_scale; }
+
 void ui_text_set_font(const char *fam, double px)
 {
     if (!fam || !*fam || px < 6 || px > 72) return;
@@ -571,7 +600,7 @@ static bool load_slot(int i)
         snprintf(sl->family, sizeof sl->family, "%s", family);
         sl->px = ui_scheme_now.font_px;
     } else {
-        sl->px = round(sl->pt * 96.0 / 72.0);
+        sl->px = round(sl->pt * 96.0 / 72.0 * text_scale);
         if (sl->px < 6) sl->px = 6;
         if (sl->px > 96) sl->px = 96;
     }
@@ -605,24 +634,103 @@ static bool load_slot(int i)
     return true;
 }
 
-/* "12.Helvetica Bold Italic": size in points, family, styles. */
-static bool parse_spec(const char *spec, double *pt, char *fam, size_t fn, bool *bold, bool *italic)
+/* A Font Palette name's family and style: "Noto Sans SemiBold Italic" is
+ * the family "Noto Sans" in its style "SemiBold Italic" when the family
+ * has it; else " Bold" and " Italic" at the end are the styles (made by
+ * fontconfig if the family has none), and the rest the family ("Sans",
+ * "Helvetica": names fontconfig finds a font for). */
+bool ui_font_split(const char *name, bool (*has)(const char *family, const char *style),
+                   char *fam, size_t fn, char *style, size_t sn, bool *bold, bool *italic)
+{
+    char f[160];
+    snprintf(f, sizeof f, "%s", name);
+    *bold = *italic = false;
+    style[0] = 0;
+    /* the longest family the words start with, the rest its style */
+    for (char *sp = strrchr(f, ' '); sp && has; ) {
+        *sp = 0;
+        const char *st = sp + 1;
+        if (*f && has(f, NULL)) {
+            if (!strcasecmp(st, "Regular")) { snprintf(fam, fn, "%s", f); return true; }
+            if (!strcasecmp(st, "Bold") || !strcasecmp(st, "Italic") || !strcasecmp(st, "Bold Italic") || !strcasecmp(st, "Oblique")) {
+                *bold = strncasecmp(st, "Bold", 4) == 0;
+                *italic = !*bold || strcasecmp(st, "Bold") != 0;
+                snprintf(fam, fn, "%s", f);
+                return true;
+            }
+            if (has(f, st)) { snprintf(fam, fn, "%s", f); snprintf(style, sn, "%s", st); return true; }
+        }
+        char *prev = strrchr(f, ' ');
+        *sp = ' ';
+        sp = prev;
+    }
+    for (;;) {
+        size_t l = strlen(f);
+        if (l >= 5 && !strcasecmp(f + l - 5, " bold")) { *bold = true; f[l - 5] = 0; continue; }
+        if (l >= 7 && !strcasecmp(f + l - 7, " italic")) { *italic = true; f[l - 7] = 0; continue; }
+        break;
+    }
+    if (!f[0] || f[0] == ' ') return false;
+    snprintf(fam, fn, "%s", f);
+    return true;
+}
+
+/* fontconfig: is there a font of this family (and style)? */
+static bool fc_has(const char *family, const char *style)
+{
+    FcPattern *p = FcPatternCreate();
+    FcPatternAddString(p, FC_FAMILY, (const FcChar8 *)family);
+    if (style) FcPatternAddString(p, FC_STYLE, (const FcChar8 *)style);
+    FcObjectSet *os = FcObjectSetBuild(FC_FAMILY, NULL);
+    FcFontSet *fs = FcFontList(NULL, p, os);
+    bool yes = fs && fs->nfont > 0;
+    if (fs) FcFontSetDestroy(fs);
+    FcObjectSetDestroy(os);
+    FcPatternDestroy(p);
+    return yes;
+}
+
+/* A family's styles, as fontconfig lists them ("Regular", "Bold", "Light
+ * Italic", ...), sorted, at most max; returns how many. */
+size_t ui_font_styles(const char *family, char (*out)[64], size_t max)
+{
+    FcPattern *p = FcPatternCreate();
+    FcPatternAddString(p, FC_FAMILY, (const FcChar8 *)family);
+    FcObjectSet *os = FcObjectSetBuild(FC_STYLE, FC_WEIGHT, FC_SLANT, NULL);
+    FcFontSet *fs = FcFontList(NULL, p, os);
+    size_t n = 0;
+    int key[256];
+    for (int i = 0; fs && i < fs->nfont && n < max && n < 256; i++) {
+        FcChar8 *st;
+        if (FcPatternGetString(fs->fonts[i], FC_STYLE, 0, &st) != FcResultMatch) continue;
+        bool dup = false;
+        for (size_t k = 0; k < n; k++) if (!strcasecmp(out[k], (const char *)st)) dup = true;
+        if (dup) continue;
+        int w = 80, sl = 0;
+        FcPatternGetInteger(fs->fonts[i], FC_WEIGHT, 0, &w);
+        FcPatternGetInteger(fs->fonts[i], FC_SLANT, 0, &sl);
+        int kk = w * 2 + (sl ? 1 : 0);   /* by weight, upright first */
+        size_t at = n;
+        while (at > 0 && key[at - 1] > kk) { memcpy(out[at], out[at - 1], 64); key[at] = key[at - 1]; at--; }
+        snprintf(out[at], 64, "%s", (const char *)st);
+        key[at] = kk;
+        n++;
+    }
+    if (fs) FcFontSetDestroy(fs);
+    FcObjectSetDestroy(os);
+    FcPatternDestroy(p);
+    return n;
+}
+
+/* "12.Helvetica Bold Italic", "10.Noto Sans SemiBold": size in points,
+ * family, style. */
+static bool parse_spec(const char *spec, double *pt, char *fam, size_t fn, char *style, size_t sn, bool *bold, bool *italic)
 {
     char *end;
     long v = strtol(spec, &end, 10);   /* (not strtod: "8.Sans" would be 8.0, the dot taken) */
     if (end == spec || *end != '.' || v < 4 || v > 72) return false;
-    char f[160];
-    snprintf(f, sizeof f, "%s", end + 1);
-    *bold = *italic = false;
-    for (;;) {
-        size_t l = strlen(f);
-        if (l > 5 && !strcasecmp(f + l - 5, " bold")) { *bold = true; f[l - 5] = 0; continue; }
-        if (l > 7 && !strcasecmp(f + l - 7, " italic")) { *italic = true; f[l - 7] = 0; continue; }
-        break;
-    }
-    if (!f[0]) return false;
+    if (!ui_font_split(end + 1, ft ? fc_has : NULL, fam, fn, style, sn, bold, italic)) return false;
     *pt = (double)v;
-    snprintf(fam, fn, "%s", f);
     return true;
 }
 
@@ -631,13 +739,14 @@ ui_font ui_font_named(const char *spec)
     if (!spec || !*spec) return UI_FONT_REGULAR;
     for (int i = 2; i < nslots; i++) if (!strcmp(slots[i].spec, spec)) return slots[i].loaded ? i : UI_FONT_REGULAR;
     double pt;
-    char fam[128];
+    char fam[128], style[64];
     bool bold, italic;
-    if (!parse_spec(spec, &pt, fam, sizeof fam, &bold, &italic) || nslots >= MAX_FONTS) return UI_FONT_REGULAR;
+    if (!parse_spec(spec, &pt, fam, sizeof fam, style, sizeof style, &bold, &italic) || nslots >= MAX_FONTS) return UI_FONT_REGULAR;
     struct slot *sl = &slots[nslots];
     memset(sl, 0, sizeof *sl);
     snprintf(sl->spec, sizeof sl->spec, "%s", spec);
     snprintf(sl->family, sizeof sl->family, "%s", fam);
+    snprintf(sl->style, sizeof sl->style, "%s", style);
     sl->pt = pt;
     sl->bold = bold;
     sl->italic = italic;
@@ -648,10 +757,32 @@ ui_font ui_font_named(const char *spec)
 bool ui_font_valid(const char *spec)
 {
     double pt;
-    char fam[128];
+    char fam[128], style[64];
     bool b, it;
-    return spec && parse_spec(spec, &pt, fam, sizeof fam, &b, &it);
+    return spec && parse_spec(spec, &pt, fam, sizeof fam, style, sizeof style, &b, &it);
 }
+
+/* The Dialogs font: a Font Palette name, "" the interface font. Its bold
+ * (a notebook's open tab) is the same family's. */
+void ui_set_dialog_font(const char *spec)
+{
+    ui_font f = spec && *spec ? ui_font_named(spec) : UI_FONT_REGULAR;
+    ui_font b = UI_FONT_BOLD;
+    if (f != UI_FONT_REGULAR) {
+        char bs[200];
+        snprintf(bs, sizeof bs, "%g.%s Bold", slots[f].pt, slots[f].family);
+        b = slots[f].bold && !slots[f].style[0] ? f : ui_font_named(bs);
+    }
+    dialog_font = f;
+    dialog_bold = b;
+}
+bool ui_dialog_font_is_set(void) { return dialog_font != UI_FONT_REGULAR; }
+bool ui_font_is_interface(ui_font f) { return real_font(f) == UI_FONT_REGULAR; }
+
+/* Dialogs' rows and widths, made for a 13-pixel font (a line of 18): how
+ * much taller and wider the Dialogs font makes them. */
+double ui_dialog_grow(void) { return fmax(0, ui_font_line_h(UI_FONT_DIALOG) - 18); }
+double ui_dialog_wider(void) { return fmax(1, ui_font_px(UI_FONT_DIALOG) / 13); }
 
 double ui_font_ascent(ui_font f) { return slot_of(f)->ascent; }
 double ui_font_px(ui_font f) { return slot_of(f)->px; }

@@ -14,14 +14,16 @@
 
 #include "ui.h"
 
-#define TAB_H 24
-#define ROW_H 30
-#define FIELD_H 24
-#define LABEL_W 170
+/* (sizes for the 13-pixel font; a bigger Dialogs font makes them bigger) */
+#define GROW ui_dialog_grow()
+#define TAB_H (24 + GROW)
+#define ROW_H (30 + GROW)
+#define FIELD_H (24 + GROW)
+#define LABEL_W (170 * ui_dialog_wider())
 #define MARGIN 14
-#define BUTTON_W 80
-#define BUTTON_H 24
-#define STATUS_H 20
+#define BUTTON_W (80 * ui_dialog_wider())
+#define BUTTON_H (24 + GROW)
+#define STATUS_H (20 + GROW)
 
 struct field {
     char *key, *label;
@@ -167,8 +169,8 @@ static ui_rect tab_rect(ui_notebook *nb, size_t i)
 {
     ui_rect c = ui_frame_client(nb->win);
     double x = c.x + MARGIN;
-    for (size_t k = 0; k < i; k++) x += ui_text_width(UI_FONT_REGULAR, nb->pages[k].title) + 28;
-    return (ui_rect){ x, c.y + 8, ui_text_width(UI_FONT_REGULAR, nb->pages[i].title) + 24, TAB_H };
+    for (size_t k = 0; k < i; k++) x += ui_text_width(UI_FONT_DIALOG, nb->pages[k].title) + 28;
+    return (ui_rect){ x, c.y + 8, ui_text_width(UI_FONT_DIALOG, nb->pages[i].title) + 24, TAB_H };
 }
 
 static ui_rect page_rect(ui_notebook *nb)
@@ -199,7 +201,7 @@ static ui_rect control_rect(ui_notebook *nb, size_t k)
 
 /* An icon field: the picture, and its two buttons (0 Choose..., 1 Default). */
 static ui_rect icon_box(ui_rect r) { return (ui_rect){ r.x, r.y, ICON_BOX, ICON_BOX }; }
-static ui_rect icon_button(ui_rect r, int i) { return (ui_rect){ r.x + ICON_BOX + 14, r.y + i * 30, 110, 24 }; }
+static ui_rect icon_button(ui_rect r, int i) { return (ui_rect){ r.x + ICON_BOX + 14, r.y + i * (30 + GROW), 110 * ui_dialog_wider(), 24 + GROW }; }
 
 static ui_rect spin_rect(ui_rect r, bool up)
 {
@@ -208,9 +210,9 @@ static ui_rect spin_rect(ui_rect r, bool up)
 
 /* A file field: its path, and Browse... after it; a colour field: its
  * swatch, then its "#rrggbb". */
-#define BROWSE_W 80
-#define NONE_W 56
-#define PLAY_W 50
+#define BROWSE_W (80 * ui_dialog_wider())
+#define NONE_W (56 * ui_dialog_wider())
+#define PLAY_W (50 * ui_dialog_wider())
 /* a file field's buttons: 0 Browse..., 1 None (no file), 2 Play (sounds) */
 static ui_rect file_button(ui_rect r, int i)
 {
@@ -379,8 +381,8 @@ static void draw_icon_field(ui_notebook *nb, struct field *f, cairo_t *cr, ui_re
     } else {
         ui_set_color(cr, k->disabled_text);
         const char *t = "(its kind's)";
-        double tw = ui_text_width(UI_FONT_REGULAR, t);
-        ui_text_draw(cr, UI_FONT_REGULAR, b.x + (ICON_BOX - tw) / 2, b.y + ICON_BOX / 2 + 4, t, ICON_BOX - 4);
+        double tw = ui_text_width(UI_FONT_DIALOG, t);
+        ui_text_draw(cr, UI_FONT_DIALOG, b.x + (ICON_BOX - tw) / 2, b.y + ICON_BOX / 2 + 4, t, ICON_BOX - 4);
     }
     static const char *const labels[2] = { "Choose...", "Default" };
     for (int i = 0; i < 2; i++) {
@@ -389,11 +391,11 @@ static void draw_icon_field(ui_notebook *nb, struct field *f, cairo_t *cr, ui_re
         ui_fill(cr, bt, k->face);
         ui_bevel(cr, bt, !down);
         ui_set_color(cr, i == 1 && !*want ? k->disabled_text : k->text);
-        double tw = ui_text_width(UI_FONT_REGULAR, labels[i]);
-        ui_text_draw(cr, UI_FONT_REGULAR, bt.x + (bt.w - tw) / 2 + down, bt.y + bt.h / 2 + 5 + down, labels[i], bt.w - 4);
+        double tw = ui_text_width(UI_FONT_DIALOG, labels[i]);
+        ui_text_draw(cr, UI_FONT_DIALOG, bt.x + (bt.w - tw) / 2 + down, bt.y + bt.h / 2 + 5 + down, labels[i], bt.w - 4);
     }
     ui_set_color(cr, k->disabled_text);
-    ui_text_draw(cr, UI_FONT_REGULAR, icon_button(r, 0).x, r.y + ICON_BOX - 6, "or drop an image on the picture", r.w - ICON_BOX - 14);
+    ui_text_draw(cr, UI_FONT_DIALOG, icon_button(r, 0).x, r.y + ICON_BOX - 6, "or drop an image on the picture", r.w - ICON_BOX - 14);
     if (focused) focus_ring(cr, b);
 }
 
@@ -425,7 +427,7 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_rect c = ui_frame_client(s);
     if (!ui_rect_meets(clip, c)) return;
     ui_fill(cr, c, k->face);
-    double base_off = (FIELD_H + ui_text_ascent()) / 2 - 1;
+    double base_off = (FIELD_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1;
     /* Tabs: the shown one raised and joined to the page. */
     for (size_t i = 0; i < nb->npages; i++) {
         ui_rect t = tab_rect(nb, i);
@@ -434,7 +436,7 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_fill(cr, t, on ? k->face : (ui_color){ k->face.r * 0.9, k->face.g * 0.9, k->face.b * 0.9, 1 });
         ui_bevel(cr, (ui_rect){ t.x, t.y, t.w, t.h + (on ? 2 : 0) }, true);
         ui_set_color(cr, k->text);
-        ui_text_draw(cr, on ? UI_FONT_BOLD : UI_FONT_REGULAR, t.x + 12, t.y + (t.h + ui_text_ascent()) / 2 - 1,
+        ui_text_draw(cr, on ? UI_FONT_DIALOG_BOLD : UI_FONT_DIALOG, t.x + 12, t.y + (t.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1,
                      nb->pages[i].title, 0);
     }
     ui_rect p = page_rect(nb);
@@ -449,20 +451,21 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_rect r = control_rect(nb, i);
         bool focused = nb->focus == (int)i;
         ui_set_color(cr, k->text);
-        double lw = ui_text_draw(cr, UI_FONT_REGULAR, p.x + MARGIN, r.y + base_off, f->label, LABEL_W - 8);
+        double lw = ui_text_draw(cr, UI_FONT_DIALOG, p.x + MARGIN, r.y + base_off, f->label, LABEL_W - 8);
         if (f->from && lw + 12 < LABEL_W - 8) {   /* where an inherited value comes from */
             char fr[160];
             snprintf(fr, sizeof fr, "(%s)", f->from);
             ui_set_color(cr, k->disabled_text);
-            ui_text_draw(cr, UI_FONT_REGULAR, p.x + MARGIN + lw + 6, r.y + base_off, fr, LABEL_W - 8 - lw - 6);
+            ui_text_draw(cr, UI_FONT_DIALOG, p.x + MARGIN + lw + 6, r.y + base_off, fr, LABEL_W - 8 - lw - 6);
         }
         switch (f->kind) {
         case UI_FIELD_TEXT:
-            ui_entry_draw(f->entry, cr, r, focused);
+            if (nb->drop_on == f) { ui_fill(cr, r, k->selection); ui_bevel(cr, r, false); }   /* a font over it */
+            else ui_entry_draw(f->entry, cr, r, focused);
             break;
         case UI_FIELD_INFO:
             ui_set_color(cr, k->text);
-            ui_text_draw(cr, UI_FONT_REGULAR, r.x, r.y + base_off, f->v.text ? f->v.text : "", r.w);
+            ui_text_draw(cr, UI_FONT_DIALOG, r.x, r.y + base_off, f->v.text ? f->v.text : "", r.w);
             break;
         case UI_FIELD_ICON:
             draw_icon_field(nb, f, cr, r, focused);
@@ -501,8 +504,8 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
                 ui_fill(cr, b, k->face);
                 ui_bevel(cr, b, !down);
                 ui_set_color(cr, bi >= 1 && !(f->v.text && *f->v.text) ? k->disabled_text : k->text);
-                double tw = ui_text_width(UI_FONT_REGULAR, fl[bi]);
-                ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + down, b.y + base_off + down, fl[bi], b.w - 4);
+                double tw = ui_text_width(UI_FONT_DIALOG, fl[bi]);
+                ui_text_draw(cr, UI_FONT_DIALOG, b.x + (b.w - tw) / 2 + down, b.y + base_off + down, fl[bi], b.w - 4);
             }
             break;
         }
@@ -524,7 +527,7 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             else ui_entry_draw(f->entry, cr, er, focused);
             if (dflt && !focused && nb->drop_on != f && !*ui_entry_text(f->entry)) {
                 ui_set_color(cr, k->disabled_text);
-                ui_text_draw(cr, UI_FONT_REGULAR, er.x + 5, r.y + base_off, "default", er.w - 8);
+                ui_text_draw(cr, UI_FONT_DIALOG, er.x + 5, r.y + base_off, "default", er.w - 8);
             }
             break;
         }
@@ -549,7 +552,7 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             ui_bevel(cr, r, false);
             const char *t = f->v.number >= 0 && (size_t)f->v.number < f->nchoices ? f->choices[f->v.number] : "";
             ui_set_color(cr, k->text);
-            ui_text_draw(cr, UI_FONT_REGULAR, r.x + 6, r.y + base_off, t, r.w - 30);
+            ui_text_draw(cr, UI_FONT_DIALOG, r.x + 6, r.y + base_off, t, r.w - 30);
             ui_rect a = { r.x + r.w - 20, r.y + 2, 18, r.h - 4 };
             ui_fill(cr, a, k->face);
             ui_bevel(cr, a, true);
@@ -568,8 +571,8 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
         ui_fill(cr, b, k->face);
         ui_bevel(cr, b, !down);
         ui_set_color(cr, enabled ? k->text : k->disabled_text);
-        double tw = ui_text_width(UI_FONT_REGULAR, button_label(nb, i));
-        ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + (down ? 1 : 0), b.y + (b.h + ui_text_ascent()) / 2 - 1 + (down ? 1 : 0),
+        double tw = ui_text_width(UI_FONT_DIALOG, button_label(nb, i));
+        ui_text_draw(cr, UI_FONT_DIALOG, b.x + (b.w - tw) / 2 + (down ? 1 : 0), b.y + (b.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + (down ? 1 : 0),
                      button_label(nb, i), 0);
         if (nb->focus >= nf && focus_button(nb, nb->focus - nf) == i) focus_ring(cr, (ui_rect){ b.x + 3, b.y + 3, b.w - 6, b.h - 6 });
     }
@@ -577,7 +580,7 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, st, k->face);
     ui_bevel(cr, (ui_rect){ st.x + 1, st.y + 1, st.w - 2, st.h - 2 }, false);
     ui_set_color(cr, k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, nb->status, st.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, st.x + 6, st.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, nb->status, st.w - 12);
 }
 
 /* ------------------------------------------------------------ behaviour */
@@ -834,12 +837,35 @@ static struct field *color_field_at(ui_notebook *nb, double x, double y)
     return NULL;
 }
 
+/* A font from the Font Palette dropped on a font's text field (its key
+ * ends in "font": icon_font, font_menus, font_dialogs...). */
+static struct field *font_field_at(ui_notebook *nb, double x, double y)
+{
+    struct page *pg = nb->npages ? &nb->pages[nb->page] : NULL;
+    for (size_t k = 0; pg && k < pg->n; k++) {
+        struct field *f = &pg->f[k];
+        size_t l = f->key ? strlen(f->key) : 0;
+        if (f->kind == UI_FIELD_TEXT && l >= 4 && !strcmp(f->key + l - 4, "font") && ui_rect_has(control_rect(nb, k), x, y))
+            return f;
+        if (f->kind == UI_FIELD_TEXT && !strncmp(f->key ? f->key : "", "font_", 5) && ui_rect_has(control_rect(nb, k), x, y))
+            return f;
+    }
+    return NULL;
+}
+
 static uint32_t nb_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
                                unsigned mods, const char **mime)
 {
-    (void)src_actions; (void)mods;
+    (void)src_actions;
     ui_notebook *nb = ui_surface_data(s);
     struct field *f = NULL;
+    for (size_t i = 0; i < n; i++)
+        if (!strcmp(mimes[i], UI_MIME_FONT)) {   /* a font field, or the Dialogs font */
+            f = font_field_at(nb, x, y);
+            if (f != nb->drop_on) { nb->drop_on = f; damage(nb); }
+            if (f) { *mime = mimes[i]; return UI_DND_COPY; }
+            return ui_font_drag_motion(s, x, y, mimes, n, src_actions, mods, mime);
+        }
     for (size_t i = 0; i < n && !f; i++)
         if (!strcmp(mimes[i], UI_MIME_COLOR)) { f = color_field_at(nb, x, y); if (f) *mime = mimes[i]; }
     for (size_t i = 0; i < n && !f; i++)
@@ -861,6 +887,14 @@ static uint32_t nb_drop(ui_surface *s, double x, double y, const char *mime, con
     ui_notebook *nb = ui_surface_data(s);
     nb->drop_on = NULL;
     damage(nb);
+    if (!strcmp(mime, UI_MIME_FONT)) {   /* "12.Helvetica": a font field's, as if typed; else the Dialogs font */
+        struct field *ff = font_field_at(nb, x, y);
+        char spec[200];
+        snprintf(spec, sizeof spec, "%.*s", (int)(len < sizeof spec ? strcspn(data, "\r\n") : 0), data);
+        if (!ui_font_valid(spec)) return 0;
+        if (ff) { ui_notebook_set_value(nb, ff->key, spec); return UI_DND_COPY; }
+        return ui_font_drop(s, x, y, mime, data, len, action, start_action, mods);
+    }
     if (!strcmp(mime, UI_MIME_COLOR)) {   /* "#rrggbb", as if typed */
         struct field *cf = color_field_at(nb, x, y);
         char hex[8];
@@ -962,8 +996,8 @@ static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, n, nb->pal_hot == PAL_COLS * PAL_ROWS ? k->selection : k->face);
     ui_bevel(cr, n, true);
     ui_set_color(cr, nb->pal_hot == PAL_COLS * PAL_ROWS ? k->selection_text : k->text);
-    double tw = ui_text_width(UI_FONT_REGULAR, "No colour");
-    ui_text_draw(cr, UI_FONT_REGULAR, n.x + (n.w - tw) / 2, n.y + (n.h + ui_text_ascent()) / 2 - 1, "No colour", n.w - 4);
+    double tw = ui_text_width(UI_FONT_DIALOG, "No colour");
+    ui_text_draw(cr, UI_FONT_DIALOG, n.x + (n.w - tw) / 2, n.y + (n.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, "No colour", n.w - 4);
 }
 
 static void pal_pointer(ui_surface *s, const ui_pointer_event *e)
@@ -1218,9 +1252,9 @@ ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *
     double h = ui_scheme_now.title_h + 2 * ui_scheme_now.border + 8 + TAB_H + 2 * MARGIN + most +
                BUTTON_H + 22 + STATUS_H + 20;
     /* wide enough for every tab (a class's pages, the Actions page) */
-    double w = 2 * ui_scheme_now.border + 2 * MARGIN + 8;
-    for (size_t i = 0; i < n; i++) w += ui_text_width(UI_FONT_REGULAR, pages[i].title ? pages[i].title : "") + 28;
-    nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", w > 520 ? ceil(w) : 520, h < 280 ? 280 : h);
+    double w = 2 * ui_scheme_now.border + 2 * MARGIN + 8, least = ceil(520 * ui_dialog_wider());
+    for (size_t i = 0; i < n; i++) w += ui_text_width(UI_FONT_DIALOG, pages[i].title ? pages[i].title : "") + 28;
+    nb->win = ui_window_new(a, &nb_ops, nb, "org.wps.notebook", w > least ? ceil(w) : least, h < 280 ? 280 : h);
     ui_window_set_title(nb->win, title);
     return nb;
 }

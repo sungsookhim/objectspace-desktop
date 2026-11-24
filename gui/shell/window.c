@@ -87,7 +87,7 @@ static void find_apply(struct folder *f)
 
 static void find_show(struct folder *f)
 {
-    if (!f->find_entry) f->find_entry = ui_entry_new("");
+    if (!f->find_entry) { f->find_entry = ui_entry_new(""); ui_entry_set_font(f->find_entry, UI_FONT_REGULAR); }   /* (a folder's, not a dialog's) */
     if (!f->find_on) {
         f->find_on = true;
         layout(f);

@@ -14,9 +14,9 @@
 #define CELL_W 52
 #define CELL_H 40
 #define M 8
-#define BTN_W 110
-#define ROW 24
-#define STATUS_H 20
+#define BTN_W (110 * ui_dialog_wider())
+#define ROW (24 + ui_dialog_grow())
+#define STATUS_H (20 + ui_dialog_grow())
 #define MAX_SAMPLES 30
 
 static ui_app *app;
@@ -97,8 +97,8 @@ static void button(cairo_t *cr, ui_rect r, const char *label, bool down, bool fo
     ui_fill(cr, r, k->face);
     ui_bevel(cr, r, !down);
     ui_set_color(cr, k->text);
-    double tw = ui_text_width(UI_FONT_REGULAR, label);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.x + (r.w - tw) / 2 + down, r.y + (r.h + ui_text_ascent()) / 2 - 1 + down, label, r.w - 6);
+    double tw = ui_text_width(UI_FONT_DIALOG, label);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.x + (r.w - tw) / 2 + down, r.y + (r.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + down, label, r.w - 6);
     if (focus) ring(cr, r);
 }
 
@@ -271,7 +271,7 @@ static void ec_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_fill(cr);
     ui_bevel(cr, r.preview, false);
     ui_set_color(cr, k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.hex_l.x, r.hex_l.y + (ROW + ui_text_ascent()) / 2 - 1, "Colour (#rrggbb)", r.hex_l.w);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.hex_l.x, r.hex_l.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, "Colour (#rrggbb)", r.hex_l.w);
     ui_entry_draw(ec.hex, cr, r.hex, ec.focus == 2);
     button(cr, r.ok, "OK", ec.pressed == 3, ec.focus == 3);
     button(cr, r.cancel, "Cancel", ec.pressed == 4, ec.focus == 4);
@@ -401,7 +401,8 @@ static void ec_close_req(ui_surface *s) { (void)s; ec_close(); }
 static void ec_resized(ui_surface *s, double w, double h) { (void)w; (void)h; ui_surface_damage_all(s); }
 static void ec_focus_ev(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 static const ui_surface_ops ec_ops = { .draw = ec_draw, .pointer = ec_pointer, .key = ec_key, .resized = ec_resized,
-                                       .close = ec_close_req, .focus = ec_focus_ev };
+                                       .close = ec_close_req, .focus = ec_focus_ev,
+                                       .drag_motion = ui_font_drag_motion, .drop = ui_font_drop };   /* a font: the Dialogs font */
 
 bool colorpal_edit(size_t i)
 {
@@ -517,7 +518,7 @@ static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     char msg[160];
     if (nsamples) snprintf(msg, sizeof msg, "%s: drag it onto a folder or its title bar (Ctrl: titles; Shift: all)", samples[pal.sel]);
     else snprintf(msg, sizeof msg, "No colours: add them in its Properties");
-    ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, st.x + 6, st.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, msg, st.w - 12);
     cairo_restore(cr);
 }
 
@@ -635,7 +636,8 @@ static void pal_close(ui_surface *s)
 static void pal_resized(ui_surface *s, double w, double h) { (void)w; (void)h; ui_surface_damage_all(s); }
 static void pal_focus(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 static const ui_surface_ops pal_ops = { .draw = pal_draw, .pointer = pal_pointer, .key = pal_key, .resized = pal_resized,
-                                        .close = pal_close, .focus = pal_focus };
+                                        .close = pal_close, .focus = pal_focus,
+                                       .drag_motion = ui_font_drag_motion, .drop = ui_font_drop };   /* a font: the Dialogs font */
 
 void colorpal_init(ui_app *a, colorpal_apply_fn fn)
 {

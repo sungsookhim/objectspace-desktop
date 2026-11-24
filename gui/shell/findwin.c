@@ -13,12 +13,12 @@
 #include "svc.h"
 
 #define M 8                /* margin */
-#define ROW 24             /* a field's height */
+#define ROW (24 + ui_dialog_grow())             /* a field's height */
 #define GAP 6
-#define LABEL_W 60
-#define BTN_W 84
-#define TYPE_W 120
-#define STATUS_H 20
+#define LABEL_W (60 * ui_dialog_wider())
+#define BTN_W (84 * ui_dialog_wider())
+#define TYPE_W (120 * ui_dialog_wider())
+#define STATUS_H (20 + ui_dialog_grow())
 #define LIMIT 2000         /* results at most */
 
 enum { F_NAME, F_FOLDER, F_SUB, F_TYPE, F_FIND, F_RESULTS, F_COUNT };
@@ -418,7 +418,7 @@ static void focus_ring(cairo_t *cr, ui_rect r)
 static void label(cairo_t *cr, ui_rect r, const char *s)
 {
     ui_set_color(cr, ui_scheme_now.text);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.x, r.y + (r.h + ui_text_ascent()) / 2 - 1, s, r.w);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.x, r.y + (r.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, s, r.w);
 }
 
 static void button(cairo_t *cr, ui_rect b, const char *s, bool down, bool focused, bool arrow)
@@ -426,10 +426,10 @@ static void button(cairo_t *cr, ui_rect b, const char *s, bool down, bool focuse
     const ui_scheme *k = &ui_scheme_now;
     ui_fill(cr, b, k->face);
     ui_bevel(cr, b, !down);
-    double tw = ui_text_width(UI_FONT_REGULAR, s), d = down ? 1 : 0;
+    double tw = ui_text_width(UI_FONT_DIALOG, s), d = down ? 1 : 0;
     ui_set_color(cr, k->text);
     double tx = arrow ? b.x + 8 : b.x + (b.w - tw) / 2;
-    ui_text_draw(cr, UI_FONT_REGULAR, tx + d, b.y + (b.h + ui_text_ascent()) / 2 - 1 + d, s, b.w - 20);
+    ui_text_draw(cr, UI_FONT_DIALOG, tx + d, b.y + (b.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + d, s, b.w - 20);
     if (arrow) {
         double cx = b.x + b.w - 10, cy = b.y + b.h / 2;
         cairo_move_to(cr, cx - 4, cy - 2);
@@ -455,7 +455,7 @@ static void check(cairo_t *cr, ui_rect r, const char *s, bool on, bool focused)
         cairo_line_to(cr, b.x + b.w - 3, b.y + 3);
         cairo_stroke(cr);
     }
-    ui_rect t = { b.x + b.w + 6, r.y, ui_text_width(UI_FONT_REGULAR, s) + 4, r.h };
+    ui_rect t = { b.x + b.w + 6, r.y, ui_text_width(UI_FONT_DIALOG, s) + 4, r.h };
     label(cr, (ui_rect){ t.x + 2, t.y, t.w, t.h }, s);
     if (focused) focus_ring(cr, (ui_rect){ t.x, t.y + 3, t.w, t.h - 6 });
 }
@@ -494,7 +494,7 @@ static void fw_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_save(cr);
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
-    ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, st.x + 6, st.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, msg, st.w - 12);
     cairo_restore(cr);
 }
 
@@ -697,7 +697,8 @@ static void fw_resized(ui_surface *s, double width, double height)
 static void fw_focus(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 
 static const ui_surface_ops fw_ops = { .draw = fw_draw, .pointer = fw_pointer, .key = fw_key, .resized = fw_resized,
-                                       .close = fw_close, .focus = fw_focus };
+                                       .close = fw_close, .focus = fw_focus,
+                                       .drag_motion = ui_font_drag_motion, .drop = ui_font_drop };   /* a font: the Dialogs font */
 
 void findwin_init(ui_app *a, void (*of)(const char *path),
                   void (*dr)(ui_surface *win, uint32_t serial, const char *const *paths, size_t n, ui_kind kind))
@@ -727,6 +728,7 @@ void findwin_open(const char *folder, const char *name)
     w->s = ui_window_new(app, &fw_ops, w, "org.wps.Find", 620, 440);
     ui_window_set_title(w->s, "Find");
     w->cont = ui_container_new(w->s, &res_src, w, UI_VIEW_DETAILS);
+    ui_container_set_font(w->cont, UI_FONT_DIALOG);   /* (a dialog's list) */
     ui_container_set_name_head(w->cont, "Folder");
     set_focus(w, F_NAME);
     layout(w);

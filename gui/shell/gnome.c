@@ -92,9 +92,10 @@ static void apply_font(void)
     *sp = 0;
     if (scale <= 0) scale = 1;
     double px = pt * 96.0 / 72.0 * scale;
-    double before = ui_scheme_now.font_px;
+    double before = ui_scheme_now.font_px, scale_before = ui_text_scale();
+    ui_text_set_scale(scale);   /* the Font Palette's sizes too */
     ui_text_set_font(fam, (double)(int)(px + 0.5));
-    if (ui_scheme_now.font_px != before && font_changed) font_changed();
+    if ((ui_scheme_now.font_px != before || ui_text_scale() != scale_before) && font_changed) font_changed();
 }
 
 /* What GNOME says, as the WPS objects would say it. */

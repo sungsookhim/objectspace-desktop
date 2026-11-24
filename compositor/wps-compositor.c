@@ -451,50 +451,34 @@ static struct toplevel *window_at(double x, double y, struct wlr_surface **surfa
 /* ---------------------------------------------------------- system menu */
 
 /* A framed window's system menu (as the toolkit's frames have): Restore or
- * Maximize, Minimize, Close; drawn by the compositor, under the system
- * menu button. */
-#define MENU_ITEM_H 22
-#define MENU_W 150
+ * Maximize, Minimize, Close; under the system menu button, drawn as the
+ * toolkit's menus are (ui_menupaint.c), in the menu font. */
 static struct {
     struct wlr_scene_buffer *buf;
     struct toplevel *t;
     int x, y, w, h;
     int hot;
+    ui_menu_item items[4];
 } menu = { .hot = -1 };
 
-static const char *menu_label(int i)
+static ui_menu_look menu_look(void)
 {
-    switch (i) {
-    case 0: return menu.t && menu.t->maximized ? "Restore" : "Maximize";
-    case 1: return "Minimize";
-    case 3: return "Close";
-    default: return NULL;   /* 2: a separator */
+    static const char *labels[] = { "Maximize", "Minimize", "-", "Close" };
+    for (int i = 0; i < 4; i++) {
+        menu.items[i] = (ui_menu_item){ .id = i, .label = (char *)labels[i], .enabled = true };
+        if (i == 0 && menu.t && menu.t->maximized) menu.items[i].label = "Restore";
     }
+    return (ui_menu_look){ .items = menu.items, .n = 4, .icon_small = 16 };   /* (the default icon set's small size) */
 }
-
-static int menu_y(int i) { return 3 + (i > 2 ? 2 * MENU_ITEM_H + 8 : i * MENU_ITEM_H); }
 
 static void menu_draw(void)
 {
-    const ui_scheme *k = &ui_scheme_now;
     double sc = comp_scale_at(menu.buf->node.x + menu.w / 2.0, menu.buf->node.y + menu.h / 2.0);
     cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ceil(menu.w * sc), (int)ceil(menu.h * sc));
     cairo_t *cr = cairo_create(s);
     cairo_scale(cr, sc, sc);
-    ui_fill(cr, (ui_rect){ 0, 0, menu.w, menu.h }, k->menu_bg);
-    ui_bevel(cr, (ui_rect){ 0, 0, menu.w, menu.h }, true);
-    for (int i = 0; i < 4; i++) {
-        const char *l = menu_label(i);
-        int y = menu_y(i);
-        if (!l) {
-            ui_fill(cr, (ui_rect){ 4, y + 3, menu.w - 8, 1 }, k->shadow);
-            ui_fill(cr, (ui_rect){ 4, y + 4, menu.w - 8, 1 }, k->light);
-            continue;
-        }
-        if (i == menu.hot) ui_fill(cr, (ui_rect){ 3, y, menu.w - 6, MENU_ITEM_H }, k->menu_hilite);
-        ui_set_color(cr, i == menu.hot ? k->menu_hilite_text : k->menu_text);
-        ui_text_draw(cr, UI_FONT_REGULAR, 16, y + (MENU_ITEM_H + ui_text_ascent()) / 2 - 1, l, menu.w - 20);
-    }
+    ui_menu_look l = menu_look();
+    ui_menu_look_draw(cr, &l, menu.w, menu.h, menu.hot);
     cairo_destroy(cr);
     cairo_surface_flush(s);
     struct cairo_buffer *cb = calloc(1, sizeof *cb);
@@ -503,6 +487,16 @@ static void menu_draw(void)
     wlr_scene_buffer_set_buffer(menu.buf, &cb->base);
     wlr_scene_buffer_set_dest_size(menu.buf, menu.w, menu.h);
     wlr_buffer_drop(&cb->base);
+}
+
+static void menu_close(void);
+
+/* The Font Palette's menu font (the shell's System object): an open menu
+ * closes (its size was the old font's). */
+void comp_set_menu_font(ui_font f)
+{
+    ui_menu_set_font(f);
+    if (menu.t) menu_close();
 }
 
 static void menu_close(void)
@@ -519,8 +513,11 @@ static void menu_open(struct toplevel *t, bool keyboard)
     menu.hot = keyboard ? 0 : -1;
     ui_frame_geom g = geom_of(t, t->fw, t->fh);
     ui_rect b = ui_frame_geom_button(&g, 0);
-    menu.w = MENU_W;
-    menu.h = menu_y(3) + MENU_ITEM_H + 3;
+    ui_menu_look l = menu_look();
+    double mw, mh;
+    ui_menu_look_size(&l, &mw, &mh);
+    menu.w = (int)ceil(fmax(mw, 150));
+    menu.h = (int)ceil(mh);
     menu.x = t->tree->node.x + (int)b.x;
     menu.y = t->tree->node.y + (int)(b.y + b.h);
     wlr_scene_node_set_position(&menu.buf->node, menu.x, menu.y);
@@ -532,9 +529,8 @@ static void menu_open(struct toplevel *t, bool keyboard)
 static int menu_item_at(double x, double y)
 {
     if (x < menu.x || x >= menu.x + menu.w || y < menu.y || y >= menu.y + menu.h) return -2;   /* outside */
-    for (int i = 0; i < 4; i++)
-        if (menu_label(i) && y - menu.y >= menu_y(i) && y - menu.y < menu_y(i) + MENU_ITEM_H) return i;
-    return -1;
+    ui_menu_look l = menu_look();
+    return ui_menu_look_item_at(&l, menu.w, x - menu.x, y - menu.y);
 }
 
 static void frame_button(struct toplevel *t, ui_hit part);

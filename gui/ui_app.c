@@ -436,6 +436,16 @@ void ui_window_set_size(ui_surface *s, double w, double h, bool fixed)
     ui_surface_damage_all(s);
 }
 
+/* The Dialogs font (or another look) changed: every window lays itself
+ * out again at its size and is drawn again. */
+void ui_app_restyle(ui_app *a)
+{
+    for (ui_surface *s = a->surfaces; s; s = s->next) {
+        if (s->ops->resized && s->w > 0 && s->h > 0) s->ops->resized(s, s->w, s->h);
+        ui_surface_damage_all(s);
+    }
+}
+
 static struct xdg_positioner *positioner(ui_surface *s, double w, double h)
 {
     ui_rect anchor = s->pop_anchor;

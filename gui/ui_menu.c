@@ -9,21 +9,8 @@
 
 #include "ui_internal.h"
 
-#define ITEM_H item_h()
-#define SEP_H 7
-#define PAD 3
-
-/* All menus' font (the Font Palette's; the interface font unless set). */
-static ui_font menu_font = UI_FONT_REGULAR;
-void ui_menu_set_font(ui_font f) { menu_font = f; }
-static double item_h(void)
-{
-    double ic = ui_icons()->small + 6;   /* (room for the icon set's small icon) */
-    if (menu_font == UI_FONT_REGULAR) return fmax(22, ic);   /* (as always) */
-    double h = ceil(ui_font_line_h(menu_font)) + 6;
-    return fmax(fmax(h, 22), ic);
-}
-
+/* (the looks and geometry: ui_menupaint.c, shared with the compositor) */
+#define ITEM_H ui_menu_look_item_h(&(ui_menu_look){ .icon_small = ui_icons()->small })
 struct menu_root;
 
 struct menu {
@@ -96,23 +83,18 @@ static double icon_room(struct menu_root *r, const ui_menu_item *items, size_t n
     return 0;
 }
 
+static ui_menu_look plain_look(struct menu *m) { return (ui_menu_look){ .items = m->items, .n = m->n, .icon_small = ui_icons()->small }; }
+
 static double item_y(struct menu *m, size_t i)
 {
-    double y = PAD;
-    for (size_t k = 0; k < i; k++) y += is_sep(&m->items[k]) ? SEP_H : ITEM_H;
-    return y;
+    ui_menu_look l = plain_look(m);
+    return ui_menu_look_item_y(&l, i);
 }
 
 static int item_at(struct menu *m, double x, double y)
 {
-    if (x < 0 || x >= m->w) return -1;
-    double top = PAD;
-    for (size_t i = 0; i < m->n; i++) {
-        double h = is_sep(&m->items[i]) ? SEP_H : ITEM_H;
-        if (y >= top && y < top + h) return is_sep(&m->items[i]) ? -1 : (int)i;
-        top += h;
-    }
-    return -1;
+    ui_menu_look l = plain_look(m);
+    return ui_menu_look_item_at(&l, m->w, x, y);
 }
 
 static void close_child(struct menu *m);
@@ -120,68 +102,29 @@ static void finish(struct menu_root *r, int64_t id);
 
 /* ----------------------------------------------------------------- drawing */
 
+static bool look_icon(void *arg, const ui_menu_item *it, cairo_t *cr, double x, double y, double size)
+{
+    ui_item ii;
+    if (!item_icon(arg, it, &ii)) return false;
+    ui_draw_item_icon(cr, &ii, x, y, size);
+    return true;
+}
+
+static ui_menu_look look_of(struct menu *m)
+{
+    ui_menu_look l = plain_look(m);
+    l.room = icon_room(m->root, m->items, m->n);
+    l.icon = look_icon;
+    l.arg = m->root;
+    return l;
+}
+
 static void menu_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 {
     (void)clip;
     struct menu *m = ui_surface_data(s);
-    const ui_scheme *k = &ui_scheme_now;
-    if (k->translucency == 2) {
-        /* Translucent menus: what is behind them shows through. */
-        ui_color bg = k->menu_bg;
-        bg.a = 0.88;
-        cairo_save(cr);
-        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-        ui_fill(cr, (ui_rect){ 0, 0, m->w, m->h }, bg);
-        cairo_restore(cr);
-    } else {
-        ui_fill(cr, (ui_rect){ 0, 0, m->w, m->h }, k->menu_bg);
-    }
-    ui_bevel(cr, (ui_rect){ 0, 0, m->w, m->h }, true);
-    double room = icon_room(m->root, m->items, m->n);
-    for (size_t i = 0; i < m->n; i++) {
-        const ui_menu_item *it = &m->items[i];
-        double y = item_y(m, i);
-        if (is_sep(it)) {
-            ui_set_color(cr, k->shadow);
-            cairo_rectangle(cr, 4, y + 3, m->w - 8, 1);
-            cairo_fill(cr);
-            ui_set_color(cr, k->light);
-            cairo_rectangle(cr, 4, y + 4, m->w - 8, 1);
-            cairo_fill(cr);
-            continue;
-        }
-        bool hot = (int)i == m->hot && it->enabled;
-        if (hot) ui_fill(cr, (ui_rect){ 2, y, m->w - 4, ITEM_H }, k->menu_hilite);
-        ui_color tc = !it->enabled ? k->disabled_text : hot ? k->menu_hilite_text : k->menu_text;
-        ui_set_color(cr, tc);
-        if (it->checked) {
-            cairo_set_line_width(cr, 1.5);
-            cairo_move_to(cr, 6, y + 11);
-            cairo_line_to(cr, 9, y + 15);
-            cairo_line_to(cr, 15, y + 6);
-            cairo_stroke(cr);
-        }
-        ui_item ii;
-        if (room && item_icon(m->root, it, &ii)) {
-            double is = ui_icons()->small;
-            ui_draw_item_icon(cr, &ii, 20, y + floor((ITEM_H - is) / 2), is);
-            ui_set_color(cr, tc);
-        }
-        char label[256];
-        snprintf(label, sizeof label, "%s", it->label);
-        char *key = strchr(label, '\t');   /* "Text\tShortcut": shortcut right-aligned */
-        if (key) *key++ = 0;
-        double base = y + (ITEM_H + ui_font_ascent(menu_font)) / 2 - 1;
-        ui_text_draw(cr, menu_font, 22 + room, base, label, m->w - 44 - room);
-        if (key) ui_text_draw(cr, menu_font, m->w - 22 - ui_text_width(menu_font, key), base, key, 0);
-        if (it->nitems) {
-            cairo_move_to(cr, m->w - 12, y + 7);
-            cairo_line_to(cr, m->w - 8, y + 11);
-            cairo_line_to(cr, m->w - 12, y + 15);
-            cairo_close_path(cr);
-            cairo_fill(cr);
-        }
-    }
+    ui_menu_look l = look_of(m);
+    ui_menu_look_draw(cr, &l, m->w, m->h, m->hot);
 }
 
 /* --------------------------------------------------------------- behaviour */
@@ -327,18 +270,8 @@ static void open_menu(struct menu_root *r, struct menu *parent, ui_surface *on, 
     m->items = items;
     m->n = n;
     m->hot = -1;
-    double w = 120, room = icon_room(r, items, n);
-    for (size_t i = 0; i < n; i++)
-        if (!is_sep(&items[i])) {
-            char label[256];
-            snprintf(label, sizeof label, "%s", items[i].label);
-            char *key = strchr(label, '\t');
-            if (key) *key++ = 0;
-            double tw = ui_text_width(menu_font, label) + 22 + 30 + (key ? ui_text_width(menu_font, key) + 24 : 0) + room;
-            if (tw > w) w = tw;
-        }
-    m->w = w;
-    m->h = item_y(m, n) + PAD;
+    ui_menu_look l = look_of(m);
+    ui_menu_look_size(&l, &m->w, &m->h);
     m->surf = r->left ? ui_popup_new_beside(on->app, on, &menu_ops, m, anchor, m->w, m->h, serial, true)
                       : ui_popup_new(on->app, on, &menu_ops, m, anchor, m->w, m->h, serial);
     if (parent) parent->child = m;

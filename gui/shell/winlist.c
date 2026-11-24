@@ -12,7 +12,7 @@
 
 #include "events.h"
 
-#define STATUS_H 20
+#define STATUS_H (20 + ui_dialog_grow())
 
 struct win {
     char id[32];
@@ -266,7 +266,7 @@ static void lw_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_save(cr);
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
-    ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, st.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, st.x + 6, st.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, msg, st.w - 12);
     cairo_restore(cr);
 }
 
@@ -314,7 +314,8 @@ static void lw_resized(ui_surface *s, double w, double h)
 static void lw_focus(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 
 static const ui_surface_ops lw_ops = { .draw = lw_draw, .pointer = lw_pointer, .key = lw_key, .resized = lw_resized,
-                                       .close = lw_close, .focus = lw_focus };
+                                       .close = lw_close, .focus = lw_focus,
+                                       .drag_motion = ui_font_drag_motion, .drop = ui_font_drop };   /* a font: the Dialogs font */
 
 void winlist_open(bool minimized_only)
 {
@@ -332,6 +333,7 @@ void winlist_open(bool minimized_only)
     l->s = ui_window_new(app, &lw_ops, l, minimized_only ? "org.wps.MinimizedViewer" : "org.wps.WindowList", minimized_only ? 520 : 420, minimized_only ? 300 : 360);
     ui_window_set_title(l->s, minimized_only ? "Minimized Window Viewer" : "Window List");
     l->cont = ui_container_new(l->s, &list_src, l, minimized_only ? UI_VIEW_ICON : UI_VIEW_TREE);
+    ui_container_set_font(l->cont, UI_FONT_DIALOG);   /* (a dialog's list) */
     lw_layout(l);
     refresh(l);
     events_raise("window.open", "", "window", (ui_rect){ 0, 0, 0, 0 });

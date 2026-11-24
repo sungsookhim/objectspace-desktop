@@ -149,10 +149,10 @@ static double row_icon(const ui_container *c) { return c->view == UI_VIEW_TREE ?
  * least its icon's) */
 static double row_h_of(const ui_container *c)
 {
-    double h = c->font == UI_FONT_REGULAR ? 20 : fmax(20, ceil(ui_font_line_h(c->font)) + 4);
+    double h = ui_font_is_interface(c->font) ? 20 : fmax(20, ceil(ui_font_line_h(c->font)) + 4);
     return fmax(h, row_icon(c) + 4);
 }
-static double label_h_of(const ui_container *c) { return c->font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(c->font))); }
+static double label_h_of(const ui_container *c) { return ui_font_is_interface(c->font) ? 16 : fmax(16, ceil(ui_font_line_h(c->font))); }
 
 static size_t cols(ui_container *c)
 {
@@ -650,6 +650,7 @@ void ui_container_begin_rename(ui_container *c, size_t i)
     }
     shown[o] = 0;
     c->rename = ui_entry_new(shown);
+    ui_entry_set_font(c->rename, UI_FONT_REGULAR);   /* (in the icons' place, their row's size) */
     if (it.kind == UI_KIND_FOLDER) ui_entry_select_all(c->rename);
     else ui_entry_select_stem(c->rename);
     c->rename_i = i;
@@ -1102,7 +1103,7 @@ double ui_icon_cell_height_w(ui_font font, const ui_icon_set *set, const char *t
     char lines[LABEL_MAX][256];
     bool all;
     int n = wrap_title(font, title ? title : "", width - 8, lines, LABEL_MAX, &all);
-    double lh = font == UI_FONT_REGULAR ? 16 : fmax(16, ceil(ui_font_line_h(font)));
+    double lh = ui_font_is_interface(font) ? 16 : fmax(16, ceil(ui_font_line_h(font)));
     double h = set->large + 8 + n * lh + 4 + 4;
     return h > set->cell_h ? h : set->cell_h;
 }

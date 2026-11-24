@@ -30,7 +30,9 @@ bool fontpal_is_open(void);
 size_t fontpal_count(void);
 const char *fontpal_sample(size_t i);
 bool fontpal_edit(size_t i);                       /* Edit font... on sample i */
-bool fontpal_edit_choose(const char *family, int size, bool bold, bool italic);   /* its OK */
+bool fontpal_edit_choose(const char *family, int size, const char *style);   /* its OK */
+bool fontpal_edit_family(const char *family);    /* a family chosen in its list */
+size_t fontpal_edit_styles(char (*out)[64], size_t max);   /* the style list now */
 bool fontpal_edit_is_open(void);
 size_t fontpal_families(void);
 bool fontpal_snapshot(const char *png);

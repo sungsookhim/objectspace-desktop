@@ -15,9 +15,9 @@
 #define CELL_W 170
 #define CELL_H 48
 #define M 8
-#define BTN_W 110
-#define ROW 24
-#define STATUS_H 20
+#define BTN_W (110 * ui_dialog_wider())
+#define ROW (24 + ui_dialog_grow())
+#define STATUS_H (20 + ui_dialog_grow())
 #define MAX_SAMPLES 24
 
 static ui_app *app;
@@ -64,18 +64,23 @@ static void save_samples(void)
 #define EF_W 460
 #define EF_H 380
 #define EF_LIST_W 240
+#define MAX_STYLES 32
 static struct ef {
     ui_surface *s;
-    ui_container *list;
+    ui_container *list, *style_list;
     char **fam;
     size_t nfam;
     size_t sample;
     ui_entry *size;
-    bool bold, italic;
-    int focus;                 /* 0 list, 1 size, 2 bold, 3 italic, 4 OK, 5 Cancel */
-    int pressed;               /* a button held: 4 or 5 */
+    char styles[MAX_STYLES][64];   /* the family's (fontconfig's), by weight */
+    size_t nstyles;
+    size_t styles_of;          /* the family they are for */
+    char style[64];            /* the one chosen ("Regular", "SemiBold", ...) */
+    int focus;                 /* 0 list, 1 size, 2 style, 3 OK, 4 Cancel */
+    int pressed;               /* a button held: 3 or 4 */
     bool closing;
 } ef;
+enum { EF_FAMILY, EF_SIZE, EF_STYLE, EF_OK, EF_CANCEL, EF_NFOCUS };
 
 static int cmp_str(const void *a, const void *b) { return strcoll(*(char *const *)a, *(char *const *)b); }
 
@@ -123,30 +128,86 @@ static void ef_ok(void);
 static void ef_activate(void *ctx, size_t i) { (void)ctx; (void)i; ef_ok(); }
 static const ui_container_src ef_src = { ef_count, ef_item, NULL, ef_activate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-struct ef_rects { ui_rect list, size_l, size, bold, italic, preview, ok, cancel; };
+static size_t st_count(void *ctx) { (void)ctx; return ef.nstyles; }
+static void st_item(void *ctx, size_t i, ui_item *out)
+{
+    (void)ctx;
+    memset(out, 0, sizeof *out);
+    if (i >= ef.nstyles) return;
+    out->loaded = out->detailed = true;
+    out->kind = UI_KIND_FILE;
+    out->title = out->name = ef.styles[i];
+}
+static const ui_container_src st_src = { st_count, st_item, NULL, ef_activate, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+
+static const char *family_now(void)
+{
+    size_t i = ef.list ? ui_container_cursor(ef.list) : SIZE_MAX;
+    return i < ef.nfam ? ef.fam[i] : "Sans";
+}
+
+/* The family's styles, as fontconfig has them (Edit font: OS/2's style
+ * list); a name fontconfig only matches ("Sans", "Serif"), or a family
+ * listed with none: the four it can make. The chosen style kept if the
+ * new family has it, else Regular (or its first). */
+static void sync_styles(void)
+{
+    size_t fi = ef.list ? ui_container_cursor(ef.list) : SIZE_MAX;
+    if (fi == ef.styles_of && ef.nstyles) return;
+    ef.styles_of = fi;
+    ef.nstyles = ui_font_styles(family_now(), ef.styles, MAX_STYLES);
+    if (!ef.nstyles) {
+        static const char *const made[] = { "Regular", "Bold", "Italic", "Bold Italic" };
+        for (size_t k = 0; k < 4; k++) snprintf(ef.styles[k], sizeof ef.styles[k], "%s", made[k]);
+        ef.nstyles = 4;
+    }
+    size_t at = SIZE_MAX, regular = SIZE_MAX;
+    for (size_t k = 0; k < ef.nstyles; k++) {
+        if (!strcasecmp(ef.styles[k], ef.style)) at = k;
+        if (!strcasecmp(ef.styles[k], "Regular") || !strcasecmp(ef.styles[k], "Book") || !strcasecmp(ef.styles[k], "Normal"))
+            if (regular == SIZE_MAX) regular = k;
+    }
+    if (at == SIZE_MAX) at = regular != SIZE_MAX ? regular : 0;
+    snprintf(ef.style, sizeof ef.style, "%s", ef.styles[at]);
+    if (ef.style_list) {
+        ui_container_reset(ef.style_list);   /* (another count) */
+        ui_container_set_cursor(ef.style_list, at);
+    }
+}
+
+static void style_from_list(void)
+{
+    size_t k = ef.style_list ? ui_container_cursor(ef.style_list) : SIZE_MAX;
+    if (k < ef.nstyles) snprintf(ef.style, sizeof ef.style, "%s", ef.styles[k]);
+}
+
+struct ef_rects { ui_rect list, size_l, size, style_l, style, preview, ok, cancel; };
 static struct ef_rects ef_rects(void)
 {
     ui_rect c = ui_frame_client(ef.s);
     struct ef_rects r;
-    double bx = c.x + M + EF_LIST_W + 12, by = c.y + M;
+    double bx = c.x + M + EF_LIST_W + 12, by = c.y + M, rw = c.x + c.w - M - bx;
     r.list = (ui_rect){ c.x, c.y, EF_LIST_W + M, c.h - ROW - 2 * M };
     r.size_l = (ui_rect){ bx, by, 60, ROW };
     r.size = (ui_rect){ bx + 64, by, 60, ROW };
-    r.bold = (ui_rect){ bx, by + ROW + 8, 120, ROW };
-    r.italic = (ui_rect){ bx, by + 2 * (ROW + 8), 120, ROW };
-    r.preview = (ui_rect){ bx, by + 3 * (ROW + 8), c.x + c.w - M - bx, 90 };
+    r.style_l = (ui_rect){ bx, by + ROW + 6, 60, ROW };
+    double sy = r.style_l.y + ROW, py = c.y + c.h - M - ROW - 10 - 90;   /* the list: down to the preview */
+    r.style = (ui_rect){ bx, sy, rw, fmax(ROW * 2, py - 8 - sy) };
+    r.preview = (ui_rect){ bx, py, rw, 90 };
     r.ok = (ui_rect){ c.x + c.w - M - 2 * 90 - 8, c.y + c.h - M - ROW, 90, ROW };
     r.cancel = (ui_rect){ c.x + c.w - M - 90, c.y + c.h - M - ROW, 90, ROW };
     return r;
 }
 
+/* "16.Serif Bold", "10.Noto Sans SemiBold": the family, then its style
+ * (none for Regular). */
 static void spec_now(char *out, size_t n)
 {
-    size_t i = ui_container_cursor(ef.list);
     int pt = atoi(ui_entry_text(ef.size));
     if (pt < 4) pt = 4;
     if (pt > 72) pt = 72;
-    snprintf(out, n, "%d.%s%s%s", pt, i < ef.nfam ? ef.fam[i] : "Sans", ef.bold ? " Bold" : "", ef.italic ? " Italic" : "");
+    bool plain = !ef.style[0] || !strcasecmp(ef.style, "Regular");
+    snprintf(out, n, "%d.%s%s%s", pt, family_now(), plain ? "" : " ", plain ? "" : ef.style);
 }
 
 static void ring(cairo_t *cr, ui_rect r)
@@ -161,33 +222,14 @@ static void ring(cairo_t *cr, ui_rect r)
     cairo_restore(cr);
 }
 
-static void check_box(cairo_t *cr, ui_rect r, const char *label, bool on, bool focus)
-{
-    const ui_scheme *k = &ui_scheme_now;
-    ui_rect b = { r.x + 4, r.y + 4, r.h - 8, r.h - 8 };
-    ui_fill(cr, b, k->client_bg);
-    ui_bevel(cr, b, false);
-    if (on) {
-        ui_set_color(cr, k->text);
-        cairo_set_line_width(cr, 2);
-        cairo_move_to(cr, b.x + 3, b.y + b.h / 2);
-        cairo_line_to(cr, b.x + b.w / 2 - 1, b.y + b.h - 4);
-        cairo_line_to(cr, b.x + b.w - 3, b.y + 3);
-        cairo_stroke(cr);
-    }
-    ui_set_color(cr, k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.x + r.h + 4, r.y + (r.h + ui_text_ascent()) / 2 - 1, label, r.w - r.h - 4);
-    if (focus) ring(cr, (ui_rect){ r.x + r.h, r.y, ui_text_width(UI_FONT_REGULAR, label) + 8, r.h });
-}
-
 static void button(cairo_t *cr, ui_rect r, const char *label, bool down, bool focus)
 {
     const ui_scheme *k = &ui_scheme_now;
     ui_fill(cr, r, k->face);
     ui_bevel(cr, r, !down);
     ui_set_color(cr, k->text);
-    double tw = ui_text_width(UI_FONT_REGULAR, label);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.x + (r.w - tw) / 2 + down, r.y + (r.h + ui_text_ascent()) / 2 - 1 + down, label, r.w - 6);
+    double tw = ui_text_width(UI_FONT_DIALOG, label);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.x + (r.w - tw) / 2 + down, r.y + (r.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + down, label, r.w - 6);
     if (focus) ring(cr, r);
 }
 
@@ -200,12 +242,14 @@ static void ef_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     struct ef_rects r = ef_rects();
     ui_fill(cr, (ui_rect){ r.list.x + r.list.w, c.y, c.w - r.list.w, c.h }, k->face);
     ui_fill(cr, (ui_rect){ c.x, r.list.y + r.list.h, r.list.w, c.h - r.list.h }, k->face);
+    sync_styles();
     ui_container_draw(ef.list, cr, clip);
     ui_set_color(cr, k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.size_l.x, r.size_l.y + (ROW + ui_text_ascent()) / 2 - 1, "Size", r.size_l.w);
-    ui_entry_draw(ef.size, cr, r.size, ef.focus == 1);
-    check_box(cr, r.bold, "Bold", ef.bold, ef.focus == 2);
-    check_box(cr, r.italic, "Italic", ef.italic, ef.focus == 3);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.size_l.x, r.size_l.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, "Size", r.size_l.w);
+    ui_entry_draw(ef.size, cr, r.size, ef.focus == EF_SIZE);
+    ui_set_color(cr, k->text);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.style_l.x, r.style_l.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, "Style", r.style_l.w);
+    ui_container_draw(ef.style_list, cr, clip);
     /* the sample in the font as it is now */
     ui_fill(cr, r.preview, k->client_bg);
     ui_bevel(cr, r.preview, false);
@@ -219,22 +263,25 @@ static void ef_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_text_draw(cr, f, r.preview.x + 8, r.preview.y + 8 + ui_font_ascent(f), spec, r.preview.w - 16);
     ui_text_draw(cr, f, r.preview.x + 8, r.preview.y + 12 + ui_font_line_h(f) + ui_font_ascent(f), "AaBbCc 가나다 0123", r.preview.w - 16);
     cairo_restore(cr);
-    button(cr, r.ok, "OK", ef.pressed == 4, ef.focus == 4);
-    button(cr, r.cancel, "Cancel", ef.pressed == 5, ef.focus == 5);
+    button(cr, r.ok, "OK", ef.pressed == EF_OK, ef.focus == EF_OK);
+    button(cr, r.cancel, "Cancel", ef.pressed == EF_CANCEL, ef.focus == EF_CANCEL);
 }
 
 static void ef_set_focus(int f)
 {
     ef.focus = f;
-    ui_container_set_focused(ef.list, f == 0);
-    ui_text_input_focus(ef.s, f == 1 ? ef.size : NULL, ef_rects().size);
-    if (f == 1) ui_entry_select_all(ef.size);
+    ui_container_set_focused(ef.list, f == EF_FAMILY);
+    ui_container_set_focused(ef.style_list, f == EF_STYLE);
+    ui_text_input_focus(ef.s, f == EF_SIZE ? ef.size : NULL, ef_rects().size);
+    if (f == EF_SIZE) ui_entry_select_all(ef.size);
     ui_surface_damage_all(ef.s);
 }
 
 static void ef_ok(void)
 {
     if (!ef.s || ef.closing || ef.sample >= nsamples) return;
+    sync_styles();
+    style_from_list();
     char spec[200];
     spec_now(spec, sizeof spec);
     snprintf(samples[ef.sample], sizeof samples[0], "%s", spec);
@@ -251,28 +298,37 @@ static void ef_pointer(ui_surface *s, const ui_pointer_event *e)
     struct ef_rects r = ef_rects();
     if (e->kind == UI_PRESS && !used && h == UI_HIT_CLIENT) {
         if (ui_rect_has(r.list, e->x, e->y)) {
-            if (ef.focus != 0) ef_set_focus(0);
+            if (ef.focus != EF_FAMILY) ef_set_focus(EF_FAMILY);
             ui_container_pointer(ef.list, e);
-            ui_surface_damage_all(s);   /* (the preview follows the family) */
+            sync_styles();
+            ui_surface_damage_all(s);   /* (the styles and the preview follow the family) */
+            return;
+        }
+        if (ui_rect_has(r.style, e->x, e->y)) {
+            if (ef.focus != EF_STYLE) ef_set_focus(EF_STYLE);
+            ui_container_pointer(ef.style_list, e);
+            style_from_list();
+            ui_surface_damage_all(s);
             return;
         }
         if (e->button != UI_BTN1) return;
-        if (ui_rect_has(r.size, e->x, e->y)) { ef_set_focus(1); ui_entry_pointer(ef.size, e, r.size); return; }
-        if (ui_rect_has(r.bold, e->x, e->y)) { ef.bold = !ef.bold; ef_set_focus(2); return; }
-        if (ui_rect_has(r.italic, e->x, e->y)) { ef.italic = !ef.italic; ef_set_focus(3); return; }
-        if (ui_rect_has(r.ok, e->x, e->y)) { ef.pressed = 4; ef_set_focus(4); return; }
-        if (ui_rect_has(r.cancel, e->x, e->y)) { ef.pressed = 5; ef_set_focus(5); return; }
+        if (ui_rect_has(r.size, e->x, e->y)) { ef_set_focus(EF_SIZE); ui_entry_pointer(ef.size, e, r.size); return; }
+        if (ui_rect_has(r.ok, e->x, e->y)) { ef.pressed = EF_OK; ef_set_focus(EF_OK); return; }
+        if (ui_rect_has(r.cancel, e->x, e->y)) { ef.pressed = EF_CANCEL; ef_set_focus(EF_CANCEL); return; }
         return;
     }
     if (e->kind == UI_RELEASE && ef.pressed) {
         int p = ef.pressed;
         ef.pressed = 0;
         ui_surface_damage_all(s);
-        if (p == 4 && ui_rect_has(r.ok, e->x, e->y)) ef_ok();
-        else if (p == 5 && ui_rect_has(r.cancel, e->x, e->y)) ef_close();
+        if (p == EF_OK && ui_rect_has(r.ok, e->x, e->y)) ef_ok();
+        else if (p == EF_CANCEL && ui_rect_has(r.cancel, e->x, e->y)) ef_close();
         return;
     }
-    if (!used || e->kind == UI_RELEASE || e->kind == UI_MOTION) ui_container_pointer(ef.list, e);
+    if (!used || e->kind == UI_RELEASE || e->kind == UI_MOTION) {
+        ui_container_pointer(ef.list, e);
+        ui_container_pointer(ef.style_list, e);
+    }
 }
 
 static void ef_key(ui_surface *s, const ui_key_event *e)
@@ -280,18 +336,15 @@ static void ef_key(ui_surface *s, const ui_key_event *e)
     if (e->sym == XKB_KEY_Escape) { ef_close(); return; }
     if (e->sym == XKB_KEY_Tab || e->sym == XKB_KEY_ISO_Left_Tab) {
         bool back = e->sym == XKB_KEY_ISO_Left_Tab || (e->mods & UI_MOD_SHIFT);
-        ef_set_focus((ef.focus + (back ? 5 : 1)) % 6);
+        ef_set_focus((ef.focus + (back ? EF_NFOCUS - 1 : 1)) % EF_NFOCUS);
         return;
     }
     bool enter = e->sym == XKB_KEY_Return || e->sym == XKB_KEY_KP_Enter;
     switch (ef.focus) {
-    case 0: if (enter) ef_ok(); else { ui_container_key(ef.list, e); ui_surface_damage_all(s); } return;
-    case 1: if (enter) ef_ok(); else if (ui_entry_key(ef.size, e) != UI_ENTRY_NONE) ui_surface_damage_all(s); return;
-    case 2: case 3:
-        if (e->sym == XKB_KEY_space) { if (ef.focus == 2) ef.bold = !ef.bold; else ef.italic = !ef.italic; ui_surface_damage_all(s); }
-        else if (enter) ef_ok();
-        return;
-    case 4: if (enter || e->sym == XKB_KEY_space) ef_ok(); return;
+    case EF_FAMILY: if (enter) ef_ok(); else { ui_container_key(ef.list, e); sync_styles(); ui_surface_damage_all(s); } return;
+    case EF_SIZE: if (enter) ef_ok(); else if (ui_entry_key(ef.size, e) != UI_ENTRY_NONE) ui_surface_damage_all(s); return;
+    case EF_STYLE: if (enter) ef_ok(); else { ui_container_key(ef.style_list, e); style_from_list(); ui_surface_damage_all(s); } return;
+    case EF_OK: if (enter || e->sym == XKB_KEY_space) ef_ok(); return;
     default: if (enter || e->sym == XKB_KEY_space) ef_close(); return;
     }
 }
@@ -300,10 +353,11 @@ static void ef_free_later(void *arg)
 {
     (void)arg;
     ui_container_free(ef.list);
+    ui_container_free(ef.style_list);
     ui_entry_free(ef.size);
     ui_surface_destroy(ef.s);
     ef.s = NULL;
-    ef.list = NULL;
+    ef.list = ef.style_list = NULL;
     ef.size = NULL;
     ef.closing = false;
 }
@@ -316,10 +370,32 @@ static void ef_close(void)
 }
 
 static void ef_close_req(ui_surface *s) { (void)s; ef_close(); }
-static void ef_resized(ui_surface *s, double w, double h) { (void)w; (void)h; ui_container_layout(ef.list, ef_rects().list); ui_surface_damage_all(s); }
+static void ef_resized(ui_surface *s, double w, double h)
+{
+    (void)w; (void)h;
+    struct ef_rects r = ef_rects();
+    if (ef.list) ui_container_layout(ef.list, r.list);
+    if (ef.style_list) ui_container_layout(ef.style_list, r.style);
+    ui_surface_damage_all(s);
+}
 static void ef_focus_ev(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 static const ui_surface_ops ef_ops = { .draw = ef_draw, .pointer = ef_pointer, .key = ef_key, .resized = ef_resized,
-                                       .close = ef_close_req, .focus = ef_focus_ev };
+                                       .close = ef_close_req, .focus = ef_focus_ev,
+                                       .drag_motion = ui_font_drag_motion, .drop = ui_font_drop };   /* a font: the Dialogs font */
+
+/* Is this one of the families listed? (A sample's name split into its
+ * family and style, as the toolkit does with fontconfig.) */
+static bool has_family(const char *family, const char *style)
+{
+    if (style) {
+        char st[MAX_STYLES][64];
+        size_t n = ui_font_styles(family, st, MAX_STYLES);
+        for (size_t k = 0; k < n; k++) if (!strcasecmp(st[k], style)) return true;
+        return false;
+    }
+    for (size_t k = 0; k < ef.nfam; k++) if (!strcasecmp(ef.fam[k], family)) return true;
+    return false;
+}
 
 bool fontpal_edit(size_t i)
 {
@@ -327,19 +403,17 @@ bool fontpal_edit(size_t i)
     read_families();
     if (ef.s && !ef.closing) { ef.sample = i; ui_window_activate(ef.s); return true; }
     ef.sample = i;
-    /* the sample's family, size and styles */
-    char fam[128] = "Sans";
-    int pt = 10;
+    /* the sample's family, size and style */
+    char fam[128], style[64];
+    bool bold, italic;
     const char *dot = strchr(samples[i], '.');
-    pt = atoi(samples[i]);
-    snprintf(fam, sizeof fam, "%s", dot ? dot + 1 : "Sans");
-    ef.bold = ef.italic = false;
-    for (;;) {
-        size_t l = strlen(fam);
-        if (l > 5 && !strcmp(fam + l - 5, " Bold")) { ef.bold = true; fam[l - 5] = 0; continue; }
-        if (l > 7 && !strcmp(fam + l - 7, " Italic")) { ef.italic = true; fam[l - 7] = 0; continue; }
-        break;
-    }
+    int pt = atoi(samples[i]);
+    if (!dot || !ui_font_split(dot + 1, has_family, fam, sizeof fam, style, sizeof style, &bold, &italic))
+        snprintf(fam, sizeof fam, "Sans"), style[0] = 0, bold = italic = false;
+    if (!style[0]) snprintf(style, sizeof style, "%s", bold && italic ? "Bold Italic" : bold ? "Bold" : italic ? "Italic" : "Regular");
+    snprintf(ef.style, sizeof ef.style, "%s", style);
+    ef.styles_of = SIZE_MAX;
+    ef.nstyles = 0;
     char ps[16];
     snprintf(ps, sizeof ps, "%d", pt);
     ef.size = ui_entry_new(ps);
@@ -347,29 +421,53 @@ bool fontpal_edit(size_t i)
     ef.s = ui_window_new(app, &ef_ops, NULL, "org.wps.EditFont", EF_W, EF_H);
     ui_window_set_title(ef.s, "Edit Font");
     ef.list = ui_container_new(ef.s, &ef_src, NULL, UI_VIEW_DETAILS);
+    ui_container_set_font(ef.list, UI_FONT_DIALOG);   /* (a dialog's list) */
     ui_container_set_columns(ef.list, 0, NULL);
     ui_container_layout(ef.list, ef_rects().list);
+    ef.style_list = ui_container_new(ef.s, &st_src, NULL, UI_VIEW_DETAILS);
+    ui_container_set_font(ef.style_list, UI_FONT_DIALOG);
+    ui_container_set_columns(ef.style_list, 0, NULL);
+    ui_container_layout(ef.style_list, ef_rects().style);
     size_t at = 0;
     for (size_t k = 0; k < ef.nfam; k++) if (!strcasecmp(ef.fam[k], fam)) { at = k; break; }
     ui_container_set_cursor(ef.list, at);
-    ef_set_focus(0);
+    sync_styles();
+    ef_set_focus(EF_FAMILY);
     return true;
 }
 
 bool fontpal_edit_is_open(void) { return ef.s && !ef.closing; }
 size_t fontpal_families(void) { read_families(); return ef.nfam; }
 
-bool fontpal_edit_choose(const char *family, int size, bool bold, bool italic)
+bool fontpal_edit_choose(const char *family, int size, const char *style)
 {
     if (!fontpal_edit_is_open()) return false;
     for (size_t k = 0; k < ef.nfam; k++) if (!strcmp(ef.fam[k], family)) ui_container_set_cursor(ef.list, k);
+    sync_styles();
     char ps[16];
     snprintf(ps, sizeof ps, "%d", size);
     ui_entry_set_text(ef.size, ps);
-    ef.bold = bold;
-    ef.italic = italic;
+    for (size_t k = 0; k < ef.nstyles; k++)
+        if (!strcasecmp(ef.styles[k], style)) ui_container_set_cursor(ef.style_list, k);
     ef_ok();
     return true;
+}
+
+size_t fontpal_edit_styles(char (*out)[64], size_t max)
+{
+    if (!fontpal_edit_is_open()) return 0;
+    sync_styles();
+    size_t n = ef.nstyles < max ? ef.nstyles : max;
+    memcpy(out, ef.styles, n * sizeof *out);
+    return n;
+}
+
+bool fontpal_edit_family(const char *family)
+{
+    if (!fontpal_edit_is_open()) return false;
+    for (size_t k = 0; k < ef.nfam; k++)
+        if (!strcmp(ef.fam[k], family)) { ui_container_set_cursor(ef.list, k); sync_styles(); ui_surface_damage_all(ef.s); return true; }
+    return false;
 }
 
 /* ------------------------------------------------------------ the palette */
@@ -427,7 +525,7 @@ static void pal_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_save(cr);
     cairo_rectangle(cr, st.x + 2, st.y + 2, st.w - 4, st.h - 4);
     cairo_clip(cr);
-    ui_text_draw(cr, UI_FONT_REGULAR, st.x + 6, st.y + (STATUS_H + ui_text_ascent()) / 2 - 1,
+    ui_text_draw(cr, UI_FONT_DIALOG, st.x + 6, st.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1,
                  "Drag a font onto a folder or its title bar (Shift: all of them), or the WarpCenter", st.w - 12);
     cairo_restore(cr);
 }
@@ -569,7 +667,7 @@ static void pal_close(ui_surface *s)
 static void pal_resized(ui_surface *s, double w, double h) { (void)w; (void)h; ui_surface_damage_all(s); }
 static void pal_focus(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 static const ui_surface_ops pal_ops = { .draw = pal_draw, .pointer = pal_pointer, .key = pal_key, .resized = pal_resized,
-                                        .close = pal_close, .focus = pal_focus };
+                                        .close = pal_close, .focus = pal_focus };   /* (no font drops: its own samples, let go on it, would change the Dialogs font) */
 
 void fontpal_init(ui_app *a, fontpal_apply_fn fn)
 {

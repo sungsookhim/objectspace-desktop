@@ -19,6 +19,7 @@ struct ui_entry {
     bool dragging;
     char *preedit;            /* being composed by an input method: drawn at the cursor */
     int pre_cursor;           /* bytes into it */
+    ui_font font;             /* the Dialogs font unless set */
 };
 
 void (*ui_entry_free_hook)(ui_entry *e);
@@ -35,9 +36,12 @@ static void reserve(ui_entry *e, size_t n)
 ui_entry *ui_entry_new(const char *text)
 {
     ui_entry *e = calloc(1, sizeof *e);
+    e->font = UI_FONT_DIALOG;
     ui_entry_set_text(e, text ? text : "");
     return e;
 }
+
+void ui_entry_set_font(ui_entry *e, ui_font f) { e->font = f; }
 
 void ui_entry_free(ui_entry *e)
 {
@@ -228,7 +232,7 @@ ui_entry_result ui_entry_key(ui_entry *e, const ui_key_event *k)
 
 static size_t hit(ui_entry *e, ui_rect r, double x)
 {
-    return ui_text_hit(UI_FONT_REGULAR, e->s, x - r.x - PAD + e->scroll);
+    return ui_text_hit(e->font, e->s, x - r.x - PAD + e->scroll);
 }
 
 ui_entry_result ui_entry_pointer(ui_entry *e, const ui_pointer_event *p, ui_rect r)
@@ -270,31 +274,31 @@ void ui_entry_draw(ui_entry *e, cairo_t *cr, ui_rect r, bool focused)
     ui_fill(cr, r, k->client_bg);
     ui_bevel(cr, r, false);
     double inner = r.w - 2 * PAD;
-    double cx = ui_text_caret_x(UI_FONT_REGULAR, e->s, e->cursor);
+    double cx = ui_text_caret_x(e->font, e->s, e->cursor);
     /* Keep the caret in view. */
     if (cx - e->scroll > inner) e->scroll = cx - inner;
     if (cx - e->scroll < 0) e->scroll = cx;
-    double total = ui_text_caret_x(UI_FONT_REGULAR, e->s, e->len);
+    double total = ui_text_caret_x(e->font, e->s, e->len);
     if (total - e->scroll < inner && e->scroll > 0) e->scroll = total > inner ? total - inner : 0;
     cairo_save(cr);
     cairo_rectangle(cr, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
     cairo_clip(cr);
-    double x0 = r.x + PAD - e->scroll, base = r.y + (r.h + ui_text_ascent()) / 2 - 1;
+    double x0 = r.x + PAD - e->scroll, base = r.y + (r.h + ui_font_ascent(e->font)) / 2 - 1;
     if (focused && e->cursor != e->anchor) {
-        double a = ui_text_caret_x(UI_FONT_REGULAR, e->s, sel_lo(e)), b = ui_text_caret_x(UI_FONT_REGULAR, e->s, sel_hi(e));
+        double a = ui_text_caret_x(e->font, e->s, sel_lo(e)), b = ui_text_caret_x(e->font, e->s, sel_hi(e));
         ui_fill(cr, (ui_rect){ x0 + a, r.y + 3, b - a, r.h - 6 }, k->selection);
         ui_set_color(cr, k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, x0, base, e->s, 0);
+        ui_text_draw(cr, e->font, x0, base, e->s, 0);
         /* The selected part again, in the selection's text colour. */
         cairo_save(cr);
         cairo_rectangle(cr, x0 + a, r.y, b - a, r.h);
         cairo_clip(cr);
         ui_set_color(cr, k->selection_text);
-        ui_text_draw(cr, UI_FONT_REGULAR, x0, base, e->s, 0);
+        ui_text_draw(cr, e->font, x0, base, e->s, 0);
         cairo_restore(cr);
     } else {
         ui_set_color(cr, k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, x0, base, e->s, 0);
+        ui_text_draw(cr, e->font, x0, base, e->s, 0);
     }
     if (focused) {
         ui_fill(cr, (ui_rect){ x0 + cx, r.y + 3, 1, r.h - 6 }, k->cursor);
@@ -315,16 +319,16 @@ static void draw_preedit(ui_entry *e, cairo_t *cr, ui_rect r, bool focused)
     ui_fill(cr, r, k->client_bg);
     ui_bevel(cr, r, false);
     double inner = r.w - 2 * PAD;
-    double a = ui_text_caret_x(UI_FONT_REGULAR, t, e->cursor), b = ui_text_caret_x(UI_FONT_REGULAR, t, e->cursor + pl);
-    double cx = ui_text_caret_x(UI_FONT_REGULAR, t, e->cursor + (size_t)e->pre_cursor);
+    double a = ui_text_caret_x(e->font, t, e->cursor), b = ui_text_caret_x(e->font, t, e->cursor + pl);
+    double cx = ui_text_caret_x(e->font, t, e->cursor + (size_t)e->pre_cursor);
     if (b - e->scroll > inner) e->scroll = b - inner;
     if (a - e->scroll < 0) e->scroll = a;
     cairo_save(cr);
     cairo_rectangle(cr, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
     cairo_clip(cr);
-    double x0 = r.x + PAD - e->scroll, base = r.y + (r.h + ui_text_ascent()) / 2 - 1;
+    double x0 = r.x + PAD - e->scroll, base = r.y + (r.h + ui_font_ascent(e->font)) / 2 - 1;
     ui_set_color(cr, k->text);
-    ui_text_draw(cr, UI_FONT_REGULAR, x0, base, t, 0);
+    ui_text_draw(cr, e->font, x0, base, t, 0);
     ui_fill(cr, (ui_rect){ x0 + a, base + 2, b - a, 1 }, k->text);
     if (focused) ui_fill(cr, (ui_rect){ x0 + cx, r.y + 3, 1, r.h - 6 }, k->cursor);
     cairo_restore(cr);

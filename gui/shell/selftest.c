@@ -288,7 +288,7 @@ void win_frame(ui_surface *s, double now)
                     folders_font, f->icon_font, f->title_font, titles_font);
             fontpal_edit(0);
             fprintf(stderr, "selftest: fonts: Edit font: open %d, %zu families\n", fontpal_edit_is_open(), fontpal_families());
-            fontpal_edit_choose("Serif", 16, true, false);
+            fontpal_edit_choose("Serif", 16, "Bold");
             step++;
             t0 = now;
         } else if (step == 3 && t > 1500) {
@@ -299,6 +299,56 @@ void win_frame(ui_surface *s, double now)
             t0 = now;
         } else if (step == 4 && t > 1500) {
             fprintf(stderr, "selftest: fonts: read back: %s\n", f->icon_font);
+            /* (0.4 step 8) Edit font's style list: a family's own styles */
+            fontpal_edit(0);
+            static const char *const fams[] = { "Noto Sans", "DejaVu Sans", "Cantarell", "Liberation Sans" };
+            char st[32][64];
+            size_t n = 0;
+            const char *fam = NULL, *style = NULL;
+            for (size_t k = 0; k < 4 && !style; k++) {
+                if (!fontpal_edit_family(fams[k])) continue;
+                n = fontpal_edit_styles(st, 32);
+                for (size_t j = 0; j < n && !style; j++)
+                    if (strcasecmp(st[j], "Regular") && strcasecmp(st[j], "Bold") && strcasecmp(st[j], "Italic") && strcasecmp(st[j], "Bold Italic"))
+                        fam = fams[k], style = st[j];
+            }
+            fprintf(stderr, "selftest: fonts: Edit font: %s has %zu styles; chose %s\n", fam ? fam : "(none)", n, style ? style : "(none)");
+            char fs[64], ss[64];
+            snprintf(fs, sizeof fs, "%s", fam ? fam : "Sans");
+            snprintf(ss, sizeof ss, "%s", style ? style : "Bold");
+            fontpal_edit_choose(fs, 12, ss);
+            step++;
+            t0 = now;
+        } else if (step == 5 && t > 1500) {
+            ui_font sf = ui_font_named(fontpal_sample(0));
+            fprintf(stderr, "selftest: fonts: the first sample now %s (loaded %d, %.0f px)\n", fontpal_sample(0), sf != UI_FONT_REGULAR,
+                    ui_font_px(sf));
+            open_properties(f->path);
+            step++;
+            t0 = now;
+        } else if (step == 6 && t > 1500) {
+            /* a font on its notebook: on the icon font's field, that field;
+             * elsewhere (here on a colour field), the Dialogs font */
+            ui_notebook *nb = props_open && !strcmp(props_open->target, f->path) ? props_open->nb : NULL;
+            double x = 0, y = 0;
+            bool spot = nb && ui_notebook_field_spot(nb, "icon_font", &x, &y);
+            fprintf(stderr, "selftest: fonts: its notebook: the icon font's field %d, dropped on it: %u\n", spot,
+                    spot ? ui_surface_test_drop(ui_notebook_surface(nb), x, y, MIME_FONT, "10.Serif", 0) : 0);
+            spot = nb && ui_notebook_field_spot(nb, "bg_color", &x, &y);
+            fprintf(stderr, "selftest: fonts: dropped elsewhere on it: %u\n",
+                    spot ? ui_surface_test_drop(ui_notebook_surface(nb), x, y, MIME_FONT, "14.Sans", 0) : 0);
+            step++;
+            t0 = now;
+        } else if (step == 7 && t > 2000) {
+            ui_notebook *nb = props_open && !strcmp(props_open->target, f->path) ? props_open->nb : NULL;
+            const char *shot = getenv("WPS_SHELL_SHOT");
+            if (shot && nb) {
+                char p[PATH_MAX];
+                snprintf(p, sizeof p, "%s-notebook.png", shot);
+                ui_surface_snapshot(ui_notebook_surface(nb), p);
+            }
+            fprintf(stderr, "selftest: fonts: its icon font %s; the scheme's Dialogs font %s (%.0f px, rows %.0f px taller)\n",
+                    f->icon_font, ui_scheme_now.font_dialogs, ui_font_px(UI_FONT_DIALOG), ui_dialog_grow());
             ui_app_quit(app);
             step++;
         }

@@ -13,8 +13,8 @@
 #include "svc.h"
 
 #define M 8
-#define ROW 24
-#define STATUS_H 20
+#define ROW (24 + ui_dialog_grow())
+#define STATUS_H (20 + ui_dialog_grow())
 
 struct app { char *id, *name, *icon; };
 
@@ -116,14 +116,14 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     const char *lab = "Always use for this type";
     ui_set_color(cr, k->text);
     double lx = r.always.x + ROW + 4;
-    ui_text_draw(cr, UI_FONT_REGULAR, lx, r.always.y + (ROW + ui_text_ascent()) / 2 - 1, lab, r.always.w - ROW - 4);
+    ui_text_draw(cr, UI_FONT_DIALOG, lx, r.always.y + (ROW + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, lab, r.always.w - ROW - 4);
     if (pk.focus == F_ALWAYS) {
         ui_set_color(cr, k->cursor);
         double dash = 1;
         cairo_save(cr);
         cairo_set_dash(cr, &dash, 1, 0);
         cairo_set_line_width(cr, 1);
-        cairo_rectangle(cr, lx - 2.5, r.always.y + 2.5, ui_text_width(UI_FONT_REGULAR, lab) + 5, ROW - 5);
+        cairo_rectangle(cr, lx - 2.5, r.always.y + 2.5, ui_text_width(UI_FONT_DIALOG, lab) + 5, ROW - 5);
         cairo_stroke(cr);
         cairo_restore(cr);
     }
@@ -135,7 +135,7 @@ static void pk_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     cairo_save(cr);
     cairo_rectangle(cr, r.status.x + 2, r.status.y + 2, r.status.w - 4, r.status.h - 4);
     cairo_clip(cr);
-    ui_text_draw(cr, UI_FONT_REGULAR, r.status.x + 6, r.status.y + (STATUS_H + ui_text_ascent()) / 2 - 1, msg, r.status.w - 12);
+    ui_text_draw(cr, UI_FONT_DIALOG, r.status.x + 6, r.status.y + (STATUS_H + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1, msg, r.status.w - 12);
     cairo_restore(cr);
 }
 
@@ -272,6 +272,7 @@ void apppick_open(const char *title, const char *target, apppick_fn chosen, long
     pk.s = ui_window_new(app, &pk_ops, NULL, "org.wps.OpenWith", 560, 420);
     ui_window_set_title(pk.s, pk.title);
     pk.cont = ui_container_new(pk.s, &pick_src, NULL, UI_VIEW_ICON);
+    ui_container_set_font(pk.cont, UI_FONT_DIALOG);   /* (a dialog's list) */
     ui_container_layout(pk.cont, rects().list);
     events_raise("window.open", "Open With", "window", (ui_rect){ 0, 0, 0, 0 });
     set_focus(F_LIST);

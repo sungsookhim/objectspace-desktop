@@ -47,3 +47,6 @@ property meter_cpu : color = "#33b34d" page "Bars" label "Processor meter"
 property meter_memory : color = "#4073d9" page "Bars" label "Memory meter"
 property meter_disk : color = "#d98c26" page "Bars" label "Disk meter"
 property meter_network : color = "#9959cc" page "Bars" label "Network meter"
+# (0.4 step 8) the Dialogs font: notebooks, dialogs, Find, the window list,
+# the palettes (a font from the Font Palette dropped on one of them sets it)
+property font_dialogs : text page "Fonts" label "Dialogs (e.g. 10.Sans; empty: the interface font)"

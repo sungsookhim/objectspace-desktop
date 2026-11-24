@@ -83,6 +83,7 @@ int main(int argc, char **argv)
     apppick_init(app);
     fontpal_init(app, font_apply);
     colorpal_init(app, color_apply);
+    ui_set_font_drop(font_dropped_dialogs);   /* a font on a notebook, a dialog, Find...: the Dialogs font */
     tooltip_init(app);
     launchpad_set_props(lp_props);
     warpcenter_on_font(font_dropped_wc);

@@ -104,9 +104,12 @@ void font_apply(const char *what, const char *spec)
     else if (!strcmp(what, "menus")) setup_set("WPSystem", "font_menus", spec);
     else if (!strcmp(what, "titles")) setup_set("WPSystem", "font_titles", spec);
     else if (!strcmp(what, "folders")) setup_set("WPSystem", "font_folders", spec);
+    else if (!strcmp(what, "dialogs")) color_apply("font_dialogs", spec);   /* the scheme's (each scheme its fonts) */
 }
 
 void font_dropped_wc(const char *spec) { font_apply("warpcenter", spec); }
+/* (Shift or not: there is one Dialogs font, the scheme's) */
+void font_dropped_dialogs(const char *spec, unsigned mods) { (void)mods; font_apply("dialogs", spec); }
 
 /* The schemes' objects (their titles and addresses, from the setup reply):
  * a colour dropped on a title bar or a bar goes to the one in use. */
@@ -181,6 +184,9 @@ static void apply_setup_object(const char *cls, const cv *settings)
                 snprintf(folders_font, sizeof folders_font, "%s", val);   /* (shown by the self-tests) */
             } else if (!strcmp(key, "font_menus")) {
                 ui_menu_set_font(ui_font_named(val));
+                char kv[200];   /* the compositor's system menu too (WPS session) */
+                snprintf(kv, sizeof kv, "menu_font=%s", val);
+                winlist_ext("frame", kv);
             } else if (!strcmp(key, "font_titles")) {
                 snprintf(titles_font, sizeof titles_font, "%s", val);
                 ui_frame_set_title_font(ui_font_named(val));
@@ -369,6 +375,15 @@ void got_setup(void *arg, const cv *reply)
     if (first && !getenv("WPS_NO_LAUNCHPAD") && want_lp) show_launchpad();
 }
 
+/* GNOME's text scaling factor, for the Font Palette's fonts the
+ * compositor draws (other programs' title bars, its menu). */
+static void send_text_scale(void)
+{
+    char kv[64];
+    snprintf(kv, sizeof kv, "text_scale=%g", ui_text_scale());
+    winlist_ext("frame", kv);
+}
+
 /* The Scheme Palette's scheme: colours for every window; the desktop's
  * picture is GNOME's either way. */
 static void apply_scheme(void)
@@ -380,6 +395,13 @@ static void apply_scheme(void)
     char font[300];
     snprintf(font, sizeof font, "%g %s", ui_scheme_now.font_px, ui_text_family());
     winlist_ext("font", font);
+    send_text_scale();
+    static char dialogs[UI_SCHEME_TEXT_MAX];   /* the scheme's Dialogs font: notebooks, dialogs, Find... */
+    if (strcmp(dialogs, ui_scheme_now.font_dialogs)) {
+        snprintf(dialogs, sizeof dialogs, "%s", ui_scheme_now.font_dialogs);
+        ui_set_dialog_font(dialogs);
+        ui_app_restyle(app);
+    }
     wallpaper_scheme_changed();   /* the desktop's colour */
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
@@ -402,12 +424,14 @@ void gnome_set_wps(const char *cls, const char *key, const char *value)
 /* GNOME's interface font changed: every window lays out again. */
 void gnome_font(void)
 {
+    send_text_scale();
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
         layout(f);
         ui_container_layout_changed(f->cont);
         ui_surface_damage_all(f->win);
     }
+    ui_app_restyle(app);   /* notebooks, dialogs, Find... (the Dialogs font may be the interface font) */
 }
 
 /* Is this event about one of the settings objects? Then read them again. */

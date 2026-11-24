@@ -14,9 +14,10 @@
 #include "ui.h"
 
 #define MARGIN 16
-#define LINE_H 18
-#define BUTTON_H 26
-#define WIDTH 440
+/* (sizes for the 13-pixel font; the Dialogs font's make them bigger) */
+#define LINE_H (18 + ui_dialog_grow())
+#define BUTTON_H (26 + ui_dialog_grow())
+#define WIDTH (440 * ui_dialog_wider())
 
 struct ui_dialog {
     ui_surface *win;
@@ -33,7 +34,7 @@ struct ui_dialog {
     bool secret;
 };
 
-#define ENTRY_H 26
+#define ENTRY_H (26 + ui_dialog_grow())
 
 /* Word-wrap the message to the dialog's width (paragraphs on \n). */
 static void wrap(ui_dialog *d, const char *msg, double width)
@@ -45,7 +46,7 @@ static void wrap(ui_dialog *d, const char *msg, double width)
         for (char *w = strtok_r(para, " ", &wsave); w; w = strtok_r(NULL, " ", &wsave)) {
             char trial[1024];
             snprintf(trial, sizeof trial, "%s%s%s", line, line[0] ? " " : "", w);
-            if (line[0] && ui_text_width(UI_FONT_REGULAR, trial) > width) {
+            if (line[0] && ui_text_width(UI_FONT_DIALOG, trial) > width) {
                 d->lines = realloc(d->lines, (d->nlines + 1) * sizeof *d->lines);
                 d->lines[d->nlines++] = strdup(line);
                 snprintf(line, sizeof line, "%s", w);
@@ -59,7 +60,7 @@ static void wrap(ui_dialog *d, const char *msg, double width)
     free(copy);
 }
 
-static double button_w(ui_dialog *d, size_t i) { return ui_text_width(UI_FONT_REGULAR, d->buttons[i]) + 28; }
+static double button_w(ui_dialog *d, size_t i) { return ui_text_width(UI_FONT_DIALOG, d->buttons[i]) + 28; }
 
 static ui_rect button_rect(ui_dialog *d, size_t i)
 {
@@ -111,7 +112,7 @@ static void dlg_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, c, k->face);
     ui_set_color(cr, k->text);
     for (size_t i = 0; i < d->nlines; i++)
-        ui_text_draw(cr, UI_FONT_REGULAR, c.x + MARGIN, c.y + MARGIN + (double)(i + 1) * LINE_H - 4, d->lines[i], c.w - 2 * MARGIN);
+        ui_text_draw(cr, UI_FONT_DIALOG, c.x + MARGIN, c.y + MARGIN + (double)(i + 1) * LINE_H - 4, d->lines[i], c.w - 2 * MARGIN);
     if (d->entry) {
         if (d->secret) draw_secret(d, cr, entry_rect(d));
         else ui_entry_draw(d->entry, cr, entry_rect(d), true);
@@ -128,9 +129,9 @@ static void dlg_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             cairo_stroke(cr);
         }
         ui_set_color(cr, k->text);
-        double tw = ui_text_width(UI_FONT_REGULAR, d->buttons[i]);
-        ui_text_draw(cr, UI_FONT_REGULAR, b.x + (b.w - tw) / 2 + (down ? 1 : 0),
-                     b.y + (b.h + ui_text_ascent()) / 2 - 1 + (down ? 1 : 0), d->buttons[i], 0);
+        double tw = ui_text_width(UI_FONT_DIALOG, d->buttons[i]);
+        ui_text_draw(cr, UI_FONT_DIALOG, b.x + (b.w - tw) / 2 + (down ? 1 : 0),
+                     b.y + (b.h + ui_font_ascent(UI_FONT_DIALOG)) / 2 - 1 + (down ? 1 : 0), d->buttons[i], 0);
     }
 }
 
@@ -213,6 +214,7 @@ static void dlg_focus(ui_surface *s, bool on) { (void)on; ui_frame_damage(s); }
 
 static const ui_surface_ops dlg_ops = {
     .draw = dlg_draw, .pointer = dlg_pointer, .key = dlg_key, .close = dlg_close, .resized = dlg_resized, .focus = dlg_focus,
+    .drag_motion = ui_font_drag_motion, .drop = ui_font_drop,   /* a font: the Dialogs font */
 };
 
 static ui_dialog *open_dialog(ui_app *a, const char *title, const char *message, const char *const *buttons, size_t n,
