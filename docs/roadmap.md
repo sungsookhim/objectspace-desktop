@@ -31,11 +31,11 @@ Tagged `v0.2`; the RPMs are attached to its GitHub release. The objectives below
 
 Tagged `v0.3`; the RPMs are attached to its GitHub release. All eleven steps of [v0.3-plan.md](v0.3-plan.md) are done, with the owner's changes along the way; Work Area folders and icon packages moved to 0.4. What it holds is in the [release notes](release-notes-0.3.md).
 
-## Version 0.4 (released as 0.4.1)
+## Version 0.4 (released as 0.4.1, 2026-11-24)
 
-The object-property refactor (R0-R6) and the eleven steps of [v0.4-plan.md](v0.4-plan.md) are done, with the owner's changes along the way (a folder's own title bar colour; folder windows joining a work area's group); 0.4.0 was built but not released (the owner's): 0.4.1 adds WPS Terminal and the `wps` command ([cli-design.md](cli-design.md), steps 12 to 14) and is the release. What 0.4.0 holds is in its [release notes](release-notes-0.4.md).
+The object-property refactor (R0-R6) and the eleven steps of [v0.4-plan.md](v0.4-plan.md) are done, with the owner's changes along the way (a folder's own title bar colour; folder windows joining a work area's group); 0.4.0 was built but not released (the owner's): 0.4.1 adds WPS Terminal and the `wps` command ([cli-design.md](cli-design.md), steps 12 to 14) and is the release: tagged `v0.4.1`, the RPMs (with `wps-devel`) attached to its GitHub release. What it holds is in the [release notes](release-notes-0.4.1.md).
 
-**For 0.5 (the owner's, 2026-11-23):** WPS's own names (`wps`, `wpsctl`, WPS Terminal, the package names) looked at again, against name conflicts and trademarks.
+**Next, 0.5 (the owner's, 2026-11-24):** getting ready to be public: a name of its own in place of IBM's (WPS, Workplace Shell, the WarpCenter, the LaunchPad, the WP* classes), the repository's licenses and documents, and a welcome for contributors; see **Proposed order**. The look of other programs moves to 0.6.
 
 ## Open and deferred work
 
@@ -44,7 +44,6 @@ Everything still open after 0.4, by area; the version each goes into is in **Pro
 ### Icons
 
 - **A Preview view** (the owner's, for 0.4 if there was room; not done): pictures (images, `.wpsicon` packages) shown in place of their type's icon, thumbnails made off the UI thread and cached.
-- **Text-mode programs:** the theme's `program-text` for a program whose desktop entry says Terminal=true and has no icon of its own.
 - **?** **Hatching an open object whose notebook opens:** now it keeps its open icon, unhatched; the owner's to decide.
 - Left from 0.4 step 3: the title bars' icon (a drawn glyph), the LaunchPad drawers' rows (24), desktop entries' icons (their 64 PNG), an object's own open icon kept as the path chosen (not copied).
 - An object's icon is a copy: a changed source image does not follow; icons no object uses stay in `wps/icons`; templates copy their icon's PNG.
@@ -284,17 +283,36 @@ A to do, after 0.2 (with network file systems below).
       - font sizes follow GNOME's text scaling; Edit font gets a style list.
    5. **Work Area folders** (M–L; the compositor, wpsd's tracking, the session): a folder set as a work area groups the programs opened from it; opening, minimizing and closing the folder do the same to their windows; restored at login. Builds on the in-use tracking, the compositor's per-program window control and the restored windows of 0.2; inside GNOME through the extension.
    6. **Fixes and tests carried** (S): the flaky and unrerun tests above; Open With's list read off wpsd's loop; the LaunchPad drawer cascade opening outward on the left; the release (RPMs, notes, tag).
-4. **0.5 The look of other programs and more screens** (the compositor and themes):
-   - **Themes driven by the scheme objects:** a GTK 3 theme, a WPS icon theme (from 0.4's packages) and cursor theme, a Qt style.
+4. **0.5 Ready to be public** (the owner's, 2026-11-24: the repository opens to the public when 0.5 is done). No new features; the project made safe and welcoming to publish:
+   1. **A name of its own** (L; the whole tree, mostly mechanical). The code is written from scratch, but some names are IBM's products' (trademarks) or mirror IBM's interfaces; they are replaced, OS/2 kept only as a description of where the ideas come from:
+      - **The product:** WPS and "Workplace Shell" become the new name, everywhere a user or another program sees it: the commands (`wps`, `wpsd`, `wpsctl`, `wps-shell`, `wps-terminal`, `wps-compositor`, `wps-session`, `wps-watchd`, `wps-plughost`), the packages and the session's name on the login screen, the app IDs and D-Bus names (`org.wps.*`), the GNOME extension (`wps@wps-linux`), the folders and files (`~/.config/wps`, `~/.local/share/wps`, `.wpsicon`, `.wpobj`), the extended attributes (`user.wps.*`), the environment (`WPS_*`), the repository (`wps-linux`). Today about 290 files, 4,700 lines.
+      - **IBM's product names for parts:** the WarpCenter and the LaunchPad (OS/2's; also another company's "Launchpad") get names of their own (61 and 54 files). Generic words stay (Font Palette, Colour Palette, Scheme Palette, Work Area, Templates, Shadows, System Setup).
+      - **IBM's class names:** WPObject, WPFolder, WPDataFile... (the names of OS/2's SOM classes; 144 files) and the runtime's `wpo_` (78 files) take the new prefix; the method names (`wpQueryTitle`, ...) too.
+      - **What the user reads:** menus, notebooks, dialogs and messages say no "OS/2" or "Warp"; the release notes and README describe the project as inspired by OS/2's Workplace Shell, with a trademark notice (OS/2 and Workplace Shell are IBM's; no affiliation).
+      - **Code comments and the design documents** keep "as OS/2 did" where it explains why something is so (a description, not a name), trimmed where it says nothing.
+      - **Moving over:** an installed 0.4.1 is carried to the new names at the first start (attributes, folders, settings, the database's class names), as 0.2 to 0.3 was; or a clean break, since no one but the owner runs it yet (**?** the owner's).
+   2. **What is in the repository** (S-M):
+      - Every source file says its license (an SPDX line, MIT); third parties' notices (the Wayland protocol files in `proto/`; the libraries linked, none copied in).
+      - **The pictures:** every icon checked to be drawn here (the isometric set by `tools/icons/make_iso.py`; the Classic set, 0.2's pictures; the sounds, the theme's or none).
+      - **Internal documents:** the discussion notes (`docs/notes`), the AI review (`docs/reviews`), the step-by-step plans: kept as the project's history, moved under `docs/history`, or left out (**?** the owner's).
+      - **The history:** published whole (every commit, the old names in it), or the repository started fresh from 0.5's tree (**?** the owner's). Nothing private was found in it (no host names, addresses or keys; the owner's GitHub name and e-mail only, as now).
+   3. **For people who come to it** (M):
+      - A README for strangers: what it is and is not, screenshots, installing, building from source, the status; a CONTRIBUTING guide (how to build, test, the code's style, the design documents' role), a code of conduct, a security policy (how to report), issue and pull request templates.
+      - **Continuous integration:** GitHub Actions building on Fedora 45 and running the unit tests and the headless suites that need no GPU (`make check`, `gui-test`, the compositor's tests where the runner allows).
+      - The authorship note kept (designed by the owner, code written with Claude through Claude Code).
+   4. **Checks:** a search for the old names finds none outside the history notes; the RPMs build and install under the new names; an upgrade from 0.4.1 (if moving over is chosen); the suites green under the new names.
+5. **0.6 The look of other programs and more screens** (the compositor and themes; was 0.5):
+   - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
    - **libadwaita programs keep their own look and title bars** (the owner's); the scheme's colours offered to them as an option (Scheme Palette, off by default).
-   - **More than one monitor** (the desktop on each; the WarpCenter on one) (**D** until then).
+   - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
    - **Sharp X11 programs on scaled screens.**
    - **Suspend after idle.**
-5. **0.6 Network and jobs** (wpsd and the object core):
+   - **A Preview view** (pictures in place of their icons).
+6. **0.7 Network and jobs** (the service and the object core; was 0.6):
    - **The Network object** and network file systems (NFS, SMB).
    - **Undo for jobs;** disk full and quota errors.
    - **Central objects:** deduplication, cleanup, becoming `.wpobj` files.
    - **Find** in titles, classes and settings; an index.
    - **File types from `user.mime_type`** and the Type page (after 0.4, the owner's).
    - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).
-6. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
+7. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
