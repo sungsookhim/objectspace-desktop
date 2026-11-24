@@ -63,7 +63,7 @@ void svc_find(const char *folder, const char *name, bool subfolders, const char 
 void svc_find_cancel(int64_t find);
 void svc_layout(const char *folder, svc_fn fn, void *arg);
 void svc_arrange(const char *folder, svc_fn fn, void *arg);
-void svc_work_area(const char *folder, const char *act, svc_fn fn, void *arg);
+void svc_work_area(const char *folder, const char *act, const char *const *folders, size_t nfolders, svc_fn fn, void *arg);
 void svc_place(const char *folder, const char *const *targets, const int64_t *x, const int64_t *y, size_t n, svc_fn fn, void *arg);
 /* One icon's position, locked or unlocked there (Lock position). */
 void svc_place_lock(const char *folder, const char *target, int64_t x, int64_t y, bool lock, svc_fn fn, void *arg);

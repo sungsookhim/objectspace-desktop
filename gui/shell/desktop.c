@@ -278,7 +278,7 @@ static struct folder *open_in(const char *path, ui_view view)
     return NULL;
 }
 
-struct win_req { struct win_req *next; char path[PATH_MAX]; ui_view view; };
+struct win_req { struct win_req *next; char path[PATH_MAX]; ui_view view; char group[PATH_MAX]; };   /* group: the work area it is opened from */
 static struct win_req *win_reqs;
 
 static void got_win(void *arg, const cv *reply)
@@ -298,12 +298,13 @@ static void got_win(void *arg, const cv *reply)
     ui_view v = r->view;
     if (v == VIEW_LAST) v = !strcmp(last, "details") ? UI_VIEW_DETAILS : !strcmp(last, "tree") ? UI_VIEW_TREE : UI_VIEW_ICON;
     struct folder *f = open_in(r->path, v);
-    if (f) { ui_window_activate(f->win); free(r); return; }   /* (opened meanwhile) */
+    if (f) { workarea_join(f, r->group); ui_window_activate(f->win); free(r); return; }   /* (opened meanwhile) */
     int x = -1, y = -1, mx = 0;
     double w = 0, h = 0, sc = 0;
     bool have = sscanf(geo[v], "%d,%d,%lf,%lf,%d,%lf", &x, &y, &w, &h, &mx, &sc) >= 4 && w >= 100 && h >= 80;
     if (have) { next_w = w; next_h = h; }
     f = open_window(r->path, v, false);
+    if (f) workarea_join(f, r->group);   /* opened from a work area: its group's */
     if (f && have) {
         place_next("org.wps.shell", ui_window_title(f->win), x, y);
         if (mx) ui_window_set_maximized(f->win);
@@ -312,16 +313,23 @@ static void got_win(void *arg, const cv *reply)
     free(r);
 }
 
-struct folder *open_folder(const char *path, ui_view view)
+struct folder *open_folder(const char *path, ui_view view) { return open_folder_from(NULL, path, view); }
+
+/* Opened from a folder's window: a work area's (or one of its group's),
+ * the new window joins its group (0.4 step 9, the owner's follow-up: a
+ * shadow of a folder, or a link to one, too). */
+struct folder *open_folder_from(struct folder *from, const char *path, ui_view view)
 {
     char real[PATH_MAX];
     const char *want = realpath(path, real) ? real : path;
+    const char *group = workarea_group_of(from);
     struct folder *o = open_in(want, view);
-    if (o) { ui_window_activate(o->win); return o; }   /* open already: switch to it, as OS/2 did */
+    if (o) { workarea_join(o, group); ui_window_activate(o->win); return o; }   /* open already: switch to it, as OS/2 did */
     for (struct win_req *r = win_reqs; r; r = r->next)
         if (!strcmp(r->path, want) && r->view == view) return NULL;   /* (asked already: a second click) */
     struct win_req *r = calloc(1, sizeof *r);
     snprintf(r->path, sizeof r->path, "%s", want);
+    snprintf(r->group, sizeof r->group, "%s", group ? group : "");
     r->view = view;
     r->next = win_reqs;
     win_reqs = r;

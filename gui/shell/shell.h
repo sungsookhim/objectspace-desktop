@@ -115,6 +115,7 @@ struct folder {
     char title_bar_color[16];   /* its active title bar's ("": the scheme's) */
     bool work_area, wa_opened;  /* (0.4 step 9) a work area; its group asked back once */
     int wa_state;               /* its window as the compositor last said: 0 not yet, 1 shown, 2 minimized */
+    char wa_group[PATH_MAX];    /* the work area it was opened from ("" none): minimized, restored, closed with it */
     int bg_mode;
     bool bg_gnome;
     bool whole_titles;       /* the Icon view page: titles whole (OS/2's) or on two lines */
@@ -389,6 +390,8 @@ void opened(void *arg, const cv *reply);
 void workarea_act(struct folder *f, const char *act);   /* open, close, minimize, restore */
 void workarea_settings(struct folder *f, bool on);
 void workarea_window(const char *title, bool minimized);
+const char *workarea_group_of(struct folder *f);   /* the work area f is (or is in, or was opened from), NULL none */
+void workarea_join(struct folder *f, const char *group);
 struct row *row_at(struct folder *f, size_t i);
 void open_item(struct folder *f, size_t i, ui_view view);
 void src_activate(void *ctx, size_t i);
@@ -486,6 +489,7 @@ void toolkit_action(const char *name, ui_surface *s, ui_rect at);
  * (NULL then; the window if it was open already). open_window: at once. */
 #define VIEW_LAST ((ui_view)-1)
 struct folder *open_folder(const char *path, ui_view view);
+struct folder *open_folder_from(struct folder *from, const char *path, ui_view view);
 void folder_window_save(struct folder *f);
 /* The desktop's status line (0.4 step 5): its message (f->error) in a box
  * at the bottom of its usable area for a few seconds, an error until

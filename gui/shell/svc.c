@@ -612,12 +612,15 @@ void svc_layout(const char *folder, svc_fn fn, void *arg)
 }
 
 /* A work area's group (0.4 step 9): act open, close, minimize, restore. */
-void svc_work_area(const char *folder, const char *act, svc_fn fn, void *arg)
+void svc_work_area(const char *folder, const char *act, const char *const *folders, size_t nfolders, svc_fn fn, void *arg)
 {
     int64_t id;
-    struct out *o = begin("work_area", 2, &id);
+    struct out *o = begin("work_area", 3, &id);
     cb_text(&o->b, "target"); cb_text(&o->b, folder);
     cb_text(&o->b, "act"); cb_text(&o->b, act);
+    cb_text(&o->b, "folders");   /* (closing: its folders' windows, kept with its programs) */
+    cb_array(&o->b, nfolders);
+    for (size_t i = 0; i < nfolders; i++) cb_text(&o->b, folders[i]);
     send_req(o, id, fn, arg);
 }
 

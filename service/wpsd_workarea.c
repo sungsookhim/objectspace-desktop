@@ -55,7 +55,7 @@ bool work_area_of(const char *path, char *out, size_t n)
 
 void work_area_opened(const char *group, const char *opened, const char *tracked, pid_t pid)
 {
-    wps_launch_set_group(pid, group);
+    if (pid > 0) wps_launch_set_group(pid, group);
     if (!tracked || !*tracked) return;
     for (struct wa_entry *e = entries; e; e = e->next)
         if (!strcmp(e->group, group) && !strcmp(e->opened, opened)) { e->ended = 0; return; }
@@ -178,6 +178,11 @@ void do_work_area(struct req *r, wpo_object *o)
         if (reopen && *reopen) WPObject_wpSetProperty(o, "work_area_open", "");   /* (opened once) */
     }
     if (closing) {
+        /* its folders' windows (in it, or opened from it: shadows of
+         * folders, links to them), as the desktop says, kept too */
+        const cv *fl = cv_get(&r->msg, "folders");
+        for (size_t i = 0; fl && fl->k == CV_ARRAY && i < fl->n; i++)
+            if (fl->items[i].k == CV_TEXT && fl->items[i].s[0] == '/') work_area_opened(group, fl->items[i].s, fl->items[i].s, 0);
         keep_open_list(group, 0);   /* what is open now: opened again with it */
         forget_group(group);
     }

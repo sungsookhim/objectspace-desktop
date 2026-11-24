@@ -20,6 +20,28 @@ static bool inside(const char *p, const char *in)
     return !strncmp(p, in, l) && p[l] == '/';
 }
 
+/* Does folder window g go with the work area at `path`: opened from it (a
+ * shadow of a folder, a link to one, the folders in it), or in it? */
+static bool member(struct folder *g, const char *path)
+{
+    return !g->closing && !g->desktop && strcmp(g->path, path) && (!strcmp(g->wa_group, path) || inside(g->path, path));
+}
+
+const char *workarea_group_of(struct folder *f)
+{
+    if (!f || f->desktop) return NULL;
+    if (f->work_area) return f->path;
+    if (f->wa_group[0]) return f->wa_group;
+    for (struct folder *w = folders; w; w = w->next)   /* (a folder in an open work area) */
+        if (!w->closing && !w->desktop && w->work_area && inside(f->path, w->path)) return w->path;
+    return NULL;
+}
+
+void workarea_join(struct folder *f, const char *group)
+{
+    if (f && group && *group && !f->wa_group[0] && strcmp(f->path, group)) snprintf(f->wa_group, sizeof f->wa_group, "%s", group);
+}
+
 static void window_title(struct folder *f, char *out, size_t n)
 {
     snprintf(out, n, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
@@ -52,14 +74,19 @@ static void got(void *arg, const cv *reply)
     const cv *re0 = cv_get(res, "reopen");
     fprintf(stderr, "wps-shell: work area %s: %s, %zu programs, %zu to open again\n", q->path, q->act, np,
             re0 && re0->k == CV_ARRAY ? re0->n : 0);
-    /* its folders' windows go with it (minimized and restored; closed, they stay) */
+    /* its folders' windows go with it: those in it, and those opened from
+     * it (shadows of folders, links to them) - closed too (kept, as its
+     * programs: wpsd had their paths with the request) */
     if (!strcmp(q->act, "minimize") || !strcmp(q->act, "restore"))
         for (struct folder *g = folders; g; g = g->next) {
-            if (g->closing || g->desktop || !inside(g->path, q->path)) continue;
+            if (!member(g, q->path)) continue;
             char t[400];
             window_title(g, t, sizeof t);
             winlist_command(q->act, t);
         }
+    if (!strcmp(q->act, "close"))
+        for (struct folder *g = folders; g; g = g->next)
+            if (member(g, q->path)) win_close(g->win);
     /* opened: what was open when it closed, opened again */
     const cv *re = cv_get(res, "reopen");
     struct folder *wf = NULL;
@@ -81,7 +108,12 @@ void workarea_act(struct folder *f, const char *act)
     if (!q) return;
     snprintf(q->act, sizeof q->act, "%s", act);
     snprintf(q->path, sizeof q->path, "%s", f->path);
-    svc_work_area(f->path, act, got, q);
+    /* closing: its folders' windows open now, kept with its programs */
+    const char *fl[64];
+    size_t nf = 0;
+    for (struct folder *g = folders; g && nf < 64 && !strcmp(act, "close"); g = g->next)
+        if (member(g, f->path)) fl[nf++] = g->path;
+    svc_work_area(f->path, act, fl, nf, got, q);
 }
 
 /* Its settings were read: Work area on, the first time for this window:

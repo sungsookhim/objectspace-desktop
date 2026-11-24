@@ -177,7 +177,7 @@ void opened(void *arg, const cv *reply)
     }
     if (svc_reply_view(reply)) return;
     if (res && cv_text(res, "folder")) {   /* a shadow of a folder, or a link to one */
-        open_folder(cv_text(res, "folder"), f->pending_view);
+        open_folder_from(f, cv_text(res, "folder"), f->pending_view);
         f->error[0] = 0;
         damage_status(f);
         return;
@@ -227,7 +227,7 @@ void open_item(struct folder *f, size_t i, ui_view view)
     target_of(f, i, t, sizeof t);
     struct page *pg = is_tree(f) || i == SIZE_MAX || i / PAGE >= f->m.npages ? NULL : f->m.pages[i / PAGE];
     bool is_folder = i == SIZE_MAX || is_tree(f) || (pg && pg->rows[i % PAGE].kind == UI_KIND_FOLDER);
-    if (is_folder) open_folder(t, view);
+    if (is_folder) open_folder_from(f, t, view);
     else {
         snprintf(f->pending_open, sizeof f->pending_open, "%s", t);
         svc_open(t, false, opened, as_arg(f));
