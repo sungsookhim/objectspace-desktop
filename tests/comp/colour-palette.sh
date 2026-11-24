@@ -11,32 +11,32 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-cpal-XXXX")
 W="$REPO/build/osdctl"
-# The shadow (made at 4 s: the desktop's first-start arrangement done) lands at 490,40 (after My System and Programs); the palette opens at 412,164: its first
+# The shadow (made at 7 s: the desktop's first-start arrangement done, even on a slow machine) lands at 490,40 (after My System and Programs); the palette opens at 412,164: its first
 # sample at 447,215, red (the 7th) at 444,255.
 # Projects (54,30) opens at 320,106: its title bar at y 121, right of the
 # palette at 930; magenta (the 16th sample) at 600,295.
 cat > "$S/script" <<EOS
 3.8 dclick 54 30
-5.5 dclick 490 40
-7.3 windows
-7.5 down 444 255 right
-7.7 move 600 400
-7.9 move 1100 650
-8.2 up 1100 650 right
-8.6 dclick 447 215
-9.8 windows
-10 key Escape
-10.5 down 600 295 right
-10.7 move 800 200
-10.9 move 930 121
-11.2 up 930 121 right
-11.6 click 700 121
-12.3 move 700 700
-12.6 shot $S/red.png
-13 quit
+8.5 dclick 490 40
+10.3 windows
+10.5 down 444 255 right
+10.7 move 600 400
+10.9 move 1100 650
+11.2 up 1100 650 right
+11.6 dclick 447 215
+12.8 windows
+13 key Escape
+13.5 down 600 295 right
+13.7 move 800 200
+13.9 move 930 121
+14.2 up 930 121 right
+14.6 click 700 121
+15.3 move 700 700
+15.6 shot $S/red.png
+16 quit
 EOS
-DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=16 tests/comp/run.sh "$S/script" \
-    "sleep 4; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 7.5; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=19 tests/comp/run.sh "$S/script" \
+    "sleep 7; cp=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdColorPalette']['address'])\"); '$W' shadow \"\$cp\" \"\$T/desk\" > \"\$T/sh.log\" 2>&1; sleep 7.5; '$W' settings \"\$T/desk\" > \"\$T/after.log\" 2>&1; sleep 1; '$W' settings \"\$T/desk/Projects\" > \"\$T/proj.log\" 2>&1; sleep 5" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }

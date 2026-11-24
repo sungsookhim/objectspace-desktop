@@ -550,6 +550,7 @@ void got_layout(void *arg, const cv *reply)
     free(lname);
     free(lx);
     free(ly);
+    desktop_keep_corner(f);   /* (the Trash Can's corner, maybe not stored yet: else it took a spot) */
     layout_update(f->lay, f->m.total, lay_name, f, true, NULL);
     if (ui_container_view(f->cont) == UI_VIEW_ICON) ui_container_layout_changed(f->cont);
     f->lay_placed_in = true;
