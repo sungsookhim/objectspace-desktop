@@ -31,9 +31,11 @@ Tagged `v0.2`; the RPMs are attached to its GitHub release. The objectives below
 
 Tagged `v0.3`; the RPMs are attached to its GitHub release. All eleven steps of [v0.3-plan.md](v0.3-plan.md) are done, with the owner's changes along the way; Work Area folders and icon packages moved to 0.4. What it holds is in the [release notes](release-notes-0.3.md).
 
-## Version 0.4 (released 2026-11-23)
+## Version 0.4 (released as 0.4.1)
 
-Tagged `v0.4`; the RPMs (with `wps-devel`) are attached to its GitHub release. The object-property refactor (R0-R6) and all eleven steps of [v0.4-plan.md](v0.4-plan.md) are done, with the owner's changes along the way (a folder's own title bar colour; folder windows joining a work area's group). What it holds is in the [release notes](release-notes-0.4.md).
+The object-property refactor (R0-R6) and the eleven steps of [v0.4-plan.md](v0.4-plan.md) are done, with the owner's changes along the way (a folder's own title bar colour; folder windows joining a work area's group); 0.4.0 was built but not released (the owner's): 0.4.1 adds WPS Terminal and the `wps` command ([cli-design.md](cli-design.md), steps 12 to 14) and is the release. What 0.4.0 holds is in its [release notes](release-notes-0.4.md).
+
+**For 0.5 (the owner's, 2026-11-23):** WPS's own names (`wps`, `wpsctl`, WPS Terminal, the package names) looked at again, against name conflicts and trademarks.
 
 ## Open and deferred work
 

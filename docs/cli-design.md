@@ -1,6 +1,6 @@
 # The command line in WPS: WPS Terminal and the `wps` command
 
-Draft 2, 2026-11-23, for the owner's review. **The owner's aim:** program objects (scripts, text-mode programs) run in a WPS-native terminal, not in Ptyxis or another terminal app. Those apps are not friendly to WPS's workspace.
+Draft 2, 2026-11-23; decided by the owner the same day (below). **The owner's aim:** program objects (scripts, text-mode programs) run in a WPS-native terminal, not in Ptyxis or another terminal app. Those apps are not friendly to WPS's workspace.
 
 ## Why another terminal
 
@@ -62,20 +62,18 @@ A shell command whose output is plain text (one value a line, exit status 0 or 1
 
 Scripts already work as program objects. Objects dropped on them are their arguments, and their **Actions** (`run:`) start them with `WPS_OBJECT`, `WPS_PATH` and `WPS_EVENT` set. A script in WPS Terminal can now talk back to WPS too.
 
-## What the owner decides
+## Decided (the owner's, 2026-11-23)
 
-1. **A new dependency:** `libvterm` to build and run (`sudo dnf install libvterm-devel` on the build machine; the RPM pulls in `libvterm`).
-   - **Proposed.** It is small and widely used, and it is the hard part of a terminal: writing our own VT parser would take much longer and break more often.
-2. **Its place in the plan:**
-   - **Proposed:** 0.4 steps 12 to 14, before the release, as the owner asked. The RPMs are rebuilt and the draft release updated afterwards.
-   - Or 0.4.1.
-3. **WPS Terminal the default** for text-mode programs, new users and upgrades alike.
-   - **Proposed.** It is the point of it. The System's Programs page still lets anyone choose Ptyxis.
-4. **The command's name:**
-   - **Proposed:** `wps`, a short name for scripts.
-   - `wpsctl` stays as the service's tool.
+1. **libvterm**, to build and run (`libvterm-devel` on the build machine).
+   - **What it covers:** VT100 and xterm escapes, 16, 256 and true (24-bit) colours, the alternate screen, mouse reporting, bracketed paste, UTF-8 with wide characters. So `htop`, `btop` and Claude Code run.
+   - **What WPS adds:** the glyphs (box drawing, braille, symbols) come from the Terminal font, or from the fallback fonts as in folders.
+   - **What does not work:** images in the terminal (sixel, kitty), and the kitty keyboard protocol. Programs fall back from both.
+   - **Tested:** `htop`, `btop` (where installed), true colours and wide characters are in the checks.
+2. **0.4.1:** 0.4.0 is not released. These are the plan's steps 12 to 14, then the release as 0.4.1.
+3. **WPS Terminal is the default** for text-mode programs, like OS/2's command window, for new users and on upgrade. The System's Programs page offers it first, then **The system's default terminal** (xdg-terminal-exec, else the first one installed), then the named ones (Ptyxis, xterm, ...) and a command of one's own.
+4. **The command is `wps` for now.** WPS's own names (`wps`, `wpsctl`, WPS Terminal, ...) are to be looked at in 0.5, against name conflicts and trademarks.
 
-## Steps (if approved)
+## Steps (0.4.1)
 
 - **Step 12. WPS Terminal, the terminal (M-L) (VM):**
   - `gui/terminal/`, using the toolkit; libvterm's screen drawn with WPS's text code (wide characters, colours, bold, underline, the cursor).
