@@ -9,6 +9,8 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-ao-XXXX")
 W="$REPO/build/osdctl"
+# The stored positions are read at 4.5 s and at 9 s (the arrangement's, given
+# time to be stored on a slow machine; reopening the window moves nothing).
 # Projects opens at 320,96 (640x480); its status line at y 562..584, the
 # link after the offer's words (about x 611..660).
 cat > "$S/script" <<EOS
@@ -25,8 +27,8 @@ P='$T/desk/Projects'
 PRE="cd \"$P\" && touch a-rather-long-file-name-one.txt a-rather-long-file-name-two.txt &&
      '$W' place \"$P\" \"$P/a-rather-long-file-name-one.txt\" 0 0 \"$P/a-rather-long-file-name-two.txt\" 60 0 > /dev/null 2>&1" \
 DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=14 tests/comp/run.sh "$S/script" \
-    "sleep 4.5; '$W' layout \"$P\" > \"\$T/before.log\" 2>&1; sleep 2.5; '$W' layout \"$P\" > \"\$T/after.log\" 2>&1;
-     '$W' props \"$P\" > \"\$T/props.log\" 2>&1; sleep 10" > "$S/out.txt" 2>&1
+    "sleep 4.5; '$W' layout \"$P\" > \"\$T/before.log\" 2>&1; sleep 4.5; '$W' layout \"$P\" > \"\$T/after.log\" 2>&1;
+     '$W' props \"$P\" > \"\$T/props.log\" 2>&1; sleep 8" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
