@@ -97,7 +97,11 @@ int osd_volumes_scan(osd_volumes *out, const osd_env *env)
         if (sscanf(line, "%*u %*u %u:%u %4095s %4095s %1023s", &maj, &min, root, mnt, opts) != 5) continue;
         char *dash = strstr(line, " - ");
         if (!dash || sscanf(dash + 3, "%63s %4095s", fstype, source) != 2) continue;
-        if (strncmp(source, "/dev/", 5) != 0) continue;   /* block devices only */
+        /* Block devices only, and the root filesystem whatever it is (in a
+         * container, toolbox or CI, "/" is an overlay with no device: without
+         * it, nothing outside a block device's mount had a volume). */
+        bool blockdev = strncmp(source, "/dev/", 5) == 0;
+        if (!blockdev && strcmp(mnt, "/") != 0) continue;
         unescape(mnt);
         unescape(source);
         unescape(root);
@@ -116,7 +120,8 @@ int osd_volumes_scan(osd_volumes *out, const osd_env *env)
         v->minor = min;
         char *o = opts;
         v->ro = strncmp(o, "ro,", 3) == 0 || strcmp(o, "ro") == 0;
-        uuid_of(source, maj, min, v->uuid, sizeof v->uuid);
+        if (blockdev) uuid_of(source, maj, min, v->uuid, sizeof v->uuid);
+        else snprintf(v->uuid, sizeof v->uuid, "root");   /* (its device number changes from boot to boot) */
         /* A mount of part of a filesystem (a btrfs subvolume such as /home,
          * or a bind mount) is its own volume: "<UUID>:<root within the fs>".
          * Stable across reboots, and paths stay relative to what is mounted. */
