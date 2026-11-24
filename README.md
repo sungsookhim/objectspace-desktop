@@ -2,7 +2,7 @@
 
 A desktop for Linux built on the object model of the OS/2 Workplace Shell. Every file, folder and abstract item is a persistent object belonging to a class that can be extended, with shadows, templates and settings notebooks. The object core is built first, with no GUI.
 
-Status: **version 0.3** (2026-11-22): daily use and OS/2 fidelity. Folders sort by heading, filter as you type (Ctrl+F) and show every title whole, with icons that can be locked in place; Open With and program settings; New and Create another from templates; OS/2's Font Palette; the desktop's own background; a LaunchPad that matches the WarpCenter, with tooltips. Built on 0.2 (the OS/2 desktop, installable as an RPM for Fedora 45) and 0.1's object core and GUI, inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). See the [release notes](docs/release-notes-0.3.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
+Status: **version 0.4** (2026-11-23): icons, folders and objects. Every setting is a property of an object, set for one object, a file type or a whole class (OS/2's Class... and Default), with actions on events and schemes as objects; icon themes and sizes with open icons; OS/2's free icon layout; folder windows that remember where they were; Prevent delete; OS/2's Colour Palette and fonts in every window; Work Area folders; a plug-in SDK (`wps-devel`). Built on 0.3 (daily use and OS/2 fidelity), 0.2 (the OS/2 desktop, installable as an RPM for Fedora 45) and 0.1's object core and GUI, inside GNOME or as its own session from the login screen (`wps-compositor` on wlroots). See the [release notes](docs/release-notes-0.4.md); what is open, deferred or not yet designed is gathered in [docs/roadmap.md](docs/roadmap.md).
 
 ## Installing
 
@@ -23,6 +23,7 @@ On Fedora 45, download the two RPMs from the [latest release](https://github.com
 | [docs/release-notes-0.3.md](docs/release-notes-0.3.md) | Version 0.3's release notes: installing and upgrading, what is new, known issues |
 | [docs/v0.4-design.md](docs/v0.4-design.md) | Version 0.4's design: icon packages and themes, icon sizes and the open icon, OS/2's free layout, folder windows remembered, Prevent delete, the Colour Palette, fonts everywhere, Work Area folders |
 | [docs/v0.4-plan.md](docs/v0.4-plan.md) | Version 0.4's implementation plan: eleven steps, their checks, order and risks |
+| [docs/release-notes-0.4.md](docs/release-notes-0.4.md) | Version 0.4's release notes: installing and upgrading, what is new, known issues |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps found while building and trying the GUI, item by item |
 | [docs/reviews/2026-11-18-gemini-review.md](docs/reviews/2026-11-18-gemini-review.md) | External review of v0.1, our assessment, and the changes folded into v0.2 |
 | [docs/notes/2026-11-discussion-notes.md](docs/notes/2026-11-discussion-notes.md) | The discussion that led to the design: approach options, prior art, change tracking, links |
@@ -40,7 +41,8 @@ The repository copy is the source of truth. The Claude doc at https://claude.ai/
 7. GUI (docs/gui-design.md): G0 prototypes (proto/g0/RESULTS.md); G1 the widget set and folder windows (gui/RESULTS-G1.md); G2 the desktop, views, notebooks, drag and drop, templates, shadows, trash; G3 action events, sounds, schemes, GNOME settings sync; G4 Window List, LaunchPad, Find, accessibility, input methods; G5 `wps-compositor` and the WPS session. Done: version 0.1.
 8. Version 0.2 ([design](docs/v0.2-design.md), [plan](docs/v0.2-plan.md), [release notes](docs/release-notes-0.2.md)): the OS/2 desktop, installable. Done.
 9. Version 0.3 ([design](docs/v0.3-design.md), [plan](docs/v0.3-plan.md), [release notes](docs/release-notes-0.3.md)): daily use and OS/2 fidelity. Done.
-10. Next: 0.4, icons, folders and objects ([design](docs/v0.4-design.md), [plan](docs/v0.4-plan.md)). Drafted, for the owner's review.
+10. Version 0.4 ([design](docs/v0.4-design.md), [plan](docs/v0.4-plan.md), [release notes](docs/release-notes-0.4.md)): icons, folders and objects, on the object-property base. Done.
+11. Next: 0.5, the look of other programs and more screens (see the [roadmap](docs/roadmap.md)).
 
 Related project: [x64dos](https://github.com/sungsookhim/x64dos), a possible second target for the runtime.
 

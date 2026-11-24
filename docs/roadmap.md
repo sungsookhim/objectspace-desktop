@@ -31,51 +31,41 @@ Tagged `v0.2`; the RPMs are attached to its GitHub release. The objectives below
 
 Tagged `v0.3`; the RPMs are attached to its GitHub release. All eleven steps of [v0.3-plan.md](v0.3-plan.md) are done, with the owner's changes along the way; Work Area folders and icon packages moved to 0.4. What it holds is in the [release notes](release-notes-0.3.md).
 
+## Version 0.4 (released 2026-11-23)
+
+Tagged `v0.4`; the RPMs (with `wps-devel`) are attached to its GitHub release. The object-property refactor (R0-R6) and all eleven steps of [v0.4-plan.md](v0.4-plan.md) are done, with the owner's changes along the way (a folder's own title bar colour; folder windows joining a work area's group). What it holds is in the [release notes](release-notes-0.4.md).
+
 ## Open and deferred work
 
-Everything still open after 0.3, by area; the version each goes into is in **Proposed order** below. Done items moved to the release notes. **D** marks something the owner deferred; **?** a choice still to make.
+Everything still open after 0.4, by area; the version each goes into is in **Proposed order** below. Done items moved to the release notes. **D** marks something the owner deferred; **?** a choice still to make.
 
 ### Icons
 
-- **Icons in several sizes** (the owner's spec, 2026-11-21): `.wpsicon` packages, SVG through librsvg, the open (animation) icon. Detailed under 0.4.
-- **Icon size** for icon views and the desktop, a System choice of three sets, as OS/2's normal and large icons: Small (32, 16, 16), Default (64, 32, 16) and Large (96, 48, 24) for icon views, the LaunchPad and menus; independent of the display's scale (the owner's, 2026-11-22).
-- **The new icon set** (isometric, BeOS / Warp 4 style) is being drawn in another session (`tools/icons/make_iso.py`); 0.4 packages it as WPS's own icons.
+- **A Preview view** (the owner's, for 0.4 if there was room; not done): pictures (images, `.wpsicon` packages) shown in place of their type's icon, thumbnails made off the UI thread and cached.
+- **Text-mode programs:** the theme's `program-text` for a program whose desktop entry says Terminal=true and has no icon of its own.
+- **?** **Hatching an open object whose notebook opens:** now it keeps its open icon, unhatched; the owner's to decide.
+- Left from 0.4 step 3: the title bars' icon (a drawn glyph), the LaunchPad drawers' rows (24), desktop entries' icons (their 64 PNG), an object's own open icon kept as the path chosen (not copied).
 - An object's icon is a copy: a changed source image does not follow; icons no object uses stay in `wps/icons`; templates copy their icon's PNG.
 - No drop on the icon picker to add an image to the library.
 
 ### Folder windows
 
-- **OS/2's free (non-grid) icon layout:** cells as wide as their titles (variable horizontal spacing); grid or free on the folder's Icon view page (the owner's to-do; M, about one step).
-- **Folder windows remember their place:** position, size and view kept with the folder, as on OS/2 (the owner's to-do).
-- **Where the search field sits:** top (today), bottom, floating (the owner's to-do).
-- **The resize pointer** over a details view's column edges (the owner's to-do).
-- **The desktop has no status line:** its messages (moved to the trash, errors) are not shown. A transient message on the desktop, or a notification.
-- **Icon positions stored by 0.2** were laid out for two-line titles: long titles may overlap until Arrange (found in 0.3 step 6). An Arrange offered once, or positions moved down on the first open.
 - **Sort by size:** folders and shadows sort by their own stored size (folders first would be tidier).
 - **Big folders:** a batch of changes costs time in proportion to the folder; the selection survives a change by name only up to 256 items.
 
 ### Objects: safety and types
 
-- **Prevent delete** on an object's General page (OS/2's no-delete style); WPS's own objects could start with it on (the owner's to-do).
-- **Confirm an extension change on rename** (when extensions are shown; the owner's to-do).
 - **File types from metadata, as OS/2's .TYPE EA:** WPS honours `user.mime_type` when a file has one; a data file's **Type page** sets it. **After 0.4** (the owner's, 2026-11-22).
-- **A Program page for executable files** (today they keep the guess: text mode or not from the ELF file; scripts always get a terminal; programs that load their window library at run time get a terminal they do not need) (found in 0.3 step 7).
-- **A shadow's menu** is the shadow's own (Open, Properties): OS/2 showed its original's (Open With on a shadow of a file, for one) (found in 0.3 step 10).
-- **Programs that hand the file to a running instance** (most GNOME apps, Firefox) show it in use only for a moment.
-- **Programs started by wpsd get no activation token,** so GNOME may open them behind the active window.
+- **Programs that hand the file to a running instance** (most GNOME apps, Firefox, Ptyxis) show it in use only for a moment, and do not join a work area's group.
 
 ### Palettes and fonts
 
-- **The Colour Palette** (OS/2's; the owner's): colours dragged onto backgrounds, a window's parts, a notebook's colour field, as fonts are from the Font Palette.
-- **The Background page's polish:** an empty colour swatch looks white while the desktop shows teal; a small preview instead of the picture's path (the owner's check of 0.3 step 3).
-- **Fonts in all WPS windows:** notebooks, dialogs, Find, the window list use the interface font; the Font Palette reaches folders, title bars, menus and the WarpCenter (found in 0.3 step 9).
-- **Font sizes** from the Font Palette ignore GNOME's text scaling factor; **Edit font** has no style list (only Bold and Italic), as OS/2's had.
 - Other programs' title bars take only the font for all title bars, not a folder's (by design: they are not folders).
-- A cascade from a drawer on a vertical LaunchPad's left side opens to the right (menus open rightward first).
+- A notebook open while the Dialogs font changes keeps its size until opened again.
+- Free rows keep a two-line title's room (rows of one-line titles could be shorter).
 
 ### Windows, session and the compositor
 
-- **Work Area folders** (OS/2's; designed in [v0.3-design.md](v0.3-design.md) section 12; moved to 0.4 by the owner).
 - **D** **More than one monitor:** the desktop covers the first screen only, in both modes.
 - **GTK 4 / libadwaita programs keep their own title bars** (decided with the above: their header bars hold their buttons and menus).
 - **D** **Sharp X11 programs on scaled screens** (the compositor's own scaling of X11 windows).
@@ -106,6 +96,7 @@ Everything still open after 0.3, by area; the version each goes into is in **Pro
 
 ### Tests and quality
 
+- **The visual check** (`make visual-check`) differs from run to run in where the first start's desktop icons land (found in 0.4 step 8): the first start's placement races.
 - **Unchecked or flaky:** M4 scenario 38 (a job resumed after logout) timed out once; the two-window drag self-test was not rerun; one headless run in ten once missed an X11 window; under headless GNOME the real pointer can hide a LaunchPad tooltip (tested in the WPS session instead).
 - **Not automated:** the session from the login screen (by hand); fingerprint and smart-card logins through PAM (not tried).
 - **Speed:** Open With's list and New's templates are read when the menu opens (on wpsd's loop and in the window, a few files each): fine so far, worth watching.
@@ -254,7 +245,7 @@ A to do, after 0.2 (with network file systems below).
    - The Font Palette; the Sound object's picker; the tray if not in 0.2.
    - **The Colour Palette** (OS/2's; the owner's, 2026-11-22, for later): colours dragged onto a folder's or the desktop's background, a window's parts or a notebook's colour field, as fonts are from the Font Palette. The Background page has a click palette meanwhile.
    - The LaunchPad updated to share features with the WarpCenter (its parts, settings and code), with tooltips.
-3. **0.4 Icons, folders and objects** (WPS's own; one new build dependency, librsvg). Grouped so each step touches one part of the code:
+3. **0.4 Icons, folders and objects** (WPS's own; one new build dependency, librsvg). **Released 2026-11-23**, built on the object-property base ([object-properties-design.md](object-properties-design.md)) as [v0.4-plan.md](v0.4-plan.md) planned it. Grouped so each step touches one part of the code:
    1. **Icons** (M–L; `icons.c`, wpsd's icon fields, the Icon page):
       - **A package per icon:** `NAME.wpsicon`, a zip holding PNGs named by their size (`SIZE.png`, square, any size) and optionally `icon.svg`; no manifest. **The standard sizes are 256 (the master), 128, 96, 64 and 32** (the owner's, 2026-11-22): WPS's own packages always hold all five, and `wpsctl icon pack` makes any of them missing from the largest picture given. **Any other size a package holds (16, 40, 48, 80, ...) is used too**, as its exact match. A single picture still works (a package of one); `.ico` and `.icns` are unpacked into theirs. `wpsctl icon pack DIR OUT.wpsicon`; Choose... takes packages.
       - **Choosing a size**, in device pixels (a 16 px menu icon at scale 2 wants 32), best first:
