@@ -453,7 +453,7 @@ uninstall:
 	rm -f $(DESTDIR)$(DATADIR)/wayland-sessions/wps.desktop $(DESTDIR)$(SYSCONFDIR)/pam.d/wps-lock $(DESTDIR)$(DATADIR)/applications/org.wps.Terminal.desktop
 	rm -rf $(DESTDIR)$(EXTDIR) $(DESTDIR)$(DATADIR)/wps/icons $(DESTDIR)$(DATADIR)/wps/icon-themes
 	rm -rf $(DESTDIR)$(DATADIR)/wps/sdk $(DESTDIR)$(INCLUDEDIR)/wps
-	rm -f $(addprefix $(DESTDIR)$(MANDIR)/man1/,wpsctl.1 wps-shell.1 wps-session.1)
+	rm -f $(addprefix $(DESTDIR)$(MANDIR)/man1/,wps.1 wpsctl.1 wps-shell.1 wps-session.1 wps-terminal.1)
 	-rmdir $(DESTDIR)$(DATADIR)/wps 2>/dev/null
 	-rmdir $(DESTDIR)$(LIBEXECDIR) $(DESTDIR)$(LIBDIR)/wps/plugins $(DESTDIR)$(LIBDIR)/wps 2>/dev/null
 

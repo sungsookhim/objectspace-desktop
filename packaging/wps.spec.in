@@ -150,6 +150,8 @@ echo "enable wpsd.service" > %{buildroot}%{_userpresetdir}/80-wps.preset
 %{_mandir}/man1/wpsctl.1*
 %{_mandir}/man1/wps-shell.1*
 %{_mandir}/man1/wps-session.1*
+%{_mandir}/man1/wps.1*
+%{_mandir}/man1/wps-terminal.1*
 
 %files devel
 %license LICENSE
