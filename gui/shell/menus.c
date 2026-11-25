@@ -476,7 +476,7 @@ static void got_menu(void *arg, const cv *reply)
      * answered, and GNOME refuses a grab then, dismissing the menu at once.
      * The shell closes its own menus on clicks elsewhere. */
     if (menu_hook) { menu_hook(m, items, n); free_converted(items, n); return; }   /* (self-tests) */
-    if (m->from_bar) ui_menu_next_sideways(menubar_side, (void *)(intptr_t)f->id);
+    if (m->from_bar) ui_menu_next_sideways(menubar_side, (void *)(intptr_t)f->id, menubar_rect(f));
     ui_menu_popup(f->win, items, n, m->x, m->y, 0, menu_chosen, m);
     free_converted(items, n);
 }

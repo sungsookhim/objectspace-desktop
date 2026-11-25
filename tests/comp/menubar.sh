@@ -82,7 +82,31 @@ DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=13 tests/comp
 T3=$(sed -n 's/^T=//p' "$S/f4.txt")
 check "Alt+F4 on another folder window: it closed" "grep -q \"window 'Sub\" '$S/f4.txt' && [ \$(grep -c \"window 'Sub\" '$S/f4.txt') -lt 3 ]"
 check "... and Projects shows no menu bar (Alt's release no tap there)" "[ \"\$(px '$S/f4.png' 600 146)\" = '255 255 255' ]"
-check "no sanitizer reports" "! grep -q Sanitizer '$T1/shell.log' '$T2/shell.log' '$T3/shell.log'"
-echo "$fails failed (screenshots: $S, logs: $T1 $T2 $T3)"
-[ $fails = 0 ] && rm -rf "$S" "$T1" "$T2" "$T3"
+# With the mouse (the owner's check): Alt shows the bar; a click on Folder,
+# then on Edit: Edit's menu, the bar still there; moved onto View: View's
+# menu; a click in the list: the menu and the bar gone.
+cat > "$S/mouse" <<EOS
+3 dclick 54 30
+5 move 1000 700
+5.5 shot $S/m0.png
+6 key Alt_L
+6.5 click 355 146
+7.3 click 402 146
+8 shot $S/m1.png
+8.3 move 440 146
+8.6 move 444 147
+9.2 shot $S/m2.png
+9.5 click 700 450
+10.3 move 1000 700
+10.8 shot $S/m3.png
+11.3 quit
+EOS
+DESKENV="OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=14 tests/comp/run.sh "$S/mouse" "sleep 20" > "$S/mouse.txt" 2>&1
+T4=$(sed -n 's/^T=//p' "$S/mouse.txt")
+check "the mouse: Folder, then Edit clicked: Edit's menu, the bar still there" "[ \"\$(px '$S/m1.png' 600 146)\" != '255 255 255' ] && [ \"\$(px '$S/m1.png' 420 178)\" != \"\$(px '$S/m0.png' 420 178)\" ]"
+check "... onto View: View's menu" "[ \"\$(px '$S/m2.png' 480 218)\" != \"\$(px '$S/m0.png' 480 218)\" ]"
+check "... a click in the list: the menu and the bar gone" "[ \"\$(px '$S/m3.png' 600 146)\" = '255 255 255' ] && [ \"\$(px '$S/m3.png' 480 218)\" = \"\$(px '$S/m0.png' 480 218)\" ]"
+check "no sanitizer reports" "! grep -q Sanitizer '$T1/shell.log' '$T2/shell.log' '$T3/shell.log' '$T4/shell.log'"
+echo "$fails failed (screenshots: $S, logs: $T1 $T2 $T3 $T4)"
+[ $fails = 0 ] && rm -rf "$S" "$T1" "$T2" "$T3" "$T4"
 exit $fails

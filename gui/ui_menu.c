@@ -41,6 +41,7 @@ struct menu_root {
     bool left;             /* it and its cascades open out to the left (ui_menu_next_left) */
     void (*side_fn)(void *ctx, int dir);   /* a menu bar's (ui_menu_next_sideways) */
     void *side_ctx;
+    ui_rect bar;           /* the bar's area on the opener (presses there go on to it) */
     int side;              /* Left or Right at its top level: the neighbour, once closed */
 };
 
@@ -337,8 +338,9 @@ static bool (*next_icon_fn)(void *arg, int64_t id, void *item);
 static bool next_left;
 static void (*next_side_fn)(void *ctx, int dir);
 static void *next_side_ctx;
+static ui_rect next_bar;
 
-void ui_menu_next_sideways(void (*fn)(void *ctx, int dir), void *ctx) { next_side_fn = fn; next_side_ctx = ctx; }
+void ui_menu_next_sideways(void (*fn)(void *ctx, int dir), void *ctx, ui_rect bar) { next_side_fn = fn; next_side_ctx = ctx; next_bar = bar; }
 
 void ui_menu_next_left(void) { next_left = true; }
 
@@ -358,6 +360,7 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     next_left = false;
     void (*side_fn)(void *, int) = next_side_fn;
     void *side_ctx = next_side_ctx;
+    ui_rect bar = next_bar;
     next_side_fn = NULL;
     if (!n) { if (fn) fn(arg, -1); return; }
     if (active) {
@@ -384,6 +387,7 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     r->left = left;
     r->side_fn = side_fn;
     r->side_ctx = side_ctx;
+    r->bar = side_fn ? bar : (ui_rect){ 0, 0, 0, 0 };
     r->items = copy_items(items, n);
     r->n = n;
     ui_rect anchor = { x, y, 1, 1 };
@@ -395,6 +399,15 @@ static bool in_tree(struct menu_root *r, ui_surface *s)
     for (struct menu *m = r->top; m; m = m->child)
         if (m->surf == s) return true;
     return false;
+}
+
+bool ui_menu_press_outside_at(ui_surface *s, double x, double y)
+{
+    if (active && !active->closing && s == active->opener && active->bar.w > 0 &&
+        x >= active->bar.x && y >= active->bar.y && x < active->bar.x + active->bar.w && y < active->bar.y + active->bar.h) {
+        return false;   /* a menu bar's: the press goes on to the bar (another title, or the same: it decides) */
+    }
+    return ui_menu_press_outside(s);
 }
 
 bool ui_menu_press_outside(ui_surface *s)

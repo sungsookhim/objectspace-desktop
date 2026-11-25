@@ -129,6 +129,7 @@ struct ui_app {
     int repeat_fd;
     int repeat_rate, repeat_delay;
     uint32_t repeat_key;
+    unsigned held_buttons;   /* buttons down now (bit 1 << UI_BTN1, ...) */
     uint32_t alt_alone;   /* an Alt key pressed with nothing else yet (its key code + 1; 0: none) */
     int wake_fd;
     pthread_mutex_t post_mu;
@@ -140,6 +141,7 @@ void ui_set_cursor(ui_app *a, const char *name);
 /* Menus close themselves on presses elsewhere in this program (compositors
  * only dismiss them for clicks on other programs' windows). */
 bool ui_menu_press_outside(ui_surface *s);   /* true: a menu closed; the press is used up */
+bool ui_menu_press_outside_at(ui_surface *s, double x, double y);   /* (at x, y on s: a menu bar's press goes on) */
 ui_surface *ui_menu_key_surface(void);       /* where keys go while a menu is open */
 void ui_menu_close_all(void);
 void ui_menu_forget_surface(ui_surface *s);   /* before s is destroyed */

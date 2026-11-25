@@ -170,6 +170,7 @@ typedef struct {
     double wheel;             /* logical pixels, + is down */
     unsigned mods;
     uint32_t serial;
+    unsigned held;            /* the buttons held besides this one (bit 1 << UI_BTN1, ...) */
 } ui_pointer_event;
 
 typedef struct {
@@ -189,7 +190,7 @@ typedef struct {
 typedef enum {
     UI_ACT_SELECT, UI_ACT_OPEN, UI_ACT_POPUP, UI_ACT_EDIT_TITLE, UI_ACT_DRAG, UI_ACT_WINDOW_LIST, UI_ACT_COUNT
 } ui_mouse_action;
-typedef struct { int button; unsigned mods; int clicks; } ui_chord;   /* clicks: 1, or 2 for a double click */
+typedef struct { int button; unsigned mods; int clicks; int with; } ui_chord;   /* clicks: 1, or 2 for a double click; with: a second button (both held: either one pressed with the other down) */
 typedef struct {
     ui_chord act[UI_ACT_COUNT];
     bool left_handed;          /* buttons 1 and 2 swapped */
@@ -426,9 +427,12 @@ void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n
 /* The next menu, and its cascades, open beside their anchors out to the
  * left (a cascade from a Launcher drawer on the left). */
 void ui_menu_next_left(void);
-/* The next menu opened belongs to a menu bar: Left and Right at its top
- * level close it and call fn(ctx, -1 or +1) (the neighbouring menu). */
-void ui_menu_next_sideways(void (*fn)(void *ctx, int dir), void *ctx);
+/* The next menu opened belongs to a menu bar (`bar`: its area on the
+ * window that opens it): Left and Right at its top level close it and
+ * call fn(ctx, -1 or +1) (the neighbouring menu); a press on the bar is
+ * not taken as a press outside the menu: it goes on to the window, which
+ * opens another title's menu or keeps this one. */
+void ui_menu_next_sideways(void (*fn)(void *ctx, int dir), void *ctx, ui_rect bar);
 bool ui_menu_is_open(void);
 void ui_menu_close_all(void);   /* the open menus, unchosen */
 /* Called with the surface of every button press in this program, first

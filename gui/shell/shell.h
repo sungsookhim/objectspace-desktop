@@ -525,6 +525,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop);
 /* A folder window's menu bar (menubar.c). */
 double menubar_h(void);
 bool menubar_shown(const struct folder *f);
+ui_rect menubar_rect(struct folder *f);   /* the bar's area on its window */
 void menubar_draw(struct folder *f, cairo_t *cr);
 void menubar_open(struct folder *f, int i);
 bool menubar_pointer(struct folder *f, const ui_pointer_event *e);

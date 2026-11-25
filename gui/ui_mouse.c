@@ -53,7 +53,7 @@ static const char *names[UI_ACT_COUNT] = {
 /* "ctrl+shift+button2 double" */
 bool ui_mouse_parse_chord(const char *s, ui_chord *out)
 {
-    ui_chord c = { 0, 0, 1 };
+    ui_chord c = { 0, 0, 1, 0 };
     char buf[128];
     snprintf(buf, sizeof buf, "%s", s);
     for (char *p = buf; *p; p++) *p = (char)tolower((unsigned char)*p);
@@ -63,8 +63,10 @@ bool ui_mouse_parse_chord(const char *s, ui_chord *out)
         if (!strcmp(t, "alt")) c.mods |= UI_MOD_ALT;
         else if (!strcmp(t, "ctrl") || !strcmp(t, "control")) c.mods |= UI_MOD_CTRL;
         else if (!strcmp(t, "shift")) c.mods |= UI_MOD_SHIFT;
-        else if (!strncmp(t, "button", 6) && t[6] >= '1' && t[6] <= '3' && !t[7]) c.button = t[6] - '0';
-        else return false;
+        else if (!strncmp(t, "button", 6) && t[6] >= '1' && t[6] <= '3' && !t[7]) {
+            if (c.button && c.button != t[6] - '0') c.with = c.button;   /* a chord: two buttons */
+            c.button = t[6] - '0';
+        } else return false;
     }
     if (!c.button) return false;
     *out = c;
@@ -147,7 +149,19 @@ bool ui_mouse_set(const char *k, const char *v)
 bool ui_mouse_is(ui_mouse_action a, const ui_pointer_event *e)
 {
     const ui_chord *c = &ui_mouse.act[a];
+    if (c->with) {   /* a chord: one of its buttons pressed with the other held (either order) */
+        bool ok = (e->button == c->button && (e->held & (1u << c->with))) || (e->button == c->with && (e->held & (1u << c->button)));
+        if (!ok || (e->mods & c->mods) != c->mods) return false;
+        return !(c->clicks == 2 && e->kind == UI_PRESS && e->clicks < 2);
+    }
     if (e->button != c->button || (e->mods & c->mods) != c->mods) return false;
+    /* A chord on this button, with its other button held, is that action's,
+     * not this one's (popup menu on button 2, edit title on 1+2). */
+    for (int k = 0; k < UI_ACT_COUNT; k++) {
+        const ui_chord *o = &ui_mouse.act[k];
+        if (k == (int)a || !o->with) continue;
+        if ((o->button == e->button && (e->held & (1u << o->with))) || (o->with == e->button && (e->held & (1u << o->button)))) return false;
+    }
     if (c->clicks == 2 && e->kind == UI_PRESS && e->clicks < 2) return false;
     /* An action without Alt is not made while Alt is held, when another
      * action on the same button uses Alt (edit title vs. select). */

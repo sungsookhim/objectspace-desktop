@@ -26,6 +26,12 @@ double menubar_h(void) { return ceil(ui_font_line_h(UI_FONT_REGULAR)) + 8; }
 
 bool menubar_shown(const struct folder *f) { return f && !f->desktop && (f->menubar_on || f->menubar_temp); }
 
+ui_rect menubar_rect(struct folder *f)
+{
+    ui_rect c = ui_frame_client(f->win);
+    return (ui_rect){ c.x, c.y, c.w, menubar_h() };
+}
+
 /* Menu i's title on the bar. */
 static ui_rect title_rect(struct folder *f, int i)
 {
@@ -113,8 +119,8 @@ static void own_chosen(void *arg, int64_t id)
     struct menu_ctx *m = x->m;
     free(x);
     bool own = id >= MB_SELECT_ALL && id <= MB_ABOUT;
-    if (m) menu_chosen(m, own ? -1 : id);   /* the pop-up menu's own (views, sort, arrange): menus.c acts; it frees m */
-    temp_off(f);
+    if (m) menu_chosen(m, own ? -1 : id);   /* the pop-up menu's own (views, sort, arrange): menus.c acts; it frees m (and closes) */
+    else menubar_closed(f);
     if (!own) return;
     switch (id) {
     case MB_SELECT_ALL: key_to(f, XKB_KEY_a, UI_MOD_CTRL); break;
@@ -178,7 +184,7 @@ static void open_own(struct folder *f, int i, double x, double y)
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
         items[n++] = (ui_menu_item){ MB_ABOUT, "About Objectspace", true, false, NULL, 0 };
     }
-    ui_menu_next_sideways(menubar_side, (void *)(intptr_t)f->id);
+    ui_menu_next_sideways(menubar_side, (void *)(intptr_t)f->id, menubar_rect(f));
     ui_menu_popup(f->win, items, n, x, y, 0, own_chosen, c);
 }
 
@@ -241,9 +247,19 @@ bool menubar_pointer(struct folder *f, const ui_pointer_event *e)
         if (e->kind == UI_PRESS && f->menubar_temp && !ui_menu_is_open()) temp_off(f);   /* (a click elsewhere: it goes) */
         return false;
     }
+    if (e->kind == UI_MOTION && f->menubar_open >= 0 && ui_menu_is_open()) {   /* moved along the bar with a menu open: that one's */
+        for (int i = 0; i < NMENUS; i++)
+            if (i != f->menubar_open && ui_rect_has(title_rect(f, i), e->x, e->y) && (i != 3 || any_selected(f))) { menubar_open(f, i); break; }
+        return true;
+    }
     if (e->kind != UI_PRESS) return true;
     for (int i = 0; i < NMENUS; i++)
-        if (ui_rect_has(title_rect(f, i), e->x, e->y)) { menubar_open(f, i); return true; }
+        if (ui_rect_has(title_rect(f, i), e->x, e->y)) {
+            if (i == f->menubar_open && ui_menu_is_open()) return true;   /* its menu, open already: it stays */
+            menubar_open(f, i);
+            return true;
+        }
+    if (ui_menu_is_open()) ui_menu_close_all();   /* the bar, between titles: the menu closes (the bar with it, if shown for a moment) */
     return true;
 }
 
@@ -282,5 +298,6 @@ bool menubar_key(struct folder *f, const ui_key_event *e)
 void menubar_closed(struct folder *f)
 {
     if (!f || f->menubar_open < 0) return;
+    if (ui_menu_is_open()) return;   /* (another of the bar's menus opened meanwhile: the bar stays) */
     temp_off(f);
 }

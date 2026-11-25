@@ -678,6 +678,8 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
     if (ui_mouse.left_handed && b != UI_BTN3) b = b == UI_BTN1 ? UI_BTN2 : UI_BTN1;
     ui_pointer_event e = { .kind = state == WL_POINTER_BUTTON_STATE_PRESSED ? UI_PRESS : UI_RELEASE,
                            .button = b, .clicks = 1, .serial = serial };
+    if (e.kind == UI_PRESS) { e.held = a->held_buttons & ~(1u << b); a->held_buttons |= 1u << b; }
+    else { a->held_buttons &= ~(1u << b); e.held = a->held_buttons; }
     if (e.kind == UI_PRESS) {
         double now = ui_now_ms();
         if (b == a->last_button && now - a->last_click_t < ui_mouse.double_click_ms && fabs(a->px - a->last_click_x) < 4 &&
@@ -691,7 +693,7 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
          * second click of a double click: the first opened the menu (the
          * system menu button), and the double click means Close. */
         if (ui_press_hook && a->ptr_focus) ui_press_hook(a->ptr_focus);
-        if (a->ptr_focus && ui_menu_press_outside(a->ptr_focus) && e.clicks != 2) {
+        if (a->ptr_focus && ui_menu_press_outside_at(a->ptr_focus, a->px, a->py) && e.clicks != 2) {
             a->swallow_release = b;
             return;
         }

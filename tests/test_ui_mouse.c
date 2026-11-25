@@ -62,8 +62,31 @@ TEST(a_config_file_remaps)
     rmdir(dir);
 }
 
+/* A two-button chord (the owner's: edit title on button 1 + button 2, the
+ * popup menu on button 2): button 2 alone is the popup menu, never edit
+ * title; button 2 with button 1 held (or 1 with 2 held) is edit title,
+ * not the popup menu. */
+TEST(two_button_chords)
+{
+    ui_chord c;
+    CHECK(ui_mouse_parse_chord("button1+button2", &c) && c.button == 2 && c.with == 1);
+    CHECK(ui_mouse_set("edit_title", "button1+button2"));
+    CHECK(ui_mouse_set("popup_menu", "button2"));
+    ui_pointer_event b2 = press(UI_BTN2, 0, 1), b2_with1 = press(UI_BTN2, 0, 1), b1_with2 = press(UI_BTN1, 0, 1);
+    b2_with1.held = 1u << UI_BTN1;
+    b1_with2.held = 1u << UI_BTN2;
+    CHECK(ui_mouse_is(UI_ACT_POPUP, &b2));
+    CHECK(!ui_mouse_is(UI_ACT_EDIT_TITLE, &b2));
+    CHECK(ui_mouse_is(UI_ACT_EDIT_TITLE, &b2_with1));
+    CHECK(!ui_mouse_is(UI_ACT_POPUP, &b2_with1));
+    CHECK(ui_mouse_is(UI_ACT_EDIT_TITLE, &b1_with2));
+    CHECK(!ui_mouse_is(UI_ACT_SELECT, &b1_with2));
+    ui_mouse_set("edit_title", "alt+button1");
+}
+
 int main(void)
 {
+    RUN(two_button_chords);
     RUN(defaults_are_os2s);
     RUN(chords_parse);
     RUN(a_config_file_remaps);
