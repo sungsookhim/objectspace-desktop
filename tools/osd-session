@@ -79,6 +79,18 @@ lockd=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null | sed
 case $idle in ''|*[!0-9]*) ;; *) export OSD_IDLE_DELAY=$idle ;; esac
 [ "$lock" = false ] && export OSD_LOCK_ENABLED=0
 case $lockd in ''|*[!0-9]*) ;; *) export OSD_LOCK_DELAY=$lockd ;; esac
+# Automatic Suspend (GNOME's Power settings): after how long idle, on mains
+# and on battery, and what ("nothing": never)
+for p in ac battery; do
+    typ=$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-$p-type 2>/dev/null | tr -d "'")
+    t=$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-$p-timeout 2>/dev/null | sed 's/^int32 //')
+    P=$(echo $p | tr a-z A-Z)
+    case "$typ:$t" in
+        suspend:*[!0-9]*|hibernate:*[!0-9]*|*:) ;;
+        suspend:*|hibernate:*) export OSD_SLEEP_$P=$t OSD_SLEEP_${P}_ACTION=$typ ;;
+        *) export OSD_SLEEP_$P=0 ;;
+    esac
+done
 
 # The desktop portal: GNOME's GTK backend (its Settings read GNOME's
 # settings), for a desktop named Objectspace.

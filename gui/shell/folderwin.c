@@ -208,7 +208,7 @@ static void got_bg(void *arg, const cv *reply)
     unsigned cols = 0;
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
-    int icon_size = -1, free_l = -1, find_place = 0, menubar = 0;
+    int icon_size = -1, free_l = -1, find_place = 0, menubar = 0, pictures = 0;
     bool offered = false;
     for (size_t i = 0; i < res->n; i++) {
         const cv *pr = &res->items[i];
@@ -240,6 +240,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "arrange_offered")) offered = on || !strcmp(v, "true");
         else if (!strcmp(key, "search_place")) find_place = option_number(ch, v) < 0 ? 0 : option_number(ch, v);
         else if (!strcmp(key, "menu_bar")) menubar = on;
+        else if (!strcmp(key, "show_pictures")) pictures = on;
         else if (!strncmp(key, "col_", 4) && on) {
             cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
                   : !strcmp(key, "col_date") ? 8u : 0u;
@@ -268,6 +269,10 @@ static void got_bg(void *arg, const cv *reply)
         }
     }
     if (f->arrange_offered < 0) { f->arrange_offered = offered; arrange_offer_check(f); }
+    if (pictures != f->show_pictures) {   /* Show pictures: thumbnails in place of icons */
+        f->show_pictures = pictures;
+        ui_container_changed(f->cont, 0, SIZE_MAX);
+    }
     if (menubar >= 0 && menubar != f->menubar_on) {   /* its menu bar, on or off */
         f->menubar_on = menubar;
         layout(f);
@@ -410,7 +415,7 @@ void update_title(struct folder *f)
 {
     if (f->col_owner) { columns_pane_changed(f); return; }   /* (a pane: its title on the window's path) */
     char t[400];
-    snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
+    snprintf(t, sizeof t, "%s - %s", f->title, folder_view_name(f));
     ui_window_set_title(f->win, f->desktop ? "Desktop" : t);
 }
 

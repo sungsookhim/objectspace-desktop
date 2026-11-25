@@ -46,7 +46,7 @@ void workarea_join(struct folder *f, const char *group)
 
 static void window_title(struct folder *f, char *out, size_t n)
 {
-    snprintf(out, n, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
+    snprintf(out, n, "%s - %s", f->title, folder_view_name(f));
 }
 
 static void got(void *arg, const cv *reply)

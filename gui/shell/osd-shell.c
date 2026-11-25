@@ -39,6 +39,16 @@ static void on_window_events(void *arg, int fd, short rev)
     if (ev_len == sizeof ev_buf - 1) ev_len = 0;   /* a line too long: dropped */
 }
 
+/* A thumbnail came: the windows showing pictures draw again. */
+static void thumbs_ready(void)
+{
+    for (struct folder *f = folders; f; f = f->next)
+        if (!f->closing && (f->show_pictures || f->gallery)) {
+            ui_container_changed(f->cont, 0, SIZE_MAX);
+            gallery_damage(f);
+        }
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && !strcmp(argv[1], "--version")) { printf("osd-shell %s\n", OSD_VERSION); return 0; }
@@ -108,6 +118,7 @@ int main(int argc, char **argv)
     }
     svc_on_event(on_event, NULL);
     svc_view_fn = open_view;
+    thumbs_init(app, thumbs_ready);   /* (pictures for Show pictures and the Gallery) */
     svc_subscribe_jobs(ignore_reply, NULL);
     svc_setup(got_setup, NULL);
     /* Settings shared with GNOME: every shell follows its font; the

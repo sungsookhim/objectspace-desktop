@@ -65,6 +65,7 @@ property menu_bar : checkbox = "0" page View label "Menu bar"
 # Its icons' layout (0.4 step 4): OS/2's free one (cells as wide as their
 # titles, packed in rows) or 0.3's grid.
 property icon_layout : choice "free,grid" = free page "Icon view" label Layout
+property show_pictures : checkbox = "0" page "Icon view" label "Show pictures"
 property icon_titles : choice "whole,two lines" = whole index page "Icon view" label Titles set osdSetIconTitles
 property lock_all : checkbox page "Icon view" label "Lock positions of all icons" set osdSetLockAll
 # Its icons' theme (0.4 step 2): the installed and the user's themes.

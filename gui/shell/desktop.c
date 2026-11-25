@@ -313,7 +313,8 @@ static const char *const view_keys[4] = { "icon", "details", "tree", "column" };
 static struct folder *open_in(const char *path, ui_view view)
 {
     for (struct folder *o = folders; o; o = o->next)
-        if (!o->closing && !o->desktop && !o->col_owner && !strcmp(o->path, path) && (view == VIEW_LAST || ui_container_view(o->cont) == view)) return o;
+        if (!o->closing && !o->desktop && !o->col_owner && !strcmp(o->path, path) &&
+            (view == VIEW_LAST || (view == VIEW_GALLERY ? o->gallery : ui_container_view(o->cont) == view && !o->gallery))) return o;
     return NULL;
 }
 
@@ -335,15 +336,18 @@ static void got_win(void *arg, const cv *reply)
             if (!strncmp(k, "win_", 4) && !strcmp(k + 4, view_keys[j])) snprintf(geo[j], sizeof geo[j], "%s", v);
     }
     ui_view v = r->view;
+    bool gal = v == VIEW_GALLERY || (v == VIEW_LAST && !strcmp(last, "gallery"));
     if (v == VIEW_LAST) v = !strcmp(last, "details") ? UI_VIEW_DETAILS : !strcmp(last, "tree") ? UI_VIEW_TREE
                           : !strcmp(last, "column") ? UI_VIEW_LIST : UI_VIEW_ICON;
-    struct folder *f = open_in(r->path, v);
+    if (gal) v = UI_VIEW_ICON;   /* (the Gallery: the Icon view, a strip) */
+    struct folder *f = open_in(r->path, gal ? VIEW_GALLERY : v);
     if (f) { workarea_join(f, r->group); ui_window_activate(f->win); free(r); return; }   /* (opened meanwhile) */
     int x = -1, y = -1, mx = 0;
     double w = 0, h = 0, sc = 0;
     bool have = sscanf(geo[v], "%d,%d,%lf,%lf,%d,%lf", &x, &y, &w, &h, &mx, &sc) >= 4 && w >= 100 && h >= 80;
     if (have) { next_w = w; next_h = h; }
     f = open_window(r->path, v, false);
+    if (f && gal) gallery_set(f, true);
     if (f) workarea_join(f, r->group);   /* opened from a work area: its group's */
     if (f && have) {
         place_next("io.github.sungsookhim.Objectspace.shell", ui_window_title(f->win), x, y);
@@ -391,7 +395,8 @@ void folder_window_save(struct folder *f)
     char key[16], val[128];
     snprintf(key, sizeof key, "win_%s", view_keys[v]);
     snprintf(val, sizeof val, "%d,%d,%.0f,%.0f,%d,%.0f", x, y, w, h, mx, v == UI_VIEW_TREE ? 0.0 : ui_container_scroll_y(f->cont));
-    cv a = { .k = CV_TEXT, .s = val, .len = strlen(val) }, b = { .k = CV_TEXT, .s = (char *)view_keys[v], .len = strlen(view_keys[v]) };
+    const char *vk = f->gallery ? "gallery" : view_keys[v];   /* (the Gallery: its geometry the Icon view's) */
+    cv a = { .k = CV_TEXT, .s = val, .len = strlen(val) }, b = { .k = CV_TEXT, .s = (char *)vk, .len = strlen(vk) };
     svc_settings_set(f->path, key, &a, -1, ignore_reply, NULL);
     svc_settings_set(f->path, "win_view", &b, -1, ignore_reply, NULL);
 }

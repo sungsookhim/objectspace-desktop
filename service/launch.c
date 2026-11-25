@@ -1092,6 +1092,13 @@ bool osd_is_lock_file(const char *name)
     return false;
 }
 
+/* A folder's thumbnails (the shared repository, Objectspace's exceptions):
+ * kept beside its objects, not one of them (never listed). */
+bool osd_is_thumbnail_store(const char *name)
+{
+    return !strcmp(name, ".sh_thumbnails") || !strcmp(name, ".osd-thumbnails");
+}
+
 bool osd_lock_file_present(const char *path)
 {
     const char *slash = strrchr(path, '/');

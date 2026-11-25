@@ -106,7 +106,7 @@ static void keys_help(struct folder *f)
     static const char *const b[] = { "OK" };
     ui_dialog_open(app, "Keys in a Folder",
                    "Enter: open   Delete: delete (Shift: for good)   F2: rename\n"
-                   "Ctrl+A: select all   Ctrl+1, 2, 3, 4: icon, tree, details, column view\n"
+                   "Ctrl+A: select all   Ctrl+1 to 5: icon, tree, details, column, gallery view\n"
                    "Ctrl+F: search this folder   Ctrl+Shift+F: Find\n"
                    "Alt or F10: the menu bar   Ctrl+W: close   Typing: jump to a name", b, 1, 0, NULL, NULL);
 }
@@ -169,10 +169,11 @@ static void open_own(struct folder *f, int i, double x, double y)
         sorts[1] = (ui_menu_item){ OSD_MI_SORT_TYPE, "By type", icons, false, NULL, 0 };
         sorts[2] = (ui_menu_item){ OSD_MI_SORT_SIZE, "By size", icons, false, NULL, 0 };
         sorts[3] = (ui_menu_item){ OSD_MI_SORT_DATE, "By last write", icons, false, NULL, 0 };
-        items[n++] = (ui_menu_item){ OSD_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON && !f->gallery, NULL, 0 };
         items[n++] = (ui_menu_item){ OSD_MI_VIEW_TREE, "Tree view\tCtrl+2", true, v == UI_VIEW_TREE, NULL, 0 };
         items[n++] = (ui_menu_item){ OSD_MI_VIEW_DETAILS, "Details view\tCtrl+3", true, v == UI_VIEW_DETAILS, NULL, 0 };
         items[n++] = (ui_menu_item){ OSD_MI_VIEW_COLUMN, "Column view\tCtrl+4", true, v == UI_VIEW_LIST, NULL, 0 };
+        items[n++] = (ui_menu_item){ OSD_MI_VIEW_GALLERY, "Gallery view\tCtrl+5", true, f->gallery, NULL, 0 };
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
         items[n++] = (ui_menu_item){ OSD_MI_SORT, "Sort", icons, false, sorts, 4 };
         items[n++] = (ui_menu_item){ OSD_MI_ARRANGE, "Arrange", icons, false, NULL, 0 };

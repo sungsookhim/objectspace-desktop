@@ -102,6 +102,17 @@ void src_item(void *ctx, size_t i, ui_item *out)
         out->open_icon = out->image != NULL;
         out->hatch_open = r->open_hatch || hatch_open_all;
     }
+    if (!out->image && !opened && r->kind == UI_KIND_FILE && !r->icon && ((f->show_pictures && v == UI_VIEW_ICON) || f->gallery)) {
+        /* Show pictures, the Gallery: what it looks like (a thumbnail), when there is one yet */
+        char p[PATH_MAX];
+        int64_t mt = r->mtime;
+        struct stat st;
+        if (r->shadow || r->link) {
+            snprintf(p, sizeof p, "%s", r->target ? r->target : "");
+            if (stat(p, &st) == 0) mt = st.st_mtime;
+        } else snprintf(p, sizeof p, "%s/%s", strcmp(f->path, "/") ? f->path : "", r->name);
+        if (p[0] == '/') out->image = thumbs_get(p, mt, px);
+    }
     if (!out->image) out->image = icons_object(f->icon_theme, r->icon, px);   /* its own icon, or Objectspace's (a theme's) */
     if (!out->image && r->kind == UI_KIND_PROGRAM) {
         /* a program (or its shadow): its desktop entry's icon */

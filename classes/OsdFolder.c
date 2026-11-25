@@ -17,7 +17,7 @@ char *OsdFolder__osdModifyPopupMenu(osdo_object *self, const char *menu)
 {
     char *base = OsdFolder_parent_osdModifyPopupMenu(self, menu);
     /* "Open" becomes a cascade of the folder's views, as "Open as" in Warp 4. */
-    char *r = osd_concat(base, "11\tIcon view\t1\n12\tTree view\t1\n13\tDetails view\t1\n14\tColumn view\t1\n20\tArrange\n73\tCommand prompt here\n");
+    char *r = osd_concat(base, "11\tIcon view\t1\n12\tTree view\t1\n13\tDetails view\t1\n14\tColumn view\t1\n15\tGallery view\t1\n20\tArrange\n73\tCommand prompt here\n");
     free(base);
     return r;
 }

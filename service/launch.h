@@ -119,5 +119,6 @@ bool osd_lock_file_present(const char *path);
 
 /* Whether `name` is one of those lock files. */
 bool osd_is_lock_file(const char *name);
+bool osd_is_thumbnail_store(const char *name);   /* .sh_thumbnails, .osd-thumbnails: never listed */
 
 #endif

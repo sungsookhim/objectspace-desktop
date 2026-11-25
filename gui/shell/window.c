@@ -295,11 +295,12 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     }
     const ui_scheme *k = &ui_scheme_now;
     char t[400];
-    snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
+    snprintf(t, sizeof t, "%s - %s", f->title, folder_view_name(f));
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
     if (f->desktop) { desk_msg_draw(f, cr, clip); return; }   /* its status line: a box */
     columns_draw(f, cr, clip);
+    gallery_draw(f, cr, clip);
     menubar_draw(f, cr);
     if (f->find_on && f->find_place != 2) find_draw(f, cr);   /* (floating: over the list, with it) */
     ui_rect c = ui_frame_client(s);
@@ -341,6 +342,7 @@ void layout(struct folder *f)
     if (f->find_on && f->find_place == 0) { c.y += FIND_H; c.h -= FIND_H; }
     if (f->find_on && f->find_place == 1) c.h -= FIND_H;
     if (is_columns(f)) { columns_layout(f, c); return; }
+    if (f->gallery) c = gallery_layout(f, c);   /* the strip (the big one above it) */
     ui_container_layout(f->cont, c);
     bool over = f->find_on && f->find_place == 2;
     ui_container_set_overlay(f->cont, over ? find_row(f) : (ui_rect){ 0, 0, 0, 0 }, over ? find_over_draw : NULL, f);
@@ -382,11 +384,13 @@ void win_pointer(ui_surface *s, const ui_pointer_event *e)
     if (!used || e->kind == UI_RELEASE || e->kind == UI_MOTION) ui_container_pointer(f->cont, e);
     if (ui_container_selected_count(f->cont) != before) damage_status(f);
     if (is_columns(f) && f->col_focus == 0 && (e->kind == UI_PRESS || e->kind == UI_RELEASE)) columns_follow(f);
+    if (e->kind == UI_PRESS || e->kind == UI_RELEASE) gallery_damage(f);
 }
 
 void set_view(struct folder *f, ui_view v)
 {
     if (is_columns(f) && v != UI_VIEW_LIST) columns_stop(f);
+    if (f->gallery) { f->gallery = false; ui_container_changed(f->cont, 0, SIZE_MAX); }   /* (another view: not the Gallery) */
     if (v == UI_VIEW_TREE) tree_start(f);
     ui_container_set_view(f->cont, v);
     if (v == UI_VIEW_TREE) tree_rebuild(f, f->troot);
@@ -420,9 +424,11 @@ void win_key(ui_surface *s, const ui_key_event *e)
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_3) { set_view(f, UI_VIEW_DETAILS); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_4) { set_view(f, UI_VIEW_LIST); return; }   /* the Column view */
+    if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_5) { gallery_set(f, true); return; }   /* the Gallery view */
     if (columns_key(f, e)) return;   /* (Left, Right between columns; a pane's keys) */
     win_key_on(f, e);
     if (is_columns(f)) columns_follow(f);
+    gallery_damage(f);   /* (the cursor moved: another one big) */
 }
 
 /* A folder's own keys: the window's list, or a Column view's pane. */

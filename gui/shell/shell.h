@@ -44,6 +44,7 @@
 #include "iconpick.h"
 #include "launcher.h"
 #include "trays.h"
+#include "thumbs.h"
 #include "gnome.h"
 #include "sound.h"
 #include "svc.h"
@@ -159,6 +160,9 @@ struct folder {
     char col_file[PATH_MAX];      /* a file chosen in the last column: its details beside it */
     size_t col_file_i;            /* (its row there) */
     ui_rect col_area;             /* where the columns and their path are */
+    bool show_pictures;           /* its Icon view page's Show pictures (thumbnails, thumbs.c) */
+    bool gallery;                 /* the Gallery view: the Icon view as a strip, one shown big above (gallery.c) */
+    ui_rect gal_area;             /* (the big one's) */
     int col_first;                /* the first column shown (-1: the last ones, as they open) */
     int col_drag;                 /* the scroll bar's thumb dragged: the first column when it was pressed (-1: no) */
     double col_drag_x;
@@ -511,6 +515,7 @@ void toolkit_action(const char *name, ui_surface *s, ui_rect at);
  * VIEW_LAST its view too); the window comes once its properties are read
  * (NULL then; the window if it was open already). open_window: at once. */
 #define VIEW_LAST ((ui_view)-1)
+#define VIEW_GALLERY ((ui_view)-2)   /* the Gallery view (the Icon view, a strip, one shown big) */
 struct folder *open_folder(const char *path, ui_view view);
 struct folder *open_folder_from(struct folder *from, const char *path, ui_view view);
 void folder_window_save(struct folder *f);
@@ -543,6 +548,13 @@ void menubar_open(struct folder *f, int i);
 bool menubar_pointer(struct folder *f, const ui_pointer_event *e);
 bool menubar_key(struct folder *f, const ui_key_event *e);
 void menubar_closed(struct folder *f);
+
+/* The Gallery view (gallery.c). */
+void gallery_set(struct folder *f, bool on);
+ui_rect gallery_layout(struct folder *f, ui_rect area);   /* the strip's place (the rest: the big one) */
+void gallery_draw(struct folder *f, cairo_t *cr, ui_rect clip);
+void gallery_damage(struct folder *f);
+const char *folder_view_name(struct folder *f);
 
 /* The Column view (columns.c). */
 bool is_columns(const struct folder *f);          /* a window showing the Column view */

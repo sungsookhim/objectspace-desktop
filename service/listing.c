@@ -734,6 +734,7 @@ static void read_work(void *arg)   /* worker: the whole directory, posted in chu
         if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
         if (!strncmp(de->d_name, OSD_SHADOW_TMP, strlen(OSD_SHADOW_TMP))) continue;   /* a job's half-made item */
         if (osd_is_lock_file(de->d_name)) continue;   /* (shown as the in-use emphasis of what it locks) */
+        if (osd_is_thumbnail_store(de->d_name)) continue;   /* (a folder's thumbnails: not one of its objects) */
         if (j->hide && de->d_name[0] == '.') continue;
         if (whole && c->n == whole_cap) {
             whole_cap *= 2;

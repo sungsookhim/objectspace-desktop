@@ -64,6 +64,7 @@ void menu_chosen(void *arg, int64_t id)
         case OSD_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
         case OSD_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
         case OSD_MI_OPEN_COLUMN: open_item(f, m->item, UI_VIEW_LIST); break;
+        case OSD_MI_OPEN_GALLERY: open_item(f, m->item, VIEW_GALLERY); break;
         case OSD_MI_PROPERTIES: {
             /* a shadow's are its original's (OS/2): renaming there renames it */
             struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);
@@ -80,6 +81,7 @@ void menu_chosen(void *arg, int64_t id)
         case OSD_MI_VIEW_DETAILS: set_view(f, UI_VIEW_DETAILS); break;
         case OSD_MI_VIEW_TREE: set_view(f, UI_VIEW_TREE); break;
         case OSD_MI_VIEW_COLUMN: set_view(f, UI_VIEW_LIST); break;
+        case OSD_MI_VIEW_GALLERY: gallery_set(f, true); break;
         case OSD_MI_OPEN_TREE: open_item(f, m->item, UI_VIEW_TREE); break;
         case OSD_MI_ARRANGE:
             if (m->item == SIZE_MAX) { arrange(f); break; }   /* (the window's own menu) */
@@ -464,15 +466,16 @@ static void got_menu(void *arg, const cv *reply)
         /* The folder window's own menu: a View cascade after Open, to switch
          * this window's view (the Open cascade opens new windows). */
         ui_view v = ui_container_view(f->cont);
-        ui_menu_item *views = calloc(4, sizeof *views);
-        views[0] = (ui_menu_item){ OSD_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON, NULL, 0 };
+        ui_menu_item *views = calloc(5, sizeof *views);
+        views[0] = (ui_menu_item){ OSD_MI_VIEW_ICON, "Icon view\tCtrl+1", true, v == UI_VIEW_ICON && !f->gallery, NULL, 0 };
         views[1] = (ui_menu_item){ OSD_MI_VIEW_TREE, "Tree view\tCtrl+2", true, v == UI_VIEW_TREE, NULL, 0 };
         views[2] = (ui_menu_item){ OSD_MI_VIEW_DETAILS, "Details view\tCtrl+3", true, v == UI_VIEW_DETAILS, NULL, 0 };
         views[3] = (ui_menu_item){ OSD_MI_VIEW_COLUMN, "Column view\tCtrl+4", true, v == UI_VIEW_LIST, NULL, 0 };
+        views[4] = (ui_menu_item){ OSD_MI_VIEW_GALLERY, "Gallery view\tCtrl+5", true, f->gallery, NULL, 0 };
         items = realloc(items, (n + 1) * sizeof *items);
         size_t at = n ? 1 : 0;
         memmove(items + at + 1, items + at, (n - at) * sizeof *items);
-        items[at] = (ui_menu_item){ OSD_MI_VIEW, "View", true, false, views, 4 };
+        items[at] = (ui_menu_item){ OSD_MI_VIEW, "View", true, false, views, 5 };
         n++;
     }
     /* No grab (serial 0): the button was released before the service

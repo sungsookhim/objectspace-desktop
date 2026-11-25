@@ -11,6 +11,7 @@
  * screen is locked before the machine sleeps).
  */
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,12 @@ static struct {
     struct wlr_idle_notifier_v1 *notifier;
     struct wl_listener new_inhibitor;
     enum { WAIT_IDLE, WAIT_LOCK } waiting;
+    /* Suspend after idle (0.6 step 6): GNOME's Automatic Suspend, on mains
+     * and on battery (OSD_SLEEP_AC, OSD_SLEEP_BATTERY: seconds, 0 never;
+     * OSD_SLEEP_*_ACTION suspend or hibernate), through logind */
+    int sleep_ac, sleep_bat;
+    bool hib_ac, hib_bat;
+    struct wl_event_source *sleep_timer;
 #ifdef HAVE_SD_BUS
     sd_bus *bus;
     char session[256];             /* our logind session's object path */
@@ -42,11 +49,42 @@ static struct {
 #endif
 } idle = { .sleep_fd = -1 };
 
+/* On mains (a Mains supply online, or no battery at all). */
+static bool on_mains(void)
+{
+    DIR *d = opendir("/sys/class/power_supply");
+    if (!d) return true;
+    bool mains_on = false, battery = false;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        char p[512], v[32] = "";
+        snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
+        FILE *f = fopen(p, "r");
+        if (!f) continue;
+        if (!fgets(v, sizeof v, f)) v[0] = 0;
+        fclose(f);
+        if (!strncmp(v, "Battery", 7)) battery = true;
+        else if (!strncmp(v, "Mains", 5)) {
+            snprintf(p, sizeof p, "/sys/class/power_supply/%s/online", e->d_name);
+            if ((f = fopen(p, "r"))) { if (fgets(v, sizeof v, f) && v[0] == '1') mains_on = true; fclose(f); }
+        }
+    }
+    closedir(d);
+    const char *t = getenv("OSD_POWER");   /* (tests: "battery" or "mains") */
+    if (t && *t) return strcmp(t, "battery") != 0;
+    return mains_on || !battery;
+}
+
 static void arm(void)
 {
     if (!idle.timer) return;
     int s = idle.inhibitors ? 0 : idle.waiting == WAIT_IDLE ? idle.idle_s : idle.lock_s;
     wl_event_source_timer_update(idle.timer, s > 0 ? s * 1000 : 0);   /* 0: disarmed */
+    if (idle.sleep_timer) {   /* (from the last input; held while a program keeps the screen on) */
+        int z = idle.inhibitors ? 0 : on_mains() ? idle.sleep_ac : idle.sleep_bat;
+        wl_event_source_timer_update(idle.sleep_timer, z > 0 ? z * 1000 : 0);
+    }
 }
 
 static void screens(bool on)
@@ -140,6 +178,24 @@ static void on_new_inhibitor(struct wl_listener *l, void *data)
 /* ---------------------------------------------------------------- logind */
 
 #ifdef HAVE_SD_BUS
+/* Long enough without input: the machine sleeps (logind's own inhibitors
+ * hold it, as logind decides; the screen is locked first, by the
+ * PrepareForSleep that follows). */
+static int on_sleep_timer(void *data)
+{
+    (void)data;
+    if (idle.inhibitors || !idle.bus) return 0;
+    bool mains = on_mains(), hib = mains ? idle.hib_ac : idle.hib_bat;
+    fprintf(stderr, "osd-compositor: %.1f idle %d s (%s): %s\n", comp_uptime(), mains ? idle.sleep_ac : idle.sleep_bat,
+            mains ? "on mains" : "on battery", hib ? "hibernate" : "suspend");
+    sd_bus_error err = SD_BUS_ERROR_NULL;
+    if (sd_bus_call_method(idle.bus, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+                           hib ? "Hibernate" : "Suspend", &err, NULL, "b", false) < 0)
+        fprintf(stderr, "osd-compositor: logind would not %s: %s\n", hib ? "hibernate" : "suspend", err.message ? err.message : "?");
+    sd_bus_error_free(&err);
+    return 0;
+}
+
 static void take_sleep_delay(void)
 {
     if (idle.sleep_fd >= 0) return;
@@ -216,6 +272,11 @@ static void logind_init(void)
     sd_bus_match_signal(idle.bus, NULL, "org.freedesktop.login1", "/org/freedesktop/login1",
                         "org.freedesktop.login1.Manager", "PrepareForSleep", on_prepare_for_sleep, NULL);
     take_sleep_delay();
+    if (idle.sleep_ac > 0 || idle.sleep_bat > 0) {
+        idle.sleep_timer = wl_event_loop_add_timer(server.loop, on_sleep_timer, NULL);
+        arm();
+        fprintf(stderr, "osd-compositor: sleeps after %d s idle on mains, %d s on battery (0: never)\n", idle.sleep_ac, idle.sleep_bat);
+    }
     idle.bus_src = wl_event_loop_add_fd(server.loop, sd_bus_get_fd(idle.bus), WL_EVENT_READABLE, on_bus, NULL);
     on_bus(0, 0, NULL);
     fprintf(stderr, "osd-compositor: logind: session %s%s\n", idle.session[0] ? idle.session : "(not found)",
@@ -236,6 +297,11 @@ void idle_init(void)
     idle.idle_s = env_int("OSD_IDLE_DELAY", 300);     /* GNOME's default: 5 minutes */
     bool lock = env_int("OSD_LOCK_ENABLED", 1) != 0;
     idle.lock_s = lock ? env_int("OSD_LOCK_DELAY", 0) : -1;
+    idle.sleep_ac = env_int("OSD_SLEEP_AC", 0);
+    idle.sleep_bat = env_int("OSD_SLEEP_BATTERY", 0);
+    const char *ha = getenv("OSD_SLEEP_AC_ACTION"), *hb = getenv("OSD_SLEEP_BATTERY_ACTION");
+    idle.hib_ac = ha && !strcmp(ha, "hibernate");
+    idle.hib_bat = hb && !strcmp(hb, "hibernate");
     idle.inhibit = wlr_idle_inhibit_v1_create(server.display);
     idle.new_inhibitor.notify = on_new_inhibitor;
     wl_signal_add(&idle.inhibit->events.new_inhibitor, &idle.new_inhibitor);
@@ -246,13 +312,14 @@ void idle_init(void)
         fprintf(stderr, "osd-compositor: screens off after %d s idle%s\n", idle.idle_s,
                 idle.lock_s < 0 ? "" : idle.lock_s == 0 ? ", then locked" : ", then locked after a delay");
 #ifdef HAVE_SD_BUS
-    if (server.session) logind_init();
+    if (server.session || getenv("OSD_COMP_LOGIND")) logind_init();   /* (OSD_COMP_LOGIND: headless tests, a fake logind) */
 #endif
 }
 
 void idle_fini(void)
 {
     if (idle.timer) { wl_event_source_remove(idle.timer); idle.timer = NULL; }
+    if (idle.sleep_timer) { wl_event_source_remove(idle.sleep_timer); idle.sleep_timer = NULL; }
     wl_list_remove(&idle.new_inhibitor.link);
 #ifdef HAVE_SD_BUS
     if (idle.bus_src) wl_event_source_remove(idle.bus_src);
