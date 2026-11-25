@@ -6,7 +6,9 @@
 # column; a file chosen there: its details beside it (the first column
 # out of sight, two fitting); Left: back, the details gone; Right: into
 # the next column, its first object chosen; closed and opened again: the
-# Column view again (the folder keeps its last view).
+# Column view again (the folder keeps its last view). The scroll bar under
+# the columns (three, two fitting): a click left of its thumb brings the
+# first column back in sight.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-cols-XXXX")
 fails=0
@@ -25,6 +27,9 @@ cat > "$S/script" <<EOS
 8.6 click 640 190
 9.5 move 1000 700
 9.8 shot $S/file.png
+10 click 400 552
+10.1 move 1000 700
+10.15 shot $S/scrolled.png
 10.2 key Left
 11 shot $S/left.png
 11.3 key Right
@@ -48,6 +53,11 @@ check "Ctrl+4: the Column view" "grep -q \"window 'Projects - Column View'\" '$S
 check "... one column, the path above it (Projects)" "[ \$(dark '$S/one.png' 330 138 400 156) -gt 5 ] && [ \$(dark '$S/one.png' 560 162 900 230) -lt 3 ]"
 check "Reports chosen: its contents in the next column" "[ \$(dark '$S/two.png' 560 162 760 200) -gt 10 ]"
 check "a file chosen there: its details beside it" "[ \$(dark '$S/file.png' 560 300 940 400) -gt 20 ]"
+differ() { python3 -c "
+from PIL import Image
+a = Image.open('$1').convert('RGB'); b = Image.open('$2').convert('RGB')
+print(sum(1 for x in range(325, 545, 2) for y in range(162, 220, 2) if a.getpixel((x, y)) != b.getpixel((x, y))))"; }
+check "the scroll bar: a click left of its thumb, the first column in sight again" "[ \$(differ '$S/file.png' '$S/scrolled.png') -gt 30 ]"
 check "Left: back a column, the details gone" "[ \$(dark '$S/left.png' 560 300 940 400) -lt 3 ]"
 check "Right: into the next column, its first object chosen (2025: its folder opened beside)" "[ \$(dark '$S/right.png' 560 162 940 200) -gt 10 ]"
 check "closed and opened again: the Column view again" "grep \"window 'Projects\" '$S/out.txt' | tail -1 | grep -q 'Column View'"

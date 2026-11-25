@@ -14,6 +14,7 @@
 #define OSD_MI_OPEN_ICON      11
 #define OSD_MI_OPEN_TREE      12
 #define OSD_MI_OPEN_DETAILS   13
+#define OSD_MI_OPEN_COLUMN    14   /* the Column view (0.6) */
 #define OSD_MI_OPEN_WITH      10
 #define OSD_MI_ARRANGE        20
 #define OSD_MI_DELETE         40    /* to the trash (asks first, as OS/2 does) */

@@ -159,6 +159,9 @@ struct folder {
     char col_file[PATH_MAX];      /* a file chosen in the last column: its details beside it */
     size_t col_file_i;            /* (its row there) */
     ui_rect col_area;             /* where the columns and their path are */
+    int col_first;                /* the first column shown (-1: the last ones, as they open) */
+    int col_drag;                 /* the scroll bar's thumb dragged: the first column when it was pressed (-1: no) */
+    double col_drag_x;
     char msg_last[256];      /* the desktop's: the message its box last showed */
     bool msg_hidden, msg_sticky;
     int arrange_offered;     /* -1 not known yet; 1: its overlapping icons' Arrange offered once already */

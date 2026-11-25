@@ -48,7 +48,28 @@ static ui_rect area_of(struct folder *f)
 /* Columns shown: the file's details count as one more. */
 static int total(struct folder *f) { return 1 + f->ncols + (f->col_file[0] ? 1 : 0); }
 static int fits(struct folder *f) { int n = (int)(area_of(f).w / COL_W); return n < 1 ? 1 : n; }
-static int first_shown(struct folder *f) { int fst = total(f) - fits(f); return fst < 0 ? 0 : fst; }
+static int last_first(struct folder *f) { int fst = total(f) - fits(f); return fst < 0 ? 0 : fst; }
+static int first_shown(struct folder *f)
+{
+    int lf = last_first(f);
+    if (f->col_first < 0 || f->col_first > lf) return lf;   /* (the last ones: as they open) */
+    return f->col_first;
+}
+
+/* The scroll bar under the columns, when they do not all fit. */
+#define SB_H 16
+static bool sb_shown(struct folder *f) { return total(f) > fits(f); }
+static ui_rect sb_rect(struct folder *f)
+{
+    ui_rect a = area_of(f);
+    return (ui_rect){ a.x, a.y + a.h - SB_H, a.w, SB_H };
+}
+static ui_rect thumb_rect(struct folder *f)
+{
+    ui_rect b = sb_rect(f);
+    double unit = b.w / total(f);
+    return (ui_rect){ b.x + first_shown(f) * unit, b.y + 2, fmax(16, fits(f) * unit), b.h - 4 };
+}
 
 static ui_rect column_rect(struct folder *f, int k)
 {
@@ -58,7 +79,7 @@ static ui_rect column_rect(struct folder *f, int k)
     double x = a.x + (double)(k - fst) * COL_W, w = COL_W - 1;
     if (k == total(f) - 1) w = a.x + a.w - x;   /* (the last: to the edge) */
     if (w <= 0) return (ui_rect){ 0, 0, 0, 0 };
-    return (ui_rect){ x, a.y + PATH_H, w, a.h - PATH_H };
+    return (ui_rect){ x, a.y + PATH_H, w, a.h - PATH_H - (sb_shown(f) ? SB_H : 0) };
 }
 
 /* The path: the window's folder, then each column's, as parts to click. */
@@ -107,6 +128,8 @@ static void set_focus(struct folder *f, int k)
 {
     if (k < 0 || k > f->ncols) return;
     f->col_focus = k;
+    if (k < first_shown(f)) f->col_first = k;   /* (out of sight: brought in) */
+    else if (k >= first_shown(f) + fits(f)) f->col_first = -1;
     for (int j = 0; j <= f->ncols; j++) ui_container_set_focused(col(f, j)->cont, j == k);
     ui_surface_damage_all(f->win);
     damage_status(f);
@@ -117,6 +140,7 @@ void columns_start(struct folder *f)
     f->ncols = 0;
     f->col_focus = 0;
     f->col_file[0] = 0;
+    f->col_first = f->col_drag = -1;
     ui_container_set_view(f->cont, UI_VIEW_LIST);
     ui_container_set_layered(f->cont, false);   /* (lists side by side: drawn on the window) */
     relayout(f);
@@ -177,6 +201,7 @@ static void follow_from(struct folder *f, int k)
         const char *want = realpath(path, real) ? real : path;
         if (next && !strcmp(next->path, want)) { if (had_file) relayout(f); return; }   /* (that one already) */
         close_after(f, k);
+        f->col_first = -1;   /* (the new column in sight) */
         if (f->ncols < MAX_COLS) {
             struct folder *p = pane_open(f, want);
             ui_container_set_layered(p->cont, false);
@@ -277,6 +302,13 @@ void columns_draw(struct folder *f, cairo_t *cr, ui_rect clip)
         ui_rect r = column_rect(f, total(f) - 1);
         if (r.w > 0 && ui_rect_meets(clip, r)) draw_details(f, cr, r);
     }
+    if (sb_shown(f)) {   /* the scroll bar: which columns are in sight */
+        ui_rect b = sb_rect(f), t = thumb_rect(f);
+        ui_fill(cr, b, k->face);
+        ui_fill(cr, (ui_rect){ b.x, b.y, b.w, 1 }, k->shadow);
+        ui_fill(cr, t, k->face);
+        ui_bevel(cr, t, f->col_drag < 0);
+    }
 }
 
 /* The column at x, y: a pane, or the window itself (its own list, or
@@ -299,6 +331,31 @@ bool columns_pointer(struct folder *f, const ui_pointer_event *e)
 {
     if (!is_columns(f)) return false;
     ui_rect a = area_of(f);
+    /* the scroll bar: the thumb dragged, or a page either side of it */
+    if (f->col_drag >= 0) {
+        if (e->kind == UI_MOTION) {
+            double unit = sb_rect(f).w / total(f);
+            int fst = f->col_drag + (int)lround((e->x - f->col_drag_x) / unit);
+            if (fst < 0) fst = 0;
+            if (fst > last_first(f)) fst = last_first(f);
+            if (fst != first_shown(f)) { f->col_first = fst; relayout(f); }
+        } else if (e->kind == UI_RELEASE) {
+            f->col_drag = -1;
+            ui_surface_damage_all(f->win);
+        }
+        return true;
+    }
+    if (e->kind == UI_PRESS && sb_shown(f) && ui_rect_has(sb_rect(f), e->x, e->y)) {
+        ui_rect t = thumb_rect(f);
+        if (ui_rect_has(t, e->x, e->y)) { f->col_drag = first_shown(f); f->col_drag_x = e->x; }
+        else {
+            int fst = first_shown(f) + (e->x < t.x ? -fits(f) : fits(f));
+            f->col_first = fst < 0 ? 0 : fst > last_first(f) ? last_first(f) : fst;
+        }
+        relayout(f);
+        return true;
+    }
+    if (sb_shown(f) && ui_rect_has(sb_rect(f), e->x, e->y)) return true;
     if (e->kind == UI_PRESS && e->y >= a.y && e->y < a.y + PATH_H && e->x >= a.x && e->x < a.x + a.w) {
         for (int j = 0; j <= f->ncols; j++)
             if (ui_rect_has(part_rect(f, j), e->x, e->y)) {   /* a part of the path: that column, the ones after it gone */

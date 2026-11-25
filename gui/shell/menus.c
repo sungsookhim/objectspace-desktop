@@ -63,6 +63,7 @@ void menu_chosen(void *arg, int64_t id)
         case OSD_MI_OPEN: open_item(f, m->item, VIEW_LAST); break;
         case OSD_MI_OPEN_ICON: open_item(f, m->item, UI_VIEW_ICON); break;
         case OSD_MI_OPEN_DETAILS: open_item(f, m->item, UI_VIEW_DETAILS); break;
+        case OSD_MI_OPEN_COLUMN: open_item(f, m->item, UI_VIEW_LIST); break;
         case OSD_MI_PROPERTIES: {
             /* a shadow's are its original's (OS/2): renaming there renames it */
             struct row *rw = is_tree(f) ? NULL : row_at(f, m->item);

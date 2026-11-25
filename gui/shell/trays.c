@@ -368,7 +368,7 @@ static void obj_menu_chosen(void *arg, int64_t id)
         } else if (id == TR_REMOVE) remove_obj(&e);
         else if (id == TR_FOLDER) { if (tr.open_folder) tr.open_folder(tr.cur_dir); }
         else if (id == OSD_MI_PROPERTIES) { if (tr.open_props) tr.open_props(e.target[0] == '/' && e.shadow ? e.target : m->addr); }
-        else if (id == OSD_MI_OPEN_TREE || id == OSD_MI_OPEN_DETAILS) svc_open(m->addr, false, opened, NULL);
+        else if (id == OSD_MI_OPEN_TREE || id == OSD_MI_OPEN_DETAILS || id == OSD_MI_OPEN_COLUMN) svc_open(m->addr, false, opened, NULL);
         else if (id >= OSD_MI_OPEN_APP && id < OSD_MI_OPEN_APP + OSD_MI_OPEN_APPS) svc_open_with(m->addr, NULL, (int)(id - OSD_MI_OPEN_APP), false, opened, NULL);
         else if (id >= OSD_MI_FIRST_CLASS) svc_menu_select(m->addr, id, opened, NULL);
     }
