@@ -14,13 +14,13 @@ cat > "$S/script" <<EOS
 4 move 1200 700
 4.5 shot $S/default.png
 7.5 shot $S/large.png
-10.5 shot $S/small.png
-11 dclick 37 24
-13 move 1200 700
-13.5 shot $S/open.png
-14 quit
+11.5 shot $S/small.png
+12 dclick 37 24
+14 move 1200 700
+14.5 shot $S/open.png
+15 quit
 EOS
-DESKENV="OSD_UI_SCALE=$K OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=17 tests/comp/run.sh "$S/script" \
+DESKENV="OSD_UI_SCALE=$K OSD_NO_LAUNCHER=1 OSD_NO_GSETTINGS=1 OSD_WALLPAPER=" SECS=18 tests/comp/run.sh "$S/script" \
     "sleep 5; sys=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSystem']['address'])\")
      '$W' set \"\$sys\" 'icon_set=Large' > \"\$T/set1.log\" 2>&1
      sleep 3; '$W' set \"\$sys\" 'icon_set=Small' > \"\$T/set2.log\" 2>&1
