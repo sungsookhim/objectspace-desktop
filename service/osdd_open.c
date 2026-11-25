@@ -346,6 +346,10 @@ void do_open(struct req *r, osdo_object *o)
         reply_view(r, "restore-defaults");   /* the desktop asks, then sends restore_defaults */
         osdo_unref(orig);
         return;
+    } else if (osdo_is_a(o, OsdFindClass)) {
+        reply_view(r, "find");   /* Objectspace's Find window, from the home folder */
+        osdo_unref(orig);
+        return;
     } else if (osdo_is_a(o, OsdMinWinViewerClass)) {
         reply_view(r, "minimized-windows");
         osdo_unref(orig);

@@ -186,7 +186,7 @@ check("first start answers its step", r.get("result") == (6 if PART == "old" els
 check("Templates is in System", wait(lambda: len(tpl_shadows(SYS)) == 1), tpl_shadows(SYS))
 check("and not on the desktop", tpl_shadows(DESK) == [], tpl_shadows(DESK))
 with open(T + "/config/desktop-made") as f:
-    check("the desktop is at step 12", "version 12" in f.read())
+    check("the desktop is at step 13", "version 13" in f.read())
 COMP = SYS + "/Storages"
 if PART == "old":   # (run.sh made 0.2's Computer, with a file in it)
     check("0.2's Computer is moved to Storages, its contents with it", os.path.exists(COMP + "/kept.txt")
@@ -201,6 +201,21 @@ def title_of(target):
 
 check("step 10: System is titled My System - <host>", (title_of(SYS) or "").startswith("My System - "), title_of(SYS))
 check("step 10: Computer is titled My Storages", title_of(COMP) == "My Storages", title_of(COMP))
+TRAYS = T + "/xdg/data/objectspace/Trays"
+check("step 13: Find is in System", wait(lambda: len(titled(SYS, "Find")) == 1), items(SYS))
+check("step 13: the Trays folder is shown in System", wait(lambda: len(shadows_of(SYS, TRAYS)) == 1), items(SYS))
+NTRAY = 3 if PART == "old" else 4   # (the step-6 desktop here has no Programs folder; a real one has)
+check("step 13: the first tray, Default", wait(lambda: len(items(TRAYS + "/Default")) == NTRAY), items(TRAYS + "/Default"))
+tray = items(TRAYS + "/Default")
+titles = sorted(it.get("title") or "" for it in tray)
+check("... My System, Programs, Command Prompt, Find, all shadows",
+      all(it.get("shadow") for it in tray) and len(shadows_of(TRAYS + "/Default", SYS)) == 1
+      and (PART == "old" or len(shadows_of(TRAYS + "/Default", T + "/xdg/data/objectspace/Programs")) == 1)
+      and "Command Prompt" in titles and "Find" in titles, tray)
+fobj = next((it for it in tray if it.get("title") == "Find"), None)
+r = c.request(op="vdelete", target=fobj["name"][1:]) if fobj else {}   # (as TheBar's Remove from tray does)
+check("a tray's shadow can be taken away (no Prevent delete)", r.get("ok") and wait(lambda: len(items(TRAYS + "/Default")) == NTRAY - 1), r)
+check("... and Find itself stays in System", len(titled(SYS, "Find")) == 1, items(SYS))
 r = c.request(op="rename", target=COMP, name="Storage")
 check("renaming Objectspace's own folder: its title only", r.get("ok") and os.path.isdir(COMP) and title_of(COMP) == "Storage", r)
 c.request(op="rename", target=COMP, name="My Storages")
@@ -209,7 +224,7 @@ for own in (DESK, TPL):   # XDG user folders: their titles only (user-dirs.dirs 
     check("renaming %s: its title only" % os.path.basename(own), r.get("ok") and os.path.isdir(own) and title_of(own) == "Renamed", r)
 r = c.request(op="first_start", desktop=DESK)
 time.sleep(0.5)
-check("a second start changes nothing", r.get("result") == 12 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
+check("a second start changes nothing", r.get("result") == 13 and len(tpl_shadows(SYS)) == 1 and not tpl_shadows(DESK)
       and len(shadows_of(COMP, os.environ["HOME"])) == 1, r)
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

@@ -290,6 +290,10 @@ bool open_view(const char *v)
     else if (!strcmp(v, "colorpalette")) colorpal_open();
     else if (!strcmp(v, "thebar")) show_thebar();
     else if (!strcmp(v, "restore-defaults")) restore_defaults_ask();
+    else if (!strcmp(v, "find")) {   /* the Find object: Find from the home folder, as TheBar's button */
+        const char *home = getenv("HOME");
+        findwin_show(home && *home ? home : "/", false);
+    }
     else return false;
     return true;
 }

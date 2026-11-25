@@ -5,6 +5,7 @@
 #include "osdd.h"
 
 static void fs_next(void);
+static bool def_find_in(const osd_loaded *folder, const char *tid, const char *cls, char out[OSD_ID_LEN + 1]);
 
 static int first_start_done_version(char *marker, size_t n)
 {
@@ -26,9 +27,9 @@ static void protect(const char *target);
 
 static void first_start_shadow_done(void *arg, const char *link, const char *error)
 {
-    (void)arg;
+    bool keep = arg != NULL;
     if (!link && error) log_msg("first start: a shadow was not made: %s", error);
-    if (link) protect(link);   /* (Objectspace's own: Prevent delete, as step 11 gives the others) */
+    if (link && keep) protect(link);   /* (Objectspace's own: Prevent delete, as step 11 gives the others) */
     fs_busy = false;
     fs_next();
 }
@@ -40,20 +41,25 @@ static void fs_next(void)
     fs_queue = q->next;
     if (!fs_queue) fs_tail = &fs_queue;
     fs_busy = true;
-    osd_shadow_create(q->target, q->folder, first_start_shadow_done, NULL);
+    osd_shadow_create(q->target, q->folder, first_start_shadow_done, q->keep ? (void *)1 : NULL);
     free(q);
 }
 
-static void first_start_shadow(const char *target, const char *folder)
+/* A shadow the first start makes; keep: Prevent delete on it (Objectspace's
+ * own), not on what the user is meant to rearrange (a tray's shadows). */
+static void first_start_shadow_as(const char *target, const char *folder, bool keep)
 {
     struct fs_shadow *q = calloc(1, sizeof *q);
     if (!q) return;
+    q->keep = keep;
     snprintf(q->target, sizeof q->target, "%s", target);
     snprintf(q->folder, sizeof q->folder, "%s", folder);
     *fs_tail = q;
     fs_tail = &q->next;
     fs_next();
 }
+
+static void first_start_shadow(const char *target, const char *folder) { first_start_shadow_as(target, folder, true); }
 
 /* the desktop's shadows of System Setup (0.1 put one there) */
 static void find_setup_shadow(const char *vol, const char *id, void *user)
@@ -189,6 +195,21 @@ void first_start_work(void *arg)
             j->prompter[0] = 0;
         osd_loaded_free(&sy);
     }
+    if (j->from < 13) {
+        /* step 13 (0.6): Find in System; the Trays folder and its first
+         * tray (its shadows made in first_start_done) */
+        osd_loaded sy;
+        osd_load(j->sys, true, &sy);
+        if (sy.err || !sy.id[0] || osd_central_create(sy.vol, sy.id, "OsdFind", "Find", NULL, j->finder) != 0)
+            j->finder[0] = 0;
+        if (j->prompter[0]) snprintf(j->prompt_id, sizeof j->prompt_id, "%s", j->prompter);
+        else if (!def_find_in(&sy, NULL, "OsdCommandPrompt", j->prompt_id)) j->prompt_id[0] = 0;
+        osd_loaded_free(&sy);
+        char first[PATH_MAX + 16];
+        data_dir("Trays", j->trays, sizeof j->trays);
+        snprintf(first, sizeof first, "%s/Default", j->trays);
+        if (osd_mkdirs(first, 0700) != 0) j->trays[0] = 0;
+    }
     if (j->from < 7 && j->from >= 1 && osd_templates_dir()[0]) {
         /* step 7 (0.2): the desktop's Templates shadows into System */
         osd_loaded sy, fl;
@@ -285,6 +306,18 @@ void first_start_done(void *arg)
         }
         if (j->restorer[0]) on_central_change(j->sys, j->restorer, 'c');
         if (j->prompter[0]) on_central_change(j->sys, j->prompter, 'c');
+        if (j->finder[0]) on_central_change(j->sys, j->finder, 'c');
+        if (j->from < 13 && j->trays[0]) {   /* step 13: the Trays folder in System; the first tray's objects */
+            char first[PATH_MAX + 16], loc[OSD_ID_LEN + 8], programs[PATH_MAX];
+            snprintf(first, sizeof first, "%s/Default", j->trays);
+            first_start_shadow(j->trays, j->sys);
+            first_start_shadow_as(j->sys, first, false);
+            data_dir("Programs", programs, sizeof programs);
+            struct stat pst;
+            if (stat(programs, &pst) == 0) first_start_shadow_as(programs, first, false);
+            if (j->prompt_id[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->prompt_id); first_start_shadow_as(loc, first, false); }
+            if (j->finder[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->finder); first_start_shadow_as(loc, first, false); }
+        }
         if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
         if (j->from < 11) protect_pending = true;   /* step 11 (0.4): Prevent delete, once they are noted (defaults_done) */
         const char *home = getenv("HOME");
@@ -625,6 +658,11 @@ static int defaults_list(const char *desk, struct defobj *d)
     d[n] = (struct defobj){ "system.restore", "Restore Desktop", "OsdRestoreDesktop", "", "" };
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
     d[n] = (struct defobj){ "system.prompt", "Command Prompt", "OsdCommandPrompt", "", "" };
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    d[n] = (struct defobj){ "system.find", "Find", "OsdFind", "", "" };
+    snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
+    d[n] = (struct defobj){ "system.trays", "Trays", NULL, "", "" };
+    data_dir("Trays", d[n].target, sizeof d[n].target);
     snprintf(d[n++].folder, sizeof d[0].folder, "%s", sys);
     const char *uh = getenv("HOME");
     if (uh && *uh) {

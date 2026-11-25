@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# Find (0.6): opening it opens Objectspace's Find window, from the home
+# folder - as TheBar's and the Launcher's Find buttons do. An object, so
+# it can be put in TheBar's trays, the Launcher and folders as a shadow.
+class OsdFind : OsdAbstract
+version 1.0
+classoverride osdclsQueryTitle
