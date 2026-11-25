@@ -26,7 +26,7 @@ static bool inside(const char *p, const char *in)
  * shadow of a folder, a link to one, the folders in it), or in it? */
 static bool member(struct folder *g, const char *path)
 {
-    return !g->closing && !g->desktop && strcmp(g->path, path) && (!strcmp(g->wa_group, path) || inside(g->path, path));
+    return !g->closing && !g->desktop && !g->col_owner && strcmp(g->path, path) && (!strcmp(g->wa_group, path) || inside(g->path, path));   /* (a pane: its window's) */
 }
 
 const char *workarea_group_of(struct folder *f)
@@ -135,7 +135,7 @@ void workarea_settings(struct folder *f, bool on)
 void workarea_window(const char *title, bool minimized)
 {
     for (struct folder *f = folders; f; f = f->next) {
-        if (f->closing || f->desktop || !f->work_area) continue;
+        if (f->closing || f->desktop || f->col_owner || !f->work_area) continue;
         char t[400];
         window_title(f, t, sizeof t);
         if (strcmp(t, title)) continue;

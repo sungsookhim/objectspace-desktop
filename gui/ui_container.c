@@ -248,6 +248,10 @@ static ui_rect rename_crect(ui_container *c, size_t i)
         double x = r.x + 4 + it.depth * INDENT + INDENT + row_icon(c) + 4;
         return (ui_rect){ x - 3, r.y, fmax(120, r.x + r.w - x - 8), ROW_H };
     }
+    if (c->view == UI_VIEW_LIST) {
+        double x = r.x + 4 + row_icon(c) + 4;
+        return (ui_rect){ x - 3, r.y, fmax(80, r.x + r.w - x - 20), ROW_H };
+    }
     return (ui_rect){ r.x + 2, r.y + ICON + 6, r.w - 4, ROW_H + 2 };
 }
 
@@ -912,6 +916,45 @@ static void draw_tree_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
     }
 }
 
+/* A List view's row (a Column view's column): the icon, the title, and
+ * for a folder an arrow at the right (it opens in the next column). The
+ * selection fills the row (the column's choice). */
+static void draw_list_row(ui_container *c, cairo_t *cr, size_t i, ui_rect r)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    ui_item it = { 0 };
+    c->src->item(c->ctx, i, &it);
+    bool sel = sel_get(c, i);
+    if (!it.loaded) {
+        ui_fill(cr, (ui_rect){ r.x + 30, r.y + 6, 120, 8 }, k->placeholder);
+        return;
+    }
+    if (sel) ui_fill(cr, (ui_rect){ r.x + 1, r.y + 1, r.w - 2, ROW_H - 2 }, c->focused ? k->selection : k->shadow);
+    double is = row_icon(c), ix = r.x + 4;
+    item_icon(cr, &it, ix, r.y + floor((ROW_H - is) / 2), is);
+    const char *t = it.title ? it.title : "";
+    bool folder = it.kind == UI_KIND_FOLDER;
+    double tx = ix + is + 4, maxw = r.x + r.w - tx - (folder ? 18 : 4);
+    ui_set_color(cr, sel ? k->selection_text : c->has_title_color ? c->title_color : k->text);
+    ui_text_draw(cr, c->font, tx, r.y + (ROW_H + ui_font_ascent(c->font)) / 2 - 1, t, maxw);
+    if (folder) {   /* the arrow: it opens in the next column */
+        double ax = r.x + r.w - 10, ay = r.y + ROW_H / 2;
+        cairo_move_to(cr, ax - 3, ay - 4);
+        cairo_line_to(cr, ax + 2, ay);
+        cairo_line_to(cr, ax - 3, ay + 4);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+    if (c->focused && c->has_cursor && c->cursor == i) {
+        double dash = 1;
+        ui_set_color(cr, sel ? k->selection_text : k->cursor);
+        cairo_set_dash(cr, &dash, 1, 0);
+        cairo_rectangle(cr, r.x + 1.5, r.y + 1.5, r.w - 3, ROW_H - 3);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, NULL, 0, 0);
+    }
+}
+
 /* Where item i's expander is (surface coordinates), for clicks. */
 static bool on_expander(ui_container *c, size_t i, double x)
 {
@@ -1278,6 +1321,7 @@ static void draw_content(ui_container *c, cairo_t *cr, ui_rect clip)
             if (!ui_rect_meets(r, clip)) continue;
             if (c->view == UI_VIEW_DETAILS) draw_details_row(c, cr, i, r, x);
             else if (c->view == UI_VIEW_TREE) draw_tree_row(c, cr, i, r);
+            else if (c->view == UI_VIEW_LIST) draw_list_row(c, cr, i, r);
             else draw_icon_cell(c, cr, i, r);
         }
     }
@@ -1918,6 +1962,24 @@ void ui_container_set_overlay(ui_container *c, ui_rect r, ui_layer_draw_fn draw,
     c->over_draw = draw;
     c->over_ctx = ctx;
     if (c->over.w > 0) damage_content(c, over_crect(c, c->scroll));
+}
+
+/* Rows on a layer of their own (scrolled by the compositor), or drawn on
+ * the window (several lists side by side: a Column view's). */
+void ui_container_set_layered(ui_container *c, bool on)
+{
+    if (!on && c->layer) {
+        ui_layer_free(c->layer);
+        c->layer = NULL;
+    } else if (on && !c->layer && !c->backdrop && !getenv("OSD_UI_NO_LAYER")) {
+        c->layer = ui_layer_new(c->s, layer_draw, c);
+        if (c->layer) {
+            ui_layer_set_area(c->layer, list_rect(c));
+            ui_layer_set_offset(c->layer, c->scroll);
+            ui_layer_damage_all(c->layer);
+        }
+    }
+    ui_surface_damage(c->s, c->r);
 }
 
 void ui_container_overlay_damage(ui_container *c)

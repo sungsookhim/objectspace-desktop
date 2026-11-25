@@ -197,7 +197,7 @@ static char *describe_windows(void)
     for (struct folder *f = folders; f; f = f->next) all[n++] = f;
     for (size_t i = n; i-- > 0;) {
         struct folder *f = all[i];
-        if (f->desktop || f->closing || !plain(f->path)) continue;
+        if (f->desktop || f->closing || f->col_owner || !plain(f->path)) continue;   /* (a pane: its window's) */
         int x, y;
         bool mx;
         where_is(f->win, "io.github.sungsookhim.Objectspace.shell", &x, &y, &mx);
@@ -308,12 +308,12 @@ void windows_at_login(void)
  * scroll" (x -1: not known, as inside GNOME), and win_view, the view it
  * was last closed in (what a plain Open opens). In the Objectspace session the
  * compositor puts it back in its place ("place"); GNOME places it itself. */
-static const char *const view_keys[3] = { "icon", "details", "tree" };
+static const char *const view_keys[4] = { "icon", "details", "tree", "column" };
 
 static struct folder *open_in(const char *path, ui_view view)
 {
     for (struct folder *o = folders; o; o = o->next)
-        if (!o->closing && !o->desktop && !strcmp(o->path, path) && (view == VIEW_LAST || ui_container_view(o->cont) == view)) return o;
+        if (!o->closing && !o->desktop && !o->col_owner && !strcmp(o->path, path) && (view == VIEW_LAST || ui_container_view(o->cont) == view)) return o;
     return NULL;
 }
 
@@ -326,16 +326,17 @@ static void got_win(void *arg, const cv *reply)
     for (struct win_req **pp = &win_reqs; *pp; pp = &(*pp)->next)
         if (*pp == r) { *pp = r->next; break; }
     const cv *res = reply ? cv_get(reply, "result") : NULL;
-    char geo[3][128] = { "", "", "" }, last[16] = "";
+    char geo[4][128] = { "", "", "", "" }, last[16] = "";
     for (size_t i = 0; res && res->k == CV_ARRAY && i < res->n; i++) {
         const char *k = cv_text(&res->items[i], "name"), *v = cv_text(&res->items[i], "value");
         if (!k || !v) continue;
         if (!strcmp(k, "win_view")) snprintf(last, sizeof last, "%s", v);
-        for (int j = 0; j < 3; j++)
+        for (int j = 0; j < 4; j++)
             if (!strncmp(k, "win_", 4) && !strcmp(k + 4, view_keys[j])) snprintf(geo[j], sizeof geo[j], "%s", v);
     }
     ui_view v = r->view;
-    if (v == VIEW_LAST) v = !strcmp(last, "details") ? UI_VIEW_DETAILS : !strcmp(last, "tree") ? UI_VIEW_TREE : UI_VIEW_ICON;
+    if (v == VIEW_LAST) v = !strcmp(last, "details") ? UI_VIEW_DETAILS : !strcmp(last, "tree") ? UI_VIEW_TREE
+                          : !strcmp(last, "column") ? UI_VIEW_LIST : UI_VIEW_ICON;
     struct folder *f = open_in(r->path, v);
     if (f) { workarea_join(f, r->group); ui_window_activate(f->win); free(r); return; }   /* (opened meanwhile) */
     int x = -1, y = -1, mx = 0;
@@ -379,7 +380,7 @@ struct folder *open_folder_from(struct folder *from, const char *path, ui_view v
 /* Closing: where it is, how big, how far scrolled, for the next Open. */
 void folder_window_save(struct folder *f)
 {
-    if (f->desktop || !f->win || !plain(f->path)) return;
+    if (f->desktop || !f->win || f->col_owner || !plain(f->path)) return;
     ui_view v = ui_container_view(f->cont);
     int x = -1, y = -1;
     bool mx = false;
@@ -413,12 +414,45 @@ struct folder *open_desktop(const char *path)
     return f;
 }
 
+/* A pane (the Column view's column after the first, columns.c): a folder
+ * with no window of its own, drawn in its owner's, read and followed as
+ * a window's folder is. */
+struct folder *pane_open(struct folder *owner, const char *path)
+{
+    struct folder *f = calloc(1, sizeof *f);
+    f->menubar_open = f->menubar_last = f->menubar_kbd = -1;
+    f->id = next_folder_id++;
+    char real[PATH_MAX];
+    snprintf(f->path, sizeof f->path, "%s", realpath(path, real) ? real : path);
+    const char *base = strrchr(f->path, '/');
+    snprintf(f->title, sizeof f->title, "%s", base && base[1] ? base + 1 : f->path);
+    f->col_owner = owner;
+    f->win = owner->win;
+    f->arrange_offered = -1;
+    f->lay = layout_new(UI_CELL_W, UI_CELL_H);
+    f->whole_titles = true;
+    f->show_hidden = f->show_ext = true;
+    layout_set_height_fn(f->lay, lay_h, f);
+    layout_set_width_fn(f->lay, lay_w, f);
+    f->free_layout = -1;
+    f->cont = ui_container_new(f->win, &folder_src, f, UI_VIEW_LIST);
+    f->sort_choice = -1;
+    f->icon_size = -1;
+    f->next = folders;
+    folders = f;
+    svc_resolve(f->path, got_title, as_arg(f));
+    svc_subscribe_folder(f->path, got_sub, as_arg(f));
+    bg_follow(f);   /* (its sort, hidden files, extensions: its own) */
+    request_more(f, false);
+    return f;
+}
+
 struct folder *open_window(const char *path, ui_view view, bool desktop)
 {
     char real0[PATH_MAX];
     const char *want = realpath(path, real0) ? real0 : path;
     for (struct folder *o = folders; o; o = o->next)
-        if (!o->closing && !strcmp(o->path, want) && ui_container_view(o->cont) == view && !desktop) {
+        if (!o->closing && !o->col_owner && !strcmp(o->path, want) && ui_container_view(o->cont) == view && !desktop) {
             ui_window_activate(o->win);   /* already open in this view: switch to it, as OS/2 did */
             return o;
         }
@@ -468,6 +502,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
     if (view == UI_VIEW_TREE) tree_start(f);
     f->next = folders;
     folders = f;
+    if (view == UI_VIEW_LIST) columns_start(f);   /* the Column view: its own list the first column */
     update_title(f);
     layout(f);
     if (!desktop) svc_resolve(f->path, got_title, as_arg(f));

@@ -233,6 +233,9 @@ uint32_t win_drag_motion(ui_surface *s, double x, double y, const char *const *m
                                 uint32_t src_actions, unsigned mods, const char **mime)
 {
     struct folder *f = ui_surface_data(s);
+    struct folder *was = f;
+    f = columns_at(f, x, y);   /* (the Column view: the column under the pointer) */
+    if (f != was) ui_container_set_drop_target(was->cont, SIZE_MAX);
     *mime = NULL;
     for (size_t i = 0; i < n; i++)
         if (!strcmp(mimes[i], MIME_FONT)) { *mime = MIME_FONT; return UI_DND_COPY; }   /* a font: the folder's, or the title bars' */
@@ -304,6 +307,7 @@ void win_drag_leave(ui_surface *s)
 {
     struct folder *f = ui_surface_data(s);
     ui_container_set_drop_target(f->cont, SIZE_MAX);
+    for (int k = 0; k < f->ncols; k++) ui_container_set_drop_target(f->panes[k]->cont, SIZE_MAX);
 }
 
 struct jobtrack *jobs;
@@ -487,7 +491,9 @@ uint32_t win_drop(ui_surface *s, double x, double y, const char *mime, const cha
 {
     (void)len;
     struct folder *f = ui_surface_data(s);
+    for (int k = 0; k < f->ncols; k++) ui_container_set_drop_target(f->panes[k]->cont, SIZE_MAX);
     ui_container_set_drop_target(f->cont, SIZE_MAX);
+    f = columns_at(f, x, y);   /* (the Column view: into the column under the pointer) */
     if (!strcmp(mime, MIME_FONT)) {
         /* the Font Palette's (v0.3-design 10), as on OS/2 a folder's own:
          * onto its title bar, its title bar's (with Shift, every title

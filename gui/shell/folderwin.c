@@ -401,10 +401,14 @@ static ui_kind kind_of(const char *type, const char *name)
     return UI_KIND_FILE;
 }
 
-const char *view_name(ui_view v) { return v == UI_VIEW_ICON ? "Icon View" : v == UI_VIEW_TREE ? "Tree View" : "Details View"; }
+const char *view_name(ui_view v)
+{
+    return v == UI_VIEW_ICON ? "Icon View" : v == UI_VIEW_TREE ? "Tree View" : v == UI_VIEW_LIST ? "Column View" : "Details View";
+}
 
 void update_title(struct folder *f)
 {
+    if (f->col_owner) { columns_pane_changed(f); return; }   /* (a pane: its title on the window's path) */
     char t[400];
     snprintf(t, sizeof t, "%s - %s", f->title, view_name(ui_container_view(f->cont)));
     ui_window_set_title(f->win, f->desktop ? "Desktop" : t);
@@ -412,6 +416,7 @@ void update_title(struct folder *f)
 
 void damage_status(struct folder *f)
 {
+    if (f->col_owner) f = f->col_owner;   /* (a pane's: its window's status line) */
     if (f->desktop) { desktop_status(f); return; }
     ui_rect c = ui_frame_client(f->win);
     ui_surface_damage(f->win, (ui_rect){ c.x, c.y + c.h - STATUS_H, c.w, STATUS_H });

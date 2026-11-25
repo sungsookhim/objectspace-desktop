@@ -64,6 +64,7 @@
 #define OSD_MI_VIEW_ICON      31
 #define OSD_MI_VIEW_TREE      32
 #define OSD_MI_VIEW_DETAILS   33
+#define OSD_MI_VIEW_COLUMN    34   /* the Column view (0.6) */
 #define OSD_MI_FIRST_CLASS  1000
 
 #endif

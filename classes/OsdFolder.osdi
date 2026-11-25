@@ -86,6 +86,7 @@ property arrange_offered : hidden page View label "Arrange offered (positions fr
 property win_icon : hidden page View label "Icon view window"
 property win_details : hidden page View label "Details view window"
 property win_tree : hidden page View label "Tree view window"
+property win_column : hidden page View label "Column view window"
 property bg_gnome : checkbox = 1 page Background label "GNOME's background" show osdQueryIsDesktop set osdSetBgGnome
 property bg_image : file image page Background label Image set osdSetBgImage
 property bg_mode : choice "centred,tiled,scaled to fill,scaled to fit,stretched" = "scaled to fill" index page Background label Shown set osdSetBgMode

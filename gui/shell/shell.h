@@ -150,6 +150,15 @@ struct folder {
     int menubar_open;        /* the bar's menu open (-1: none) */
     int menubar_last;        /* the one opened last (Left and Right in it: its neighbours) */
     int menubar_kbd;         /* the title the keyboard is on (Alt, F10; -1: none) */
+    /* The Column view (0.6 step 4, columns.c): the window's own list is
+     * the first column (its container in UI_VIEW_LIST); the next ones
+     * are panes, folders with no window of their own, drawn in it. */
+    struct folder *col_owner;     /* a pane: the window it is a column of (NULL: none) */
+    struct folder *panes[16];     /* the window's: its panes, columns 1.. */
+    int ncols, col_focus;         /* how many; the column with the keyboard (0: its own list) */
+    char col_file[PATH_MAX];      /* a file chosen in the last column: its details beside it */
+    size_t col_file_i;            /* (its row there) */
+    ui_rect col_area;             /* where the columns and their path are */
     char msg_last[256];      /* the desktop's: the message its box last showed */
     bool msg_hidden, msg_sticky;
     int arrange_offered;     /* -1 not known yet; 1: its overlapping icons' Arrange offered once already */
@@ -531,6 +540,21 @@ void menubar_open(struct folder *f, int i);
 bool menubar_pointer(struct folder *f, const ui_pointer_event *e);
 bool menubar_key(struct folder *f, const ui_key_event *e);
 void menubar_closed(struct folder *f);
+
+/* The Column view (columns.c). */
+bool is_columns(const struct folder *f);          /* a window showing the Column view */
+void columns_start(struct folder *f);
+void columns_stop(struct folder *f);
+void columns_layout(struct folder *f, ui_rect area);
+void columns_draw(struct folder *f, cairo_t *cr, ui_rect clip);
+bool columns_pointer(struct folder *f, const ui_pointer_event *e);
+struct folder *columns_focused(struct folder *f);   /* the column with the keyboard (f itself, or a pane) */
+struct folder *columns_at(struct folder *f, double x, double y);   /* the column at x, y (f itself, or a pane) */
+bool columns_key(struct folder *f, const ui_key_event *e);
+void win_key_on(struct folder *f, const ui_key_event *e);   /* window.c: a folder's own keys (its list's) */
+void columns_follow(struct folder *f);              /* a column's choice changed: the next columns follow */
+void columns_pane_changed(struct folder *p);        /* a pane's title or contents changed */
+struct folder *pane_open(struct folder *owner, const char *path);   /* desktop.c */
 void menubar_side(void *ctx, int dir);   /* Left or Right in a menu of the bar: the next menu */
 void src_menu_bar(struct folder *f, size_t i, double x, double y);   /* menus.c: a pop-up menu, from the bar */
 int main(int argc, char **argv);

@@ -47,6 +47,7 @@ struct ui_layer {
     struct wl_surface *part;
     struct wl_subsurface *sub;
     struct wp_viewport *vp;
+    bool hidden;               /* no room: its buffer taken off (shown again when it has some) */
     struct ring rings[RINGS];
     ui_damage_frame hist[UI_DAMAGE_HISTORY];
     int nhist;
@@ -202,7 +203,17 @@ double ui_layer_render(ui_layer *l)
     ui_surface *s = l->s;
     if (s->scale != l->scale) { l->scale = s->scale; l->cur.full = true; }
     int k = l->scale, W = (int)l->area.w * k, H = (int)l->area.h * k;
-    if (W <= 0 || H <= 0) return 0;
+    if (W <= 0 || H <= 0) {   /* no room (a Column view's column not shown): nothing on screen, not the last picture */
+        if (!l->hidden) {
+            l->hidden = true;
+            wl_surface_attach(l->part, NULL, 0, 0);
+            wl_surface_commit(l->part);
+        }
+        memset(&l->cur, 0, sizeof l->cur);
+        s->layer_dirty = false;
+        return 0;
+    }
+    if (l->hidden) { l->hidden = false; l->cur.full = true; for (int i = 0; i < l->nhist; i++) l->hist[i].full = true; }
     struct ring *r = ring_get(l, W, 2 * H);
     if (!r) return -1;   /* all rings with the compositor: next frame */
     if (l->nhist == UI_DAMAGE_HISTORY) {

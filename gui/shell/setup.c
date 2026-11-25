@@ -453,7 +453,7 @@ bool setup_event(const cv *ev)
 void toolkit_action(const char *name, ui_surface *s, ui_rect at)
 {
     struct folder *f = NULL;
-    for (struct folder *o = folders; o && !f; o = o->next) if (o->win == s) f = o;
+    for (struct folder *o = folders; o && !f; o = o->next) if (o->win == s && !o->col_owner) f = o;   /* (not a Column view's pane: its window's) */
     events_raise(name, f ? f->path : "", !strncmp(name, "window.", 7) ? "folder" : "", at);
 }
 

@@ -677,7 +677,10 @@ void ui_set_icons(ui_icon_size which);
 #define UI_CELL_W (ui_icons()->cell_w)   /* the System's set's cell */
 #define UI_CELL_H (ui_icons()->cell_h)
 
-typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE } ui_view;
+/* UI_VIEW_LIST: rows of a small icon and the title, no headings nor
+ * indent, a folder marked with an arrow at the right (a Column view's
+ * column, 0.6 step 4). */
+typedef enum { UI_VIEW_ICON, UI_VIEW_DETAILS, UI_VIEW_TREE, UI_VIEW_LIST } ui_view;
 
 ui_container *ui_container_new(ui_surface *s, const ui_container_src *src, void *ctx, ui_view view);
 /* Icon view with icons placed anywhere: every title shown whole, under
@@ -725,6 +728,8 @@ double ui_container_scroll_y(ui_container *c);   /* how far down (logical pixels
  * field): `r` in window coordinates, drawn by `draw` in them (draw NULL:
  * none); damaged again with ui_container_overlay_damage. */
 void ui_container_set_overlay(ui_container *c, ui_rect r, ui_layer_draw_fn draw, void *ctx);
+/* Its rows on a layer of their own (the default), or on the window (lists side by side). */
+void ui_container_set_layered(ui_container *c, bool on);
 void ui_container_overlay_damage(ui_container *c);
 size_t ui_container_selected_count(ui_container *c);
 bool ui_container_is_selected(ui_container *c, size_t i);

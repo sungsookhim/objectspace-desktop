@@ -299,6 +299,7 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
     if (f->desktop) { desk_msg_draw(f, cr, clip); return; }   /* its status line: a box */
+    columns_draw(f, cr, clip);
     menubar_draw(f, cr);
     if (f->find_on && f->find_place != 2) find_draw(f, cr);   /* (floating: over the list, with it) */
     ui_rect c = ui_frame_client(s);
@@ -307,6 +308,7 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_fill(cr, st, k->face);
     ui_bevel(cr, (ui_rect){ st.x + 1, st.y + 1, st.w - 2, st.h - 2 }, false);
     char msg[512];
+    f = columns_focused(f);   /* (the Column view: the column with the keyboard's) */
     size_t nsel = ui_container_selected_count(f->cont);
     if (f->error[0]) snprintf(msg, sizeof msg, "%s", f->error);
     else if (f->offer_arrange) snprintf(msg, sizeof msg, OFFER_TEXT);
@@ -332,11 +334,13 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
 
 void layout(struct folder *f)
 {
+    if (f->col_owner) { layout(f->col_owner); return; }   /* (a pane: its window lays it out) */
     ui_rect c = ui_frame_client(f->win);
     if (!f->desktop) c.h -= STATUS_H;
     if (menubar_shown(f)) { c.y += menubar_h(); c.h -= menubar_h(); }
     if (f->find_on && f->find_place == 0) { c.y += FIND_H; c.h -= FIND_H; }
     if (f->find_on && f->find_place == 1) c.h -= FIND_H;
+    if (is_columns(f)) { columns_layout(f, c); return; }
     ui_container_layout(f->cont, c);
     bool over = f->find_on && f->find_place == 2;
     ui_container_set_overlay(f->cont, over ? find_row(f) : (ui_rect){ 0, 0, 0, 0 }, over ? find_over_draw : NULL, f);
@@ -374,15 +378,21 @@ void win_pointer(ui_surface *s, const ui_pointer_event *e)
     bool used = false;
     if (e->kind != UI_PRESS || h != UI_HIT_CLIENT) used = ui_frame_pointer(s, e);
     if (!used && f->find_on && find_pointer(f, e)) return;
+    if (!used && h == UI_HIT_CLIENT && columns_pointer(f, e)) return;   /* (the Column view's path and panes) */
     if (!used || e->kind == UI_RELEASE || e->kind == UI_MOTION) ui_container_pointer(f->cont, e);
     if (ui_container_selected_count(f->cont) != before) damage_status(f);
+    if (is_columns(f) && f->col_focus == 0 && (e->kind == UI_PRESS || e->kind == UI_RELEASE)) columns_follow(f);
 }
 
 void set_view(struct folder *f, ui_view v)
 {
+    if (is_columns(f) && v != UI_VIEW_LIST) columns_stop(f);
     if (v == UI_VIEW_TREE) tree_start(f);
     ui_container_set_view(f->cont, v);
     if (v == UI_VIEW_TREE) tree_rebuild(f, f->troot);
+    if (v == UI_VIEW_LIST) columns_start(f);   /* the Column view */
+    layout(f);
+    ui_surface_damage_all(f->win);
     update_title(f);
     damage_status(f);
 }
@@ -390,7 +400,6 @@ void set_view(struct folder *f, ui_view v)
 void win_key(ui_surface *s, const ui_key_event *e)
 {
     struct folder *f = ui_surface_data(s);
-    size_t before = ui_container_selected_count(f->cont);
     if (menubar_key(f, e)) return;   /* Alt tapped, F10: the menu bar */
     if (e->alt_tap) return;
     if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_w || e->sym == XKB_KEY_W)) { win_close(s); return; }
@@ -410,6 +419,16 @@ void win_key(ui_surface *s, const ui_key_event *e)
     /* In the order the View menu lists them (OS/2's): icon, tree, details. */
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_2) { set_view(f, UI_VIEW_TREE); return; }
     if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_3) { set_view(f, UI_VIEW_DETAILS); return; }
+    if ((e->mods & UI_MOD_CTRL) && e->sym == XKB_KEY_4) { set_view(f, UI_VIEW_LIST); return; }   /* the Column view */
+    if (columns_key(f, e)) return;   /* (Left, Right between columns; a pane's keys) */
+    win_key_on(f, e);
+    if (is_columns(f)) columns_follow(f);
+}
+
+/* A folder's own keys: the window's list, or a Column view's pane. */
+void win_key_on(struct folder *f, const ui_key_event *e)
+{
+    size_t before = ui_container_selected_count(f->cont);
     if (e->sym == XKB_KEY_Delete && !ui_container_renaming(f->cont)) {
         /* the selection, or the item with the cursor (Shift: for good) */
         size_t total = is_tree(f) ? f->ntvis : f->m.total, at = SIZE_MAX;
@@ -431,6 +450,7 @@ void win_focus(ui_surface *s, bool on)
 
 void free_folder(struct folder *f)
 {
+    if (is_columns(f)) columns_stop(f);   /* (its panes first: they draw in its window) */
     for (struct folder **pp = &folders; *pp; pp = &(*pp)->next)
         if (*pp == f) { *pp = f->next; break; }
     if (f->sub) svc_unsubscribe(f->sub);
@@ -446,7 +466,7 @@ void free_folder(struct folder *f)
     model_free(&f->m);
     if (f->sh) { model_free(f->sh); free(f->sh); }
     ui_container_free(f->cont);
-    ui_surface_destroy(f->win);
+    if (!f->col_owner) ui_surface_destroy(f->win);   /* (a pane's is its window's) */
     free(f);
 }
 
