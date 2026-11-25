@@ -308,24 +308,25 @@ A to do, after 0.2 (with network file systems below).
       - **Continuous integration:** GitHub Actions building on Fedora 45 and running the unit tests and the headless suites that need no GPU (`make check`, `gui-test`, the compositor's tests where the runner allows).
       - The authorship note kept (designed by the owner, code written with Claude through Claude Code).
    4. **Checks:** a search for the old names finds none outside the history notes; the RPMs build and install under the new names; an upgrade from 0.4.1 (if moving over is chosen); the suites green under the new names.
-5. **0.6 The look of other programs and more screens** (the compositor and themes; was 0.5):
+5. **0.6 TheBar's trays and folder windows** (the owner's, 2026-11-24: 0.6 split in two; [v0.6-design.md](v0.6-design.md), [v0.6-plan.md](v0.6-plan.md)):
    - **TheBar's trays** (the owner's, 2026-11-24; WarpCenter's object trays, not the status icons): named trays of shadows of folders and programs on the bar; the tray button shows the current one's name, a click goes to the next, its menu chooses one, adds, renames, deletes; objects dropped on the bar join the tray, an icon's menu removes it; one made at the first start, kept in the user's settings; a headless test.
+   - **A Preview view** (pictures in place of their icons), and with it a **Gallery view** (large previews).
+   - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
+   - **Suspend after idle.**
+6. **0.7 The look of other programs and more screens** (the compositor and themes; was 0.6, before that 0.5):
    - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
    - **libadwaita programs keep their own look and title bars** (the owner's); the scheme's colours offered to them as an option (Scheme Palette, off by default).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
    - **Sharp X11 programs on scaled screens.**
-   - **Suspend after idle.**
-   - **A Preview view** (pictures in place of their icons), and with it a **Gallery view** (large previews).
-   - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
-6. **0.7 Network and jobs** (the service and the object core; was 0.6):
+7. **0.8 Network and jobs** (the service and the object core; was 0.7, before that 0.6):
    - **The Network object** and network file systems (NFS, SMB).
    - **Undo for jobs;** disk full and quota errors.
    - **Central objects:** deduplication, cleanup, becoming `.osdobj` files.
    - **Find** in titles, classes and settings; an index.
    - **File types from `user.mime_type`** and the Type page (after 0.4, the owner's).
    - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).
-7. **0.8 Helper programs** (the owner's, 2026-11-24; a placeholder, to be designed): a few programs of Objectspace's own, as OS/2 came with its own (System Editor, Icon Editor), so a new system has what everyday objects need, drawn in Objectspace's frames, fonts and schemes. Objectspace Terminal (0.4.1) is the first. Next:
+8. **0.9 Helper programs** (the owner's, 2026-11-24; a placeholder, to be designed): a few programs of Objectspace's own, as OS/2 came with its own (System Editor, Icon Editor), so a new system has what everyday objects need, drawn in Objectspace's frames, fonts and schemes. Objectspace Terminal (0.4.1) is the first. Next:
    - **Icon Editor** (the easier, first): opened from an object's Icon page (**Edit...**) or on an `.osdicon` file; draws and edits each size of a package (256 to 16), imports PNG and SVG, and saves the object's own icon or a package for a theme.
    - **Text Editor** (OS/2's System Editor): plain text in UTF-8, the default program for text files (set as the type's **Opens with**), with undo, find and replace, line wrap, and the System's fonts.
    - Each a program object in Programs, with its file types' associations made at the first start; Command Prompt and these together as the System's own programs.
-8. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
+9. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
