@@ -39,6 +39,9 @@ struct menu_root {
     double ox, oy, closed_at;
     bool (*icon_fn)(void *arg, int64_t id, void *item);
     bool left;             /* it and its cascades open out to the left (ui_menu_next_left) */
+    void (*side_fn)(void *ctx, int dir);   /* a menu bar's (ui_menu_next_sideways) */
+    void *side_ctx;
+    int side;              /* Left or Right at its top level: the neighbour, once closed */
 };
 
 /* At most one menu tree exists: Wayland requires popups to be destroyed
@@ -221,6 +224,7 @@ static void menu_key(ui_surface *s, const ui_key_event *e)
     if (m->root->closing) return;
     /* Keys go to the deepest open menu. */
     while (m->child) m = m->child;
+    if (e->alt_tap || e->sym == XKB_KEY_F10) { finish(m->root, -1); return; }   /* (a menu bar's: away) */
     switch (e->sym) {
     case XKB_KEY_Down: set_hot(m, step(m, m->hot < 0 ? -1 : m->hot, 1)); break;
     case XKB_KEY_Up: set_hot(m, step(m, m->hot < 0 ? 0 : m->hot, -1)); break;
@@ -228,10 +232,14 @@ static void menu_key(ui_surface *s, const ui_key_event *e)
         if (m->hot >= 0 && m->items[m->hot].nitems) {
             open_child(m, m->hot, s->app->last_serial);
             if (m->child) set_hot(m->child, step(m->child, -1, 1));
+        } else if (!m->parent && m->root->side_fn) {   /* a menu bar's: the next menu */
+            m->root->side = 1;
+            finish(m->root, -1);
         }
         break;
     case XKB_KEY_Left:
         if (m->parent) close_child(m->parent);
+        else if (m->root->side_fn) { m->root->side = -1; finish(m->root, -1); }   /* a menu bar's: the one before */
         break;
     case XKB_KEY_Escape:
         if (m->parent) close_child(m->parent);
@@ -311,6 +319,7 @@ static void finish_now(void *arg)
     if (active == r) active = NULL;
     if (!active) ui_container_menu_closed();
     if (r->fn) r->fn(r->arg, r->id);
+    if (r->side && r->side_fn) r->side_fn(r->side_ctx, r->side);
     ui_menu_items_free(r->items, r->n);
     free(r);
 }
@@ -326,6 +335,10 @@ static void finish(struct menu_root *r, int64_t id)
 
 static bool (*next_icon_fn)(void *arg, int64_t id, void *item);
 static bool next_left;
+static void (*next_side_fn)(void *ctx, int dir);
+static void *next_side_ctx;
+
+void ui_menu_next_sideways(void (*fn)(void *ctx, int dir), void *ctx) { next_side_fn = fn; next_side_ctx = ctx; }
 
 void ui_menu_next_left(void) { next_left = true; }
 
@@ -343,6 +356,9 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     next_icon_fn = NULL;
     bool left = next_left;
     next_left = false;
+    void (*side_fn)(void *, int) = next_side_fn;
+    void *side_ctx = next_side_ctx;
+    next_side_fn = NULL;
     if (!n) { if (fn) fn(arg, -1); return; }
     if (active) {
         struct menu_root *old = active;
@@ -366,6 +382,8 @@ void ui_menu_popup(ui_surface *parent, const ui_menu_item *items, size_t n, doub
     r->arg = arg;
     r->icon_fn = icon_fn;
     r->left = left;
+    r->side_fn = side_fn;
+    r->side_ctx = side_ctx;
     r->items = copy_items(items, n);
     r->n = n;
     ui_rect anchor = { x, y, 1, 1 };

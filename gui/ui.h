@@ -426,6 +426,9 @@ void ui_menu_popup_icons(ui_surface *parent, const ui_menu_item *items, size_t n
 /* The next menu, and its cascades, open beside their anchors out to the
  * left (a cascade from a Launcher drawer on the left). */
 void ui_menu_next_left(void);
+/* The next menu opened belongs to a menu bar: Left and Right at its top
+ * level close it and call fn(ctx, -1 or +1) (the neighbouring menu). */
+void ui_menu_next_sideways(void (*fn)(void *ctx, int dir), void *ctx);
 bool ui_menu_is_open(void);
 void ui_menu_close_all(void);   /* the open menus, unchosen */
 /* Called with the surface of every button press in this program, first

@@ -19,6 +19,8 @@ method osdQueryFoldersHidden() -> string
 method osdSetFoldersHidden(string on) -> bool
 method osdQueryFoldersExt() -> string
 method osdSetFoldersExt(string on) -> bool
+method osdQueryFoldersMenuBar() -> string
+method osdSetFoldersMenuBar(string on) -> bool
 method osdQueryFoldersTheme() -> string
 method osdSetFoldersTheme(string theme) -> bool
 method osdQueryIconThemes() -> string
@@ -31,6 +33,7 @@ method osdQueryFoldersFont() -> string
 method osdSetFoldersFont(string font) -> bool
 property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" get osdQueryFoldersHidden set osdSetFoldersHidden
 property show_ext : checkbox = "1" page "Folders" label "Show file extensions in titles" get osdQueryFoldersExt set osdSetFoldersExt
+property menu_bar : checkbox = "0" page "Folders" label "Menu bar in folder windows" get osdQueryFoldersMenuBar set osdSetFoldersMenuBar
 property font_folders : text = "" page "Fonts" label "Folders' icon titles (e.g. 10.Sans; empty: the interface font)" get osdQueryFoldersFont set osdSetFoldersFont
 property font_menus : text = "" page "Fonts" label "Menus" store OsdSetup text
 property font_titles : text = "" page "Fonts" label "Title bars" store OsdSetup text

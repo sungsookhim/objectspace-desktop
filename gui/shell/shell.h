@@ -148,6 +148,8 @@ struct folder {
     bool menubar_on;         /* its View page's Menu bar (0.6 step 3, menubar.c) */
     bool menubar_temp;       /* shown for a moment (Alt, F10) */
     int menubar_open;        /* the bar's menu open (-1: none) */
+    int menubar_last;        /* the one opened last (Left and Right in it: its neighbours) */
+    int menubar_kbd;         /* the title the keyboard is on (Alt, F10; -1: none) */
     char msg_last[256];      /* the desktop's: the message its box last showed */
     bool msg_hidden, msg_sticky;
     int arrange_offered;     /* -1 not known yet; 1: its overlapping icons' Arrange offered once already */
@@ -233,6 +235,7 @@ struct menu_ctx {
     long folder; size_t item; double x, y; uint32_t serial;
     char **tpl, **tpl_title;   /* New > (a background menu): the templates' addresses and titles */
     size_t ntpl;
+    bool from_bar;             /* opened from the folder's menu bar (Left, Right: its other menus) */
 };
 
 /* ---- Drives (v0.2-design 5): their menu's actions, the passphrase */
@@ -527,6 +530,8 @@ void menubar_open(struct folder *f, int i);
 bool menubar_pointer(struct folder *f, const ui_pointer_event *e);
 bool menubar_key(struct folder *f, const ui_key_event *e);
 void menubar_closed(struct folder *f);
+void menubar_side(void *ctx, int dir);   /* Left or Right in a menu of the bar: the next menu */
+void src_menu_bar(struct folder *f, size_t i, double x, double y);   /* menus.c: a pop-up menu, from the bar */
 int main(int argc, char **argv);
 
 #endif

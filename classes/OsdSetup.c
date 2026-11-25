@@ -81,6 +81,8 @@ char *OsdSystem__osdQueryFoldersHidden(osdo_object *self) { return folders_get(s
 bool OsdSystem__osdSetFoldersHidden(osdo_object *self, const char *on) { return folders_set(self, "show_hidden", on); }
 char *OsdSystem__osdQueryFoldersExt(osdo_object *self) { return folders_get(self, "show_ext", "show_ext", "1"); }
 bool OsdSystem__osdSetFoldersExt(osdo_object *self, const char *on) { return folders_set(self, "show_ext", on); }
+char *OsdSystem__osdQueryFoldersMenuBar(osdo_object *self) { return folders_get(self, "menu_bar", "menu_bar", "0"); }
+bool OsdSystem__osdSetFoldersMenuBar(osdo_object *self, const char *on) { return folders_set(self, "menu_bar", on); }
 char *OsdSystem__osdQueryFoldersTheme(osdo_object *self) { return folders_get(self, "icon_theme", "icon_theme", "Objectspace (flat)"); }
 bool OsdSystem__osdSetFoldersTheme(osdo_object *self, const char *theme) { return folders_set(self, "icon_theme", theme); }
 char *OsdSystem__osdQueryFoldersIconSet(osdo_object *self) { return folders_get(self, "icon_set", "icon_set", "Default"); }

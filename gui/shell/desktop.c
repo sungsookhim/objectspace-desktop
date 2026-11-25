@@ -423,7 +423,7 @@ struct folder *open_window(const char *path, ui_view view, bool desktop)
             return o;
         }
     struct folder *f = calloc(1, sizeof *f);
-    f->menubar_open = -1;
+    f->menubar_open = f->menubar_last = f->menubar_kbd = -1;
     f->id = next_folder_id++;
     char real[PATH_MAX];
     snprintf(f->path, sizeof f->path, "%s", realpath(path, real) ? real : path);

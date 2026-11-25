@@ -476,6 +476,7 @@ static void got_menu(void *arg, const cv *reply)
      * answered, and GNOME refuses a grab then, dismissing the menu at once.
      * The shell closes its own menus on clicks elsewhere. */
     if (menu_hook) { menu_hook(m, items, n); free_converted(items, n); return; }   /* (self-tests) */
+    if (m->from_bar) ui_menu_next_sideways(menubar_side, (void *)(intptr_t)f->id);
     ui_menu_popup(f->win, items, n, m->x, m->y, 0, menu_chosen, m);
     free_converted(items, n);
 }
@@ -523,10 +524,15 @@ static void got_templates(void *arg, const cv *reply)
     svc_menu(t, got_menu, m);
 }
 
-void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial)
+static void src_menu_as(struct folder *f, size_t i, double x, double y, uint32_t serial, bool from_bar);
+
+void src_menu(void *ctx, size_t i, double x, double y, uint32_t serial) { src_menu_as(ctx, i, x, y, serial, false); }
+void src_menu_bar(struct folder *f, size_t i, double x, double y) { src_menu_as(f, i, x, y, 0, true); }
+
+static void src_menu_as(struct folder *f, size_t i, double x, double y, uint32_t serial, bool from_bar)
 {
-    struct folder *f = ctx;
     struct menu_ctx *m = calloc(1, sizeof *m);
+    m->from_bar = from_bar;
     m->folder = f->id;
     m->item = i;
     m->x = x;

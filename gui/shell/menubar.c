@@ -4,8 +4,12 @@
  * A folder window's menu bar (0.6 step 3; v0.6-design 2; Warp 4's folders
  * had one): Folder, Edit, View, Selected, Help across the top of the
  * window. On or off per folder (its View page's Menu bar, or all folders
- * through Class...), off by default; when off, an Alt tap or F10 shows it
- * for a moment with its first menu open. Folder and Selected are the
+ * through Class...; System's Folders page: all folders), off by default.
+ * An Alt tap or F10 puts the keyboard on it (shown for a moment when it is
+ * off): Left and Right move along its titles, Down, Enter or a title's
+ * first letter opens one; in an open menu, Left and Right at its top
+ * open the neighbouring menu; Escape, or Alt or F10 again, leave it.
+ * Folder and Selected are the
  * folder's and the selection's own pop-up menus (menus.c); Edit, View and
  * Help are its own, their actions those of the keys and pop-up menus.
  */
@@ -42,7 +46,7 @@ void menubar_draw(struct folder *f, cairo_t *cr)
     ui_fill(cr, (ui_rect){ bar.x, bar.y + bar.h - 1, bar.w, 1 }, k->shadow);
     for (int i = 0; i < NMENUS; i++) {
         ui_rect r = title_rect(f, i);
-        bool open = f->menubar_open == i;
+        bool open = f->menubar_open == i || (f->menubar_open < 0 && f->menubar_kbd == i);
         if (open) ui_fill(cr, r, k->selection);
         bool enabled = i != 3 || any_selected(f);
         ui_set_color(cr, open ? k->selection_text : enabled ? k->text : k->shadow);
@@ -60,6 +64,7 @@ static void bar_damage(struct folder *f)
 static void temp_off(struct folder *f)
 {
     f->menubar_open = -1;
+    f->menubar_kbd = -1;
     if (f->menubar_temp) {
         f->menubar_temp = false;
         layout(f);
@@ -173,6 +178,7 @@ static void open_own(struct folder *f, int i, double x, double y)
         items[n++] = (ui_menu_item){ -1, "-", false, false, NULL, 0 };
         items[n++] = (ui_menu_item){ MB_ABOUT, "About Objectspace", true, false, NULL, 0 };
     }
+    ui_menu_next_sideways(menubar_side, (void *)(intptr_t)f->id);
     ui_menu_popup(f->win, items, n, x, y, 0, own_chosen, c);
 }
 
@@ -182,16 +188,48 @@ void menubar_open(struct folder *f, int i)
     if (!menubar_shown(f) || i < 0 || i >= NMENUS) return;
     if (i == 3 && !any_selected(f)) return;
     ui_rect r = title_rect(f, i);
-    f->menubar_open = i;
+    f->menubar_open = f->menubar_last = i;
+    if (f->menubar_kbd >= 0) f->menubar_kbd = i;
     bar_damage(f);
     tooltip_hide();
     double x = r.x, y = r.y + r.h + 2;
-    if (i == 0) src_menu(f, SIZE_MAX, x, y, 0);
+    if (i == 0) src_menu_bar(f, SIZE_MAX, x, y);
     else if (i == 3) {
         size_t total = is_tree(f) ? f->ntvis : f->m.total, at = SIZE_MAX;
         for (size_t k = 0; k < total && at == SIZE_MAX; k++) if (ui_container_is_selected(f->cont, k)) at = k;
-        src_menu(f, at, x, y, 0);
+        src_menu_bar(f, at, x, y);
     } else open_own(f, i, x, y);
+}
+
+/* The title `dir` along from i (Selected passed over with nothing selected). */
+static int along(struct folder *f, int i, int dir)
+{
+    for (int k = 0; k < NMENUS; k++) {
+        i = (i + dir + NMENUS) % NMENUS;
+        if (i != 3 || any_selected(f)) return i;
+    }
+    return 0;
+}
+
+/* Shown again for a moment if a menu's closing took it away (switching menus). */
+static void show_for_keys(struct folder *f, int at)
+{
+    if (!f->menubar_on && !f->menubar_temp) {
+        f->menubar_temp = true;
+        layout(f);
+        ui_surface_damage_all(f->win);
+    }
+    f->menubar_kbd = at;
+    bar_damage(f);
+}
+
+void menubar_side(void *ctx, int dir)
+{
+    struct folder *f = folder_by_id((long)(intptr_t)ctx);
+    if (!f || f->menubar_last < 0) return;
+    int next = along(f, f->menubar_last, dir);
+    show_for_keys(f, next);
+    menubar_open(f, next);
 }
 
 /* A press on the bar: a menu's title opens it. True when the bar took it. */
@@ -209,21 +247,34 @@ bool menubar_pointer(struct folder *f, const ui_pointer_event *e)
     return true;
 }
 
-/* Alt tapped or F10: the bar (for a moment, when it is off) with its first
- * menu open; Escape with the bar shown for a moment: it goes. */
+/* Alt tapped or F10: the keyboard on the bar (shown for a moment when it
+ * is off), on its first title, no menu open yet; again: away. With the
+ * keyboard on it: Left, Right; Down, Enter, Space or a title's first
+ * letter opens one; Escape leaves; any other key leaves and goes on to
+ * the folder. */
 bool menubar_key(struct folder *f, const ui_key_event *e)
 {
     if (!f || f->desktop) return false;
-    if (e->alt_tap || (e->sym == XKB_KEY_F10 && !(e->mods & (UI_MOD_CTRL | UI_MOD_ALT)))) {
-        if (!f->menubar_on && !f->menubar_temp) {
-            f->menubar_temp = true;
-            layout(f);
-            ui_surface_damage_all(f->win);
-        }
-        menubar_open(f, 0);
+    bool toggle = e->alt_tap || (e->sym == XKB_KEY_F10 && !(e->mods & (UI_MOD_CTRL | UI_MOD_ALT | UI_MOD_SHIFT)));
+    if (f->menubar_kbd < 0) {
+        if (!toggle) return false;
+        show_for_keys(f, 0);
         return true;
     }
-    if (e->sym == XKB_KEY_Escape && f->menubar_temp && !ui_menu_is_open()) { temp_off(f); return true; }
+    if (toggle || e->sym == XKB_KEY_Escape) { temp_off(f); return true; }
+    switch (e->sym) {
+    case XKB_KEY_Left: f->menubar_kbd = along(f, f->menubar_kbd, -1); bar_damage(f); return true;
+    case XKB_KEY_Right: case XKB_KEY_Tab: f->menubar_kbd = along(f, f->menubar_kbd, 1); bar_damage(f); return true;
+    case XKB_KEY_Down: case XKB_KEY_Return: case XKB_KEY_KP_Enter: case XKB_KEY_space: menubar_open(f, f->menubar_kbd); return true;
+    default: break;
+    }
+    if (e->utf8[0] && !e->utf8[1] && !(e->mods & (UI_MOD_CTRL | UI_MOD_ALT)))
+        for (int i = 0; i < NMENUS; i++)
+            if ((titles[i][0] | 0x20) == (e->utf8[0] | 0x20) && (i != 3 || any_selected(f))) { menubar_open(f, i); return true; }
+    if (e->sym == XKB_KEY_Shift_L || e->sym == XKB_KEY_Shift_R || e->sym == XKB_KEY_Control_L || e->sym == XKB_KEY_Control_R ||
+        e->sym == XKB_KEY_Alt_L || e->sym == XKB_KEY_Alt_R)
+        return true;   /* (a modifier on its own: stays) */
+    temp_off(f);   /* any other key: away, and on to the folder */
     return false;
 }
 

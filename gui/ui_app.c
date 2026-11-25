@@ -759,6 +759,7 @@ static void k_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surfac
 {
     (void)k; (void)s; (void)keys;
     ui_app *a = d;
+    a->alt_alone = 0;   /* (an Alt held into this window: no tap here - Alt+F4 closing the one before) */
     a->key_focus = w ? wl_surface_get_user_data(w) : NULL;
     if (a->key_focus && a->key_focus == a->ti_surface && a->ti_entry) ui_ibus_focus(a, true);
 }
@@ -767,6 +768,7 @@ static void k_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surfac
     (void)k; (void)s; (void)w;
     ui_app *a = d;
     a->key_focus = NULL;
+    a->alt_alone = 0;
     ui_ibus_focus(a, false);
     a->repeat_key = 0;
     struct itimerspec off = { 0 };
