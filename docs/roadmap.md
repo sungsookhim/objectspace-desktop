@@ -316,4 +316,8 @@ A to do, after 0.2 (with network file systems below).
    - **Find** in titles, classes and settings; an index.
    - **File types from `user.mime_type`** and the Type page (after 0.4, the owner's).
    - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).
-7. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
+7. **0.8 Helper programs** (the owner's, 2026-11-24; a placeholder, to be designed): a few programs of Objectspace's own, as OS/2 came with its own (System Editor, Icon Editor), so a new system has what everyday objects need, drawn in Objectspace's frames, fonts and schemes. Objectspace Terminal (0.4.1) is the first. Next:
+   - **Icon Editor** (the easier, first): opened from an object's Icon page (**Edit...**) or on an `.osdicon` file; draws and edits each size of a package (256 to 16), imports PNG and SVG, and saves the object's own icon or a package for a theme.
+   - **Text Editor** (OS/2's System Editor): plain text in UTF-8, the default program for text files (set as the type's **Opens with**), with undo, find and replace, line wrap, and the System's fonts.
+   - Each a program object in Programs, with its file types' associations made at the first start; Command Prompt and these together as the System's own programs.
+8. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.
