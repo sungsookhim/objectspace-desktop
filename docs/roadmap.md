@@ -312,6 +312,7 @@ A to do, after 0.2 (with network file systems below).
    - **TheBar's trays** (the owner's, 2026-11-24; WarpCenter's object trays, not the status icons): named trays of shadows of folders and programs on the bar; the tray button shows the current one's name, a click goes to the next, its menu chooses one, adds, renames, deletes; objects dropped on the bar join the tray, an icon's menu removes it; one made at the first start, kept in the user's settings; a headless test.
    - **A Preview view** (pictures in place of their icons), and with it a **Gallery view** (large previews).
    - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
+   - **Later (the owner's, 2026-11-25):** a menu bar's menu chosen by pressing a title, dragging into the menu and releasing on an item (the menu takes the pointer when it opens); TheBar's tray icons dragged off the bar (the shadow moved) and along it (the order).
    - **Suspend after idle.**
 6. **0.7 The look of other programs and more screens** (the compositor and themes; was 0.6, before that 0.5):
    - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
