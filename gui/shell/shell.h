@@ -43,6 +43,7 @@
 #include "session.h"
 #include "iconpick.h"
 #include "launcher.h"
+#include "trays.h"
 #include "gnome.h"
 #include "sound.h"
 #include "svc.h"

@@ -26,6 +26,9 @@
 #include "winlist.h"
 #include "objmenu.h"
 #include "tooltip.h"
+#include "trays.h"
+
+bool open_properties(const char *target);   /* (shell.h: its notebook) */
 
 #define PAD 3
 #define BTN_W 34
@@ -36,7 +39,9 @@
 
 /* (P_LOCK..P_SHUTDOWN: OS/2's buttons after the window list, the owner's) */
 enum part { P_NONE = -1, P_DESKTOP, P_WINDOWS, P_METERS, P_MESSAGES, P_KEYBOARD, P_CLOCK, P_TRAY,
-            P_LOCK, P_FIND, P_LOGOFF, P_SHUTDOWN, NPARTS };
+            P_LOCK, P_FIND, P_LOGOFF, P_SHUTDOWN, P_TRAYBTN, P_TRAYOBJS, NPARTS };
+/* (P_TRAY: other programs' status icons, on the right; P_TRAYBTN and
+ * P_TRAYOBJS: TheBar's trays, OS/2's, after the system buttons: trays.h) */
 
 /* Its font (the Font Palette's; the interface font unless set). */
 static ui_font wc_font = UI_FONT_REGULAR, wc_bold = UI_FONT_BOLD;
@@ -75,7 +80,10 @@ static struct {
     ui_surface *pop;
     int pop_kind;                  /* P_CLOCK or P_METERS */
     int cal_month, cal_year;
-} wc = { .pressed = P_NONE, .timer = -1, .shown = { true, true, true, true, true, true, true, true, true, true, true } };
+    /* the trays: an object pressed, where a drop would go (-1: none) */
+    ssize_t tray_obj_pressed, drop_at;
+} wc = { .pressed = P_NONE, .timer = -1, .tray_obj_pressed = -1, .drop_at = -1,
+         .shown = { true, true, true, true, true, true, true, true, true, true, true, true, true } };
 
 /* ------------------------------------------------------------- layout */
 
@@ -102,8 +110,14 @@ static double msg_w(void)
     return wc.h - 2 * PAD + 6 + (wc.unread ? ui_text_width(wc_bold, t) + 4 : 0);
 }
 
+/* The trays: the button (the current tray's name and an arrow), then its
+ * objects (room for one when it is empty: something to drop on). */
+static double traybtn_w(void) { return ui_text_width(wc_bold, trays_current()) + 26; }
+static double trayobjs_w(void) { return (double)(trays_n() ? trays_n() : 1) * (wc.h - 2 * PAD) + 4; }
+
 static bool part_shown(int p)
 {
+    if (p == P_TRAYBTN || p == P_TRAYOBJS) return wc.shown[P_TRAYBTN] && trays_count() > 0 && trays_current()[0];
     if (p == P_TRAY) return wc.shown[p] && tray_count() > 0;
     return p == P_CLOCK ? wc.clock_mode != 2 : wc.shown[p];
 }
@@ -141,6 +155,12 @@ static ui_rect part_rect(int p)
     case P_LOCK: case P_FIND: case P_LOGOFF: case P_SHUTDOWN:
         if (!wc.shown[p]) return (ui_rect){ 0, 0, 0, 0 };
         return (ui_rect){ PAD + desk_w() + 2 + BTN_W + 6 + (p - P_LOCK) * (SYS_W + 2), PAD, SYS_W, h };
+    case P_TRAYBTN: case P_TRAYOBJS: {
+        if (!part_shown(p)) return (ui_rect){ 0, 0, 0, 0 };
+        double x = PAD + desk_w() + 2 + BTN_W + 8 + (wc.shown[P_LOCK] ? 4 * (SYS_W + 2) + 6 : 0);
+        if (p == P_TRAYBTN) return (ui_rect){ x, PAD, traybtn_w(), h };
+        return (ui_rect){ x + traybtn_w() + 2, PAD, trayobjs_w(), h };
+    }
     default: break;
     }
     static const int order[] = { P_CLOCK, P_KEYBOARD, P_MESSAGES, P_METERS, P_TRAY };
@@ -155,6 +175,16 @@ static ui_rect part_rect(int p)
         x -= 4;
     }
     return (ui_rect){ 0, 0, 0, 0 };
+}
+
+/* Which of the tray's objects is at x (or would come before it, for a drop). */
+static size_t trayobj_at(double x, bool between)
+{
+    ui_rect r = part_rect(P_TRAYOBJS);
+    double c = wc.h - 2 * PAD, f = (x - r.x - 2) / c + (between ? 0.5 : 0);
+    size_t i = f < 0 ? 0 : (size_t)f;
+    size_t n = trays_n();
+    return between ? (i > n ? n : i) : i;
 }
 
 static int part_at(double x, double y)
@@ -264,6 +294,32 @@ static void wc_draw_in(ui_surface *s, cairo_t *cr, ui_rect clip)
             if (p == P_LOGOFF) { if (!icons_draw_theme(cr, NULL, "sys-logoff", (ui_rect){ -15, -15, 30, 30 }, 3.6)) glyph_logoff(cr); }
             else launcher_glyph(cr, p == P_LOCK ? 0 : p == P_FIND ? 1 : 2, (ui_rect){ -15, -15, 30, 30 });
             cairo_restore(cr);
+        } else if (p == P_TRAYBTN) {
+            ui_bevel(cr, r, !down);
+            ui_set_color(cr, ui_scheme_now.text);
+            ui_text_draw(cr, wc_bold, r.x + 6 + d, r.y + (r.h + ui_font_ascent(wc_font)) / 2 - 1 + d, trays_current(), r.w - 24);
+            double ax = r.x + r.w - 11 + d, ay = r.y + r.h / 2 + d;   /* the arrow: the trays' menu */
+            cairo_move_to(cr, ax - 4, ay - 2);
+            cairo_line_to(cr, ax + 4, ay - 2);
+            cairo_line_to(cr, ax, ay + 3);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+        } else if (p == P_TRAYOBJS) {
+            ui_bevel(cr, r, false);
+            double c = wc.h - 2 * PAD, sz = fmin(24, c - 4);
+            int px = (int)(sz * ui_surface_scale(s) + 0.5);
+            for (size_t i = 0, n = trays_n(); i < n; i++) {
+                const struct tray_obj *o = trays_obj(i);
+                ui_item it = { .loaded = true, .detailed = true, .kind = o->kind, .shadow = false, .link = false };
+                it.image = icons_item(NULL, o->icon, o->kind, o->target[0] ? o->target : o->name, px);
+                double od = wc.tray_obj_pressed == (ssize_t)i ? 1 : 0;
+                ui_draw_item_icon(cr, &it, r.x + 2 + (double)i * c + (c - sz) / 2 + od, r.y + (r.h - sz) / 2 + od, sz);
+            }
+            if (wc.drop_at >= 0) {   /* where a drop goes: a bar between icons */
+                ui_set_color(cr, ui_scheme_now.selection);
+                cairo_rectangle(cr, r.x + 1 + (double)wc.drop_at * c, r.y + 2, 2, r.h - 4);
+                cairo_fill(cr);
+            }
         } else if (p == P_KEYBOARD) {
             ui_bevel(cr, r, down);
             centred_text(cr, r, wc.key_label[0] ? wc.key_label : "--", d);
@@ -678,6 +734,7 @@ static void press(int p, uint32_t serial, int button)
         break;
     case P_WINDOWS: winlist_open(false); break;
     case P_KEYBOARD: winlist_ext("keyboard", button == 2 ? "prev" : "next"); break;
+    case P_TRAYBTN: trays_next(); break;
     case P_CLOCK: open_pop(P_CLOCK, serial); break;
     case P_METERS: open_pop(P_METERS, serial); break;
     case P_MESSAGES: if (wc.open_messages) wc.open_messages(); break;
@@ -726,6 +783,12 @@ static void part_tip(int p, double x, char *out, size_t n)
         snprintf(out, n, "%s", t ? t : "");
         break;
     }
+    case P_TRAYBTN: snprintf(out, n, "Tray: %s (click: the next; the arrow: all trays)", trays_current()); break;
+    case P_TRAYOBJS: {
+        const struct tray_obj *o = trays_obj(trayobj_at(x, false));
+        snprintf(out, n, "%s", o ? o->title : "Drop objects here to put them in this tray");
+        break;
+    }
     case P_LOCK: snprintf(out, n, "Lockup now"); break;
     case P_FIND: snprintf(out, n, "Find"); break;
     case P_LOGOFF: snprintf(out, n, "Log off"); break;
@@ -745,6 +808,10 @@ static void wc_pointer(ui_surface *s, const ui_pointer_event *e)
             double c = tray_cell();
             r.x += 2 + floor((e->x - r.x - 2) / c) * c;
             r.w = c;
+        } else if (p == P_TRAYOBJS && trays_n()) {   /* each object its own */
+            double c = wc.h - 2 * PAD;
+            r.x += 2 + (double)trayobj_at(e->x, false) * c;
+            r.w = c;
         }
         if (p == P_NONE || wc.pop) tooltip_hide();
         else tooltip_hover(s, r, tip, !wc.top);
@@ -756,6 +823,25 @@ static void wc_pointer(ui_surface *s, const ui_pointer_event *e)
         if (wc.pop && p != wc.pop_kind) pop_free();   /* another part, or the bar: it closes */
         if (p == P_NONE) return;
         if (p == P_DESKTOP || p == P_CLOCK || p == P_METERS) { press(p, e->serial, 1); return; }   /* (menus and pop-ups open on press) */
+        if (p == P_TRAYBTN) {   /* the arrow, or the menu button: the trays' menu; else the next (on release) */
+            ui_rect r = part_rect(P_TRAYBTN);
+            if (e->button == ui_mouse_button(UI_ACT_POPUP) || e->x >= r.x + r.w - 20) {
+                trays_menu(s, r.x, wc.top ? r.y + r.h : r.y, e->serial);
+                return;
+            }
+        }
+        if (p == P_TRAYOBJS) {   /* an object: its menu at once, or opened when released on it */
+            size_t i = trayobj_at(e->x, false);
+            if (i >= trays_n()) return;
+            if (e->button == ui_mouse_button(UI_ACT_POPUP)) {
+                ui_rect r = part_rect(P_TRAYOBJS);
+                trays_obj_menu(s, i, r.x + 2 + (double)i * (wc.h - 2 * PAD), wc.top ? r.y + r.h : r.y);
+                return;
+            }
+            wc.tray_obj_pressed = (ssize_t)i;
+            damage();
+            return;
+        }
         if (p == P_TRAY) {   /* (its menus too) */
             ui_rect r = part_rect(P_TRAY);
             double c = tray_cell();
@@ -766,6 +852,11 @@ static void wc_pointer(ui_surface *s, const ui_pointer_event *e)
         }
         wc.pressed = p;
         damage();
+    } else if (e->kind == UI_RELEASE && wc.tray_obj_pressed >= 0) {
+        size_t i = (size_t)wc.tray_obj_pressed;
+        wc.tray_obj_pressed = -1;
+        damage();
+        if (part_at(e->x, e->y) == P_TRAYOBJS && trayobj_at(e->x, false) == i) trays_open(i);
     } else if (e->kind == UI_RELEASE && wc.pressed != P_NONE) {
         int p = wc.pressed;
         wc.pressed = P_NONE;
@@ -791,19 +882,47 @@ void thebar_on_font(void (*fn)(const char *spec)) { on_font = fn; }
 static void (*on_color)(const char *hex);
 void thebar_on_color(void (*fn)(const char *hex)) { on_color = fn; }
 
+#define MIME_OSD "application/x-objectspace-objects"
+#define MIME_URIS "text/uri-list"
+
 static uint32_t wc_drag_motion(ui_surface *s, double x, double y, const char *const *mimes, size_t n, uint32_t src_actions,
                                unsigned mods, const char **mime)
 {
-    (void)s; (void)x; (void)y; (void)src_actions; (void)mods;
+    (void)s; (void)mods;
+    int p = part_at(x, y);
+    ssize_t at = -1;
+    if (p == P_TRAYOBJS || p == P_TRAYBTN) {   /* objects onto the tray: shadows of them, where dropped */
+        *mime = NULL;
+        for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_OSD)) *mime = MIME_OSD;
+        for (size_t i = 0; i < n && !*mime; i++) if (!strcmp(mimes[i], MIME_URIS)) *mime = MIME_URIS;
+        if (*mime) at = p == P_TRAYBTN ? (ssize_t)trays_n() : (ssize_t)trayobj_at(x, true);
+    }
+    if (at != wc.drop_at) { wc.drop_at = at; damage(); }
+    if (at >= 0) return src_actions & UI_DND_COPY ? UI_DND_COPY : UI_DND_MOVE;
     for (size_t i = 0; i < n; i++)
         if (!strcmp(mimes[i], "application/x-objectspace-font") || !strcmp(mimes[i], UI_MIME_COLOR)) { *mime = mimes[i]; return UI_DND_COPY; }
     return 0;
 }
 
+static void wc_drag_leave(ui_surface *s)
+{
+    (void)s;
+    if (wc.drop_at >= 0) { wc.drop_at = -1; damage(); }
+}
+
 static uint32_t wc_drop(ui_surface *s, double x, double y, const char *mime, const char *data, size_t len, uint32_t action,
                         uint32_t start_action, unsigned mods)
 {
-    (void)s; (void)x; (void)y; (void)len; (void)action; (void)start_action; (void)mods;
+    (void)s; (void)action; (void)start_action; (void)mods;
+    if (!strcmp(mime, MIME_OSD) || !strcmp(mime, MIME_URIS)) {
+        int p = part_at(x, y);
+        size_t at = p == P_TRAYOBJS ? trayobj_at(x, true) : trays_n();
+        wc.drop_at = -1;
+        damage();
+        if (p != P_TRAYOBJS && p != P_TRAYBTN) return 0;
+        trays_drop(data, len, at);
+        return UI_DND_COPY;   /* (a shadow made: the original stays where it was) */
+    }
     if (!strcmp(mime, UI_MIME_COLOR) && on_color) {   /* a colour from the Colour Palette: the scheme's bars' */
         char hex[8];
         double rgb[3];
@@ -821,7 +940,9 @@ static uint32_t wc_drop(ui_surface *s, double x, double y, const char *mime, con
 }
 
 static const ui_surface_ops wc_ops = { .draw = wc_draw, .pointer = wc_pointer, .resized = wc_resized, .close = wc_close,
-                                       .drag_motion = wc_drag_motion, .drop = wc_drop };
+                                       .drag_motion = wc_drag_motion, .drag_leave = wc_drag_leave, .drop = wc_drop };
+
+static void props_of(const char *addr) { open_properties(addr); }
 
 void thebar_open(ui_app *a, const char *desktop, bool top, void (*open_folder)(const char *path))
 {
@@ -848,6 +969,7 @@ void thebar_open(ui_app *a, const char *desktop, bool top, void (*open_folder)(c
     winlist_ext("keyboard", "report");
     build_start();
     tray_init(a, damage);   /* (the session's tray: only with the bar) */
+    trays_start(a, damage, open_folder, props_of);   /* TheBar's own trays */
 }
 
 void thebar_damage(void) { damage(); }
@@ -887,6 +1009,8 @@ void thebar_setting(const char *key, const char *val)
         }
     } else if (!strcmp(key, "meters")) wc.shown[P_METERS] = on;
     else if (!strcmp(key, "tray")) wc.shown[P_TRAY] = on;
+    else if (!strcmp(key, "trays")) wc.shown[P_TRAYBTN] = wc.shown[P_TRAYOBJS] = on;
+    else if (!strcmp(key, "tray_current")) trays_want(val);
     else if (!strcmp(key, "keyboard")) wc.shown[P_KEYBOARD] = on;
     else if (!strcmp(key, "messages")) wc.shown[P_MESSAGES] = on;
     else if (!strcmp(key, "system_buttons")) for (int q = P_LOCK; q <= P_SHUTDOWN; q++) wc.shown[q] = on;

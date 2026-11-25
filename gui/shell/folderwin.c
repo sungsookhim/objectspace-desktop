@@ -911,8 +911,11 @@ void on_event(void *arg, const cv *ev)
     if (messages_event(ev)) return;   /* (once per client: on whichever subscription) */
     if (!strcmp(name, "job")) { on_job_event(cv_get(ev, "status")); return; }
     if (setup_event(ev)) return;
-    if (launcher_event(name, sub)) return;
-    if (!strcmp(name, "folder_moved")) { folder_moved(cv_text(ev, "from"), cv_text(ev, "to")); return; }
+    if (!strcmp(name, "folder_moved")) {
+        folder_moved(cv_text(ev, "from"), cv_text(ev, "to"));
+        launcher_event(name, sub);
+        return;
+    }
     if (!strcmp(name, "in_use")) { on_in_use_event(ev); return; }
     if (!strcmp(name, "trash_changed")) { trash_changed(); return; }
     if (!strcmp(name, "drives_changed")) { drives_changed_event(); return; }
@@ -922,6 +925,11 @@ void on_event(void *arg, const cv *ev)
         for (struct folder *f = folders; f; f = f->next) if (!f->closing) bg_read(f);
         return;
     }
+    /* (after the events sent once per client, on whichever subscription:
+     * in_use, trash_changed, ... came on the Launcher's or the trays'
+     * subscription too, and were taken for their folders' changes) */
+    if (launcher_event(name, sub)) return;
+    if (trays_event(name, sub)) return;
     for (struct folder *f = folders; f; f = f->next) {
         if (f->bg_sub && f->bg_sub == sub) {   /* the folder object itself: its Background */
             if (!f->closing && !strcmp(name, "object_changed")) bg_read(f);

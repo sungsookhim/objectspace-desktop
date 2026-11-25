@@ -27,9 +27,15 @@ static void protect(const char *target);
 
 static void first_start_shadow_done(void *arg, const char *link, const char *error)
 {
-    bool keep = arg != NULL;
+    struct fs_shadow *q = arg;
     if (!link && error) log_msg("first start: a shadow was not made: %s", error);
-    if (link && keep) protect(link);   /* (Objectspace's own: Prevent delete, as step 11 gives the others) */
+    if (link && q->keep) protect(link);   /* (Objectspace's own: Prevent delete, as step 11 gives the others) */
+    if (link && q->x >= 0) {   /* its place in its folder (a tray's order: left to right) */
+        char *paths[1] = { (char *)link };
+        int64_t x = q->x, y = 0;
+        job_placed(q->folder, paths, &x, &y, 1);
+    }
+    free(q);
     fs_busy = false;
     fs_next();
 }
@@ -41,17 +47,17 @@ static void fs_next(void)
     fs_queue = q->next;
     if (!fs_queue) fs_tail = &fs_queue;
     fs_busy = true;
-    osd_shadow_create(q->target, q->folder, first_start_shadow_done, q->keep ? (void *)1 : NULL);
-    free(q);
+    osd_shadow_create(q->target, q->folder, first_start_shadow_done, q);   /* (q freed when it is made) */
 }
 
 /* A shadow the first start makes; keep: Prevent delete on it (Objectspace's
  * own), not on what the user is meant to rearrange (a tray's shadows). */
-static void first_start_shadow_as(const char *target, const char *folder, bool keep)
+static void first_start_shadow_as(const char *target, const char *folder, bool keep, int64_t x)
 {
     struct fs_shadow *q = calloc(1, sizeof *q);
     if (!q) return;
     q->keep = keep;
+    q->x = x;
     snprintf(q->target, sizeof q->target, "%s", target);
     snprintf(q->folder, sizeof q->folder, "%s", folder);
     *fs_tail = q;
@@ -59,7 +65,7 @@ static void first_start_shadow_as(const char *target, const char *folder, bool k
     fs_next();
 }
 
-static void first_start_shadow(const char *target, const char *folder) { first_start_shadow_as(target, folder, true); }
+static void first_start_shadow(const char *target, const char *folder) { first_start_shadow_as(target, folder, true, -1); }
 
 /* the desktop's shadows of System Setup (0.1 put one there) */
 static void find_setup_shadow(const char *vol, const char *id, void *user)
@@ -311,12 +317,13 @@ void first_start_done(void *arg)
             char first[PATH_MAX + 16], loc[OSD_ID_LEN + 8], programs[PATH_MAX];
             snprintf(first, sizeof first, "%s/Default", j->trays);
             first_start_shadow(j->trays, j->sys);
-            first_start_shadow_as(j->sys, first, false);
+            int64_t place = 0;   /* (TheBar shows a tray in its places' order: 10 apart, as trays.c keeps them) */
+            first_start_shadow_as(j->sys, first, false, place);
             data_dir("Programs", programs, sizeof programs);
             struct stat pst;
-            if (stat(programs, &pst) == 0) first_start_shadow_as(programs, first, false);
-            if (j->prompt_id[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->prompt_id); first_start_shadow_as(loc, first, false); }
-            if (j->finder[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->finder); first_start_shadow_as(loc, first, false); }
+            if (stat(programs, &pst) == 0) first_start_shadow_as(programs, first, false, place += 10);
+            if (j->prompt_id[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->prompt_id); first_start_shadow_as(loc, first, false, place += 10); }
+            if (j->finder[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->finder); first_start_shadow_as(loc, first, false, place += 10); }
         }
         if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
         if (j->from < 11) protect_pending = true;   /* step 11 (0.4): Prevent delete, once they are noted (defaults_done) */

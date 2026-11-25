@@ -290,7 +290,7 @@ struct first_start {
 /* The first start's shadows, made one after another: the desktop places
  * new icons in the order they appear, so a new desktop is always laid out
  * the same (concurrently, My System and Programs swapped places at random). */
-struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; bool keep; struct fs_shadow *next; };   /* keep: Prevent delete on it */
+struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; bool keep; int64_t x; struct fs_shadow *next; };   /* keep: Prevent delete on it; x >= 0: its place (a tray's order) */
 #define NSETUP 9
 #define SETUP_IN_SYSTEM 6   /* setup_classes from this one on */
 
