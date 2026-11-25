@@ -35,7 +35,11 @@ Tagged `v0.3`; the RPMs are attached to its GitHub release. All eleven steps of 
 
 The object-property refactor (R0-R6) and the eleven steps of [v0.4-plan.md](v0.4-plan.md) are done, with the owner's changes along the way (a folder's own title bar colour; folder windows joining a work area's group); 0.4.0 was built but not released (the owner's): 0.4.1 adds WPS Terminal and the `wps` command ([cli-design.md](cli-design.md), steps 12 to 14) and is the release: tagged `v0.4.1`, the RPMs (with `wps-devel`) attached to its GitHub release. What it holds is in the [release notes](release-notes-0.4.1.md).
 
-**Next, 0.5 (the owner's, 2026-11-24):** getting ready to be public: a name of its own in place of IBM's (WPS, Workplace Shell, the WarpCenter, the LaunchPad, the WP* classes), the repository's licenses and documents, and a welcome for contributors; see **Proposed order**. The look of other programs moves to 0.6.
+## Version 0.5 (released 2026-11-24)
+
+The project made public under a name of its own, **Objectspace** (the repository `objectspace-desktop`, the commands `osd`, TheBar and Launcher), with the licences, notices, documents for newcomers and contributors, and continuous integration; the seven steps of [v0.5-plan.md](v0.5-plan.md). Tagged `v0.5.0`, the RPMs attached to its GitHub release; what it holds is in the [release notes](release-notes-0.5.md). The project's history before it: [HISTORY.md](HISTORY.md).
+
+**Next, 0.6:** see **Proposed order**.
 
 ## Open and deferred work
 
@@ -86,7 +90,7 @@ Everything still open after 0.4, by area; the version each goes into is in **Pro
 
 - **Network file systems (NFS, SMB):** extended attributes vary, remote changes are not reported; the Network object.
 - **Undo for jobs;** disk full and quota errors during jobs.
-- **Central objects:** deduplication against local `.wpobj` files; cleanup after their folder is deleted outside WPS; becoming `.wpobj` files when moved into a folder that keeps files.
+- **Central objects:** deduplication against local `.wpobj` files; cleanup after their folder is deleted outside WPS; becoming `.osdobj` files when moved into a folder that keeps files.
 - **Find:** titles, classes and settings are not searched; nothing is indexed.
 - **Scale:** a per-folder index beyond about a million entries; the watch helper with many thousands of folders.
 - **Opt-in shared layouts** for team folders.
@@ -286,7 +290,7 @@ A to do, after 0.2 (with network file systems below).
       - font sizes follow GNOME's text scaling; Edit font gets a style list.
    5. **Work Area folders** (M–L; the compositor, wpsd's tracking, the session): a folder set as a work area groups the programs opened from it; opening, minimizing and closing the folder do the same to their windows; restored at login. Builds on the in-use tracking, the compositor's per-program window control and the restored windows of 0.2; inside GNOME through the extension.
    6. **Fixes and tests carried** (S): the flaky and unrerun tests above; Open With's list read off wpsd's loop; the LaunchPad drawer cascade opening outward on the left; the release (RPMs, notes, tag).
-4. **0.5 Ready to be public** (the owner's, 2026-11-24: the repository opens to the public when 0.5 is done; the name **Objectspace**, the repository `objectspace-desktop`, the commands `osd`, TheBar and Launcher: [v0.5-names.md](v0.5-names.md); the steps: [v0.5-plan.md](v0.5-plan.md)). No new features; the project made safe and welcoming to publish:
+4. **0.5 Ready to be public.** **Released 2026-11-24** as Objectspace 0.5.0 ([release notes](release-notes-0.5.md)); the repository public the same day. (The owner's, 2026-11-24: the repository opens to the public when 0.5 is done; the name **Objectspace**, the repository `objectspace-desktop`, the commands `osd`, TheBar and Launcher: [v0.5-names.md](v0.5-names.md); the steps: [v0.5-plan.md](v0.5-plan.md)). No new features; the project made safe and welcoming to publish:
    1. **A name of its own** (L; the whole tree, mostly mechanical). The code is written from scratch, but some names are IBM's products' (trademarks) or mirror IBM's interfaces; they are replaced, OS/2 kept only as a description of where the ideas come from:
       - **The product:** WPS and "Workplace Shell" become the new name, everywhere a user or another program sees it: the commands (`wps`, `wpsd`, `wpsctl`, `wps-shell`, `wps-terminal`, `wps-compositor`, `wps-session`, `wps-watchd`, `wps-plughost`), the packages and the session's name on the login screen, the app IDs and D-Bus names (`org.wps.*`), the GNOME extension (`wps@wps-linux`), the folders and files (`~/.config/wps`, `~/.local/share/wps`, `.wpsicon`, `.wpobj`), the extended attributes (`user.wps.*`), the environment (`WPS_*`), the repository (`wps-linux`). Today about 290 files, 4,700 lines.
       - **IBM's product names for parts:** the WarpCenter and the LaunchPad (OS/2's; also another company's "Launchpad") get names of their own (61 and 54 files). Generic words stay (Font Palette, Colour Palette, Scheme Palette, Work Area, Templates, Shadows, System Setup).
@@ -316,7 +320,7 @@ A to do, after 0.2 (with network file systems below).
 6. **0.7 Network and jobs** (the service and the object core; was 0.6):
    - **The Network object** and network file systems (NFS, SMB).
    - **Undo for jobs;** disk full and quota errors.
-   - **Central objects:** deduplication, cleanup, becoming `.wpobj` files.
+   - **Central objects:** deduplication, cleanup, becoming `.osdobj` files.
    - **Find** in titles, classes and settings; an index.
    - **File types from `user.mime_type`** and the Type page (after 0.4, the owner's).
    - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).

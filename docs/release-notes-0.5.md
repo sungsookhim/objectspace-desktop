@@ -1,6 +1,6 @@
 # Objectspace 0.5: a name of its own, and public
 
-Released 2026-11-25. Up to 0.4.1 this project was private and named WPS (a Workplace Shell for Linux). 0.5 is its first public version, under a name of its own, **Objectspace**, so as not to use the name of IBM's Workplace Shell, which inspired it. Besides the names, it brings a handful of fixes and small additions; nothing else changes in how it works. See [HISTORY.md](HISTORY.md).
+Released 2026-11-24. Up to 0.4.1 this project was private and named WPS (a Workplace Shell for Linux). 0.5 is its first public version, under a name of its own, **Objectspace**, so as not to use the name of IBM's Workplace Shell, which inspired it. Besides the names, it brings a handful of fixes and small additions; nothing else changes in how it works. See [HISTORY.md](HISTORY.md).
 
 OS/2 and Workplace Shell are trademarks of IBM. Objectspace is not affiliated with or endorsed by IBM.
 
