@@ -4,6 +4,8 @@
 
 Every file, folder and program on the desktop is an object: it has a class, settings that stay with it when it is moved or copied, and a properties notebook. Objects can have shadows (links that follow them), templates make new ones, and a setting can be made for one object, for a file type, or for a whole class. Objectspace draws its own desktop, folder windows, menus and notebooks, and runs as its own Wayland session or as the desktop inside GNOME.
 
+The aim is not to replicate the Workplace Shell as it was. Its object model and ways of working are the base; on them, Objectspace sets out to be useful on a modern Linux system: a Wayland session or the desktop inside GNOME, every other program's windows framed and listed, files changed by any program followed live, search, icon themes and sizes, high-resolution screens, input methods for every language, removable drives that carry their objects' settings, a terminal and a command for scripts. Where OS/2 had an answer, Objectspace starts from it; where today's systems need something OS/2 never had, it adds it in the same spirit.
+
 ![The desktop: a folder window, TheBar at the bottom, the Trash Can in its corner](docs/screenshots/desktop.png)
 
 | An object's menu | Its properties notebook |
