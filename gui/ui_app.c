@@ -672,6 +672,7 @@ static void p_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
     (void)p; (void)t;
     ui_app *a = d;
     a->last_serial = serial;
+    a->alt_alone = 0;   /* (Alt with a click: no tap) */
     int b = button == BTN_LEFT ? UI_BTN1 : button == BTN_RIGHT ? UI_BTN2 : button == BTN_MIDDLE ? UI_BTN3 : 0;
     if (!b) return;
     if (ui_mouse.left_handed && b != UI_BTN3) b = b == UI_BTN1 ? UI_BTN2 : UI_BTN1;
@@ -785,6 +786,18 @@ static void k_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t, u
         a->repeat_key = 0;
         timerfd_settime(a->repeat_fd, 0, &its, NULL);
         return;
+    }
+    /* an Alt tap: its release, with nothing pressed between */
+    bool is_alt = sym == XKB_KEY_Alt_L || sym == XKB_KEY_Alt_R || sym == XKB_KEY_Meta_L || sym == XKB_KEY_Meta_R;
+    if (state == WL_KEYBOARD_KEY_STATE_PRESSED) a->alt_alone = is_alt ? key + 1 : 0;
+    else if (a->alt_alone == key + 1) {
+        a->alt_alone = 0;
+        ui_surface *s = ui_menu_key_surface();
+        if (!s) s = a->key_focus;
+        if (s && s->ops->key) {
+            ui_key_event e = { .sym = sym, .mods = a->mods, .alt_tap = true };
+            s->ops->key(s, &e);
+        }
     }
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         send_key(a, key, false);

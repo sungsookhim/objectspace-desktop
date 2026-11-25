@@ -177,6 +177,11 @@ typedef struct {
     char utf8[8];
     unsigned mods;
     bool repeat;
+    /* Alt pressed and released alone (nothing else pressed or clicked
+     * meanwhile): sent on the release, sym the Alt key's (a menu bar's
+     * keyboard way in, as other systems' Alt; Alt+F4 and Alt with a
+     * click are no tap). */
+    bool alt_tap;
 } ui_key_event;
 
 /* Mouse mappings, as on OS/2's Mouse object (ui_mouse.c; <config>/mouse.conf).

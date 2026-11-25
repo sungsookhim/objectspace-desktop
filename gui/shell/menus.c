@@ -149,6 +149,7 @@ void menu_chosen(void *arg, int64_t id)
             break;
         }
     }
+    menubar_closed(f);   /* (one opened from the folder's menu bar: it closes with it) */
     menu_ctx_free(m);
 }
 

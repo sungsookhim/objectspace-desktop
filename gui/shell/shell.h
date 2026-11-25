@@ -145,6 +145,9 @@ struct folder {
     char filter[128];
     bool find_x_down;
     int find_place;          /* its View page's Search field: 0 top, 1 bottom, 2 floating */
+    bool menubar_on;         /* its View page's Menu bar (0.6 step 3, menubar.c) */
+    bool menubar_temp;       /* shown for a moment (Alt, F10) */
+    int menubar_open;        /* the bar's menu open (-1: none) */
     char msg_last[256];      /* the desktop's: the message its box last showed */
     bool msg_hidden, msg_sticky;
     int arrange_offered;     /* -1 not known yet; 1: its overlapping icons' Arrange offered once already */
@@ -515,6 +518,15 @@ struct folder *open_desktop(const char *path);
 int desktop_arrange_hold(void);   /* the desktop's first arrangement: 1 waits for the first start, 2 again as its shadows come */
 void desktop_keep_corner(struct folder *f);   /* the Trash Can's corner kept through it */
 struct folder *open_window(const char *path, ui_view view, bool desktop);
+
+/* A folder window's menu bar (menubar.c). */
+double menubar_h(void);
+bool menubar_shown(const struct folder *f);
+void menubar_draw(struct folder *f, cairo_t *cr);
+void menubar_open(struct folder *f, int i);
+bool menubar_pointer(struct folder *f, const ui_pointer_event *e);
+bool menubar_key(struct folder *f, const ui_key_event *e);
+void menubar_closed(struct folder *f);
 int main(int argc, char **argv);
 
 #endif

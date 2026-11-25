@@ -12,6 +12,7 @@
 static ui_rect find_row(struct folder *f)
 {
     ui_rect c = ui_frame_client(f->win);
+    if (menubar_shown(f)) { c.y += menubar_h(); c.h -= menubar_h(); }   /* (below the menu bar) */
     if (f->find_place == 1) return (ui_rect){ c.x, c.y + c.h - STATUS_H - FIND_H, c.w, FIND_H };
     if (f->find_place == 2) {
         double w = fmin(c.w - 40, 420);
@@ -298,6 +299,7 @@ void win_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
     ui_frame_draw(s, cr, clip, t);
     ui_container_draw(f->cont, cr, clip);
     if (f->desktop) { desk_msg_draw(f, cr, clip); return; }   /* its status line: a box */
+    menubar_draw(f, cr);
     if (f->find_on && f->find_place != 2) find_draw(f, cr);   /* (floating: over the list, with it) */
     ui_rect c = ui_frame_client(s);
     ui_rect st = { c.x, c.y + c.h - STATUS_H, c.w, STATUS_H };
@@ -332,6 +334,7 @@ void layout(struct folder *f)
 {
     ui_rect c = ui_frame_client(f->win);
     if (!f->desktop) c.h -= STATUS_H;
+    if (menubar_shown(f)) { c.y += menubar_h(); c.h -= menubar_h(); }
     if (f->find_on && f->find_place == 0) { c.y += FIND_H; c.h -= FIND_H; }
     if (f->find_on && f->find_place == 1) c.h -= FIND_H;
     ui_container_layout(f->cont, c);
@@ -367,6 +370,7 @@ void win_pointer(ui_surface *s, const ui_pointer_event *e)
     }
     size_t before = ui_container_selected_count(f->cont);
     ui_hit h = ui_frame_hit(s, e->x, e->y);
+    if (h == UI_HIT_CLIENT && menubar_pointer(f, e)) return;   /* (its menu bar's) */
     bool used = false;
     if (e->kind != UI_PRESS || h != UI_HIT_CLIENT) used = ui_frame_pointer(s, e);
     if (!used && f->find_on && find_pointer(f, e)) return;
@@ -387,6 +391,8 @@ void win_key(ui_surface *s, const ui_key_event *e)
 {
     struct folder *f = ui_surface_data(s);
     size_t before = ui_container_selected_count(f->cont);
+    if (menubar_key(f, e)) return;   /* Alt tapped, F10: the menu bar */
+    if (e->alt_tap) return;
     if ((e->mods & UI_MOD_CTRL) && (e->sym == XKB_KEY_w || e->sym == XKB_KEY_W)) { win_close(s); return; }
     /* Find in this folder and its subfolders (G4): Ctrl+Shift+F; Ctrl+F:
      * the search field, this folder only (v0.3-design 6) */

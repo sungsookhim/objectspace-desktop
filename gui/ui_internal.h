@@ -129,6 +129,7 @@ struct ui_app {
     int repeat_fd;
     int repeat_rate, repeat_delay;
     uint32_t repeat_key;
+    uint32_t alt_alone;   /* an Alt key pressed with nothing else yet (its key code + 1; 0: none) */
     int wake_fd;
     pthread_mutex_t post_mu;
     struct post *posts, *posts_tail;
