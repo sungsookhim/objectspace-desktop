@@ -51,6 +51,9 @@ Everything still open after 0.4, by area; the version each goes into is in **Pro
 
 ### Folder windows
 
+- **A menu bar in folder windows** (the owner's, 2026-11-24; Warp 4's folders had one): the folder's menus (File, Edit, View, Selected, Help) across the top of its window; on or off per folder, or for all folders through the class (a View page setting), and shown while Alt is held when off, as other systems do, then gone again.
+- **A Gallery view** (the owner's, 2026-11-24): large previews of pictures and documents, one selected shown big with the others in a strip; it takes the Preview view's thumbnails (below), made off the UI thread and cached.
+- **A Column view** (the owner's, 2026-11-24; NeXTSTEP's browser): the folder and its subfolders side by side in columns, a click on a folder opening its contents in the next column, the path along the top; a fourth view beside Icon, Tree and Details.
 - **Sort by size:** folders and shadows sort by their own stored size (folders first would be tidier).
 - **Big folders:** a batch of changes costs time in proportion to the folder; the selection survives a change by name only up to 256 items.
 
@@ -308,7 +311,8 @@ A to do, after 0.2 (with network file systems below).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
    - **Sharp X11 programs on scaled screens.**
    - **Suspend after idle.**
-   - **A Preview view** (pictures in place of their icons).
+   - **A Preview view** (pictures in place of their icons), and with it a **Gallery view** (large previews).
+   - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
 6. **0.7 Network and jobs** (the service and the object core; was 0.6):
    - **The Network object** and network file systems (NFS, SMB).
    - **Undo for jobs;** disk full and quota errors.
