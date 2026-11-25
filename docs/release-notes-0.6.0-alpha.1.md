@@ -7,8 +7,10 @@ Released 2026-11-25. **A preview of 0.6, not a finished release**: TheBar's tray
 On Fedora 45, download the RPMs from this release, then:
 
 ```
-sudo dnf install ./objectspace-0.6.0~alpha.1-*.fc45.x86_64.rpm ./objectspace-gnome-shell-extension-0.6.0~alpha.1-*.fc45.noarch.rpm
+sudo dnf install ./objectspace-0.6.0.alpha.1-*.fc45.x86_64.rpm ./objectspace-gnome-shell-extension-0.6.0.alpha.1-*.fc45.noarch.rpm
 ```
+
+(GitHub shows the files' `~` as `.`; inside, the version is `0.6.0~alpha.1`, which RPM puts before 0.6.0 and after 0.5.0.)
 
 Over 0.5.0 it is an upgrade: log out and in again afterwards. Your objects and settings are kept; at the first login the desktop gets the new objects (Find in My System, the Trays folder and the first tray).
 
