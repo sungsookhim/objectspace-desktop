@@ -14,10 +14,12 @@
  *     K TAB window-list
  *     I TAB <index> TAB <count> TAB xkb|ibus TAB <name>   the input source now
  *     S TAB <x,y,w,h> ...   the screens' usable areas in the desktop's window, the primary first
+ *     X TAB <scale> TAB <GDK_SCALE>   the scale X11 programs draw at (xscale.c); GDK_SCALE for programs (0: none)
  * and reads commands from its standard output, one a line:
  *     activate|restore|minimize|maximize|close|terminate TAB <id>
  *     lock   find   shutdown TAB poweroff|reboot|logout
  *     keyboard TAB next|prev|<index>   panel TAB top|bottom (TheBar's edge)
+ *     x11-scale TAB on|off   X11 programs drawn at the screens' scale (sharp)
  * If it ends, it is started again after a delay that grows while it
  * keeps failing (from a second up to half a minute).
  *
@@ -382,6 +384,12 @@ static void resend_all(void)
     }
 }
 
+/* A line for the desktop (X: the scale X11 programs draw at, xscale.c). */
+void desktop_send(const char *line)
+{
+    if (d.in_fd >= 0) send_line(line);
+}
+
 /* Where the screens are in the desktop's window (place_desktop):
  *     S TAB x,y,w,h ...   each screen's usable area, the primary first
  * sent when it changes, and again to a desktop started anew. */
@@ -449,6 +457,7 @@ static void command(char *line)
         return;
     }
     if (!strcmp(line, "panel")) { comp_panel_edge(!strcmp(arg, "top")); return; }
+    if (!strcmp(line, "x11-scale")) { xscale_set_enabled(strcmp(arg, "off") != 0); return; }   /* the System's "Scale X11 programs themselves" */
     if (!strcmp(line, "place")) {   /* "place APP TITLE X Y": the desktop's next such window goes there */
         char app[128], title[256] = "";
         int x, y;

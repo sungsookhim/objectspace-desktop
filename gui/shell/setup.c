@@ -175,6 +175,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "confirm_delete")) confirm_delete = !strcmp(val, "1");
             else if (!strcmp(key, "confirm_folder_delete")) confirm_folder_delete = !strcmp(val, "1");
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
+            else if (!strcmp(key, "x11_scale")) winlist_ext("x11-scale", strcmp(val, "0") ? "on" : "off");   /* (the compositor's; xscale.c) */
             else if (!strcmp(key, "hatch_open") && hatch_open_all != !strcmp(val, "1")) {
                 hatch_open_all = !strcmp(val, "1");   /* every open icon hatched too: every window again */
                 for (struct folder *f = folders; f; f = f->next)

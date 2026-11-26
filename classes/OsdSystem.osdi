@@ -11,6 +11,7 @@ property border : choice "visible,thin,none" = "visible" page "Window" label "Fr
 property shadows : choice "off,subtle,strong" = "off" page "Window" label "Window shadows" store OsdSetup text
 property translucency : choice "off,title bars,menus" = "off" page "Window" label "Translucency" store OsdSetup text
 property title_layout : choice "normal,mirrored,compact" = "normal" page "Window" label "Title-bar layout" store OsdSetup text
+property x11_scale : checkbox = "1" page "Window" label "Scale X11 programs themselves (sharp on scaled screens)" store OsdSetup text
 property confirm_delete : checkbox = "1" page "Confirmations" label "Confirm on delete" store OsdSetup text
 property confirm_folder_delete : checkbox = "1" page "Confirmations" label "Confirm on folder delete" store OsdSetup text
 property restore_windows : checkbox = "1" page "Login" label "Restore open windows at login" store OsdSetup text

@@ -319,10 +319,11 @@ static void open_req(const char *target, bool confirm, const char *const *files,
     /* and this session's input-method and desktop settings (osdd may have
      * started before the session gave them: Hangul was not typed in
      * programs opened from Objectspace) */
-    static const char *const keys[] = { "GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE" };
-    char envs[5][300];
+    static const char *const keys[] = { "GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
+                                        "GDK_SCALE" };   /* (X11 programs at the screens' scale: the compositor's, 0.7) */
+    char envs[6][300];
     size_t ne = 0;
-    for (size_t i = 0; i < 5; i++) {
+    for (size_t i = 0; i < 6; i++) {
         const char *v = getenv(keys[i]);
         if (v && *v) snprintf(envs[ne++], sizeof envs[0], "%s=%s", keys[i], v);
     }

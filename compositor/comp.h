@@ -155,6 +155,14 @@ void comp_place_next(const char *app, const char *title, int x, int y);
 struct wlr_box comp_window_geometry(struct toplevel *t);   /* the desktop says where TheBar goes */
 struct wlr_output *comp_primary(void);   /* the primary screen (GNOME's, else the first) */
 struct wlr_box comp_primary_box(void);    /* ... its box in the layout */
+void desktop_send(const char *line);       /* desktop.c: a line for the desktop */
+/* xscale.c: X11 programs at the screens' scale (sharp) */
+extern double comp_xscale;               /* the scale X11 programs draw at (1: none) */
+void xscale_init(void);
+void xscale_update(void);                /* the screens or their scales changed */
+void xscale_set_enabled(bool on);
+void xscale_ready(void);                 /* XWayland is up */
+void comp_x11_rescaled_from(double old);  /* osd-compositor.c: X11 windows placed again at the new scale */
 void desktop_screens(const char *line);   /* desktop.c: the S line (where the screens are), when it changed */
 void comp_screens_changed(void);   /* sizes changed: the desktop, Launcher, lock screen fit again */   /* the scheme or font changed */
 void comp_before_lock(void);     /* nothing has the keyboard or the pointer */

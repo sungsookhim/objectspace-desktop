@@ -28,6 +28,10 @@ static void on_window_events(void *arg, int fd, short rev)
             else if (thebar_is_open()) thebar_press("desktop");
         }
         else if (k >= 2 && !strcmp(f[0], "S")) desktop_screens_line(f, k);   /* where the screens are (0.7) */
+        else if (k >= 3 && !strcmp(f[0], "X")) {   /* the scale X11 programs draw at: GDK_SCALE for those started from here */
+            if (atoi(f[2]) >= 2) setenv("GDK_SCALE", f[2], 1);
+            else unsetenv("GDK_SCALE");
+        }
         else if (k >= 5 && !strcmp(f[0], "I")) thebar_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };

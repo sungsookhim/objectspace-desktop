@@ -112,19 +112,60 @@ struct wl_client *view_client(struct toplevel *t)
 struct wlr_box view_geo(struct toplevel *t)
 {
     if (t->xdg) return t->xdg->base->geometry;
-    return (struct wlr_box){ 0, 0, t->xw->width, t->xw->height };
+    /* (an X11 window's pixels at the scale X11 programs draw at: logical
+     * size, xscale.c) */
+    return (struct wlr_box){ 0, 0, (int)lround(t->xw->width / comp_xscale), (int)lround(t->xw->height / comp_xscale) };
 }
 
 static struct wlr_surface *view_surface(struct toplevel *t) { return t->xdg ? t->xdg->base->surface : t->xw->surface; }
 static bool view_ready(struct toplevel *t) { return t->xdg ? t->xdg->base->initialized : true; }
 static void view_schedule(struct toplevel *t) { if (t->xdg) wlr_xdg_surface_schedule_configure(t->xdg->base); }
 
-/* An X11 window is told where it is on the screen (its menus open there). */
+/* An X11 window is told where it is on the screen (its menus open there),
+ * and its size (w, h logical; 0: as it is), in X11's pixels: the logical
+ * ones times the scale X11 programs draw at (xscale.c). */
 static void x11_configure(struct toplevel *t, int w, int h)
 {
     ui_rect c = t->ssd ? client_rect(t) : (ui_rect){ 0, 0, 0, 0 };
-    wlr_xwayland_surface_configure(t->xw, (int16_t)(t->tree->node.x + c.x), (int16_t)(t->tree->node.y + c.y),
-                                   (uint16_t)(w > 0 ? w : t->xw->width), (uint16_t)(h > 0 ? h : t->xw->height));
+    double k = comp_xscale;
+    wlr_xwayland_surface_configure(t->xw, (int16_t)lround((t->tree->node.x + c.x) * k), (int16_t)lround((t->tree->node.y + c.y) * k),
+                                   (uint16_t)(w > 0 ? lround(w * k) : t->xw->width), (uint16_t)(h > 0 ? lround(h * k) : t->xw->height));
+}
+
+/* The scale X11 programs draw at changed (xscale.c): each X11 window told
+ * its place and size again in X11's new pixels (its logical size kept). */
+void comp_x11_rescaled_from(double old)
+{
+    struct toplevel *t;
+    wl_list_for_each(t, &server.toplevels, link)
+        if (t->xw && t->mapped) x11_configure(t, (int)lround(t->xw->width / old), (int)lround(t->xw->height / old));
+}
+
+/* How a surface's own coordinates compare with the compositor's: an X11
+ * one's are X11's pixels (times the scale X11 programs draw at). */
+static double surface_k(struct wlr_surface *s)
+{
+    return comp_xscale != 1 && s && wlr_xwayland_surface_try_from_wlr_surface(s) ? comp_xscale : 1;
+}
+
+/* X11 surfaces shown at 1/scale of their pixels (not stretched): each
+ * buffer of one sized so, before a frame (wlroots sizes it as the
+ * surface says at each commit). */
+static void fit_x11_buffer(struct wlr_scene_buffer *b, int sx, int sy, void *data)
+{
+    (void)sx; (void)sy; (void)data;
+    struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(b);
+    if (!ss || !wlr_xwayland_surface_try_from_wlr_surface(ss->surface)) return;
+    int w = (int)lround(ss->surface->current.width / comp_xscale), h = (int)lround(ss->surface->current.height / comp_xscale);
+    if (w > 0 && h > 0 && (b->dst_width != w || b->dst_height != h)) wlr_scene_buffer_set_dest_size(b, w, h);
+}
+
+static void fit_x11_buffers(void)
+{
+    static bool was_scaled;
+    if (comp_xscale == 1 && !was_scaled) return;
+    was_scaled = comp_xscale != 1;
+    wlr_scene_node_for_each_buffer(&server.scene->tree.node, fit_x11_buffer, NULL);
 }
 
 static void view_move(struct toplevel *t, int x, int y)
@@ -682,7 +723,8 @@ static void process_motion(uint32_t time)
         return;
     }
     if (held.surface && held.surface == s->seat->pointer_state.focused_surface && s->seat->pointer_state.button_count > 0) {
-        wlr_seat_pointer_notify_motion(s->seat, time, s->cursor->x - held.ox, s->cursor->y - held.oy);
+        double k = surface_k(held.surface);
+        wlr_seat_pointer_notify_motion(s->seat, time, (s->cursor->x - held.ox) * k, (s->cursor->y - held.oy) * k);
         return;
     }
     double sx, sy;
@@ -707,8 +749,9 @@ static void process_motion(uint32_t time)
         return;
     }
     s->cursor_image = NULL;   /* the program sets its own */
-    wlr_seat_pointer_notify_enter(s->seat, surface, sx, sy);
-    wlr_seat_pointer_notify_motion(s->seat, time, sx, sy);
+    double k = surface_k(surface);
+    wlr_seat_pointer_notify_enter(s->seat, surface, sx * k, sy * k);
+    wlr_seat_pointer_notify_motion(s->seat, time, sx * k, sy * k);
 }
 
 /* While something is dragged (drag and drop between or within programs):
@@ -744,8 +787,9 @@ static void drag_motion(uint32_t time)
     ui_hit part;
     window_at(s->cursor->x, s->cursor->y, &surface, &sx, &sy, &part);
     if (!surface) { wlr_seat_pointer_clear_focus(s->seat); return; }
-    wlr_seat_pointer_notify_enter(s->seat, surface, sx, sy);
-    wlr_seat_pointer_notify_motion(s->seat, time, sx, sy);
+    double k = surface_k(surface);
+    wlr_seat_pointer_notify_enter(s->seat, surface, sx * k, sy * k);
+    wlr_seat_pointer_notify_motion(s->seat, time, sx * k, sy * k);
 }
 
 static void frame_button(struct toplevel *t, ui_hit part)
@@ -1196,6 +1240,7 @@ static void on_output_frame(struct wl_listener *l, void *data)
         wlr_scene_output_send_frame_done(so, &now);
         return;
     }
+    fit_x11_buffers();   /* (X11 windows at 1/scale: xscale.c) */
     struct wlr_output_state st;
     wlr_output_state_init(&st);
     if (wlr_scene_output_build_state(so, &st, NULL)) {
@@ -1519,6 +1564,7 @@ static void on_new_output(struct wl_listener *l, void *data)
  * screen and the background fit. */
 void comp_screens_changed(void)
 {
+    xscale_update();   /* (the scale X11 programs draw at; XWayland told where the screens are) */
     struct toplevel *t;
     struct wlr_box ob = first_output_box();
     wl_list_for_each(t, &server.toplevels, link) {
@@ -2053,12 +2099,12 @@ static void x_request_configure(struct wl_listener *l, void *data)
     if (!t->mapped) {
         /* where it asks to be (placed when it is shown) */
         ui_rect c = t->ssd ? client_rect(t) : (ui_rect){ 0, 0, 0, 0 };
-        wlr_scene_node_set_position(&t->tree->node, e->x - (int)c.x, e->y - (int)c.y);
+        wlr_scene_node_set_position(&t->tree->node, (int)lround(e->x / comp_xscale) - (int)c.x, (int)lround(e->y / comp_xscale) - (int)c.y);
         wlr_xwayland_surface_configure(t->xw, e->x, e->y, e->width, e->height);
         return;
     }
     if (t->maximized) { x11_configure(t, 0, 0); return; }   /* it stays as it is */
-    x11_configure(t, e->width, e->height);   /* its size; it stays where it is */
+    x11_configure(t, (int)lround(e->width / comp_xscale), (int)lround(e->height / comp_xscale));   /* its size; it stays where it is */
 }
 
 static void x_request_activate(struct wl_listener *l, void *data)
@@ -2113,7 +2159,7 @@ static void u_map(struct wl_listener *l, void *data)
     (void)data;
     struct unmanaged *u = wl_container_of(l, u, map);
     u->tree = wlr_scene_subsurface_tree_create(server.layer_palette, u->xw->surface);
-    wlr_scene_node_set_position(&u->tree->node, u->xw->x, u->xw->y);
+    wlr_scene_node_set_position(&u->tree->node, (int)lround(u->xw->x / comp_xscale), (int)lround(u->xw->y / comp_xscale));
     if (wlr_xwayland_surface_override_redirect_wants_focus(u->xw)) {
         struct wlr_keyboard *kb = wlr_seat_get_keyboard(server.seat);
         if (kb) wlr_seat_keyboard_notify_enter(server.seat, u->xw->surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
@@ -2152,7 +2198,7 @@ static void u_set_geometry(struct wl_listener *l, void *data)
 {
     (void)data;
     struct unmanaged *u = wl_container_of(l, u, set_geometry);
-    if (u->tree) wlr_scene_node_set_position(&u->tree->node, u->xw->x, u->xw->y);
+    if (u->tree) wlr_scene_node_set_position(&u->tree->node, (int)lround(u->xw->x / comp_xscale), (int)lround(u->xw->y / comp_xscale));
 }
 
 static void u_destroy(struct wl_listener *l, void *data)
@@ -2234,6 +2280,7 @@ static void on_xwayland_ready(struct wl_listener *l, void *data)
         if (b) wlr_xwayland_set_cursor(server.xwayland, b, (int32_t)im->hotspot_x, (int32_t)im->hotspot_y);
     }
     DBG("XWayland ready on %s\n", server.xwayland->display_name);
+    xscale_ready();
 }
 
 /* Popups (menus): in their parent's tree, kept on the screen. */
@@ -2838,6 +2885,7 @@ int main(int argc, char **argv)
          * the last goes, and IBus's X11 part (ibus-x11 --kill-daemon) took
          * IBus down with it (Hangul stopped after a few letters). Nested
          * and in tests it starts when needed. */
+        xscale_init();   /* (its xdg-output: before XWayland binds) */
         s->xwayland = wlr_xwayland_create(s->display, s->compositor, s->session == NULL);
         if (s->xwayland) {
             s->new_xsurface.notify = on_new_xsurface;

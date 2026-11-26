@@ -312,12 +312,21 @@ $(TV)/test_term: tests/test_term.c gui/terminal/term_core.c gui/terminal/term_co
 COMPPKG := wlroots-0.20 wayland-server xkbcommon pixman-1 libdrm cairo harfbuzz freetype2 fontconfig xcb libsystemd
 # The lock screen checks passwords with PAM (pam-devel); without it, no locking.
 COMPPAM := $(shell test -f /usr/include/security/pam_appl.h && echo -DHAVE_PAM)
-COMPSRC := compositor/osd-compositor.c compositor/desktop.c compositor/lock.c gui/ui_draw.c gui/ui_framepaint.c gui/ui_menupaint.c gui/ui_mouse.c compositor/idle.c compositor/keymap.c
+COMPSRC := compositor/osd-compositor.c compositor/desktop.c compositor/lock.c compositor/xscale.c $(G0)/xdg-output-unstable-v1-protocol.c gui/ui_draw.c gui/ui_framepaint.c gui/ui_menupaint.c gui/ui_mouse.c compositor/idle.c compositor/keymap.c
 DECOXML := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 $(G0)/xdg-decoration-unstable-v1-client-protocol.h: $(DECOXML)
 	@mkdir -p $(G0)
 	wayland-scanner client-header $< $@
 $(G0)/xdg-decoration-unstable-v1-protocol.c: $(DECOXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+
+# xdg-output for XWayland alone (compositor/xscale.c): the server side.
+XOUTXML := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/xdg-output/xdg-output-unstable-v1.xml
+$(G0)/xdg-output-unstable-v1-protocol.h: $(XOUTXML)
+	@mkdir -p $(G0)
+	wayland-scanner server-header $< $@
+$(G0)/xdg-output-unstable-v1-protocol.c: $(XOUTXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
@@ -334,9 +343,9 @@ $(TV)/x11-client: tests/comp/x11-client.c
 $(TV)/ssd-client: tests/comp/ssd-client.c $(G0)/xdg-shell-client-protocol.h $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-client-protocol.h $(G0)/xdg-decoration-unstable-v1-protocol.c
 	@mkdir -p $(TV)
 	$(CC) $(G0FLAGS) -I$(G0) -o $@ tests/comp/ssd-client.c $(G0)/xdg-shell-protocol.c $(G0)/xdg-decoration-unstable-v1-protocol.c $$(pkg-config --cflags --libs wayland-client)
-$(B)/osd-compositor: $(COMPSRC) gui/ui.h compositor/comp.h
+$(B)/osd-compositor: $(COMPSRC) gui/ui.h compositor/comp.h $(G0)/xdg-output-unstable-v1-protocol.h
 	@mkdir -p $(B)
-	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE -DHAVE_SD_BUS $(COMPPAM) -Igui $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $(LDFLAGS) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lpthread -lm
+	$(CC) $(G0FLAGS) -DWLR_USE_UNSTABLE -DHAVE_SD_BUS $(COMPPAM) -Igui -I$(G0) $$(pkg-config --cflags $(COMPPKG)) -o $@ $(COMPSRC) $(LDFLAGS) $$(pkg-config --libs $(COMPPKG)) $(if $(COMPPAM),-lpam) -lpthread -lm
 
 $(TV)/test_ui_entry: tests/test_ui_entry.c gui/ui_entry.c gui/ui_draw.c gui/ui.h
 	@mkdir -p $(TV)
