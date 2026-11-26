@@ -82,6 +82,17 @@ property col_type : checkbox = 1 page "Details view" label Type
 property col_size : checkbox = 1 page "Details view" label Size
 property col_date : checkbox = 1 page "Details view" label "Last write"
 property col_widths : hidden page "Details view" label Widths set osdSetColWidths
+# The Column view's details of a file (columns.c): its size, type and last
+# write always; these more, each chosen.
+property cd_owner : checkbox = "0" page "Column view" label Owner
+property cd_group : checkbox = "0" page "Column view" label Group
+property cd_perms : checkbox = "0" page "Column view" label Permissions
+property cd_created : checkbox = "0" page "Column view" label Created
+property cd_access : checkbox = "0" page "Column view" label "Last access"
+property cd_change : checkbox = "0" page "Column view" label "Last change (of its attributes)"
+property cd_mime : checkbox = "0" page "Column view" label "MIME type"
+property cd_location : checkbox = "0" page "Column view" label Location
+property cd_target : checkbox = "0" page "Column view" label "Link target (shadows, links)"
 property win_view : hidden = icon page View label "Last view"
 property arrange_offered : hidden page View label "Arrange offered (positions from 0.2)"
 property win_icon : hidden page View label "Icon view window"

@@ -36,7 +36,7 @@ T=$(sed -n 's/^T=//p' "$S/out.txt")
 cat > "$S/page" <<EOS
 3.5 click 600 300 right
 4.2 click 650 382
-5.5 click 704 143
+5.5 click 812 143
 6.0 shot $S/page.png
 6.2 click 956 211
 7 click 584 271

@@ -43,6 +43,10 @@ The project made public under a name of its own, **Objectspace** (the repository
 
 TheBar's trays (and Find as an object), a menu bar in folder windows, the Column and Gallery views, Show pictures with the shared thumbnail cache, and suspend after idle; the seven steps of [v0.6-plan.md](v0.6-plan.md), each checked by the owner. 0.6.0-alpha.1 was a preview of the first two. Tagged `v0.6.0`, the RPMs attached to its GitHub release; what it holds is in the [release notes](release-notes-0.6.md).
 
+## Version 0.6.1 (in progress)
+
+The owner's, 2026-11-25: the Column view's details of a file. Its picture (the thumbnail, for whatever a thumbnailer is installed for) or its icon, as large as the column leaves room for; after its size, type and last write, more chosen on the folder's **Column view** page: owner, group, permissions, created, last access, last change, MIME type, location, link target.
+
 **Next, 0.7:** see **Proposed order**.
 
 ## Open and deferred work
@@ -334,4 +338,5 @@ A to do, after 0.2 (with network file systems below).
    - **Icon Editor** (the easier, first): opened from an object's Icon page (**Edit...**) or on an `.osdicon` file; draws and edits each size of a package (256 to 16), imports PNG and SVG, and saves the object's own icon or a package for a theme.
    - **Text Editor** (OS/2's System Editor): plain text in UTF-8, the default program for text files (set as the type's **Opens with**), with undo, find and replace, line wrap, and the System's fonts.
    - Each a program object in Programs, with its file types' associations made at the first start; Command Prompt and these together as the System's own programs.
+   - **Preview plug-ins** (the owner's, 2026-11-25): a kind of plug-in (the SDK's, run in the sandboxed host) that plays or shows a file in place of its picture where a file is previewed: the Column view's details and the Gallery view's big one. Sounds and videos first (play, pause, a position bar; nothing plays until asked), then others a plug-in can show (fonts, documents' pages, 3D models). One chosen per file type, as **Opens with** is; none installed: the thumbnail, as in 0.6.1. In 0.9 because it builds on the helper programs' players and on 0.6's previews, and the first preview plug-ins prove the plug-in SDK as 1.0 asks.
 9. **1.0 Release:** accessibility beyond focus (exposed contents, the Action interface, tried with Orca); input methods (the candidate window at the text, composing kept across focus, bidirectional text); a first-run tour; the deferred tests; COPR and publishing beyond Fedora; plug-ins proven by a third-party one.

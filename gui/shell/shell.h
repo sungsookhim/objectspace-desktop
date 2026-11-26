@@ -163,6 +163,7 @@ struct folder {
     bool show_pictures;           /* its Icon view page's Show pictures (thumbnails, thumbs.c) */
     bool gallery;                 /* the Gallery view: the Icon view as a strip, one shown big above (gallery.c) */
     ui_rect gal_area;             /* (the big one's) */
+    unsigned col_details;         /* its Column view page: the more details shown (CD_* bits, columns.c) */
     int col_first;                /* the first column shown (-1: the last ones, as they open) */
     int col_drag;                 /* the scroll bar's thumb dragged: the first column when it was pressed (-1: no) */
     double col_drag_x;
@@ -568,6 +569,7 @@ struct folder *columns_at(struct folder *f, double x, double y);   /* the column
 bool columns_key(struct folder *f, const ui_key_event *e);
 void win_key_on(struct folder *f, const ui_key_event *e);   /* window.c: a folder's own keys (its list's) */
 void columns_follow(struct folder *f);              /* a column's choice changed: the next columns follow */
+unsigned columns_detail_bit(const char *key);       /* a Column view page setting (cd_...): its bit in col_details */
 void columns_pane_changed(struct folder *p);        /* a pane's title or contents changed */
 struct folder *pane_open(struct folder *owner, const char *path);   /* desktop.c */
 void menubar_side(void *ctx, int dir);   /* Left or Right in a menu of the bar: the next menu */

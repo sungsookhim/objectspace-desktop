@@ -390,7 +390,7 @@ gui-test: gui
 	$(TV)/test_md5
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command trays menubar columns pictures suspend
+COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command trays menubar columns column-details pictures suspend
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \

@@ -19,7 +19,9 @@
 #define _GNU_SOURCE
 #include "shell.h"
 
+#include <grp.h>
 #include <math.h>
+#include <pwd.h>
 #include <time.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -224,6 +226,88 @@ void columns_follow(struct folder *f)
 
 /* ---- drawing */
 
+/* The more details a file's can show (its folder's Column view page),
+ * after its size, type and last write. */
+static const struct { const char *key, *label; } more[] = {
+    { "cd_owner", "Owner" }, { "cd_group", "Group" }, { "cd_perms", "Permissions" },
+    { "cd_created", "Created" }, { "cd_access", "Last access" }, { "cd_change", "Last change" },
+    { "cd_mime", "MIME type" }, { "cd_location", "Location" }, { "cd_target", "Link target" },
+};
+#define NMORE ((int)(sizeof more / sizeof more[0]))
+
+unsigned columns_detail_bit(const char *key)
+{
+    for (int j = 0; j < NMORE; j++) if (!strcmp(key, more[j].key)) return 1u << j;
+    return 0;
+}
+
+static void when(char *out, size_t n, int64_t secs)
+{
+    time_t t = (time_t)secs;
+    struct tm tm;
+    localtime_r(&t, &tm);
+    strftime(out, n, "%Y-%m-%d %H:%M", &tm);
+}
+
+/* Detail j of the file at path (its row rw), into out; false: none to show. */
+static bool more_value(int j, const char *path, const struct row *rw, const struct statx *sx, bool have, char *out, size_t n)
+{
+    const char *key = more[j].key + 3;
+    if (!strcmp(key, "target")) {
+        if (!(rw->shadow || rw->link) || !rw->target || !rw->target[0]) return false;
+        snprintf(out, n, "%s", rw->target);
+        return true;
+    }
+    if (!strcmp(key, "location")) {
+        const char *sl = strrchr(path, '/');
+        snprintf(out, n, "%.*s", sl && sl != path ? (int)(sl - path) : 1, path);
+        return true;
+    }
+    if (!strcmp(key, "mime")) {
+        const char *m = mime_of_file(path);
+        snprintf(out, n, "%s", m ? m : "Not known");
+        return true;
+    }
+    if (!have) { snprintf(out, n, "Not known"); return true; }
+    if (!strcmp(key, "owner") || !strcmp(key, "group")) {
+        char buf[4096];
+        bool own = key[0] == 'o';
+        if (own) {
+            struct passwd pw, *p = NULL;
+            getpwuid_r(sx->stx_uid, &pw, buf, sizeof buf, &p);
+            if (p) snprintf(out, n, "%s", p->pw_name); else snprintf(out, n, "%u", sx->stx_uid);
+        } else {
+            struct group gr, *g = NULL;
+            getgrgid_r(sx->stx_gid, &gr, buf, sizeof buf, &g);
+            if (g) snprintf(out, n, "%s", g->gr_name); else snprintf(out, n, "%u", sx->stx_gid);
+        }
+        return true;
+    }
+    if (!strcmp(key, "perms")) {
+        unsigned m = sx->stx_mode;
+        char rwx[10];
+        for (int b = 0; b < 9; b++) rwx[b] = (m >> (8 - b)) & 1 ? "rwxrwxrwx"[b] : '-';
+        if (m & S_ISUID) rwx[2] = rwx[2] == 'x' ? 's' : 'S';
+        if (m & S_ISGID) rwx[5] = rwx[5] == 'x' ? 's' : 'S';
+        if (m & S_ISVTX) rwx[8] = rwx[8] == 'x' ? 't' : 'T';
+        rwx[9] = 0;
+        snprintf(out, n, "%s (%03o)", rwx, m & 07777);
+        return true;
+    }
+    if (!strcmp(key, "created")) {
+        if (!(sx->stx_mask & STATX_BTIME)) { snprintf(out, n, "Not known"); return true; }
+        when(out, n, sx->stx_btime.tv_sec);
+        return true;
+    }
+    if (!strcmp(key, "access")) { when(out, n, sx->stx_atime.tv_sec); return true; }
+    if (!strcmp(key, "change")) { when(out, n, sx->stx_ctime.tv_sec); return true; }
+    return false;
+}
+
+/* A file's details: its picture (a thumbnail, for pictures, videos,
+ * documents: whatever a thumbnailer is installed for) or its icon, as
+ * large as the column leaves room for; its title; its size, type, last
+ * write and the more chosen. */
 static void draw_details(struct folder *f, cairo_t *cr, ui_rect r)
 {
     const ui_scheme *k = &ui_scheme_now;
@@ -231,34 +315,68 @@ static void draw_details(struct folder *f, cairo_t *cr, ui_rect r)
     struct folder *c = col(f, f->ncols);
     struct row *rw = c ? row_at(c, f->col_file_i) : NULL;
     if (!rw) return;
-    ui_item it = { .loaded = true, .detailed = true, .kind = rw->kind, .shadow = rw->shadow, .link = rw->link };
-    int big = (int)ui_container_icon_set(c->cont)->large;
-    if (big < 48) big = 48;
-    double ix = r.x + (r.w - big) / 2, iy = r.y + 20;
-    it.image = icons_item(NULL, rw->icon, rw->kind, rw->target && rw->target[0] ? rw->target : rw->name, (int)(big * ui_surface_scale(f->win) + 0.5));
-    ui_draw_item_icon(cr, &it, ix, iy, big);
-    double y = iy + big + 14, lh = ui_font_line_h(UI_FONT_REGULAR) + 2;
+    const char *path = f->col_file;
+    /* the lines beneath: their labels and values */
+    char size[64], date[64], type[64], vals[3 + NMORE][PATH_MAX];
+    const char *labels[3 + NMORE];
+    int nl = 0;
+    if (rw->size >= 1024 * 1024) snprintf(size, sizeof size, "%.1f MB", rw->size / 1048576.0);
+    else if (rw->size >= 1024) snprintf(size, sizeof size, "%.1f KB", rw->size / 1024.0);
+    else snprintf(size, sizeof size, "%lld bytes", (long long)rw->size);
+    when(date, sizeof date, rw->mtime);
+    const char *dot = rw->name ? strrchr(rw->name, '.') : NULL;
+    snprintf(type, sizeof type, "%s", rw->kind == UI_KIND_PROGRAM ? "Program" : dot && dot != rw->name ? dot + 1 : "File");
+    labels[nl] = "Size"; snprintf(vals[nl++], PATH_MAX, "%s", size);
+    labels[nl] = "Type"; snprintf(vals[nl++], PATH_MAX, "%s", type);
+    labels[nl] = "Last write"; snprintf(vals[nl++], PATH_MAX, "%s", date);
+    if (f->col_details) {
+        struct statx sx = { 0 };
+        bool have = statx(AT_FDCWD, path, 0, STATX_BASIC_STATS | STATX_BTIME, &sx) == 0;
+        for (int j = 0; j < NMORE; j++)
+            if ((f->col_details & (1u << j)) && more_value(j, path, rw, &sx, have, vals[nl], PATH_MAX)) labels[nl++] = more[j].label;
+    }
+    double lh = ui_font_line_h(UI_FONT_REGULAR) + 2, text_h = lh + 6 + nl * lh + 16;
+    /* the picture or icon: the room above them, the column's width */
+    ui_rect pic = { r.x + 12, r.y + 16, r.w - 24, r.h - 16 - 14 - text_h };
+    if (pic.h > pic.w) pic.h = pic.w;   /* (a square at most: the text close beneath) */
+    if (pic.h < 48) pic.h = 48;
+    double sc = ui_surface_scale(f->win), drawn = pic.h;
+    int want = (int)(fmax(pic.w, pic.h) * sc);
+    cairo_surface_t *im = rw->kind == UI_KIND_FILE && path[0] == '/' ? thumbs_get(path, rw->mtime, want > 512 ? 512 : want) : NULL;
+    if (im) {   /* its picture, as large as it fits (not much larger than made) */
+        double iw = cairo_image_surface_get_width(im), ih = cairo_image_surface_get_height(im);
+        double s = fmin(pic.w / iw, pic.h / ih);
+        if (s > 2.5) s = 2.5;
+        drawn = ih * s;
+        cairo_save(cr);
+        cairo_translate(cr, pic.x + (pic.w - iw * s) / 2, pic.y);
+        cairo_scale(cr, s, s);
+        cairo_set_source_surface(cr, im, 0, 0);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+        cairo_restore(cr);
+    } else {   /* its icon, as large as the icon sets go */
+        ui_item it = { .loaded = true, .detailed = true, .kind = rw->kind, .shadow = rw->shadow, .link = rw->link };
+        double big = floor(fmin(fmin(pic.w, pic.h), 256));
+        if (big < 48) big = 48;
+        drawn = big;
+        it.image = icons_item(f->icon_theme, rw->icon, rw->kind, rw->target && rw->target[0] ? rw->target : rw->name, (int)(big * sc + 0.5));
+        ui_draw_item_icon(cr, &it, pic.x + (pic.w - big) / 2, pic.y, big);
+    }
+    double y = pic.y + drawn + 14;
     const char *title = rw->title && rw->title[0] ? rw->title : rw->name;
     ui_set_color(cr, k->text);
     double tw = ui_text_width(UI_FONT_BOLD, title);
     ui_text_draw(cr, UI_FONT_BOLD, r.x + fmax(8, (r.w - tw) / 2), y + ui_font_ascent(UI_FONT_BOLD), title, r.w - 16);
     y += lh + 6;
-    char size[64], date[64], type[64];
-    if (rw->size >= 1024 * 1024) snprintf(size, sizeof size, "%.1f MB", rw->size / 1048576.0);
-    else if (rw->size >= 1024) snprintf(size, sizeof size, "%.1f KB", rw->size / 1024.0);
-    else snprintf(size, sizeof size, "%lld bytes", (long long)rw->size);
-    time_t t = (time_t)rw->mtime;
-    struct tm tm;
-    localtime_r(&t, &tm);
-    strftime(date, sizeof date, "%Y-%m-%d %H:%M", &tm);
-    const char *dot = rw->name ? strrchr(rw->name, '.') : NULL;
-    snprintf(type, sizeof type, "%s", rw->kind == UI_KIND_PROGRAM ? "Program" : dot && dot != rw->name ? dot + 1 : "File");
-    const char *labels[3] = { "Size", "Type", "Last write" }, *vals[3] = { size, type, date };
-    for (int j = 0; j < 3; j++) {
+    double lw = 0;
+    for (int j = 0; j < nl; j++) lw = fmax(lw, ui_text_width(UI_FONT_REGULAR, labels[j]));
+    lw = fmin(lw + 12, r.w / 2);
+    for (int j = 0; j < nl; j++) {
         ui_set_color(cr, k->shadow);
-        ui_text_draw(cr, UI_FONT_REGULAR, r.x + 12, y + ui_text_ascent(), labels[j], 80);
+        ui_text_draw(cr, UI_FONT_REGULAR, r.x + 12, y + ui_text_ascent(), labels[j], lw - 4);
         ui_set_color(cr, k->text);
-        ui_text_draw(cr, UI_FONT_REGULAR, r.x + 96, y + ui_text_ascent(), vals[j], r.w - 104);
+        ui_text_draw(cr, UI_FONT_REGULAR, r.x + 12 + lw, y + ui_text_ascent(), vals[j], r.w - 24 - lw);
         y += lh;
     }
 }

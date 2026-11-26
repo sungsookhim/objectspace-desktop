@@ -209,6 +209,7 @@ static void got_bg(void *arg, const cv *reply)
     double w[6] = { 0 };
     bool whole = true, lock_all = false;
     int icon_size = -1, free_l = -1, find_place = 0, menubar = 0, pictures = 0;
+    unsigned details = 0;   /* (the Column view's, CD_* bits) */
     bool offered = false;
     for (size_t i = 0; i < res->n; i++) {
         const cv *pr = &res->items[i];
@@ -241,6 +242,7 @@ static void got_bg(void *arg, const cv *reply)
         else if (!strcmp(key, "search_place")) find_place = option_number(ch, v) < 0 ? 0 : option_number(ch, v);
         else if (!strcmp(key, "menu_bar")) menubar = on;
         else if (!strcmp(key, "show_pictures")) pictures = on;
+        else if (!strncmp(key, "cd_", 3)) { if (on) details |= columns_detail_bit(key); }
         else if (!strncmp(key, "col_", 4) && on) {
             cols |= !strcmp(key, "col_name") ? 1u : !strcmp(key, "col_type") ? 2u : !strcmp(key, "col_size") ? 4u
                   : !strcmp(key, "col_date") ? 8u : 0u;
@@ -269,6 +271,10 @@ static void got_bg(void *arg, const cv *reply)
         }
     }
     if (f->arrange_offered < 0) { f->arrange_offered = offered; arrange_offer_check(f); }
+    if (details != f->col_details) {   /* the Column view's details: more or fewer */
+        f->col_details = details;
+        if (is_columns(f)) ui_surface_damage_all(f->win);
+    }
     if (pictures != f->show_pictures) {   /* Show pictures: thumbnails in place of icons */
         f->show_pictures = pictures;
         ui_container_changed(f->cont, 0, SIZE_MAX);

@@ -47,6 +47,7 @@ static void thumbs_ready(void)
             ui_container_changed(f->cont, 0, SIZE_MAX);
             gallery_damage(f);
         }
+        else if (!f->closing && is_columns(f) && f->col_file[0]) ui_surface_damage_all(f->win);   /* (a file's details: its picture) */
 }
 
 int main(int argc, char **argv)
