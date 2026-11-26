@@ -202,6 +202,10 @@ static void s_item(void *ctx, size_t i, ui_item *out)
     out->kind = e->dir ? UI_KIND_FOLDER : UI_KIND_FILE;
     out->title = out->name = e->name;
     out->image = e->img;
+    if (!out->image && pk.cont) {   /* a folder, or no preview (yet): its icon from the icon theme, as in folder windows */
+        double px = ui_container_icon_set(pk.cont)->large * (pk.s ? ui_surface_scale(pk.s) : 1);
+        out->image = icons_item(NULL, NULL, out->kind, e->name, (int)(px + 0.5));
+    }
     out->last_child = i + 1 == pk.n;
 }
 
