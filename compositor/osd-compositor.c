@@ -326,6 +326,9 @@ static void minimize(struct toplevel *t, bool on)
     }
 }
 
+static void window_to_output(struct toplevel *t, struct wlr_output *from, struct wlr_output *to);
+static struct wlr_output *output_beside(struct wlr_output *o, int dir);
+static void refit_maximized(void);
 static struct wlr_output *output_at_window(struct toplevel *t)
 {
     struct wlr_box b = window_box(t);
@@ -935,6 +938,15 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
         return true;
     }
     if ((mods & WLR_MODIFIER_LOGO) && (sym == XKB_KEY_l || sym == XKB_KEY_L)) { lock_screen(); return true; }   /* as in GNOME */
+    if ((mods & (WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT)) == (WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT)
+        && (sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {   /* the front window to the next screen, as in GNOME */
+        struct toplevel *f = wl_list_empty(&server.toplevels) ? NULL : wl_container_of(server.toplevels.next, f, link);
+        if (f && f->mapped && f->activated && f->kind == KIND_NORMAL) {
+            struct wlr_output *from = output_at_window(f), *to = from ? output_beside(from, sym == XKB_KEY_Left ? -1 : 1) : NULL;
+            if (to) { window_to_output(f, from, to); desktop_window(f, "change"); }
+        }
+        return true;
+    }
     if ((mods & WLR_MODIFIER_LOGO) && sym == XKB_KEY_space) { keymap_cycle(mods & WLR_MODIFIER_SHIFT ? -1 : 1); return true; }
     /* Ctrl+Alt+F1..F12 (xkb makes them XF86Switch_VT_n): another console */
     if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
@@ -946,6 +958,9 @@ static bool shortcut(uint32_t mods, xkb_keysym_t sym)
     switch (sym) {
     case XKB_KEY_Tab: case XKB_KEY_ISO_Left_Tab: cycle_windows(); return true;
     case XKB_KEY_F4: if (front && front->activated) view_close(front); return true;
+    case XKB_KEY_F10:   /* OS/2's: maximize, and restore again */
+        if (front && front->activated && front->kind == KIND_NORMAL) maximize(front, !front->maximized);
+        return true;
     default: return false;
     }
 }
@@ -1136,6 +1151,7 @@ static void on_request_set_primary(struct wl_listener *l, void *data)
 /* -------------------------------------------------------------- outputs */
 
 static const char *shot_path;   /* a screenshot wanted at the next frame */
+static char shot_output[32];    /* ... of that screen (empty: whichever is drawn first) */
 
 static void write_shot(struct wlr_buffer *buf, const char *path)
 {
@@ -1183,7 +1199,10 @@ static void on_output_frame(struct wl_listener *l, void *data)
     struct wlr_output_state st;
     wlr_output_state_init(&st);
     if (wlr_scene_output_build_state(so, &st, NULL)) {
-        if (shot_path && st.buffer) { write_shot(st.buffer, shot_path); shot_path = NULL; }
+        if (shot_path && st.buffer && (!shot_output[0] || !strcmp(shot_output, o->wlr_output->name))) {
+            write_shot(st.buffer, shot_path);
+            shot_path = NULL;
+        }
         if (!wlr_output_commit_state(o->wlr_output, &st)) {
             static int failed;   /* (said a few times, not every frame) */
             if (failed++ < 5) fprintf(stderr, "osd-compositor: %.3f %s: the screen could not be updated\n",
@@ -1250,10 +1269,31 @@ static void on_output_request_state(struct wl_listener *l, void *data)
     wlr_output_commit_state(o->wlr_output, e->state);
 }
 
+/* A screen gone (unplugged, turned off): once the layout has let it go,
+ * the windows left on no screen come to the primary, each at the same
+ * place in its usable area (kept inside it); maximized ones fill it. */
+static void rescue_windows(void *data)
+{
+    (void)data;
+    struct wlr_output *p = comp_primary();
+    if (!p) return;
+    struct toplevel *t;
+    wl_list_for_each(t, &server.toplevels, link) {
+        if (!t->mapped || t->kind != KIND_NORMAL) continue;
+        struct wlr_box b = window_box(t);
+        if (wlr_output_layout_output_at(server.output_layout, b.x + b.width / 2.0, b.y + 10)) continue;
+        window_to_output(t, NULL, p);
+    }
+    refit_maximized();
+    comp_screens_changed();
+}
+
 static void on_output_destroy(struct wl_listener *l, void *data)
 {
     (void)data;
     struct output *o = wl_container_of(l, o, destroy);
+    fprintf(stderr, "osd-compositor: %.3f screen %s gone\n", (now_ms() - start_ms) / 1000, o->wlr_output->name);
+    wl_event_loop_add_idle(server.loop, rescue_windows, NULL);
     if (o->pace) wl_event_source_remove(o->pace);
     wl_list_remove(&o->frame.link);
     wl_list_remove(&o->request_state.link);
@@ -1268,25 +1308,25 @@ static void place_panel(struct toplevel *t);
 static void place_notice(struct toplevel *t);
 static void refit_maximized(void);
 
-/* A screen's scale: OSD_SCALE, else GNOME's for it (Settings, Displays:
- * ~/.config/monitors.xml, the logical monitor whose monitor has this
- * connector), else 1. */
-static double screen_scale(const char *connector)
+/* A screen as GNOME's Settings, Displays arranged it (~/.config/
+ * monitors.xml: the logical monitor whose monitor has this connector, in
+ * the first configuration that names it; GNOME writes the current one,
+ * the others are for other sets of screens): its scale, its place (in
+ * logical pixels) and whether it is the primary. False: not named there. */
+struct screen_conf { double scale; int x, y; bool primary; };
+static bool screen_conf(const char *connector, struct screen_conf *sc)
 {
-    const char *env = getenv("OSD_SCALE");
-    if (env && atof(env) >= 0.5 && atof(env) <= 4) return atof(env);
+    *sc = (struct screen_conf){ 1, 0, 0, false };
     char path[4096];
     const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (xdg && *xdg) snprintf(path, sizeof path, "%s/monitors.xml", xdg);
     else snprintf(path, sizeof path, "%s/.config/monitors.xml", home ? home : "");
     FILE *f = fopen(path, "r");
-    if (!f) return 1;
+    if (!f) return false;
     static char buf[1 << 16];
     size_t n = fread(buf, 1, sizeof buf - 1, f);
     fclose(f);
     buf[n] = 0;
-    /* the first configuration that names this connector (GNOME writes the
-     * current one; others are for other sets of screens) */
     char want[160];
     snprintf(want, sizeof want, "<connector>%s</connector>", connector);
     for (char *conf = strstr(buf, "<configuration>"); conf; conf = strstr(conf + 1, "<configuration>")) {
@@ -1297,12 +1337,53 @@ static double screen_scale(const char *connector)
             if (!lend || lend > end) break;
             char *c = strstr(lm, want);
             if (!c || c > lend) continue;
-            char *sc = strstr(lm, "<scale>");
-            double v = sc && sc < lend ? atof(sc + 7) : 1;
-            return v >= 0.5 && v <= 4 ? v : 1;
+            /* (its own fields come before its <monitor>) */
+            char *mon = strstr(lm, "<monitor>");
+            char *top = mon && mon < lend ? mon : lend;
+            char *v = strstr(lm, "<scale>");
+            if (v && v < top) { double d = atof(v + 7); sc->scale = d >= 0.5 && d <= 4 ? d : 1; }
+            if ((v = strstr(lm, "<x>")) && v < top) sc->x = atoi(v + 3);
+            if ((v = strstr(lm, "<y>")) && v < top) sc->y = atoi(v + 3);
+            v = strstr(lm, "<primary>");
+            sc->primary = v && v < top && !strncmp(v + 9, "yes", 3);
+            return true;
         }
     }
-    return 1;
+    return false;
+}
+
+/* A screen's scale: OSD_SCALE, else GNOME's for it, else 1. */
+static double screen_scale(const char *connector)
+{
+    const char *env = getenv("OSD_SCALE");
+    if (env && atof(env) >= 0.5 && atof(env) <= 4) return atof(env);
+    struct screen_conf sc;
+    screen_conf(connector, &sc);
+    return sc.scale;
+}
+
+/* The screen's place in the layout: GNOME's, else after the others. */
+static void place_screen(struct wlr_output *wo)
+{
+    struct screen_conf sc;
+    if (screen_conf(wo->name, &sc)) wlr_output_layout_add(server.output_layout, wo, sc.x, sc.y);
+    else if (!wlr_output_layout_get(server.output_layout, wo)) wlr_output_layout_add_auto(server.output_layout, wo);
+}
+
+/* The primary screen (TheBar's, the desktop's first part, new windows'
+ * when the pointer is nowhere): GNOME's primary, else OSD_COMP_PRIMARY
+ * (by connector), else the first that came. */
+struct wlr_output *comp_primary(void)
+{
+    struct output *o, *first = NULL;
+    const char *env = getenv("OSD_COMP_PRIMARY");
+    wl_list_for_each(o, &server.outputs, link) {
+        if (!wlr_output_layout_get(server.output_layout, o->wlr_output)) continue;
+        if (!first) first = o;
+        struct screen_conf sc;
+        if ((env && !strcmp(env, o->wlr_output->name)) || (!env && screen_conf(o->wlr_output->name, &sc) && sc.primary)) return o->wlr_output;
+    }
+    return first ? first->wlr_output : NULL;
 }
 
 /* GNOME's Settings, Displays saved a scale (monitors.xml written again):
@@ -1334,6 +1415,14 @@ static int on_monitors_xml(int fd, uint32_t mask, void *data)
             fprintf(stderr, "osd-compositor: %.1f screen %s: scale %g\n", comp_uptime(), o->wlr_output->name, sc);
         }
         wlr_output_state_finish(&st);
+    }
+    wl_list_for_each(o, &server.outputs, link) {   /* (and their places) */
+        struct wlr_box was;
+        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &was);
+        place_screen(o->wlr_output);
+        struct wlr_box now;
+        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &now);
+        if (was.x != now.x || was.y != now.y) changed = true;
     }
     if (changed) {
         comp_redraw_frames();
@@ -1403,7 +1492,7 @@ static void on_new_output(struct wl_listener *l, void *data)
     o->destroy.notify = on_output_destroy;
     wl_signal_add(&wo->events.destroy, &o->destroy);
     o->pace = wl_event_loop_add_timer(server.loop, on_pace, o);
-    wl_list_insert(&server.outputs, &o->link);
+    wl_list_insert(server.outputs.prev, &o->link);   /* (in the order they came) */
     /* A screen with no physical size (headless, some virtual ones): one
      * as at 96 dpi. Programs divide by it (GTK did, and died of SIGFPE). */
     if (wo->phys_width <= 0 || wo->phys_height <= 0) {
@@ -1418,7 +1507,8 @@ static void on_new_output(struct wl_listener *l, void *data)
         wlr_output_lock_software_cursors(wo, true);
         fprintf(stderr, "osd-compositor: %s: the pointer is drawn in software\n", wo->name);
     }
-    struct wlr_output_layout_output *lo = wlr_output_layout_add_auto(server.output_layout, wo);
+    place_screen(wo);
+    struct wlr_output_layout_output *lo = wlr_output_layout_get(server.output_layout, wo);
     struct wlr_scene_output *so = wlr_scene_output_create(server.scene, wo);
     wlr_scene_output_layout_add_output(server.scene_layout, lo, so);
     comp_screens_changed();
@@ -1453,12 +1543,12 @@ void comp_screens_changed(void)
 static struct wlr_box first_output_box(void)
 {
     struct wlr_box b = { 0, 0, 1280, 800 };
-    if (!wl_list_empty(&server.outputs)) {
-        struct output *o = wl_container_of(server.outputs.next, o, link);
-        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &b);
-    }
+    struct wlr_output *o = comp_primary();
+    if (o) wlr_output_layout_get_box(server.output_layout, o, &b);
     return b;
 }
+
+struct wlr_box comp_primary_box(void) { return first_output_box(); }
 
 /* TheBar: the first screen's full width, along its edge. */
 static void place_panel(struct toplevel *t)
@@ -1476,10 +1566,7 @@ static void place_panel(struct toplevel *t)
 static void place_notice(struct toplevel *t)
 {
     struct wlr_box ub = first_output_box();
-    if (!wl_list_empty(&server.outputs)) {
-        struct output *o = wl_container_of(server.outputs.next, o, link);
-        ub = usable_box(o->wlr_output);
-    }
+    if (comp_primary()) ub = usable_box(comp_primary());
     struct wlr_box geo = view_geo(t);
     view_move(t, ub.x + ub.width - geo.width - 8, server.panel_top ? ub.y + 8 : ub.y + ub.height - geo.height - 8);
 }
@@ -1497,6 +1584,60 @@ static void refit_maximized(void)
         view_move(t, ub.x, ub.y);
         view_set_size(t, ub.width, ub.height - (t->ssd ? (int)ui_scheme_now.title_h : 0));
     }
+}
+
+/* A window moved to another screen (Super+Shift+Left and Right, a screen
+ * gone): the same place in that screen's usable area as in the one it
+ * was on (from NULL: as from the primary's origin), kept inside it;
+ * maximized: filling it; fullscreen: covering it. */
+static void window_to_output(struct toplevel *t, struct wlr_output *from, struct wlr_output *to)
+{
+    struct wlr_box nb = usable_box(to), fb = from ? usable_box(from) : nb;
+    struct wlr_box b = window_box(t);
+    if (t->fullscreen) {
+        struct wlr_box full;
+        wlr_output_layout_get_box(server.output_layout, to, &full);
+        t->fs_restore.x = nb.x + (t->fs_restore.x - fb.x);
+        t->fs_restore.y = nb.y + (t->fs_restore.y - fb.y);
+        view_move(t, full.x, full.y);
+        view_set_size(t, full.width, full.height);
+        return;
+    }
+    if (t->maximized) {
+        t->restore.x = nb.x + (t->restore.x - fb.x);
+        t->restore.y = nb.y + (t->restore.y - fb.y);
+        view_move(t, nb.x, nb.y);
+        view_set_size(t, nb.width, nb.height - (t->ssd ? (int)ui_scheme_now.title_h : 0));
+        return;
+    }
+    int x = from ? nb.x + (b.x - fb.x) : b.x, y = from ? nb.y + (b.y - fb.y) : b.y;
+    if (x + b.width > nb.x + nb.width) x = nb.x + nb.width - b.width;
+    if (y + b.height > nb.y + nb.height) y = nb.y + nb.height - b.height;
+    if (x < nb.x) x = nb.x;
+    if (y < nb.y) y = nb.y;
+    view_move(t, x, y);
+}
+
+/* The screen beside o (dir -1: to the left, 1: to the right): the
+ * nearest whose centre is that way; none: wrapping round to the farthest
+ * the other way, as GNOME does with two. */
+static struct wlr_output *output_beside(struct wlr_output *o, int dir)
+{
+    struct wlr_box ob;
+    wlr_output_layout_get_box(server.output_layout, o, &ob);
+    double cx = ob.x + ob.width / 2.0;
+    struct output *it;
+    struct wlr_output *best = NULL, *wrap = NULL;
+    double bd = 1e18, wd = 0;
+    wl_list_for_each(it, &server.outputs, link) {
+        if (it->wlr_output == o || !wlr_output_layout_get(server.output_layout, it->wlr_output)) continue;
+        struct wlr_box b;
+        wlr_output_layout_get_box(server.output_layout, it->wlr_output, &b);
+        double d = (b.x + b.width / 2.0 - cx) * dir;
+        if (d > 0 && d < bd) { bd = d; best = it->wlr_output; }
+        if (d < 0 && -d > wd) { wd = -d; wrap = it->wlr_output; }
+    }
+    return best ? best : wrap;
 }
 
 /* ---- places asked for by the desktop (windows reopened at login) */
@@ -1553,10 +1694,7 @@ void comp_panel_edge(bool top)
 static void place_desktop(struct toplevel *t)
 {
     struct wlr_box b = first_output_box();
-    if (!wl_list_empty(&server.outputs)) {
-        struct output *o = wl_container_of(server.outputs.next, o, link);
-        b = usable_box(o->wlr_output);
-    }
+    if (comp_primary()) b = usable_box(comp_primary());
     view_move(t, b.x, b.y);
     view_set_size(t, b.width, b.height);
 }
@@ -1614,15 +1752,20 @@ static void on_map(struct wl_listener *l, void *data)
         wlr_scene_node_raise_to_top(&t->tree->node);
         return;
     } else {
-        /* a new window: centred, or cascaded from the one in front (in the usable area) */
-        if (!wl_list_empty(&server.outputs)) {
-            struct output *fo = wl_container_of(server.outputs.next, fo, link);
-            ob = usable_box(fo->wlr_output);
-        }
+        /* a new window: centred on the screen with the pointer, or
+         * cascaded from the one in front (in its usable area) */
+        struct wlr_output *on = wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
+        if (!on) on = comp_primary();
+        if (on) ob = usable_box(on);
         struct wlr_box b = { 0, 0, t->ssd ? t->fw : geo.width, t->ssd ? t->fh : geo.height };
         int x = ob.x + (ob.width - b.width) / 2, y = ob.y + (ob.height - b.height) / 3, px, py;
         if (from_desktop(t) && take_place(t, &px, &py)) {
-            /* where it was at the last logout, kept on the screen */
+            /* where it was at the last logout: on the screen it was on
+             * (its title bar's), or the primary if that one is gone; kept
+             * on that screen */
+            struct wlr_output *was = wlr_output_layout_output_at(server.output_layout, px + 40, py + 10);
+            if (!was) was = comp_primary();
+            if (was) ob = usable_box(was);
             if (px > ob.x + ob.width - 40) px = ob.x + ob.width - 40;
             if (py > ob.y + ob.height - 40) py = ob.y + ob.height - 40;
             x = px < ob.x - b.width + 40 ? ob.x : px;
@@ -2410,9 +2553,17 @@ static void script_step(const char *line)
             wlr_keyboard_notify_key(server.script_kb, &(struct wlr_keyboard_key_event){ t, code - 8, true,
                                     !strcmp(cmd, "press") ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED });
         else fprintf(stderr, "osd-compositor: script: no key %s\n", arg);
-    } else if (!strcmp(cmd, "shot")) {
+    } else if (!strcmp(cmd, "plug")) {   /* a screen added: WxH */
+        int w, h;
+        if (sscanf(arg, "%dx%d", &w, &h) == 2) wlr_headless_add_output(server.backend, (unsigned)w, (unsigned)h);
+    } else if (!strcmp(cmd, "unplug")) {   /* a screen gone, by its name (HEADLESS-2) */
+        struct output *o, *tmp;
+        wl_list_for_each_safe(o, tmp, &server.outputs, link)
+            if (!strcmp(o->wlr_output->name, arg)) { wlr_output_destroy(o->wlr_output); break; }
+    } else if (!strcmp(cmd, "shot")) {   /* PATH [SCREEN]: that screen's picture (else the first drawn) */
         static char path[480];
-        snprintf(path, sizeof path, "%s", arg);
+        sscanf(arg, "%479s %31s", path, shot_output);
+        if (!strchr(arg, ' ')) shot_output[0] = 0;
         shot_path = path;
         struct output *o;
         wl_list_for_each(o, &server.outputs, link) wlr_output_schedule_frame(o->wlr_output);
@@ -2526,7 +2677,7 @@ int main(int argc, char **argv)
     s->loop = wl_display_get_event_loop(s->display);
     const char *headless = getenv("OSD_COMP_HEADLESS");
     int hw = 0, hh = 0;
-    if (headless && sscanf(headless, "%dx%d", &hw, &hh) == 2) {
+    if (headless && sscanf(headless, "%dx%d", &hw, &hh) == 2) {   /* (WxH[,WxH...]: a screen each) */
         s->backend = wlr_headless_backend_create(s->loop);
         s->renderer = wlr_pixman_renderer_create();   /* readable for screenshots */
     } else {
@@ -2639,7 +2790,10 @@ int main(int argc, char **argv)
     watch_monitors_xml();
     if (!wlr_backend_start(s->backend)) { fprintf(stderr, "osd-compositor: the backend did not start\n"); return 1; }
     if (hw > 0) {
-        wlr_headless_add_output(s->backend, (unsigned)hw, (unsigned)hh);
+        for (const char *p = headless; p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL) {
+            int w, h;
+            if (sscanf(p, "%dx%d", &w, &h) == 2) wlr_headless_add_output(s->backend, (unsigned)w, (unsigned)h);
+        }
         /* a keyboard (headless has none): for the scripts' keys, and
          * XWayland, which will not start without one */
         static const struct wlr_keyboard_impl impl = { .name = "osd-test-keyboard" };

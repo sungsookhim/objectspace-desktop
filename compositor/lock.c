@@ -111,14 +111,12 @@ static void draw(void)
     wlr_buffer_drop(&p->base);
 }
 
-/* The shade over every screen, the panel in the middle of the first. */
+/* The shade over every screen, the panel in the middle of the primary. */
 void lock_layout(void)
 {
     if (!lk.tree) return;
-    struct wlr_box all, first = { 0, 0, 1280, 800 };
+    struct wlr_box all, first = comp_primary_box();
     wlr_output_layout_get_box(server.output_layout, NULL, &all);
-    struct wlr_output *o = wlr_output_layout_output_at(server.output_layout, all.x + 1, all.y + 1);
-    if (o) wlr_output_layout_get_box(server.output_layout, o, &first);
     wlr_scene_node_set_position(&lk.shade->node, all.x, all.y);
     wlr_scene_rect_set_size(lk.shade, all.width, all.height);
     wlr_scene_node_set_position(&lk.panel->node, first.x + (first.width - PW) / 2, first.y + (first.height - PH) / 2);
