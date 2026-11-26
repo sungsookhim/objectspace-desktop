@@ -92,7 +92,7 @@ Everything still open after 0.4, by area; the version each goes into is in **Pro
 ### Look of other programs (not designed)
 
 - **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours: a GTK 3 theme, a Qt style, a WPS icon and cursor theme, all driven by the scheme objects.
-- **libadwaita (GTK 4) programs keep their own look** (decided, the owner's, 2026-11-22): no stylesheet over them; their skin is honoured. **An option:** the scheme's colours (accent, light or dark) through libadwaita's supported settings, a Scheme Palette choice, off by default.
+- **libadwaita (GTK 4) programs keep their own look** (decided, the owner's, 2026-11-22): no stylesheet over them; their skin is honoured. **Changed (the owner's, 2026-11-25):** they follow the scheme through what libadwaita supports, always: light or dark, the nearest accent colour, high contrast, fonts and text size ([v0.6-design.md](v0.6-design.md) 9); colours beyond those (a stylesheet over libadwaita's) dropped, perhaps later as an experiment.
 
 ### Object core (deferred in its design)
 
@@ -324,7 +324,7 @@ A to do, after 0.2 (with network file systems below).
    - **Suspend after idle.**
 6. **0.7 The look of other programs and more screens** (the compositor and themes; was 0.6, before that 0.5):
    - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
-   - **libadwaita programs keep their own look and title bars** (the owner's); the scheme's colours offered to them as an option (Scheme Palette, off by default).
+   - **libadwaita programs keep their own look and title bars** (the owner's), and follow the scheme where libadwaita lets them: light or dark, the nearest accent colour, high contrast, fonts and text size (the owner's, 2026-11-25; no stylesheet over them).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
    - **Sharp X11 programs on scaled screens.**
 7. **0.8 Network and jobs** (the service and the object core; was 0.7, before that 0.6):
