@@ -93,6 +93,7 @@ make visual-baseline && make visual-check   # screenshots in each scheme, compar
 | [docs/release-notes-0.6.md](docs/release-notes-0.6.md) | What 0.6 brings: TheBar's trays, a folder menu bar, Column and Gallery views, pictures for icons, suspend after idle |
 | [docs/release-notes-0.5.md](docs/release-notes-0.5.md) | What 0.5 brings, and what is called what for those coming from WPS 0.4.1 |
 | [docs/v0.6-design.md](docs/v0.6-design.md), [docs/v0.6-plan.md](docs/v0.6-plan.md) | 0.6's design and plan; the design's drafts for 0.7 (screens and themes) |
+| [docs/v0.7-plan.md](docs/v0.7-plan.md) | 0.7 in the works: more than one screen, sharp X11 programs, other programs' look from the scheme |
 | [docs/HISTORY.md](docs/HISTORY.md) | The project's history, its old name, and the old names next to today's |
 | `docs/v0.*-design.md`, `docs/v0.*-plan.md`, `docs/release-notes-*.md` | Each version's design, plan and release notes |
 | [sdk/README.md](sdk/README.md) | Writing plug-ins |

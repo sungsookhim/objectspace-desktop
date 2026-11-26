@@ -322,7 +322,7 @@ A to do, after 0.2 (with network file systems below).
    - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
    - **Later (the owner's, 2026-11-25):** a menu bar's menu chosen by pressing a title, dragging into the menu and releasing on an item (the menu takes the pointer when it opens); TheBar's tray icons dragged off the bar (the shadow moved) and along it (the order).
    - **Suspend after idle.**
-6. **0.7 The look of other programs and more screens** (the compositor and themes; was 0.6, before that 0.5):
+6. **0.7 The look of other programs and more screens** (the compositor and themes; was 0.6, before that 0.5; started 2026-11-25, [v0.7-plan.md](v0.7-plan.md); the owner's: one desktop across all screens, all four looks, X11 programs scaled by themselves by default):
    - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
    - **libadwaita programs keep their own look and title bars** (the owner's), and follow the scheme where libadwaita lets them: light or dark, the nearest accent colour, high contrast, fonts and text size (the owner's, 2026-11-25; no stylesheet over them).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
