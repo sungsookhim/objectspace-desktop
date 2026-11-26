@@ -19,18 +19,18 @@ OS/2 and Workplace Shell are trademarks of IBM. Objectspace is not affiliated wi
 ## What it does
 
 - **Objects that last.** Titles, icons, positions and settings are kept with each file (in extended attributes) and in a per-user database, and follow it when it is moved, copied or renamed, by Objectspace or by any other program. Removable drives carry their objects' state with them.
-- **Folders as OS/2 had them.** Icon, tree and details views; icons placed anywhere (OS/2's free layout) or arranged; whole titles; open icons and hatching; folder windows that remember their size, place and view; Work Area folders, whose windows open, minimize and close together.
+- **Folders as OS/2 had them, and more.** Icon, tree and details views, a Column view (NeXT's browser) and a Gallery view; pictures shown in place of their icons; a menu bar (Alt); icons placed anywhere (OS/2's free layout) or arranged; whole titles; open icons and hatching; folder windows that remember their size, place and view; Work Area folders, whose windows open, minimize and close together.
 - **Settings at every level.** Each setting is a property, looked up from the object, then its file type, its class and the classes above it, the scheme, and the default. **Class...** on any notebook opens the settings of all objects of that class.
 - **Actions on events.** What happens when an object is opened, made, put in the Trash Can or deleted: a sound, a command, a method or settings.
 - **The desktop's own objects.** My System (System Setup: schemes, fonts, sounds, the mouse, icon themes), the Trash Can, Drives, Programs (the installed programs), Startup, Templates, the Colour and Font Palettes, Messages, a Command Prompt.
-- **TheBar** at the screen's edge: the desktop's menu, the window list, programs, status icons, messages and the clock. A **Launcher** palette for favourite objects.
-- **Its own session.** `osd-compositor` (on wlroots) runs the desktop with OS/2-style window frames for every program, a lock screen and idle handling; or the GNOME Shell extension puts the desktop inside GNOME.
+- **TheBar** at the screen's edge: the desktop's menu, trays of objects (as WarpCenter had), the window list, programs, status icons, messages and the clock. A **Launcher** palette for favourite objects.
+- **Its own session.** `osd-compositor` (on wlroots) runs the desktop with OS/2-style window frames for every program, a lock screen, idle handling and suspend; or the GNOME Shell extension puts the desktop inside GNOME.
 - **Objectspace Terminal and the `osd` command**, for text-mode programs and for scripts that work with objects (as REXX did on OS/2).
 - **A plug-in SDK** (`objectspace-devel`): new classes of objects, in C, run in a sandboxed host.
 
 ## Status
 
-Version **0.5** is the first public version. It runs on **Fedora 45 (x86_64)**, which is where it is built and tested; other distributions with wlroots 0.20 may work but are not tried. It is young software, used daily by its author, with known gaps listed in [docs/open-issues.md](docs/open-issues.md) and plans in [docs/roadmap.md](docs/roadmap.md).
+Version **0.6** is the current version (0.5 was the first public one). It runs on **Fedora 45 (x86_64)**, which is where it is built and tested; other distributions with wlroots 0.20 may work but are not tried. It is young software, used daily by its author, with known gaps listed in [docs/open-issues.md](docs/open-issues.md) and plans in [docs/roadmap.md](docs/roadmap.md).
 
 ## Installing
 
@@ -90,8 +90,9 @@ make visual-baseline && make visual-check   # screenshots in each scheme, compar
 | [docs/cli-design.md](docs/cli-design.md) | Objectspace Terminal and the `osd` command |
 | [docs/roadmap.md](docs/roadmap.md) | What is open, deferred or not yet designed, and the order proposed for it |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps |
+| [docs/release-notes-0.6.md](docs/release-notes-0.6.md) | What 0.6 brings: TheBar's trays, a folder menu bar, Column and Gallery views, pictures for icons, suspend after idle |
 | [docs/release-notes-0.5.md](docs/release-notes-0.5.md) | What 0.5 brings, and what is called what for those coming from WPS 0.4.1 |
-| [docs/v0.6-design.md](docs/v0.6-design.md), [docs/v0.6-plan.md](docs/v0.6-plan.md) | 0.6 in the works: TheBar's trays, a folder menu bar, Column and Gallery views, suspend; screens and themes (drafts) |
+| [docs/v0.6-design.md](docs/v0.6-design.md), [docs/v0.6-plan.md](docs/v0.6-plan.md) | 0.6's design and plan; the design's drafts for 0.7 (screens and themes) |
 | [docs/HISTORY.md](docs/HISTORY.md) | The project's history, its old name, and the old names next to today's |
 | `docs/v0.*-design.md`, `docs/v0.*-plan.md`, `docs/release-notes-*.md` | Each version's design, plan and release notes |
 | [sdk/README.md](sdk/README.md) | Writing plug-ins |

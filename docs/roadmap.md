@@ -39,7 +39,11 @@ The object-property refactor (R0-R6) and the eleven steps of [v0.4-plan.md](v0.4
 
 The project made public under a name of its own, **Objectspace** (the repository `objectspace-desktop`, the commands `osd`, TheBar and Launcher), with the licences, notices, documents for newcomers and contributors, and continuous integration; the seven steps of [v0.5-plan.md](v0.5-plan.md). Tagged `v0.5.0`, the RPMs attached to its GitHub release; what it holds is in the [release notes](release-notes-0.5.md). The project's history before it: [HISTORY.md](HISTORY.md).
 
-**Next, 0.6:** see **Proposed order**.
+## Version 0.6 (released 2026-11-25)
+
+TheBar's trays (and Find as an object), a menu bar in folder windows, the Column and Gallery views, Show pictures with the shared thumbnail cache, and suspend after idle; the seven steps of [v0.6-plan.md](v0.6-plan.md), each checked by the owner. 0.6.0-alpha.1 was a preview of the first two. Tagged `v0.6.0`, the RPMs attached to its GitHub release; what it holds is in the [release notes](release-notes-0.6.md).
+
+**Next, 0.7:** see **Proposed order**.
 
 ## Open and deferred work
 
@@ -308,7 +312,7 @@ A to do, after 0.2 (with network file systems below).
       - **Continuous integration:** GitHub Actions building on Fedora 45 and running the unit tests and the headless suites that need no GPU (`make check`, `gui-test`, the compositor's tests where the runner allows).
       - The authorship note kept (designed by the owner, code written with Claude through Claude Code).
    4. **Checks:** a search for the old names finds none outside the history notes; the RPMs build and install under the new names; an upgrade from 0.4.1 (if moving over is chosen); the suites green under the new names.
-5. **0.6 TheBar's trays and folder windows** (the owner's, 2026-11-24: 0.6 split in two; [v0.6-design.md](v0.6-design.md), [v0.6-plan.md](v0.6-plan.md)):
+5. **0.6 TheBar's trays and folder windows** (released 2026-11-25; the owner's, 2026-11-24: 0.6 split in two; [v0.6-design.md](v0.6-design.md), [v0.6-plan.md](v0.6-plan.md)):
    - **TheBar's trays** (the owner's, 2026-11-24; WarpCenter's object trays, not the status icons): named trays of shadows of folders and programs on the bar; the tray button shows the current one's name, a click goes to the next, its menu chooses one, adds, renames, deletes; objects dropped on the bar join the tray, an icon's menu removes it; one made at the first start, kept in the user's settings; a headless test.
    - **A Preview view** (pictures in place of their icons), and with it a **Gallery view** (large previews).
    - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
