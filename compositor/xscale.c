@@ -112,13 +112,15 @@ void xscale_init(void)
 
 /* ---- the scale */
 
-/* Xft.dpi for X11 programs (xrdb, when installed): 96 times the scale. */
+/* Xft.dpi for X11 programs (xrdb, when installed): 96 times the scale.
+ * Scaled, xterm a scalable font too (its own, a bitmap one, stays the
+ * size of its pixels: tiny at 2). */
 static void set_xft_dpi(void)
 {
     if (!server.xwayland || !server.xwayland->display_name) return;
-    char cmd[256];
-    snprintf(cmd, sizeof cmd, "command -v xrdb >/dev/null 2>&1 && echo 'Xft.dpi: %d' | DISPLAY=%s xrdb -merge", (int)lround(96 * comp_xscale),
-             server.xwayland->display_name);
+    char cmd[512];
+    snprintf(cmd, sizeof cmd, "command -v xrdb >/dev/null 2>&1 && printf 'Xft.dpi: %d\\n%s' | DISPLAY=%s xrdb -merge", (int)lround(96 * comp_xscale),
+             comp_xscale != 1 ? "XTerm*faceName: Monospace\\nXTerm*faceSize: 10\\n" : "", server.xwayland->display_name);
     char *argv[] = { "/bin/sh", "-c", cmd, NULL };
     comp_spawn(argv, NULL, NULL);
 }

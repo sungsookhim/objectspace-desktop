@@ -2172,6 +2172,19 @@ static void u_unmap(struct wl_listener *l, void *data)
     struct unmanaged *u = wl_container_of(l, u, unmap);
     if (u->tree) wlr_scene_node_destroy(&u->tree->node);
     u->tree = NULL;
+    /* It had the keyboard (an X11 menu: xterm's): back to the window in
+     * front. Else none had it, and xterm took no keys after its menu (nor
+     * Ctrl, so its menu did not open again). */
+    if (u->xw->surface && server.seat->keyboard_state.focused_surface == u->xw->surface) {
+        struct toplevel *t;
+        wl_list_for_each(t, &server.toplevels, link)
+            if (t->mapped && !t->minimized && t->kind == KIND_NORMAL && t->activated) {
+                struct wlr_surface *ts = view_surface(t);
+                struct wlr_keyboard *kb = wlr_seat_get_keyboard(server.seat);
+                if (ts && kb) wlr_seat_keyboard_notify_enter(server.seat, ts, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+                break;
+            }
+    }
 }
 
 static void u_associate(struct wl_listener *l, void *data)

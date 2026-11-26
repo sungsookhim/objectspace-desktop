@@ -7,7 +7,9 @@
 # is drawn as 360x240 on the screen (180x120 logical: not stretched); a
 # click in its middle reaches it there (about 180,120 in its pixels).
 # Off (OSD_X11_SCALE=0): the root 640x400, the window stretched to
-# 720x480 pixels, a click in its middle still about 180,120.
+# 720x480 pixels, a click in its middle still about 180,120. An X11 menu
+# (one taking the keyboard, as xterm's) closed: the keyboard back to its
+# window.
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-xscale-XXXX")
 X="$PWD/build/tests/x11-client"
@@ -40,6 +42,10 @@ for n in on off; do
     printf '4 click %s %s\n4.5 quit\n' $cx $cy > "$S/$n-click.script"
     env $( [ $n = off ] && echo OSD_X11_SCALE=0 ) OSD_SCALE=2 NODESK=1 SECS=7 tests/comp/run.sh "$S/$n-click.script" "sleep 1; '$X' Sharp 3060a0 2> '$S/$n-click.client'" > "$S/$n-click.txt" 2>&1
 done
+# an X11 menu (xterm's: it takes the keyboard while it shows): closed, the
+# window has the keyboard again
+printf '4 click 320 200\n5 key a\n5.3 quit\n' > "$S/menu.script"
+OSD_SCALE=2 NODESK=1 SECS=7 tests/comp/run.sh "$S/menu.script" "sleep 1; '$X' Menu 3060a0 menu 2> '$S/menu.client'" > "$S/menu.txt" 2>&1
 echo "  on: root $(sed -n 's/.*root //p' "$S/on.client"), box $(box on), drawn $(extent on), $(grep -o 'pressed at .*' "$S/on-click.client")"
 echo "  off: root $(sed -n 's/.*root //p' "$S/off.client"), box $(box off), drawn $(extent off), $(grep -o 'pressed at .*' "$S/off-click.client")"
 near() { p=$(grep -o 'pressed at [0-9]*,[0-9]*' "$S/$1-click.client" | head -1 | sed 's/pressed at //'); x=${p%,*}; y=${p#*,}; [ -n "$p" ] && [ $x -ge 150 ] && [ $x -le 210 ] && [ $y -ge 90 ] && [ $y -le 150 ]; }
@@ -49,6 +55,7 @@ check "on: a click in its middle reaches it there (about 180,120)" "near on"
 check "off: the root logical (640x400)" "grep -q 'root 640x400' '$S/off.client'"
 check "off: the window stretched (720x480 pixels)" "[ \"\$(extent off)\" = '720 480' ]"
 check "off: a click in its middle (about 180,120)" "near off"
+check "an X11 menu closed: the window has the keyboard again" "grep -q 'menu closed' '$S/menu.client' && grep -q 'key 38' '$S/menu.client'"
 check "the compositor said the scale" "grep -q 'X11 programs at scale 2' '$S/on.txt'"
 echo "$fails failed ($S)"
 if [ $fails = 0 ]; then

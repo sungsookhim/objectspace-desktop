@@ -401,7 +401,9 @@ bool icons_draw_theme(cairo_t *cr, const char *theme, const char *name, ui_rect 
     if (side < 4) return false;
     double dx = side, dy = 0;
     cairo_user_to_device_distance(cr, &dx, &dy);   /* its pixels on the screen: drawn at that size, sharp */
-    int px = (int)(fabs(dx) + 0.5);
+    double dsx = 1, dsy = 1;   /* (and the surface's scale: not in the transform; TheBar's buttons were drawn at half and stretched at 200%) */
+    cairo_surface_get_device_scale(cairo_get_target(cr), &dsx, &dsy);
+    int px = (int)(fabs(dx) * dsx + 0.5);
     cairo_surface_t *s = px > 0 ? icons_theme(theme, name, px) : NULL;
     if (!s) return false;
     cairo_save(cr);

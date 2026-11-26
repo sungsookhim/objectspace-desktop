@@ -89,6 +89,16 @@ Everything still open after 0.4, by area; the version each goes into is in **Pro
 - **Suspend after idle** (GNOME's power settings) is not followed.
 - **Inside GNOME:** float on top and Super for the WPS menu are the WPS session's only; without the extension the desktop is an ordinary window; a second `wps-shell` does not hand over to the first; Mutter holds frame callbacks for a scroll layer that covers a surface.
 
+### Objectspace's own look: design updates (the owner's, 2026-11-26; not designed yet)
+
+Drawings the owner approves before they are wired in, as the icons and the cursors; a slot to be chosen (proposed: with 0.7's cursor theme, step 7, as one design pass).
+
+- **Window borders:** the frame's border drawn anew.
+- **The title bar's icon** (top left: the system menu's button).
+- **The minimize, maximize and close buttons.**
+- **The dotted selection square** (the rubber band, and the dotted outline of a menu's source).
+- **TheBar's icon placement:** how its buttons, icons and parts sit and are spaced.
+
 ### Look of other programs (not designed)
 
 - **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours: a GTK 3 theme, a Qt style, a WPS icon and cursor theme, all driven by the scheme objects.
