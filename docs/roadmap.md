@@ -45,7 +45,7 @@ TheBar's trays (and Find as an object), a menu bar in folder windows, the Column
 
 ## Version 0.6.1 (in progress)
 
-The owner's, 2026-11-25: the Column view's details of a file. Its picture (the thumbnail, for whatever a thumbnailer is installed for) or its icon, as large as the column leaves room for; after its size, type and last write, more chosen on the folder's **Column view** page: owner, group, permissions, created, last access, last change, MIME type, location, link target.
+The owner's, 2026-11-25: the Column view's details of a file. Its picture (the thumbnail, for whatever a thumbnailer is installed for) or its icon, as large as the column leaves room for; after its size, type and last write, more chosen on the folder's **Column view** page: owner, group, permissions, created, last access, last change, MIME type, location, link target. **Verified by the owner** (2026-11-25).
 
 **Next, 0.7:** see **Proposed order**.
 
