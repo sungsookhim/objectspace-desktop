@@ -176,6 +176,8 @@ static void view_move(struct toplevel *t, int x, int y)
 
 static void view_set_size(struct toplevel *t, int w, int h)
 {
+    if (w < 0) w = 0;   /* (never negative: wlroots aborts, and the session ended; 0: the program's own size) */
+    if (h < 0) h = 0;
     if (t->xdg) wlr_xdg_toplevel_set_size(t->xdg, w, h);
     else if (w > 0 && h > 0) x11_configure(t, w, h);
 }
@@ -410,6 +412,12 @@ static void maximize(struct toplevel *t, bool on)
         view_set_size(t, cw, ch);
     } else {
         t->maximized = false;
+        /* opened maximized (LibreOffice remembers it was): no size of its
+         * own yet; two thirds of the screen, centred */
+        if (t->restore.width < 100 || t->restore.height < 80) {
+            int w = ob.width * 2 / 3, h = ob.height * 2 / 3;
+            t->restore = (struct wlr_box){ ob.x + (ob.width - w) / 2, ob.y + (ob.height - h) / 3, w, h };
+        }
         int cw = t->restore.width, ch = t->restore.height;
         if (t->ssd) {
             cw -= (int)(2 * ui_scheme_now.border);
@@ -452,6 +460,11 @@ static void set_fullscreen(struct toplevel *t, bool on)
             view_move(t, ub.x, ub.y);
             view_set_size(t, ub.width, ch);
         } else {
+            if (t->fs_restore.width < 100 || t->fs_restore.height < 80) {   /* (opened fullscreen: no size of its own yet) */
+                struct wlr_box ub = usable_box(o);
+                int w = ub.width * 2 / 3, h = ub.height * 2 / 3;
+                t->fs_restore = (struct wlr_box){ ub.x + (ub.width - w) / 2, ub.y + (ub.height - h) / 3, w, h };
+            }
             int cw = t->fs_restore.width, ch = t->fs_restore.height;
             if (t->ssd) {
                 cw -= (int)(2 * ui_scheme_now.border);
@@ -1852,6 +1865,8 @@ static void on_map(struct wl_listener *l, void *data)
 placed:
     focus(t);
     if (t->kind == KIND_NORMAL && (t->xdg ? t->xdg->requested.fullscreen : t->xw->fullscreen)) set_fullscreen(t, true);
+    else if (t->kind == KIND_NORMAL && !t->maximized && (t->xdg ? t->xdg->requested.maximized : t->xw->maximized_vert && t->xw->maximized_horz))
+        maximize(t, true);   /* (asked before it first showed: as it was last time) */
     desktop_window(t, "add");
     desktop_event(t, "window.open");
     server.focus_window_list = false;

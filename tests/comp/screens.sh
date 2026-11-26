@@ -64,6 +64,11 @@ check "the second screen's picture: the window drawn there" "python3 -c \"
 from PIL import Image
 im = Image.open('$S/second.png').convert('RGB')
 import sys; sys.exit(0 if im.size == (1024, 768) and sum(1 for x in range(0, 1024, 4) for y in range(0, 768, 4) if im.getpixel((x, y)) == (0x30, 0x60, 0xa0)) > 200 else 1)\""
+# a window opened maximized (LibreOffice remembers it was): restored, a
+# size of its own (the session ended: wlroots aborted on a negative size)
+printf '3 windows\n3.5 key alt+F10\n4.5 windows\n5 quit\n' > "$S/script4"
+SIZE=3840x2160 NODESK=1 SECS=7 tests/comp/run.sh "$S/script4" "sleep 1; '$C' Opened 3060a0 max" > "$S/out4.txt" 2>&1
+check "opened maximized, then restored: a size of its own, the compositor still there" "grep -q \"window 'Opened'.* maximized\" '$S/out4.txt' && grep \"window 'Opened'\" '$S/out4.txt' | tail -1 | grep -qv maximized && ! grep -q 'Assertion' '$S/out4.txt'"
 for f in out out2 out3; do T=$(sed -n 's/^T=//p' "$S/$f.txt"); check "no sanitizer reports ($f)" "! grep -q Sanitizer '$T/shell.log' 2>/dev/null"; [ $fails = 0 ] && [ -n "$T" ] && rm -rf "$T"; done
 echo "$fails failed ($S)"
 [ $fails = 0 ] && rm -rf "$S"

@@ -6,7 +6,8 @@
  * whatever size it is configured to (400x300 when the compositor leaves
  * it the choice). It logs every configure and exits when asked to close.
  *
- * usage: ssd-client TITLE [RRGGBB] [csd]   (csd: no decoration asked for)
+ * usage: ssd-client TITLE [RRGGBB] [csd|max]   (csd: no decoration asked for;
+ *        max: asks to be maximized before it first shows, as LibreOffice does)
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -101,7 +102,7 @@ int main(int argc, char **argv)
 {
     const char *title = argc > 1 ? argv[1] : "Test";
     if (argc > 2) color = 0xff000000 | (uint32_t)strtoul(argv[2], NULL, 16);
-    bool csd = argc > 3 && !strcmp(argv[3], "csd");
+    bool csd = argc > 3 && !strcmp(argv[3], "csd"), max = argc > 3 && !strcmp(argv[3], "max");
     struct wl_display *dpy = wl_display_connect(NULL);
     if (!dpy) { fprintf(stderr, "ssd-client: no display\n"); return 1; }
     struct wl_registry *reg = wl_display_get_registry(dpy);
@@ -116,6 +117,7 @@ int main(int argc, char **argv)
     xdg_toplevel_add_listener(top, &top_l, NULL);
     xdg_toplevel_set_title(top, title);
     xdg_toplevel_set_app_id(top, "io.github.sungsookhim.Objectspace.test.ssd");
+    if (max) xdg_toplevel_set_maximized(top);
     if (deco_mgr && !csd) {
         struct zxdg_toplevel_decoration_v1 *deco = zxdg_decoration_manager_v1_get_toplevel_decoration(deco_mgr, top);
         zxdg_toplevel_decoration_v1_add_listener(deco, &deco_l, NULL);
