@@ -11,13 +11,13 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-cpal-XXXX")
 W="$REPO/build/osdctl"
-# The shadow (made at 7 s: the desktop's first-start arrangement done, even on a slow machine) lands at 490,40 (after My System and Programs); the palette opens at 412,164: its first
+# The shadow (made at 7 s: the desktop's first-start arrangement done, even on a slow machine) lands at 538,40 (after My System and Programs); the palette opens at 412,164: its first
 # sample at 447,215, red (the 7th) at 444,255.
 # Projects (54,30) opens at 320,106: its title bar at y 121, right of the
 # palette at 930; magenta (the 16th sample) at 600,295.
 cat > "$S/script" <<EOS
 3.8 dclick 54 30
-8.5 dclick 490 40
+8.5 dclick 538 40
 10.3 windows
 10.5 down 444 255 right
 10.7 move 600 400

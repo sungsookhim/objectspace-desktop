@@ -1128,8 +1128,10 @@ double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char 
 
 double ui_icon_cell_width(ui_font font, const ui_icon_set *set, const char *title)
 {
-    /* as wide as its widest line, between the icon and a margin, and four icons */
-    double lo = set->large + 16, hi = 4.0 * set->large, w = 0;
+    /* as wide as its widest line, between one and a half icons (at least
+     * half an icon between two with short titles: the owner's, 2026-11-26;
+     * large icons with a letter for a title stood too close) and four icons */
+    double lo = fmax(set->large + 16, ceil(1.5 * set->large)), hi = 4.0 * set->large, w = 0;
     const char *p = title ? title : "";
     while (*p) {
         const char *e = strchr(p, '\n');

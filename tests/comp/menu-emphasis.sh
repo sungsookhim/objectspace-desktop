@@ -12,7 +12,7 @@ cat > "$S/script" <<EOS
 4 dclick 54 30
 5.5 move 1200 700
 6 shot $S/before.png
-6.5 click 124 40 right
+6.5 click 148 40 right
 7.3 shot $S/item.png
 7.5 key Escape
 8 click 905 520 right
@@ -48,7 +48,7 @@ im = Image.open('$1').convert('RGB')
 ys = [y for y in range(148, 544) if sum(im.getpixel((948, y))) // 3 > 190]
 print(min(ys), max(ys))"; }
 more() { [ "$(pxdiff "$1" "$2" $3 $4 $5 $6)" -gt 40 ]; }
-check "an icon's menu: its cell outlined" "more '$S/before.png' '$S/item.png' 84 90 10 110"
+check "an icon's menu: its cell outlined" "more '$S/before.png' '$S/item.png' 98 104 10 110"
 check "the folder's own menu: its area outlined" "more '$S/before.png' '$S/folder.png' 322 330 150 540"
 check "the desktop's menu: the desktop outlined" "more '$S/before.png' '$S/desk.png' 0 5 150 680"
 check "closed: no outline" "[ \$(pxdiff '$S/before.png' '$S/closed.png' 0 5 150 680) -le 5 ]"
