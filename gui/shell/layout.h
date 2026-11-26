@@ -33,6 +33,9 @@ void layout_set_cols(icon_layout *l, int cols);
  * order, flowed again; placed positions are the caller's to set again. */
 void layout_set_cell(icon_layout *l, double cell_w, double cell_h, int cols);
 int layout_cols(icon_layout *l);
+/* Where the layout's 0,0 is in the window (the desktop: its primary
+ * screen's corner); positions in and out are the window's. */
+void layout_set_origin(icon_layout *l, double x, double y);
 void layout_place(icon_layout *l, const char *name, int x, int y);   /* a stored position */
 void layout_clear_placed(icon_layout *l);
 bool layout_is_placed(icon_layout *l, const char *name);

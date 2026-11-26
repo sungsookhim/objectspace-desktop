@@ -1693,10 +1693,34 @@ void comp_panel_edge(bool top)
  * icons never go under the bar). */
 static void place_desktop(struct toplevel *t)
 {
-    struct wlr_box b = first_output_box();
-    if (comp_primary()) b = usable_box(comp_primary());
+    /* one desktop across all screens (the owner's, 0.7): the box round
+     * their usable areas; the desktop told where each is in it (the
+     * primary first), for its wallpaper and its icons */
+    struct wlr_output *p = comp_primary();
+    struct wlr_box b = p ? usable_box(p) : first_output_box();
+    struct output *o;
+    wl_list_for_each(o, &server.outputs, link) {
+        if (!wlr_output_layout_get(server.output_layout, o->wlr_output)) continue;
+        struct wlr_box u = usable_box(o->wlr_output);
+        int x1 = b.x + b.width > u.x + u.width ? b.x + b.width : u.x + u.width;
+        int y1 = b.y + b.height > u.y + u.height ? b.y + b.height : u.y + u.height;
+        if (u.x < b.x) b.x = u.x;
+        if (u.y < b.y) b.y = u.y;
+        b.width = x1 - b.x;
+        b.height = y1 - b.y;
+    }
     view_move(t, b.x, b.y);
     view_set_size(t, b.width, b.height);
+    char line[1024];
+    int n = snprintf(line, sizeof line, "S");
+    for (int pass = 0; pass < 2; pass++)
+        wl_list_for_each(o, &server.outputs, link) {
+            if (!wlr_output_layout_get(server.output_layout, o->wlr_output) || (pass == 0) != (o->wlr_output == p)) continue;
+            struct wlr_box u = usable_box(o->wlr_output);
+            if (n < (int)sizeof line - 64) n += snprintf(line + n, sizeof line - (size_t)n, "\t%d,%d,%d,%d", u.x - b.x, u.y - b.y, u.width, u.height);
+        }
+    snprintf(line + n, sizeof line - (size_t)n, "\n");
+    desktop_screens(line);
 }
 
 static struct tag *tag_new(int type, struct toplevel *t)
@@ -2678,6 +2702,9 @@ int main(int argc, char **argv)
     const char *headless = getenv("OSD_COMP_HEADLESS");
     int hw = 0, hh = 0;
     if (headless && sscanf(headless, "%dx%d", &hw, &hh) == 2) {   /* (WxH[,WxH...]: a screen each) */
+        /* screenshots of the screen as drawn: a window covering a screen
+         * (the desktop across several) is otherwise handed to it as is */
+        setenv("WLR_SCENE_DISABLE_DIRECT_SCANOUT", "1", 0);
         s->backend = wlr_headless_backend_create(s->loop);
         s->renderer = wlr_pixman_renderer_create();   /* readable for screenshots */
     } else {

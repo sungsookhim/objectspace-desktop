@@ -155,6 +155,7 @@ void comp_place_next(const char *app, const char *title, int x, int y);
 struct wlr_box comp_window_geometry(struct toplevel *t);   /* the desktop says where TheBar goes */
 struct wlr_output *comp_primary(void);   /* the primary screen (GNOME's, else the first) */
 struct wlr_box comp_primary_box(void);    /* ... its box in the layout */
+void desktop_screens(const char *line);   /* desktop.c: the S line (where the screens are), when it changed */
 void comp_screens_changed(void);   /* sizes changed: the desktop, Launcher, lock screen fit again */   /* the scheme or font changed */
 void comp_before_lock(void);     /* nothing has the keyboard or the pointer */
 void comp_after_unlock(void);

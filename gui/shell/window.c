@@ -162,7 +162,8 @@ static bool desk_offer(struct folder *f) { return f->offer_arrange && !strcmp(f-
 
 static ui_rect desk_msg_rect(struct folder *f)
 {
-    ui_rect c = ui_frame_client(f->win);
+    ui_rect c = ui_frame_client(f->win), p = desktop_primary(f);   /* (on the primary screen) */
+    c = (ui_rect){ c.x + p.x, c.y + p.y, p.w, p.h };
     double w = fmin(c.w - 40, ui_text_width(UI_FONT_REGULAR, f->error) + 40 + (desk_offer(f) ? ui_text_width(UI_FONT_REGULAR, "Arrange") + 6 : 0));
     return (ui_rect){ floor(c.x + (c.w - w) / 2), c.y + c.h - MSG_H - 16, floor(w), MSG_H };
 }

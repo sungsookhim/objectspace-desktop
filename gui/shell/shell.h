@@ -537,7 +537,11 @@ void user_dir(const char *key, const char *fallback, char *out, size_t n);
 void windows_at_login(void);
 struct folder *open_desktop(const char *path);
 int desktop_arrange_hold(void);   /* the desktop's first arrangement: 1 waits for the first start, 2 again as its shadows come */
-void desktop_keep_corner(struct folder *f);   /* the Trash Can's corner kept through it */
+void desktop_keep_corner(struct folder *f);
+int desktop_screens(ui_rect *out, int max);       /* the screens' usable areas in the desktop's window (0: one, the window) */
+void desktop_screens_line(char **f, int k);       /* the compositor's S line */
+void desktop_fit(struct folder *f, int64_t *x, int64_t *y);   /* a place kept on a screen */
+ui_rect desktop_primary(struct folder *f);       /* the primary screen's usable area */   /* the Trash Can's corner kept through it */
 struct folder *open_window(const char *path, ui_view view, bool desktop);
 
 /* A folder window's menu bar (menubar.c). */

@@ -13,6 +13,7 @@
  *         TAB <focused> TAB <icon PNG> TAB <maximized>
  *     K TAB window-list
  *     I TAB <index> TAB <count> TAB xkb|ibus TAB <name>   the input source now
+ *     S TAB <x,y,w,h> ...   the screens' usable areas in the desktop's window, the primary first
  * and reads commands from its standard output, one a line:
  *     activate|restore|minimize|maximize|close|terminate TAB <id>
  *     lock   find   shutdown TAB poweroff|reboot|logout
@@ -54,6 +55,7 @@ static struct {
     double started;
     bool stopping;
 } d = { .in_fd = -1, .out_fd = -1 };
+static char *screens_sent;   /* the S line the desktop has (desktop_screens) */
 
 static double now_ms(void)
 {
@@ -380,6 +382,18 @@ static void resend_all(void)
     }
 }
 
+/* Where the screens are in the desktop's window (place_desktop):
+ *     S TAB x,y,w,h ...   each screen's usable area, the primary first
+ * sent when it changes, and again to a desktop started anew. */
+void desktop_screens(const char *line)
+{
+    if (d.in_fd < 0) return;
+    if (screens_sent && !strcmp(screens_sent, line)) return;
+    free(screens_sent);
+    screens_sent = strdup(line);
+    send_line(line);
+}
+
 bool desktop_key(const char *what)
 {
     if (d.in_fd < 0) return false;
@@ -595,6 +609,8 @@ static void start(void)
         wl_client_add_destroy_listener(d.client, &d.client_destroy);
     }
     d.in_fd = in[1];
+    free(screens_sent);   /* (a desktop anew: the screens told again when it is placed) */
+    screens_sent = NULL;
     d.out_fd = out[0];
     fcntl(d.in_fd, F_SETFL, fcntl(d.in_fd, F_GETFL) | O_NONBLOCK);
     fcntl(d.out_fd, F_SETFL, fcntl(d.out_fd, F_GETFL) | O_NONBLOCK);

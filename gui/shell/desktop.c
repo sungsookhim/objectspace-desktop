@@ -28,6 +28,73 @@ void user_dir(const char *key, const char *fallback, char *out, size_t n)
     mkdir(out, 0755);   /* a fresh account may not have one yet */
 }
 
+/* ---- the screens (0.7: one desktop across all of them)
+ *
+ * In the Objectspace session the desktop's window spans every screen; the
+ * compositor says where each screen's usable area is in it (an S line,
+ * the primary first). Icons stay on screens (one in a gap, or on a screen
+ * gone, is shown on the nearest, its stored place kept for when that
+ * screen comes back); Arrange and new icons fill the primary; the Trash
+ * Can in the primary's corner; the wallpaper fitted to each. None told
+ * (inside GNOME): the window is the one screen. */
+static ui_rect scr[8];
+static int nscr;
+
+int desktop_screens(ui_rect *out, int max)
+{
+    int n = nscr < max ? nscr : max;
+    for (int i = 0; i < n; i++) out[i] = scr[i];
+    return n;
+}
+
+void desktop_screens_line(char **f, int k)
+{
+    ui_rect now[8];
+    int n = 0;
+    for (int i = 1; i < k && n < 8; i++) {
+        double x, y, w, h;
+        if (sscanf(f[i], "%lf,%lf,%lf,%lf", &x, &y, &w, &h) == 4 && w > 0 && h > 0) now[n++] = (ui_rect){ x, y, w, h };
+    }
+    if (n == nscr && !memcmp(now, scr, (size_t)n * sizeof *now)) return;
+    memcpy(scr, now, (size_t)n * sizeof *now);
+    nscr = n;
+    wallpaper_set_screens(scr, nscr);
+    for (struct folder *d = folders; d; d = d->next)
+        if (d->desktop && !d->closing) {
+            folder_icons_changed(d);   /* (the primary's columns; stored places shown again, fitted) */
+            ui_surface_damage_all(d->win);
+        }
+}
+
+/* A place on the desktop (an icon's corner) kept on a screen: the one
+ * its cell's middle is on, else the nearest; inside it, clear of its
+ * right and bottom edges. */
+void desktop_fit(struct folder *f, int64_t *x, int64_t *y)
+{
+    const ui_icon_set *set = folder_icons(f);
+    ui_rect c = ui_frame_client(f->win), r = { 0, 0, c.w, c.h };
+    if (nscr) {
+        double mx = (double)*x + set->cell_w / 2, my = (double)*y + set->cell_h / 2, best = -1;
+        for (int i = 0; i < nscr; i++) {
+            double dx = mx < scr[i].x ? scr[i].x - mx : mx > scr[i].x + scr[i].w ? mx - scr[i].x - scr[i].w : 0;
+            double dy = my < scr[i].y ? scr[i].y - my : my > scr[i].y + scr[i].h ? my - scr[i].y - scr[i].h : 0;
+            double d = dx * dx + dy * dy;
+            if (best < 0 || d < best) { best = d; r = scr[i]; }
+        }
+    }
+    if (r.w > set->cell_w && *x > r.x + r.w - set->cell_w - 8) *x = (int64_t)(r.x + r.w - set->cell_w - 8);
+    if (r.h > set->cell_h && *y > r.y + r.h - set->cell_h - 8) *y = (int64_t)(r.y + r.h - set->cell_h - 8);
+    if (*x < r.x) *x = (int64_t)r.x;
+    if (*y < r.y) *y = (int64_t)r.y;
+}
+
+/* The primary screen's usable area in the desktop's window. */
+ui_rect desktop_primary(struct folder *f)
+{
+    ui_rect c = ui_frame_client(f->win);
+    return nscr ? scr[0] : (ui_rect){ 0, 0, c.w, c.h };
+}
+
 /* The desktop folder: XDG_DESKTOP_DIR, else ~/Desktop. */
 static void desktop_dir(char *out, size_t n) { user_dir("DESKTOP", "Desktop", out, n); }
 
@@ -73,9 +140,9 @@ static bool trash_to_corner(void)
         struct row *rw = row_at(f, i);
         const char *nm = model_name(&f->m, i);
         if (!rw || !nm || !rw->shadow || !rw->target || !is_trash_dir(rw->target)) continue;
-        ui_rect c = ui_frame_client(f->win);
+        ui_rect c = desktop_primary(f);   /* (the primary's corner) */
         const ui_icon_set *set = folder_icons(f);
-        int64_t x = (int64_t)(c.w - set->cell_w - 8), y = (int64_t)(c.h - set->cell_h - 8);
+        int64_t x = (int64_t)(c.x + c.w - set->cell_w - 8), y = (int64_t)(c.y + c.h - set->cell_h - 8);
         if (x < 0 || y < 0) return false;
         char addr[PATH_MAX];
         if (nm[0] == '\x01') snprintf(addr, sizeof addr, "%s", nm + 1);

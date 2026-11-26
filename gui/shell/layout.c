@@ -117,6 +117,7 @@ struct icon_layout {
     size_t spot_end;         /* spots past the last one given */
     size_t flowed_end;       /* spot_end when last flowed */
     void (*on_new)(void *ctx, const char *name);   /* a name given a spot for the first time */
+    double ox, oy;           /* where its 0,0 is in the window (layout_set_origin) */
     void *on_new_ctx;
 };
 
@@ -272,8 +273,12 @@ void layout_set_cols(icon_layout *l, int cols)
     if (l->slots.n == 0 && l->placed.n == 0) { l->cols = cols < 1 ? 1 : cols; take_width(l); }
 }
 
+void layout_set_origin(icon_layout *l, double x, double y) { l->ox = x; l->oy = y; }
+
 void layout_place(icon_layout *l, const char *name, int x, int y)
 {
+    x -= (int)l->ox;   /* (window to layout) */
+    y -= (int)l->oy;
     int64_t *v = map_slot(&l->placed, name, true);
     *v = ((int64_t)x << 32) | (uint32_t)y;
 }
@@ -559,8 +564,8 @@ void layout_update(icon_layout *l, size_t n, layout_name_fn name_at, void *ctx, 
 void layout_pos(icon_layout *l, size_t i, double *x, double *y)
 {
     if (i >= l->n) { *x = *y = 0; return; }
-    *x = l->x[i];
-    *y = l->y[i];
+    *x = l->x[i] + l->ox;
+    *y = l->y[i] + l->oy;
 }
 
 double layout_item_h(icon_layout *l, size_t i) { return i < l->n ? l->h[i] : l->ch; }
@@ -581,6 +586,8 @@ static size_t row_at_y(icon_layout *l, double y)
 size_t layout_items_in(icon_layout *l, double rx, double ry, double rw, double rh, size_t *out, size_t max)
 {
     size_t k = 0;
+    rx -= l->ox;   /* (window to layout) */
+    ry -= l->oy;
     /* Cells are [c*w, (c+1)*w): those that overlap [rx, rx+rw), not just touch it. */
     if (rw <= 0 || rh <= 0) return 0;
     if (l->free) {
@@ -617,6 +624,6 @@ size_t layout_items_in(icon_layout *l, double rx, double ry, double rw, double r
 void layout_size(icon_layout *l, double *w, double *h)
 {
     double gw = l->free ? 0 : (double)l->cols * l->cw;
-    *w = l->max_x > gw ? l->max_x : gw;
-    *h = l->max_y;
+    *w = (l->max_x > gw ? l->max_x : gw) + l->ox;
+    *h = l->max_y + l->oy;
 }

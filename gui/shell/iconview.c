@@ -290,6 +290,11 @@ double lay_w(void *ctx, size_t i)
 int cols_now(struct folder *f)
 {
     double w = ui_container_list_width(f->cont);
+    if (f->desktop) {   /* (Arrange and new icons: the primary screen) */
+        ui_rect p = desktop_primary(f);
+        layout_set_origin(f->lay, p.x, p.y);
+        if (p.w > 0 && p.w < w) w = p.w;
+    }
     layout_set_width(f->lay, w);   /* (the free layout's width, taken with the columns) */
     int k = (int)(w / folder_icons(f)->cell_w);
     return k < 1 ? 1 : k;
@@ -312,8 +317,10 @@ void folder_place(struct folder *f, const char *dest, const char *const *targets
     const ui_icon_set *set = folder_icons(f);
     int64_t *sx = calloc(n ? n : 1, sizeof *sx), *sy = calloc(n ? n : 1, sizeof *sy);
     for (size_t i = 0; i < n; i++) {
-        sx[i] = llround((double)x[i] * POS_W / set->cell_w);
-        sy[i] = llround((double)y[i] * POS_H / set->cell_h);
+        int64_t px = x[i], py = y[i];
+        if (f->desktop) desktop_fit(f, &px, &py);   /* (dropped in a gap between screens: on the nearest) */
+        sx[i] = llround((double)px * POS_W / set->cell_w);
+        sy[i] = llround((double)py * POS_H / set->cell_h);
     }
     svc_place(dest, targets, sx, sy, n, fn, arg);
     free(sx);
@@ -331,11 +338,7 @@ void folder_pos_shown(struct folder *f, int64_t *x, int64_t *y)
     const ui_icon_set *set = folder_icons(f);
     *x = llround((double)*x * set->cell_w / POS_W);
     *y = llround((double)*y * set->cell_h / POS_H);
-    if (f->desktop) {   /* (it does not scroll: kept on it, at a larger set too) */
-        ui_rect c = ui_frame_client(f->win);
-        if (c.w > set->cell_w && *x > c.w - set->cell_w - 8) *x = (int64_t)(c.w - set->cell_w - 8);
-        if (c.h > set->cell_h && *y > c.h - set->cell_h - 8) *y = (int64_t)(c.h - set->cell_h - 8);
-    }
+    if (f->desktop) desktop_fit(f, x, y);   /* (it does not scroll: kept on a screen, at a larger set too) */
 }
 
 void folder_icons_changed(struct folder *f)

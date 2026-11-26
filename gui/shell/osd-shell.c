@@ -27,6 +27,7 @@ static void on_window_events(void *arg, int fd, short rev)
             if (ui_menu_is_open()) ui_menu_close_all();   /* pressed again: closed (as on Windows) */
             else if (thebar_is_open()) thebar_press("desktop");
         }
+        else if (k >= 2 && !strcmp(f[0], "S")) desktop_screens_line(f, k);   /* where the screens are (0.7) */
         else if (k >= 5 && !strcmp(f[0], "I")) thebar_input_source(atoi(f[1]), atoi(f[2]), !strcmp(f[3], "ibus"), f[4]);
         else if (k == 7 && !strncmp(f[0], "window.", 7)) {
             ui_rect at = { atof(f[3]), atof(f[4]), atof(f[5]), atof(f[6]) };

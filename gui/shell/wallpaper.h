@@ -26,6 +26,10 @@ void wallpaper_stop(void);
 /* The desktop's size in logical pixels, and its scale. */
 void wallpaper_set_size(double w, double h, int scale);
 
+/* The screens in it (their usable areas, logical; 0: one, all of it):
+ * the picture fitted to each. */
+void wallpaper_set_screens(const ui_rect *r, int n);
+
 /* Draw the part `clip` of the background (logical coordinates, the
  * desktop's top left at 0,0). */
 void wallpaper_draw(cairo_t *cr, ui_rect clip);

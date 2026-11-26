@@ -40,6 +40,8 @@ static char src_uri[sizeof want.uri];
 static int src_size;              /* the largest side it was decoded for (0: full size) */
 static cairo_surface_t *comp;     /* the background at the desktop's size, in pixels */
 static double lw, lh;             /* the desktop, logical */
+static ui_rect parts[8];          /* the screens in it (none told: the one, all of it) */
+static int nparts;
 static int scale = 1;
 static char showing[PATH_MAX + 16] = "color";
 
@@ -156,13 +158,14 @@ static bool xml_first_file(const char *path, char *out, size_t n)
 
 /* ------------------------------------------------------------- composing */
 
-static void compose(void)
+/* One screen's part (pixels: x, y, w by h): the colours, the picture as
+ * its options say, fitted to that screen. */
+static void compose_part(cairo_t *cr, double x, double y, double pw, double ph)
 {
-    int pw = (int)ceil(lw * scale), ph = (int)ceil(lh * scale);
-    if (pw <= 0 || ph <= 0) return;
-    if (comp) cairo_surface_destroy(comp);
-    comp = cairo_image_surface_create(CAIRO_FORMAT_RGB24, pw, ph);
-    cairo_t *cr = cairo_create(comp);
+    cairo_save(cr);
+    cairo_rectangle(cr, x, y, pw, ph);
+    cairo_clip(cr);
+    cairo_translate(cr, x, y);
     if (!strcmp(want.shading, "solid")) {
         cairo_set_source_rgb(cr, want.c1[0], want.c1[1], want.c1[2]);
     } else {
@@ -174,11 +177,9 @@ static void compose(void)
         cairo_pattern_destroy(g);
     }
     cairo_paint(cr);
-    snprintf(showing, sizeof showing, "color");
     if (src && want.uri[0] && !strcmp(src_uri, want.uri)) {
         double sw = cairo_image_surface_get_width(src), sh = cairo_image_surface_get_height(src);
         const char *o = want.options;
-        cairo_save(cr);
         if (!strcmp(o, "wallpaper")) {
             cairo_pattern_t *p = cairo_pattern_create_for_surface(src);
             cairo_pattern_set_extend(p, CAIRO_EXTEND_REPEAT);
@@ -189,7 +190,7 @@ static void compose(void)
             double sx, sy;
             if (!strcmp(o, "stretched")) { sx = pw / sw; sy = ph / sh; }
             else if (!strcmp(o, "scaled")) sx = sy = fmin(pw / sw, ph / sh);
-            else if (!strcmp(o, "centered")) sx = sy = (double)scale * (src_size ? 1.0 : 1.0);
+            else if (!strcmp(o, "centered")) sx = sy = (double)scale;
             else sx = sy = fmax(pw / sw, ph / sh);   /* zoom, spanned */
             cairo_translate(cr, (pw - sw * sx) / 2, (ph - sh * sy) / 2);
             cairo_scale(cr, sx, sy);
@@ -197,7 +198,30 @@ static void compose(void)
             cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
             cairo_paint(cr);
         }
-        cairo_restore(cr);
+    }
+    cairo_restore(cr);
+}
+
+/* The background at the desktop's size: each screen's part fitted to that
+ * screen (GNOME's "spanned": one across them all); between screens of
+ * different sizes, black (not seen). */
+static void compose(void)
+{
+    int pw = (int)ceil(lw * scale), ph = (int)ceil(lh * scale);
+    if (pw <= 0 || ph <= 0) return;
+    if (comp) cairo_surface_destroy(comp);
+    comp = cairo_image_surface_create(CAIRO_FORMAT_RGB24, pw, ph);
+    cairo_t *cr = cairo_create(comp);
+    if (nparts && strcmp(want.options, "spanned")) {
+        cairo_set_source_rgb(cr, 0, 0, 0);
+        cairo_paint(cr);
+        for (int i = 0; i < nparts; i++)
+            compose_part(cr, parts[i].x * scale, parts[i].y * scale, ceil(parts[i].w * scale), ceil(parts[i].h * scale));
+    } else {
+        compose_part(cr, 0, 0, pw, ph);
+    }
+    snprintf(showing, sizeof showing, "color");
+    if (src && want.uri[0] && !strcmp(src_uri, want.uri)) {
         char path[PATH_MAX];
         if (uri_to_path(want.uri, path, sizeof path)) snprintf(showing, sizeof showing, "%s", path);
     }
@@ -399,6 +423,15 @@ void wallpaper_stop(void)
     if (comp) cairo_surface_destroy(comp);
     src = comp = NULL;
     on_changed = NULL;
+}
+
+void wallpaper_set_screens(const ui_rect *r, int n)
+{
+    if (n > 8) n = 8;
+    if (n == nparts && !memcmp(r, parts, (size_t)n * sizeof *r)) return;
+    memcpy(parts, r, (size_t)n * sizeof *r);
+    nparts = n;
+    if (comp) changed();
 }
 
 void wallpaper_set_size(double w, double h, int sc)
