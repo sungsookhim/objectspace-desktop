@@ -99,6 +99,15 @@ Drawings the owner approves before they are wired in, as the icons and the curso
 - **The dotted selection square** (the rubber band, and the dotted outline of a menu's source).
 - **TheBar's icon placement:** how its buttons, icons and parts sit and are spaced.
 
+### Objectspace Terminal: its own settings (the owner's, 2026-11-27; not designed yet)
+
+The built-in terminal has only a font (the System's Fonts page, `font_terminal`). Settings to change, as OS/2's command window's (where: the System's or a Terminal settings object; a slot to be chosen):
+
+- **Background and text colours** (the Colour Palette's samples dropped on them too).
+- **Font and font size.**
+- **The window's size at start** (columns and rows).
+- **Scrollback:** how many lines are kept to scroll back to.
+
 ### Look of other programs (not designed)
 
 - **Contents following the WPS scheme:** controls, menus, scroll bars, icons, cursors, fonts and colours: a GTK 3 theme, a Qt style, a WPS icon and cursor theme, all driven by the scheme objects.
