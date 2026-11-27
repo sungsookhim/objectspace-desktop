@@ -56,6 +56,6 @@ set -- $(thumb "$S/closed.png"); t0=$1
 set -- $(thumb "$S/click.png"); t1=$1
 set -- $(thumb "$S/held.png"); h0=$1 h1=$2
 check "a click in the trough: one page (the thumb $t0 to $t1)" "[ $t1 -gt $t0 ] && [ $t1 -lt 300 ]"
-check "held: paged until the thumb is under the pointer ($h0-$h1 at 500)" "[ $h0 -le 500 ] && [ $h1 -ge 500 ]"
+check "held: paged until the thumb is under the pointer ($h0-$h1 at 500, its border 3 more)" "[ $h0 -le 500 ] && [ $h1 -ge 497 ]"
 echo "$fails failed ($S, logs: $T)"
 [ $fails = 0 ]

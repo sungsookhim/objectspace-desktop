@@ -1059,7 +1059,7 @@ static bool label_expanded(ui_container *c, size_t i, const ui_item *it)
     if (!sel_get(c, i)) return false;
     char lines[2][256];
     bool all;
-    wrap_title(c->font, it->title, cell_w(c, i) - 8, lines, 2, &all);
+    wrap_title(c->font, it->title, cell_w(c, i) - ui_icon_gap(iset(c)), lines, 2, &all);
     return !all;
 }
 
@@ -1068,7 +1068,7 @@ static void draw_label(ui_container *c, cairo_t *cr, size_t i, const ui_item *it
     const ui_scheme *k = &ui_scheme_now;
     char lines[LABEL_MAX][256];
     bool all;
-    double maxw = r.w - 8;
+    double maxw = r.w - ui_icon_gap(iset(c));
     int n = wrap_title(c->font, it->title ? it->title : "", maxw, lines, full ? LABEL_MAX : 2, &all);
     double tw = 0;
     for (int l = 0; l < n; l++) tw = fmax(tw, fmin(maxw, ui_text_width(c->font, lines[l])));
@@ -1128,10 +1128,10 @@ double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char 
 
 double ui_icon_cell_width(ui_font font, const ui_icon_set *set, const char *title)
 {
-    /* as wide as its widest line, between one and a half icons (at least
-     * half an icon between two with short titles: the owner's, 2026-11-26;
-     * large icons with a letter for a title stood too close) and four icons */
-    double lo = fmax(set->large + 16, ceil(1.5 * set->large)), hi = 4.0 * set->large, w = 0;
+    /* as wide as its widest line and the gap, between one and a half icons
+     * and four icons and the gap (at least half an icon between two items,
+     * their titles too: the owner's, 2026-11-26) */
+    double g = ui_icon_gap(set), lo = fmax(set->large + 16, ceil(set->large + g)), hi = 4.0 * set->large + g, w = 0;
     const char *p = title ? title : "";
     while (*p) {
         const char *e = strchr(p, '\n');
@@ -1142,16 +1142,16 @@ double ui_icon_cell_width(ui_font font, const ui_icon_set *set, const char *titl
         p += n;
         if (*p == '\n') p++;
     }
-    return fmin(hi, fmax(lo, ceil(w) + 12));
+    return fmin(hi, fmax(lo, ceil(w) + 4 + g));
 }
 
 double ui_icon_cell_height_w(ui_font font, const ui_icon_set *set, const char *title, double width)
 {
     char lines[LABEL_MAX][256];
     bool all;
-    int n = wrap_title(font, title ? title : "", width - 8, lines, LABEL_MAX, &all);
+    int n = wrap_title(font, title ? title : "", width - ui_icon_gap(set), lines, LABEL_MAX, &all);
     double lh = ui_font_is_interface(font) ? 16 : fmax(16, ceil(ui_font_line_h(font)));
-    double h = set->large + 8 + n * lh + 4 + 4;
+    double h = set->large + 8 + n * lh + fmax(8, ui_icon_gap(set) / 2);   /* (down: a quarter icon below its title) */
     return h > set->cell_h ? h : set->cell_h;
 }
 
@@ -1171,12 +1171,19 @@ const ui_icon_set *ui_container_icon_set(ui_container *c) { return iset(c); }
 
 /* The sets (the owner's, v0.4-design 3); a cell holds the icon, two
  * lines of title below and room round them. */
+/* The space kept between two items side by side (icons with their
+ * titles: Programs' long ones stood too close): half an icon (the
+ * owner's, 2026-11-26), at least 8; a title wraps in its cell less this.
+ * Down, below a title, half of it. */
+double ui_icon_gap(const ui_icon_set *set) { return fmax(8, ceil(set->large / 2.0)); }
+
 ui_icon_set ui_icon_set_of(ui_icon_size which)
 {
     static const int sz[3][3] = { { 32, 16, 16 }, { 64, 32, 16 }, { 96, 48, 24 } };
     int w = which >= UI_ICONS_SMALL && which <= UI_ICONS_LARGE ? (int)which : UI_ICONS_DEFAULT;
     int l = sz[w][0];
-    return (ui_icon_set){ l, sz[w][1], sz[w][2], fmax(100, l + 48), l + 48 };
+    double g = fmax(8, ceil(l / 2.0));   /* (ui_icon_gap) */
+    return (ui_icon_set){ l, sz[w][1], sz[w][2], fmax(100, ceil(1.75 * l)), l + 40 + fmax(8, g / 2) };
 }
 
 ui_icon_size ui_icon_size_named(const char *name)

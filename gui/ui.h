@@ -695,6 +695,7 @@ double ui_icon_cell_height_set(ui_font font, const ui_icon_set *set, const char 
 /* The free layout's: a cell as wide as its title needs (between the icon
  * and a margin, and four icons), and its height at a width. */
 double ui_icon_cell_width(ui_font font, const ui_icon_set *set, const char *title);
+double ui_icon_gap(const ui_icon_set *set);
 double ui_icon_cell_height_w(ui_font font, const ui_icon_set *set, const char *title, double width);
 /* Its icons' set (a folder's own); the System's until set. */
 void ui_container_set_icon_set(ui_container *c, const ui_icon_set *set);

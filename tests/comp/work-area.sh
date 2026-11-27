@@ -12,20 +12,20 @@ S=$(mktemp -d "${TMPDIR:-/tmp}/osd-workarea-XXXX")
 W="$PWD/build/osdctl"
 C="$PWD/build/tests/ssd-client"
 # Projects (its icon at 54,30) opens at 320,106 (640x480): away (a link to
-# a folder elsewhere) at 372,176, one.desktop at 460,176, two.desktop at
-# 548,176, zfolder (a shadow of another folder, made once the desktop
-# runs) at 636,176. Its title bar at y 118 stays in view (the programs open
+# a folder elsewhere) at 376,176, one.desktop at 480,176, two.desktop at
+# 592,176, zfolder (a shadow of another folder, made once the desktop
+# runs) at 696,176. Its title bar at y 118 stays in view (the programs open
 # at 436,156, the folders lower right): a click there raises it again
 # before the next icon. Its minimize button at 903,118, close at 943,118.
 cat > "$S/one" <<EOS
 3 dclick 54 30
-4.5 dclick 460 176
+4.5 dclick 480 176
 6 click 700 118
-6.5 dclick 548 176
+6.5 dclick 592 176
 8 click 700 118
-8.5 dclick 372 176
+8.5 dclick 376 176
 9.5 click 700 118
-10 dclick 636 176
+10 dclick 696 176
 11.5 windows
 11.7 click 700 118
 12 click 903 118
