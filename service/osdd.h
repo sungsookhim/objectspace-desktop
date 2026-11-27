@@ -51,6 +51,7 @@
 #include "OsdSetup.h"
 #include "OsdFontPalette.h"
 #include "OsdColorPalette.h"
+#include "OsdScreens.h"
 #include "OsdFolder.h"
 #include "OsdTrashCan.h"
 #include "OsdDrive.h"
@@ -291,8 +292,8 @@ struct first_start {
  * new icons in the order they appear, so a new desktop is always laid out
  * the same (concurrently, My System and Programs swapped places at random). */
 struct fs_shadow { char target[PATH_MAX], folder[PATH_MAX]; bool keep; int64_t x; struct fs_shadow *next; };   /* keep: Prevent delete on it; x >= 0: its place (a tray's order) */
-#define NSETUP 9
-#define SETUP_IN_SYSTEM 6   /* setup_classes from this one on */
+#define NSETUP 10
+#define SETUP_IN_SYSTEM 7   /* setup_classes from this one on */
 
 /* ---- the default objects (0.2): System, Programs and the Trash Can on the
  * desktop; Templates, Startup, the Minimized Window Viewer, Restore

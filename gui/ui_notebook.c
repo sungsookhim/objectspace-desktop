@@ -46,6 +46,7 @@ struct field {
     char *from;              /* an inherited value's source, or NULL */
     char *preview;           /* colour: the one used when empty; file: a PNG of the picture */
     cairo_surface_t *pv_img; /* file: preview read */
+    const ui_canvas *canvas; /* canvas: its owner's */
     char *pv_read;           /* (from this path) */
 };
 
@@ -78,6 +79,7 @@ struct ui_notebook {
     void (*extra_fn)(void *ctx, ui_surface *s, double x, double y, uint32_t serial);
     char extra_label[32];
     uint32_t press_serial;
+    struct field *canvas_held;  /* a canvas pressed: the motion and the release go to it */
 };
 
 /* ------------------------------------------------------------ values */
@@ -154,6 +156,8 @@ static struct page *copy_pages(const ui_page_desc *src, size_t n)
             f->from = d->from && *d->from ? strdup(d->from) : NULL;
             f->preview = d->preview && *d->preview ? strdup(d->preview) : NULL;
             f->kind = d->kind;
+            f->canvas = d->kind == UI_FIELD_CANVAS ? d->canvas : NULL;
+            if (d->kind == UI_FIELD_CANVAS && !d->canvas) f->kind = UI_FIELD_INFO;   /* (none given: nothing to draw) */
             value_copy(&f->v, &d->value);
             value_copy(&f->orig, &d->value);
             f->nchoices = d->nchoices;
@@ -265,6 +269,7 @@ static double choice_w(const struct field *f)
 /* A row: taller when its label (or information text) takes more lines */
 static double row_h_in(const struct field *f, double lw, double cw)
 {
+    if (f->kind == UI_FIELD_CANVAS) return f->canvas->height + 8;
     double base = f->kind == UI_FIELD_ICON ? ICON_ROW : ROW_H, lh = ui_font_line_h(UI_FONT_DIALOG);
     int lines = wrap_text(NULL, f->label, 0, 0, lw - 8);
     if (f->from) {   /* (shown below the label when it does not fit after it) */
@@ -297,6 +302,7 @@ static ui_rect control_rect(ui_notebook *nb, size_t k)
     struct field *f = &pg->f[k];
     double y = p.y + MARGIN;
     for (size_t i = 0; i < k; i++) y += row_h(nb, &pg->f[i]);
+    if (f->kind == UI_FIELD_CANVAS) return (ui_rect){ p.x + MARGIN, y, p.w - 2 * MARGIN, f->canvas->height };
     if (f->kind == UI_FIELD_CHECKBOX) w = FIELD_H;
     else if (f->kind == UI_FIELD_NUMBER) w = fmin(w, 140);
     else if (f->kind == UI_FIELD_COLOR) w = fmin(w, FIELD_H + 6 + 100);
@@ -576,6 +582,13 @@ static void nb_draw(ui_surface *s, cairo_t *cr, ui_rect clip)
             ui_set_color(cr, k->text);
             wrap_text(cr, f->v.text, r.x, r.y + base_off, r.w);
             break;
+        case UI_FIELD_CANVAS:
+            cairo_save(cr);
+            cairo_rectangle(cr, r.x, r.y, r.w, r.h);
+            cairo_clip(cr);
+            f->canvas->draw(f->canvas->ctx, cr, r, focused);
+            cairo_restore(cr);
+            break;
         case UI_FIELD_ICON:
             draw_icon_field(nb, f, cr, r, focused);
             break;
@@ -789,6 +802,7 @@ static void a11y_nb(ui_notebook *nb)
             i.description = "a colour, as #rrggbb";
             break;
         case UI_FIELD_INFO: i.role = UI_ROLE_ENTRY; i.text = f->v.text; break;   /* (read only) */
+        case UI_FIELD_CANVAS: i.role = UI_ROLE_ICON; i.description = f->canvas->description; break;
         case UI_FIELD_NUMBER:
             i.role = UI_ROLE_SPIN_BUTTON;
             snprintf(num, sizeof num, "%s", ui_entry_text(f->entry));
@@ -1149,6 +1163,14 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
         ui_rect r = entry_rect(ff, control_rect(nb, (size_t)nb->focus));
         if (ui_entry_pointer(ff->entry, e, r) != UI_ENTRY_NONE) damage(nb);
     }
+    if (nb->canvas_held && (e->kind == UI_MOTION || e->kind == UI_RELEASE)) {   /* (a canvas held: its drag) */
+        struct field *f = nb->canvas_held;
+        struct page *pg = &nb->pages[nb->page];
+        for (size_t k = 0; k < pg->n; k++)
+            if (&pg->f[k] == f && f->canvas->pointer && f->canvas->pointer(f->canvas->ctx, e, control_rect(nb, k))) damage(nb);
+        if (e->kind == UI_RELEASE) nb->canvas_held = NULL;
+        return;
+    }
     if (e->kind == UI_RELEASE && nb->icon_field) {
         struct field *f = nb->icon_field;
         int b = nb->icon_pressed;
@@ -1212,6 +1234,11 @@ static void nb_pointer(ui_surface *s, const ui_pointer_event *e)
             break;   /* the picture: focused (Enter chooses) */
         case UI_FIELD_INFO:
             break;
+        case UI_FIELD_CANVAS:
+            nb->canvas_held = f;
+            if (f->canvas->pointer && f->canvas->pointer(f->canvas->ctx, e, r)) damage(nb);
+            damage(nb);   /* (its focus) */
+            break;
         case UI_FIELD_NUMBER:
             if (ui_rect_has(spin_rect(r, true), e->x, e->y)) { step_number(nb, f, 1); break; }
             if (ui_rect_has(spin_rect(r, false), e->x, e->y)) { step_number(nb, f, -1); break; }
@@ -1272,6 +1299,9 @@ static void nb_key(ui_surface *s, const ui_key_event *e)
         if (e->sym == XKB_KEY_space) { f->v.checked = !f->v.checked; apply(nb, f); damage(nb); }
         return;
     case UI_FIELD_INFO:
+        return;
+    case UI_FIELD_CANVAS:
+        if (f->canvas->key && f->canvas->key(f->canvas->ctx, e)) damage(nb);
         return;
     case UI_FIELD_ICON:   /* Enter or Space: Choose...; Delete: Default */
         if (e->sym == XKB_KEY_space || e->sym == XKB_KEY_Return || e->sym == XKB_KEY_KP_Enter) icon_action(nb, f, 0);
@@ -1414,6 +1444,8 @@ void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n)
         }
     damage(nb);
 }
+
+void ui_notebook_redraw(ui_notebook *nb) { if (nb) damage(nb); }
 
 void ui_notebook_set_status(ui_notebook *nb, const char *msg)
 {

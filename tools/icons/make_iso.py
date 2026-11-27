@@ -362,6 +362,25 @@ def system(c):
             c.on_z(7.1, rect(x, x + 6.5, y, y + 6), PLASTIC_D, edge=False)
 
 
+def monitor(c, x0, x1, z0, z1, screen):
+    """A monitor standing on its foot: base, neck, back, bezel, the picture."""
+    cx = (x0 + x1) / 2
+    c.box(cx - 22, cx + 22, -26, -8, 0, 6, PLASTIC_D)                         # base, neck
+    c.box(cx - 7, cx + 7, -22, -12, 6, z0, PLASTIC_D)
+    c.box(x0 + 12, x1 - 12, -40, -16, z0 + 10, z1 - 10, PLASTIC_D)            # back
+    c.box(x0, x1, -16, -4, z0, z1, PLASTIC)                                   # bezel
+    c.on_y(-3.9, sq(x0 + 6, x1 - 6, z0 + 6, z1 - 6), screen)
+    c.on_y(-3.8, sq(x0 + 6, x1 - 6, z0 + 6, z0 + 11), PLASTIC_L, edge=False)  # the bar along the screen's foot
+
+
+def screens(c):
+    """Screens: two monitors side by side, the desktop across them."""
+    monitor(c, -84, -2, 30, 96, TEAL)
+    monitor(c, 4, 80, 30, 90, TEAL)
+    for z in (76, 60):
+        c.on_y(-3.7, sq(-76, -67, z, z + 8), YELLOW, edge=False)
+
+
 # glyphs on a face y = const, (x, z) centred on cx, cz, half-size h
 
 def g_padlock(c, y, cx, cz, h):
@@ -575,7 +594,8 @@ def drive_missing(c):
 SET_A = [("mouse", "Mouse", mouse), ("sound", "Sound", sound), ("scheme-palette", "Scheme Palette", scheme_palette),
          ("system", "System", system), ("launcher", "Launcher", launcher), ("thebar", "TheBar", thebar),
          ("messages", "Messages", messages), ("restore-desktop", "Restore Desktop", restore_desktop),
-         ("minwin-viewer", "Minimized Window Viewer", minwin_viewer), ("drive-missing", "Drive (not present)", drive_missing)]
+         ("minwin-viewer", "Minimized Window Viewer", minwin_viewer), ("drive-missing", "Drive (not present)", drive_missing),
+         ("screens", "Screens", screens)]
 
 
 # ------------------------------------------------------------- set B: folders

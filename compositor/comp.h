@@ -89,6 +89,7 @@ struct output {
     struct wl_listener frame, request_state, destroy;
     double last_frame_ms;               /* when the last frame was shown */
     struct wl_event_source *pace;       /* a frame that came too soon waits for it */
+    struct wlr_scene_output *scene_out; /* its part of the scene (NULL: off) */
 };
 
 struct toplevel {

@@ -525,6 +525,13 @@ void folder_window_save(struct folder *f);
  * clicked; desktop_say: a message of its own there (sticky: until clicked). */
 void desktop_status(struct folder *f);
 void desktop_say(const char *text, bool sticky);
+
+/* The Screens object (screens.c, 0.7): the compositor's M lines read;
+ * its notebook (inside GNOME: GNOME's Settings, Displays). */
+void screens_line(char **f, int k);
+void screens_open(void);
+bool screens_is_open(void);
+bool screens_asking(void);
 void desktop_messages_enable(bool on);   /* the Messages object's setting */
 /* Icons placed (by 0.2, for two-line titles) over each other: Arrange
  * offered once in the status line (nothing moves unasked). */

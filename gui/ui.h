@@ -529,8 +529,21 @@ const char *ui_clipboard_text(void);
  * Palette (UI_MIME_FONT, "12.Helvetica") as if typed; dropped anywhere else
  * on a notebook, the Dialogs font's drop (ui_set_font_drop). */
 #define UI_MIME_FONT "application/x-objectspace-font"
+/* UI_FIELD_CANVAS: a picture its owner draws, across the page (no
+ * label), `canvas->height` tall; a press in it, and the motion and the
+ * release after while held, go to its `pointer`, keys while it has the
+ * focus to its `key` (each true: draw it again). The Screens object's
+ * arrangement. */
 typedef enum { UI_FIELD_TEXT, UI_FIELD_CHECKBOX, UI_FIELD_NUMBER, UI_FIELD_CHOICE, UI_FIELD_ICON, UI_FIELD_INFO,
-               UI_FIELD_FILE, UI_FIELD_COLOR } ui_field_kind;
+               UI_FIELD_FILE, UI_FIELD_COLOR, UI_FIELD_CANVAS } ui_field_kind;
+typedef struct ui_canvas {
+    double height;
+    void (*draw)(void *ctx, cairo_t *cr, ui_rect r, bool focused);
+    bool (*pointer)(void *ctx, const ui_pointer_event *e, ui_rect r);
+    bool (*key)(void *ctx, const ui_key_event *e);
+    const char *description;   /* what it is, for screen readers */
+    void *ctx;
+} ui_canvas;
 typedef struct { char *text; int64_t number; bool checked; } ui_value;   /* choice: number is the index */
 typedef struct {
     const char *key, *label;
@@ -541,6 +554,7 @@ typedef struct {
     bool own;                  /* the object's own value: Default removes it */
     const char *from;          /* an inherited value's source ("Folder default"), shown by the label */
     const char *preview;       /* a colour field's default colour, a file field's picture (above) */
+    const ui_canvas *canvas;   /* UI_FIELD_CANVAS: its picture (kept by its owner while the notebook is open) */
 } ui_field_desc;
 typedef struct { const char *title; const ui_field_desc *fields; size_t nfields; } ui_page_desc;
 typedef struct ui_notebook ui_notebook;
@@ -550,6 +564,7 @@ ui_notebook *ui_notebook_open(ui_app *a, const char *title, const ui_page_desc *
                               ui_notebook_set_fn set, ui_notebook_close_fn closed, void *ctx);
 void ui_notebook_update(ui_notebook *nb, const ui_page_desc *pages, size_t n);
 void ui_notebook_set_status(ui_notebook *nb, const char *msg);
+void ui_notebook_redraw(ui_notebook *nb);   /* (a canvas changed by its owner) */
 void ui_notebook_close(ui_notebook *nb);
 ui_surface *ui_notebook_surface(ui_notebook *nb);
 void ui_notebook_show_page(ui_notebook *nb, size_t page);
@@ -600,6 +615,10 @@ ui_dialog *ui_dialog_open_entry(ui_app *a, const char *title, const char *messag
 const char *ui_dialog_text(ui_dialog *d);
 void ui_dialog_set_text(ui_dialog *d, const char *text);   /* the field's text, selected */
 ui_surface *ui_dialog_surface(ui_dialog *d);
+/* As if the button were pressed (a time run out: the Screens object's
+ * "keep this?"); the message changed (as many lines as it had, or fewer). */
+void ui_dialog_choose(ui_dialog *d, int choice);
+void ui_dialog_set_message(ui_dialog *d, const char *message);
 void ui_dialog_key(ui_dialog *d, const ui_key_event *e);   /* as if typed (self-tests) */
 
 /* An object kind's icon (the GUI's own, until icon objects). */

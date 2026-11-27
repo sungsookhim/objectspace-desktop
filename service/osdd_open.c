@@ -334,6 +334,10 @@ void do_open(struct req *r, osdo_object *o)
         reply_view(r, "colorpalette");
         osdo_unref(orig);
         return;
+    } else if (osdo_is_a(o, OsdScreensClass)) {
+        reply_view(r, "screens");   /* the desktop's notebook (inside GNOME: GNOME's Settings, Displays) */
+        osdo_unref(orig);
+        return;
     } else if (osdo_is_a(o, OsdFontPaletteClass)) {
         reply_view(r, "fontpalette");
         osdo_unref(orig);

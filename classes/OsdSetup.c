@@ -11,6 +11,7 @@
 #include "OsdSchemePalette.h"
 #include "OsdFontPalette.h"
 #include "OsdColorPalette.h"
+#include "OsdScreens.h"
 #include "OsdSound.h"
 #include "OsdSystem.h"
 #include "OsdLauncher.h"
@@ -112,7 +113,7 @@ char *OsdSetup__osdModifyPopupMenu(osdo_object *self, const char *menu)
     /* the Launcher, TheBar and Messages also open (the palette,
      * the bar, the list); the others are only their settings */
     bool opens = osdo_is_a(self, OsdLauncherClass) || osdo_is_a(self, OsdTheBarClass) || osdo_is_a(self, OsdMessagesClass) ||
-                 osdo_is_a(self, OsdFontPaletteClass) || osdo_is_a(self, OsdColorPaletteClass);
+                 osdo_is_a(self, OsdFontPaletteClass) || osdo_is_a(self, OsdColorPaletteClass) || osdo_is_a(self, OsdScreensClass);
     return osd_concat(menu, opens ? "1\tOpen\n2\tProperties\n" : "2\tProperties\n");
 }
 
@@ -122,6 +123,7 @@ char *OsdMouse__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_str
 char *OsdSchemePalette__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Scheme Palette"); }
 char *OsdFontPalette__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Font Palette"); }
 char *OsdColorPalette__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Colour Palette"); }
+char *OsdScreens__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Screens"); }
 char *OsdLauncher__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Launcher"); }
 char *OsdTheBar__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("TheBar"); }
 char *OsdMessages__osdclsQueryTitle(osdo_object *self) { (void)self; return osd_strdup("Messages"); }

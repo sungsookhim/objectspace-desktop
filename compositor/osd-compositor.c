@@ -1366,20 +1366,52 @@ static void place_panel(struct toplevel *t);
 static void place_notice(struct toplevel *t);
 static void refit_maximized(void);
 
-/* A screen as GNOME's Settings, Displays arranged it (~/.config/
- * monitors.xml: the logical monitor whose monitor has this connector, in
- * the first configuration that names it; GNOME writes the current one,
- * the others are for other sets of screens): its scale, its place (in
- * logical pixels) and whether it is the primary. False: not named there. */
-struct screen_conf { double scale; int x, y; bool primary; };
-static bool screen_conf(const char *connector, struct screen_conf *sc)
+/* A screen as GNOME's Settings, Displays (or the Screens object) set it
+ * up (~/.config/monitors.xml): in the configuration for the screens
+ * connected now (the one naming exactly them; else the first naming this
+ * one: GNOME keeps one per set of screens), the logical monitor whose
+ * monitor has this connector: its scale, its place (in logical pixels),
+ * whether it is the primary, its mode (0: the screen's preferred); or it
+ * is in the configuration's <disabled>: off. False: not named there. */
+struct screen_conf { double scale; int x, y; bool primary, off; int w, h, mhz; };
+
+static const char *monitors_xml_path(void)
 {
-    *sc = (struct screen_conf){ 1, 0, 0, false };
-    char path[4096];
+    static char path[4096];
     const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (xdg && *xdg) snprintf(path, sizeof path, "%s/monitors.xml", xdg);
     else snprintf(path, sizeof path, "%s/.config/monitors.xml", home ? home : "");
-    FILE *f = fopen(path, "r");
+    return path;
+}
+
+/* Whether the configuration [conf, end) names exactly the screens connected now. */
+static bool conf_is_ours(const char *conf, const char *end)
+{
+    int named = 0;
+    for (const char *c = strstr(conf, "<connector>"); c && c < end; c = strstr(c + 1, "<connector>")) {
+        const char *e = strstr(c, "</connector>");
+        if (!e || e > end) break;
+        char name[128];
+        snprintf(name, sizeof name, "%.*s", (int)(e - c - 11), c + 11);
+        bool found = false;
+        struct output *o;
+        wl_list_for_each(o, &server.outputs, link) if (!strcmp(o->wlr_output->name, name)) found = true;
+        if (!found) return false;
+        named++;
+    }
+    return named == wl_list_length(&server.outputs);
+}
+
+static const char *tag_in(const char *from, const char *to, const char *tag)
+{
+    const char *v = strstr(from, tag);
+    return v && v < to ? v + strlen(tag) : NULL;
+}
+
+static bool screen_conf(const char *connector, struct screen_conf *sc)
+{
+    *sc = (struct screen_conf){ 1, 0, 0, false, false, 0, 0, 0 };
+    FILE *f = fopen(monitors_xml_path(), "r");
     if (!f) return false;
     static char buf[1 << 16];
     size_t n = fread(buf, 1, sizeof buf - 1, f);
@@ -1387,9 +1419,11 @@ static bool screen_conf(const char *connector, struct screen_conf *sc)
     buf[n] = 0;
     char want[160];
     snprintf(want, sizeof want, "<connector>%s</connector>", connector);
+    for (int pass = 0; pass < 2; pass++)   /* (the configuration for these screens; else the first naming it) */
     for (char *conf = strstr(buf, "<configuration>"); conf; conf = strstr(conf + 1, "<configuration>")) {
         char *end = strstr(conf, "</configuration>");
         if (!end) break;
+        if (pass == 0 && !conf_is_ours(conf, end)) continue;
         for (char *lm = strstr(conf, "<logicalmonitor>"); lm && lm < end; lm = strstr(lm + 1, "<logicalmonitor>")) {
             char *lend = strstr(lm, "</logicalmonitor>");
             if (!lend || lend > end) break;
@@ -1398,13 +1432,27 @@ static bool screen_conf(const char *connector, struct screen_conf *sc)
             /* (its own fields come before its <monitor>) */
             char *mon = strstr(lm, "<monitor>");
             char *top = mon && mon < lend ? mon : lend;
-            char *v = strstr(lm, "<scale>");
-            if (v && v < top) { double d = atof(v + 7); sc->scale = d >= 0.5 && d <= 4 ? d : 1; }
-            if ((v = strstr(lm, "<x>")) && v < top) sc->x = atoi(v + 3);
-            if ((v = strstr(lm, "<y>")) && v < top) sc->y = atoi(v + 3);
-            v = strstr(lm, "<primary>");
-            sc->primary = v && v < top && !strncmp(v + 9, "yes", 3);
+            const char *v;
+            if ((v = tag_in(lm, top, "<scale>"))) { double d = atof(v); sc->scale = d >= 0.5 && d <= 4 ? d : 1; }
+            if ((v = tag_in(lm, top, "<x>"))) sc->x = atoi(v);
+            if ((v = tag_in(lm, top, "<y>"))) sc->y = atoi(v);
+            v = tag_in(lm, top, "<primary>");
+            sc->primary = v && !strncmp(v, "yes", 3);
+            /* its mode: in the monitor with this connector */
+            char *mode = strstr(c, "<mode>"), *mend = mode ? strstr(mode, "</mode>") : NULL;
+            if (mode && mend && mend < lend) {
+                if ((v = tag_in(mode, mend, "<width>"))) sc->w = atoi(v);
+                if ((v = tag_in(mode, mend, "<height>"))) sc->h = atoi(v);
+                if ((v = tag_in(mode, mend, "<rate>"))) sc->mhz = (int)lround(atof(v) * 1000);
+                if (sc->w <= 0 || sc->h <= 0) sc->w = sc->h = sc->mhz = 0;
+            }
             return true;
+        }
+        for (char *dis = strstr(conf, "<disabled>"); dis && dis < end; dis = strstr(dis + 1, "<disabled>")) {
+            char *dend = strstr(dis, "</disabled>");
+            if (!dend || dend > end) break;
+            char *c = strstr(dis, want);
+            if (c && c < dend) { sc->off = true; return true; }
         }
     }
     return false;
@@ -1444,8 +1492,98 @@ struct wlr_output *comp_primary(void)
     return first ? first->wlr_output : NULL;
 }
 
-/* GNOME's Settings, Displays saved a scale (monitors.xml written again):
- * the screens take it at once, the desktop and the frames follow. */
+/* A mode for a screen as monitors.xml has it: one of its own with that
+ * size (the refresh nearest), or on a screen without modes (headless)
+ * that size made. False: none (the screen's own then). */
+static bool conf_mode(struct wlr_output *wo, const struct screen_conf *sc, struct wlr_output_state *st)
+{
+    if (sc->w <= 0) return false;
+    struct wlr_output_mode *m, *best = NULL;
+    wl_list_for_each(m, &wo->modes, link)
+        if (m->width == sc->w && m->height == sc->h && (!best || abs(m->refresh - sc->mhz) < abs(best->refresh - sc->mhz))) best = m;
+    if (best) { wlr_output_state_set_mode(st, best); return true; }
+    if (wl_list_empty(&wo->modes) && wlr_output_is_headless(wo)) {
+        wlr_output_state_set_custom_mode(st, sc->w, sc->h, sc->mhz > 0 ? sc->mhz : 60000);
+        return true;
+    }
+    return false;
+}
+
+static bool screen_is_on(struct wlr_output *wo) { return wlr_output_layout_get(server.output_layout, wo) != NULL; }
+
+/* Into the layout (at its place) and the scene: a screen turned on. */
+static void screen_into_layout(struct output *o)
+{
+    struct wlr_output *wo = o->wlr_output;
+    bool was = screen_is_on(wo);
+    place_screen(wo);
+    if (was && o->scene_out) return;
+    struct wlr_output_layout_output *lo = wlr_output_layout_get(server.output_layout, wo);
+    if (!o->scene_out) o->scene_out = wlr_scene_output_create(server.scene, wo);
+    wlr_scene_output_layout_add_output(server.scene_layout, lo, o->scene_out);
+}
+
+/* Every screen as monitors.xml has it now: on or off (never the last
+ * one off), its mode, its scale, its place. True: something changed. */
+static bool apply_screens_conf(void)
+{
+    bool changed = false, gone = false;
+    struct output *o;
+    wl_list_for_each(o, &server.outputs, link) {
+        struct wlr_output *wo = o->wlr_output;
+        struct screen_conf sc;
+        bool named = screen_conf(wo->name, &sc);
+        double scale = screen_scale(wo->name);
+        if (named && sc.off) {
+            if (!screen_is_on(wo)) continue;
+            int on = 0;
+            struct output *p;
+            wl_list_for_each(p, &server.outputs, link) if (screen_is_on(p->wlr_output)) on++;
+            if (on < 2) continue;   /* (the last one stays on) */
+            if (o->scene_out) { wlr_scene_output_destroy(o->scene_out); o->scene_out = NULL; }   /* (its part of the scene) */
+            wlr_output_layout_remove(server.output_layout, wo);
+            struct wlr_output_state st;
+            wlr_output_state_init(&st);
+            wlr_output_state_set_enabled(&st, false);
+            wlr_output_commit_state(wo, &st);
+            wlr_output_state_finish(&st);
+            fprintf(stderr, "osd-compositor: %.1f screen %s: off\n", comp_uptime(), wo->name);
+            changed = gone = true;
+            continue;
+        }
+        struct wlr_output_state st;
+        wlr_output_state_init(&st);
+        bool any = false;
+        if (!screen_is_on(wo)) { wlr_output_state_set_enabled(&st, true); any = true; }
+        if (named && sc.w > 0 && (wo->width != sc.w || wo->height != sc.h || (sc.mhz > 0 && abs(wo->refresh - sc.mhz) > 500)))
+            any |= conf_mode(wo, &sc, &st);
+        if (fabs(scale - wo->scale) >= 0.001) { wlr_output_state_set_scale(&st, (float)scale); any = true; }
+        if (any) {
+            if (wlr_output_commit_state(wo, &st)) {
+                changed = true;
+                wlr_xcursor_manager_load(server.cursor_mgr, wo->scale);
+                fprintf(stderr, "osd-compositor: %.1f screen %s: %dx%d@%.1f Hz, scale %g\n", comp_uptime(), wo->name, wo->width, wo->height,
+                        wo->refresh / 1000.0, wo->scale);
+            } else fprintf(stderr, "osd-compositor: screen %s: could not be set as monitors.xml has it\n", wo->name);
+        }
+        wlr_output_state_finish(&st);
+    }
+    wl_list_for_each(o, &server.outputs, link) {   /* (and their places) */
+        if (!o->wlr_output->enabled) continue;
+        struct wlr_box was = { 0 };
+        bool on = screen_is_on(o->wlr_output);
+        if (on) wlr_output_layout_get_box(server.output_layout, o->wlr_output, &was);
+        screen_into_layout(o);
+        struct wlr_box now;
+        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &now);
+        if (!on || was.x != now.x || was.y != now.y || was.width != now.width || was.height != now.height) changed = true;
+    }
+    if (gone) wl_event_loop_add_idle(server.loop, rescue_windows, NULL);
+    return changed;
+}
+
+/* monitors.xml written again (GNOME's Settings, Displays, or the Screens
+ * object): the screens take it at once, the desktop and the frames follow. */
 static int on_monitors_xml(int fd, uint32_t mask, void *data)
 {
     (void)mask; (void)data;
@@ -1459,30 +1597,7 @@ static int on_monitors_xml(int fd, uint32_t mask, void *data)
             p += sizeof *ev + ev->len;
         }
     if (!hit) return 0;
-    bool changed = false;
-    struct output *o;
-    wl_list_for_each(o, &server.outputs, link) {
-        double sc = screen_scale(o->wlr_output->name);
-        if (fabs(sc - o->wlr_output->scale) < 0.001) continue;
-        struct wlr_output_state st;
-        wlr_output_state_init(&st);
-        wlr_output_state_set_scale(&st, (float)sc);
-        if (wlr_output_commit_state(o->wlr_output, &st)) {
-            changed = true;
-            wlr_xcursor_manager_load(server.cursor_mgr, (float)sc);
-            fprintf(stderr, "osd-compositor: %.1f screen %s: scale %g\n", comp_uptime(), o->wlr_output->name, sc);
-        }
-        wlr_output_state_finish(&st);
-    }
-    wl_list_for_each(o, &server.outputs, link) {   /* (and their places) */
-        struct wlr_box was;
-        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &was);
-        place_screen(o->wlr_output);
-        struct wlr_box now;
-        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &now);
-        if (was.x != now.x || was.y != now.y) changed = true;
-    }
-    if (changed) {
+    if (apply_screens_conf()) {
         comp_redraw_frames();
         server.cursor_image = NULL;
         set_cursor("default");
@@ -1521,8 +1636,10 @@ static void on_new_output(struct wl_listener *l, void *data)
     wlr_output_state_set_enabled(&st, true);
     double scale = screen_scale(wo->name);
     if (scale != 1) wlr_output_state_set_scale(&st, (float)scale);
+    struct screen_conf sc;
     struct wlr_output_mode *mode = wlr_output_preferred_mode(wo);
-    if (mode) wlr_output_state_set_mode(&st, mode);
+    if (screen_conf(wo->name, &sc) && conf_mode(wo, &sc, &st)) { }   /* (the mode monitors.xml has for it) */
+    else if (mode) wlr_output_state_set_mode(&st, mode);
     /* no modes (headless): its size at 60 Hz. A refresh rate of 0 is
      * divided by: GTK 4 died of SIGFPE in its frame callback. */
     /* (nested in another session, the window starts at OSD_COMP_SIZE or 1280x800) */
@@ -1565,10 +1682,8 @@ static void on_new_output(struct wl_listener *l, void *data)
         wlr_output_lock_software_cursors(wo, true);
         fprintf(stderr, "osd-compositor: %s: the pointer is drawn in software\n", wo->name);
     }
-    place_screen(wo);
-    struct wlr_output_layout_output *lo = wlr_output_layout_get(server.output_layout, wo);
-    struct wlr_scene_output *so = wlr_scene_output_create(server.scene, wo);
-    wlr_scene_output_layout_add_output(server.scene_layout, lo, so);
+    screen_into_layout(o);
+    apply_screens_conf();   /* (a screen set off there, now that another is on) */
     comp_screens_changed();
 }
 
@@ -1750,6 +1865,52 @@ void comp_panel_edge(bool top)
 
 /* The desktop: the first screen less TheBar (as on OS/2, its
  * icons never go under the bar). */
+/* The screens for the desktop's Screens object, after the S line: "M\t-"
+ * (the list anew), "M\t." at its end, between them one line each: "M\tNAME\tON\tW\tH\tMHZ\tSCALE\t
+ * X\tY\tPRIMARY\tMAKE\tMODEL\tSERIAL\tMODES" (MODES: WxH@MHZ,...; a
+ * screen without modes, headless: its own and a few common sizes). */
+static void field_clean(char *out, size_t n, const char *s)
+{
+    snprintf(out, n, "%s", s && *s ? s : "-");
+    for (char *p = out; *p; p++) if (*p == '\t' || *p == '\n') *p = ' ';
+}
+
+static void screens_line(char *out, size_t size)
+{
+    size_t n = (size_t)snprintf(out, size, "M\t-\n");
+    struct wlr_output *p = comp_primary();
+    struct output *o;
+    wl_list_for_each(o, &server.outputs, link) {
+        struct wlr_output *wo = o->wlr_output;
+        if (n + 1024 > size) break;
+        bool on = screen_is_on(wo);
+        struct wlr_box b = { 0 };
+        if (on) wlr_output_layout_get_box(server.output_layout, wo, &b);
+        char make[128], model[128], serial[128];
+        field_clean(make, sizeof make, wo->make);
+        field_clean(model, sizeof model, wo->model);
+        field_clean(serial, sizeof serial, wo->serial);
+        n += (size_t)snprintf(out + n, size - n, "M\t%s\t%d\t%d\t%d\t%d\t%g\t%d\t%d\t%d\t%s\t%s\t%s\t", wo->name, on, wo->width, wo->height,
+                              wo->refresh, wo->scale, b.x, b.y, on && wo == p, make, model, serial);
+        int k = 0;
+        struct wlr_output_mode *m;
+        wl_list_for_each(m, &wo->modes, link) {
+            if (n + 64 > size) break;
+            n += (size_t)snprintf(out + n, size - n, "%s%dx%d@%d", k++ ? "," : "", m->width, m->height, m->refresh);
+        }
+        if (!k) {
+            static const int common[][2] = { { 0, 0 }, { 1920, 1080 }, { 1600, 900 }, { 1280, 800 }, { 1024, 768 } };
+            for (size_t i = 0; i < sizeof common / sizeof *common; i++) {
+                int w = i ? common[i][0] : wo->width, h = i ? common[i][1] : wo->height;
+                if (i && w == wo->width && h == wo->height) continue;
+                n += (size_t)snprintf(out + n, size - n, "%s%dx%d@%d", k++ ? "," : "", w, h, i ? 60000 : (wo->refresh > 0 ? wo->refresh : 60000));
+            }
+        }
+        n += (size_t)snprintf(out + n, size - n, "\n");
+    }
+    if (n + 8 < size) snprintf(out + n, size - n, "M\t.\n");   /* (the list over) */
+}
+
 static void place_desktop(struct toplevel *t)
 {
     /* one desktop across all screens (the owner's, 0.7): the box round
@@ -1770,7 +1931,7 @@ static void place_desktop(struct toplevel *t)
     }
     view_move(t, b.x, b.y);
     view_set_size(t, b.width, b.height);
-    char line[1024];
+    static char line[16384];
     int n = snprintf(line, sizeof line, "S");
     for (int pass = 0; pass < 2; pass++)
         wl_list_for_each(o, &server.outputs, link) {
@@ -1778,7 +1939,8 @@ static void place_desktop(struct toplevel *t)
             struct wlr_box u = usable_box(o->wlr_output);
             if (n < (int)sizeof line - 64) n += snprintf(line + n, sizeof line - (size_t)n, "\t%d,%d,%d,%d", u.x - b.x, u.y - b.y, u.width, u.height);
         }
-    snprintf(line + n, sizeof line - (size_t)n, "\n");
+    n += snprintf(line + n, sizeof line - (size_t)n, "\n");
+    screens_line(line + n, sizeof line - (size_t)n);
     desktop_screens(line);
 }
 
@@ -2668,6 +2830,18 @@ static void script_step(const char *line)
         wl_list_for_each(o, &server.outputs, link) wlr_output_schedule_frame(o->wlr_output);
     } else if (!strcmp(cmd, "windows")) {
         log_windows();
+    } else if (!strcmp(cmd, "screens")) {   /* each screen: on or off, mode, scale, place, the primary */
+        struct output *o;
+        struct wlr_output *p = comp_primary();
+        fprintf(stderr, "osd-compositor: screens now:\n");
+        wl_list_for_each(o, &server.outputs, link) {
+            struct wlr_output *wo = o->wlr_output;
+            struct wlr_box b = { 0 };
+            bool on = screen_is_on(wo);
+            if (on) wlr_output_layout_get_box(server.output_layout, wo, &b);
+            fprintf(stderr, "  screen %s %s %dx%d@%d scale %g at %d,%d%s\n", wo->name, on ? "on" : "off", wo->width, wo->height, wo->refresh,
+                    wo->scale, b.x, b.y, wo == p ? " primary" : "");
+        }
     } else if (!strcmp(cmd, "hang")) {   /* the loop stuck on purpose (tests the watchdog) */
         sleep((unsigned)atoi(arg));
     } else if (!strcmp(cmd, "quit")) {

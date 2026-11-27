@@ -138,7 +138,7 @@ const char *osd_icon_name_for_class(const char *cls)
 {
     static const char *const map[][2] = {
         { "OsdSystem", "system" }, { "OsdSound", "sound" }, { "OsdMouse", "mouse" },
-        { "OsdSchemePalette", "scheme-palette" }, { "OsdScheme", "scheme-palette" }, { "OsdFontPalette", "file-font" }, { "OsdColorPalette", "scheme-palette" },
+        { "OsdSchemePalette", "scheme-palette" }, { "OsdScheme", "scheme-palette" }, { "OsdFontPalette", "file-font" }, { "OsdColorPalette", "scheme-palette" }, { "OsdScreens", "screens" },
         { "OsdLauncher", "launcher" }, { "OsdTheBar", "thebar" }, { "OsdMessages", "messages" },
         { "OsdMinWinViewer", "minwin-viewer" }, { "OsdRestoreDesktop", "restore-desktop" },
         { "OsdCommandPrompt", "program-text" }, { "OsdFind", "sys-find" },

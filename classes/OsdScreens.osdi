@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# The Screens object (0.7 step 5, the owner's): the screens' resolution,
+# refresh rate, scale, place and the primary, and which are on. It opens
+# as its notebook (the desktop's: the screens come from the compositor);
+# saved to GNOME's monitors.xml, so GNOME and Objectspace keep one setup.
+# Inside GNOME it opens GNOME's Settings, Displays.
+class OsdScreens : OsdSetup
+version 1.0
+classoverride osdclsQueryTitle

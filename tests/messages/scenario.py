@@ -102,7 +102,7 @@ else:
     s = c.request(op="setup").get("result") or {}
     check("settings kept across a restart", s["objects"]["OsdTheBar"]["settings"].get("edge") == "top")
     n = len([1 for _ in s["objects"]])
-    check("no settings object made twice", n == 9, list(s["objects"]))
+    check("no settings object made twice", n == 10, list(s["objects"]))
 
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

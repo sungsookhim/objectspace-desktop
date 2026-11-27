@@ -361,6 +361,7 @@ static const char *const setup_classes[][2] = {
     { "OsdSystem", "System" }, { "OsdSound", "Sound" }, { "OsdMouse", "Mouse" }, { "OsdSchemePalette", "Scheme Palette" },
     { "OsdFontPalette", "Font Palette" },   /* (0.3) */
     { "OsdColorPalette", "Colour Palette" },   /* (0.4) */
+    { "OsdScreens", "Screens" },   /* (0.7) */
     /* (0.2: in the System folder itself, v0.2-design 9 and 10) */
     { "OsdLauncher", "Launcher" }, { "OsdTheBar", "TheBar" }, { "OsdMessages", "Messages" },
 };

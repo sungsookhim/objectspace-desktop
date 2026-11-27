@@ -18,9 +18,9 @@ static void on_window_events(void *arg, int fd, short rev)
     char *line = ev_buf, *nl;
     while ((nl = strchr(line, '\n'))) {
         *nl = 0;
-        char *f[13] = { 0 };
+        char *f[16] = { 0 };
         int k = 0;
-        for (char *p = line, *t; k < 13 && (t = strsep(&p, "\t"));) f[k++] = t;
+        for (char *p = line, *t; k < 16 && (t = strsep(&p, "\t"));) f[k++] = t;
         if (k >= 7 && !strcmp(f[0], "W")) winlist_line(f, k);   /* the window list (G4) */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "window-list")) winlist_open(false);   /* Ctrl+Esc */
         else if (k >= 2 && !strcmp(f[0], "K") && !strcmp(f[1], "osd-menu")) {   /* Super alone (Objectspace session) */
@@ -28,6 +28,7 @@ static void on_window_events(void *arg, int fd, short rev)
             else if (thebar_is_open()) thebar_press("desktop");
         }
         else if (k >= 2 && !strcmp(f[0], "S")) desktop_screens_line(f, k);   /* where the screens are (0.7) */
+        else if (k >= 2 && !strcmp(f[0], "M")) screens_line(f, k);   /* the screens, for the Screens object */
         else if (k >= 3 && !strcmp(f[0], "X")) {   /* the scale X11 programs draw at: GDK_SCALE for those started from here */
             if (atoi(f[2]) >= 2) setenv("GDK_SCALE", f[2], 1);
             else unsetenv("GDK_SCALE");

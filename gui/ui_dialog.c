@@ -278,4 +278,20 @@ static ui_dialog *open_dialog(ui_app *a, const char *title, const char *message,
 }
 
 ui_surface *ui_dialog_surface(ui_dialog *d) { return d->win; }
+void ui_dialog_choose(ui_dialog *d, int choice) { finish(d, choice); }
+
+void ui_dialog_set_message(ui_dialog *d, const char *message)
+{
+    if (d->done) return;
+    size_t had = d->nlines;
+    for (size_t i = 0; i < d->nlines; i++) free(d->lines[i]);
+    free(d->lines);
+    d->lines = NULL;
+    d->nlines = 0;
+    double w = ui_surface_width(d->win);
+    wrap(d, message, w - 2 * MARGIN - 8);
+    while (d->nlines > had && d->nlines) free(d->lines[--d->nlines]);   /* (the window keeps its height) */
+    ui_a11y_window(d->win, UI_ROLE_DIALOG, message);
+    ui_surface_damage_all(d->win);
+}
 void ui_dialog_key(ui_dialog *d, const ui_key_event *e) { dlg_key(d->win, e); }
