@@ -526,6 +526,16 @@ void folder_window_save(struct folder *f);
 void desktop_status(struct folder *f);
 void desktop_say(const char *text, bool sticky);
 
+/* This process is the desktop (one per session; the others show folders). */
+extern bool shell_desktop;
+/* A GTK 3 theme from the scheme (gtktheme.c, 0.7): its name for a scheme
+ * ("Objectspace-dark"), its stylesheet (caller frees), written and set in
+ * the Objectspace session (the desktop's), GNOME's own back inside GNOME. */
+void gtktheme_name(const char *scheme, char *out, size_t n);
+char *gtktheme_css(void);
+void gtktheme_update(void);
+void gtktheme_gnome_back(void);
+
 /* The Screens object (screens.c, 0.7): the compositor's M lines read;
  * its notebook (inside GNOME: GNOME's Settings, Displays). */
 void screens_line(char **f, int k);

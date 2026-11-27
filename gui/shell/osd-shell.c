@@ -3,6 +3,8 @@
 #define _GNU_SOURCE
 #include "shell.h"
 
+bool shell_desktop;
+
 static void on_window_events(void *arg, int fd, short rev)
 {
     (void)arg;
@@ -71,12 +73,12 @@ int main(int argc, char **argv)
     int i = 1;
     bool desk = false;
     for (; i < argc && argv[i][0] == '-'; i++) {
-        if (!strcmp(argv[i], "--desktop")) desk = true;
+        if (!strcmp(argv[i], "--desktop")) desk = shell_desktop = true;
         else if (!strcmp(argv[i], "--details")) opt_view = UI_VIEW_DETAILS;
         else if (!strcmp(argv[i], "--bench") && i + 1 < argc) opt_bench = atof(argv[++i]);
         else { fprintf(stderr, "usage: osd-shell [--desktop [FOLDER]] [--details] [--bench SECONDS] [FOLDER...]\n"); return 2; }
     }
-    if (i >= argc) desk = true;   /* no folder: the desktop */
+    if (i >= argc) desk = shell_desktop = true;   /* no folder: the desktop */
     since_start();
     app = ui_app_new();
     load_system_conf();
@@ -131,6 +133,7 @@ int main(int argc, char **argv)
     /* Settings shared with GNOME: every shell follows its font; the
      * desktop keeps the rest in step both ways. */
     gnome_start(app, desk, gnome_set_osd, gnome_font);
+    if (desk) gtktheme_gnome_back();   /* (inside GNOME: GNOME's own GTK 3 theme, if ours was left set) */
     if (desk) {
         /* the desktop process: Messages, and in the Objectspace session the
          * notification service */

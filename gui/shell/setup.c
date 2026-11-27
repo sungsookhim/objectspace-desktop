@@ -411,6 +411,7 @@ static void apply_scheme(void)
         ui_app_restyle(app);
     }
     wallpaper_scheme_changed();   /* the desktop's colour */
+    if (shell_desktop) gtktheme_update();   /* GTK 3 programs in the scheme's colours (0.7) */
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
         layout(f);   /* border and title sizes may have changed */
