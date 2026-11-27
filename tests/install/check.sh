@@ -9,10 +9,10 @@ cd "$(dirname "$0")/../.."
 R=$(mktemp -d)
 trap 'rm -rf "$R"' EXIT
 make -s install DESTDIR="$R" PREFIX=/usr >/dev/null
-# (the generated sets - icon themes, the SDK's headers and files - are
+# (the generated sets - icon themes, the cursor theme, the SDK's headers and files - are
 # checked by what must be in them, below; the rest is listed exactly)
 got=$(cd "$R" && find . -type f | grep -v -e '^./usr/share/objectspace/icon-themes/' -e '^./usr/include/objectspace/' -e '^./usr/share/objectspace/sdk/' \
-      -e '^./usr/share/man/' | LC_ALL=C sort)
+      -e '^./usr/share/man/' -e '^./usr/share/icons/Objectspace/' | LC_ALL=C sort)
 want='./etc/pam.d/osd-lock
 ./usr/bin/osd
 ./usr/bin/osdctl
@@ -58,6 +58,10 @@ for t in objectspace-flat objectspace-outline classic; do
         { echo "FAIL: icon theme $t"; exit 1; }
 done
 echo "ok   the icon themes (objectspace-flat, objectspace-outline, classic)"
+C="$R/usr/share/icons/Objectspace"
+[ -f "$C/index.theme" ] && [ -f "$C/cursors/default" ] && [ -f "$C/cursors/wait" ] && [ "$(readlink "$C/cursors/left_ptr")" = default ] ||
+    { echo "FAIL: the cursor theme Objectspace"; exit 1; }
+echo "ok   the cursor theme (Objectspace: its pointers, the other names linked)"
 for f in include/objectspace/osdo.h include/objectspace/osd_classes.h include/objectspace/OsdObject.h include/objectspace/OsdDataFile.h \
          share/objectspace/sdk/osdc.py share/objectspace/sdk/README.md share/objectspace/sdk/classes/OsdObject.osdi share/objectspace/sdk/sample/Makefile; do
     [ -f "$R/usr/$f" ] || { echo "FAIL: the SDK: $f"; exit 1; }
