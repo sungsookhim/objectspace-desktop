@@ -5,6 +5,7 @@
 #include "gnome.h"
 
 #include <fcntl.h>
+#include <math.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
@@ -32,12 +33,14 @@ static struct { const char *schema, *key; char val[256]; } g[] = {
     { "org.gnome.desktop.sound", "event-sounds", "" },
     { "org.gnome.desktop.interface", "font-name", "" },
     { "org.gnome.desktop.interface", "text-scaling-factor", "" },
+    { "org.gnome.desktop.interface", "accent-color", "" },   /* (GNOME 47 on; written, not followed) */
 };
 #define NG (sizeof g / sizeof *g)
-enum { G_SCHEME, G_CONTRAST, G_LEFT, G_DOUBLE, G_SOUNDS, G_FONT, G_SCALE };
+enum { G_SCHEME, G_CONTRAST, G_LEFT, G_DOUBLE, G_SOUNDS, G_FONT, G_SCALE, G_ACCENT };
 
 /* The Objectspace objects' values. */
 static char w_scheme[32], w_left[8], w_double[16], w_sounds[8];
+static char scheme_from_gnome[32];   /* the scheme GNOME's values chose (its accent not written back inside GNOME) */
 
 static pid_t mon_pid[4];
 static int mon_fd[4] = { -1, -1, -1, -1 };
@@ -75,7 +78,7 @@ static void gset(size_t i, const char *value)
 {
     if (!strcmp(g[i].val, value)) return;
     snprintf(g[i].val, sizeof g[i].val, "%s", value);   /* what GNOME will say: no echo */
-    bool str = i == G_SCHEME;
+    bool str = i == G_SCHEME || i == G_ACCENT;
     char arg[300];
     snprintf(arg, sizeof arg, str ? "'%s'" : "%s", value);
     char *argv[] = { "gsettings", "set", (char *)g[i].schema, (char *)g[i].key, arg, NULL };
@@ -100,19 +103,55 @@ static void apply_font(void)
     if ((ui_scheme_now.font_px != before || ui_text_scale() != scale_before) && font_changed) font_changed();
 }
 
-/* What GNOME says, as the Objectspace objects would say it. */
-static const char *scheme_of_gnome(void)
+/* The scheme as libadwaita sees a desktop (0.7 step 6, v0.6-design 9):
+ * dark by its colours (a scheme of the user's from Dark is dark too: its
+ * windows' background), high contrast by its name. */
+static double luma(ui_color c) { return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; }
+static bool scheme_contrast(void) { return ui_scheme_now.name && strcasestr(ui_scheme_now.name, "contrast"); }
+static bool scheme_dark(void) { return luma(ui_scheme_now.client_bg) < 0.4; }
+
+/* GNOME's accent colour nearest the scheme's selection: by hue, or
+ * slate for a grey one (libadwaita's: blue #3584e4, teal #2190a4, green
+ * #3a944a, yellow #c88800, orange #ed5b00, red #e62d42, pink #d56199,
+ * purple #9141ac, slate #6f8396). Classic's navy: blue. */
+const char *gnome_accent_of(ui_color c)
 {
-    if (!strcmp(g[G_CONTRAST].val, "true")) return "high contrast";
-    return !strcmp(g[G_SCHEME].val, "prefer-dark") ? "dark" : "classic";
+    double mx = fmax(c.r, fmax(c.g, c.b)), mn = fmin(c.r, fmin(c.g, c.b)), d = mx - mn;
+    if (mx <= 0 || d / mx < 0.25 || d < 0.08) return "slate";
+    double h;
+    if (mx == c.r) h = 60 * fmod((c.g - c.b) / d, 6);
+    else if (mx == c.g) h = 60 * ((c.b - c.r) / d + 2);
+    else h = 60 * ((c.r - c.g) / d + 4);
+    if (h < 0) h += 360;
+    static const struct { const char *name; double hue; } acc[] = {
+        { "blue", 213 }, { "teal", 189 }, { "green", 130 }, { "yellow", 41 },
+        { "orange", 23 }, { "red", 353 }, { "pink", 331 }, { "purple", 285 },
+    };
+    const char *best = "blue";
+    double bd = 999;
+    for (size_t i = 0; i < sizeof acc / sizeof *acc; i++) {
+        double dd = fabs(h - acc[i].hue);
+        if (dd > 180) dd = 360 - dd;
+        if (dd < bd) { bd = dd; best = acc[i].name; }
+    }
+    return best;
 }
 
-/* GNOME -> Objectspace: the objects take GNOME's values where they differ. */
+/* GNOME -> Objectspace: the scheme changed only when it is not already
+ * as GNOME says (a dark scheme of the user's kept when GNOME says dark). */
 static void to_osd(void)
 {
     if (!both || !osd_set || !read_osd_once) return;
-    const char *sch = scheme_of_gnome();
-    if (strcmp(w_scheme, sch)) { snprintf(w_scheme, sizeof w_scheme, "%s", sch); osd_set("OsdSchemePalette", "scheme", sch); }
+    bool hc = !strcmp(g[G_CONTRAST].val, "true"), dark = !strcmp(g[G_SCHEME].val, "prefer-dark");
+    const char *sch = NULL;
+    if (hc && !scheme_contrast()) sch = "high contrast";
+    else if (!hc && scheme_contrast()) sch = dark ? "dark" : "classic";
+    else if (!hc && dark != scheme_dark()) sch = dark ? "dark" : "classic";
+    if (sch && strcasecmp(w_scheme, sch)) {
+        snprintf(w_scheme, sizeof w_scheme, "%s", sch);
+        snprintf(scheme_from_gnome, sizeof scheme_from_gnome, "%s", sch);
+        osd_set("OsdSchemePalette", "scheme", sch);
+    }
     const char *lh = !strcmp(g[G_LEFT].val, "true") ? "1" : "0";
     if (g[G_LEFT].val[0] && strcmp(w_left, lh)) { snprintf(w_left, sizeof w_left, "%s", lh); osd_set("OsdMouse", "left_handed", lh); }
     if (atoi(g[G_DOUBLE].val) > 0 && strcmp(w_double, g[G_DOUBLE].val)) {
@@ -127,13 +166,17 @@ static void to_osd(void)
 static void to_gnome(void)
 {
     if (!both) return;
-    if (!strcasecmp(w_scheme, "high contrast")) gset(G_CONTRAST, "true");
+    if (w_scheme[0] && scheme_contrast()) gset(G_CONTRAST, "true");
     else if (w_scheme[0]) {
         gset(G_CONTRAST, "false");
-        bool dark = !strcasecmp(w_scheme, "dark");
-        /* classic is GNOME's default, unless GNOME already says light */
+        bool dark = scheme_dark();
+        /* a light one is GNOME's default, unless GNOME already says light */
         if (dark || strcmp(g[G_SCHEME].val, "prefer-light")) gset(G_SCHEME, dark ? "prefer-dark" : "default");
     }
+    /* libadwaita's accent (0.7): inside GNOME only for a scheme chosen in
+     * Objectspace (not one GNOME's dark or high contrast chose) */
+    bool gnomes = !getenv("OSD_SESSION") && !strcasecmp(w_scheme, scheme_from_gnome);
+    if (w_scheme[0] && !gnomes) gset(G_ACCENT, gnome_accent_of(ui_scheme_now.selection));
     if (w_left[0]) gset(G_LEFT, !strcmp(w_left, "1") ? "true" : "false");
     if (atoi(w_double) > 0) gset(G_DOUBLE, w_double);
     if (w_sounds[0]) gset(G_SOUNDS, !strcmp(w_sounds, "1") ? "true" : "false");
@@ -151,9 +194,13 @@ void gnome_osd_read(void)
 {
     if (off()) return;
     if (!read_osd_once) {
-        /* the first time: GNOME's values win */
+        /* the first time: inside GNOME, GNOME's values win (a setting made
+         * there is not overwritten behind the user's back); in the
+         * Objectspace session, Objectspace's (its scheme is the desktop's
+         * look: libadwaita programs follow it, 0.7 step 6) */
         read_osd_once = true;
-        to_osd();
+        if (getenv("OSD_SESSION")) to_gnome();
+        else to_osd();
         return;
     }
     to_gnome();

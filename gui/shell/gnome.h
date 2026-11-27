@@ -5,8 +5,15 @@
  * Where Objectspace and GNOME's Settings overlap, a change in either shows in both:
  *
  *   Scheme Palette scheme   <-> org.gnome.desktop.interface color-scheme
- *                               (dark: prefer-dark; classic: default) and
- *                               org.gnome.desktop.a11y.interface high-contrast
+ *                               (a dark scheme, by its windows' background:
+ *                               prefer-dark; a light one: default) and
+ *                               org.gnome.desktop.a11y.interface high-contrast;
+ *                               from GNOME, the scheme changes only when it
+ *                               is not already as GNOME says (a dark scheme
+ *                               of the user's stays when GNOME says dark)
+ *                            -> org.gnome.desktop.interface accent-color: the
+ *                               accent nearest the scheme's selection colour
+ *                               (libadwaita programs' accent, 0.7)
  *   Mouse left_handed       <-> org.gnome.desktop.peripherals.mouse left-handed
  *   Mouse double_click_ms   <-> org.gnome.desktop.peripherals.mouse double-click
  *   Sound enabled           <-> org.gnome.desktop.sound event-sounds
@@ -16,7 +23,11 @@
  * Every osd-shell follows GNOME's font. One process, the desktop, keeps
  * the rest in step both ways (following `gsettings monitor`): a value is
  * written only where it differs, so a change never echoes back. When the
- * desktop starts, GNOME's values win (other programs follow them already).
+ * desktop starts inside GNOME, GNOME's values win (other programs follow
+ * them already); in the Objectspace session, Objectspace's (its scheme is
+ * the desktop's look, and libadwaita programs follow it: 0.7 step 6).
+ * libadwaita's fonts and text size are GNOME's interface font and text
+ * scaling, which Objectspace follows: the same for both already.
  * OSD_NO_GSETTINGS turns all of it off (tests).
  */
 #ifndef OSD_GNOME_H
@@ -44,5 +55,9 @@ bool gnome_get(const char *schema, const char *key, char *out, size_t n);
 
 /* For tests: GNOME's value for a key we follow ("color-scheme", ...). */
 const char *gnome_value(const char *key);
+
+/* GNOME's accent colour ("blue", "teal", ... "slate") nearest a colour:
+ * written as libadwaita's accent from the scheme's selection (0.7). */
+const char *gnome_accent_of(ui_color c);
 
 #endif
