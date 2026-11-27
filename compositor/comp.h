@@ -51,6 +51,8 @@ struct server {
 
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *cursor_mgr;
+    struct wlr_cursor_shape_manager_v1 *shape_mgr;
+    struct wl_listener request_shape;
     struct wl_listener cursor_motion, cursor_motion_absolute, cursor_button, cursor_axis, cursor_frame;
     const char *cursor_image;
 
@@ -141,6 +143,7 @@ const char *view_app(struct toplevel *t);
 struct wl_client *view_client(struct toplevel *t);
 struct wlr_box view_geo(struct toplevel *t);       /* the program's own size (and its shadow's offset) */
 void comp_focus(struct toplevel *t);
+void comp_cursor_theme(const char *name);   /* the pointers' theme ("": the system's) */
 void comp_minimize(struct toplevel *t, bool on);
 void comp_maximize(struct toplevel *t, bool on);
 void comp_close(struct toplevel *t);

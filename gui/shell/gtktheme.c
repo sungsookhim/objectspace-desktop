@@ -187,27 +187,55 @@ char *gtktheme_css(void)
     return css;
 }
 
-static void gsettings_set(const char *value)
+static void gsettings_set(const char *key, const char *value)
 {
     char arg[200];
     snprintf(arg, sizeof arg, "'%s'", value);
-    char *argv[] = { "gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", arg, NULL };
+    char *argv[] = { "gsettings", "set", "org.gnome.desktop.interface", (char *)key, arg, NULL };
     pid_t pid;
     if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0) waitpid(pid, NULL, 0);
 }
 
-/* Where GNOME's own theme is kept while ours is set. */
-static void kept_path(char *out, size_t n)
+/* Where GNOME's own value of a key (gtk-theme, cursor-theme) is kept
+ * while ours is set. */
+static void kept_path(const char *key, char *out, size_t n)
 {
     const char *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-    if (dh && *dh) snprintf(out, n, "%s/themes/.objectspace-gnome-gtk-theme", dh);
-    else snprintf(out, n, "%s/.local/share/themes/.objectspace-gnome-gtk-theme", home ? home : "");
+    if (dh && *dh) snprintf(out, n, "%s/themes/.objectspace-gnome-%s", dh, key);
+    else snprintf(out, n, "%s/.local/share/themes/.objectspace-gnome-%s", home ? home : "", key);
 }
 
 static bool off(void)
 {
     const char *e = getenv("OSD_GTK_THEME");
     return (e && !strcmp(e, "0")) || getenv("OSD_NO_GSETTINGS");
+}
+
+/* GNOME's key set to one of ours (a name starting "Objectspace"), GNOME's
+ * own kept the first time; NULL: GNOME's own back. True: changed. */
+static bool gnome_ours(const char *key, const char *ours, const char *dflt)
+{
+    char now[200] = "", kp[4200];
+    gnome_get("org.gnome.desktop.interface", key, now, sizeof now);
+    kept_path(key, kp, sizeof kp);
+    if (!ours) {
+        if (strncmp(now, "Objectspace", 11)) return false;
+        char was[200] = "";
+        FILE *f = fopen(kp, "r");
+        if (f) { if (fgets(was, sizeof was, f)) was[strcspn(was, "\n")] = 0; fclose(f); }
+        gsettings_set(key, was[0] ? was : dflt);
+        return true;
+    }
+    if (!strcmp(now, ours)) return false;
+    if (strncmp(now, "Objectspace", 11)) {   /* GNOME's own: kept, to be put back */
+        char dir[4200];
+        snprintf(dir, sizeof dir, "%s", kp);
+        char *sl = strrchr(dir, '/');
+        if (sl) { *sl = 0; mkdirs(dir); }
+        write_file(kp, now[0] ? now : dflt);
+    }
+    gsettings_set(key, ours);
+    return true;
 }
 
 /* The theme for the scheme now written and, in the Objectspace session,
@@ -235,29 +263,28 @@ void gtktheme_update(void)
     snprintf(path, sizeof path, "%s/index.theme", dir);
     write_file(path, index);
     if (!ok) return;
-    char now[200] = "";
-    gnome_get("org.gnome.desktop.interface", "gtk-theme", now, sizeof now);
-    if (!strcmp(now, name)) return;
-    if (strncmp(now, "Objectspace-", 12)) {   /* GNOME's own: kept, to be put back inside GNOME */
-        char kp[4200];
-        kept_path(kp, sizeof kp);
-        write_file(kp, now[0] ? now : "Adwaita");
-    }
-    gsettings_set(name);
-    fprintf(stderr, "osd-shell: GTK 3 programs: the theme %s\n", name);
+    if (gnome_ours("gtk-theme", name, "Adwaita")) fprintf(stderr, "osd-shell: GTK 3 programs: the theme %s\n", name);
 }
 
-/* Started inside GNOME: GNOME's own theme back if one of ours is set. */
+/* The System's pointers (0.7 step 8): the compositor told; in the
+ * Objectspace session GNOME's cursor-theme too (GTK 3 programs'), GNOME's
+ * own kept, and back when the system's are chosen. */
+void cursors_set(bool objectspace)
+{
+    static int was = -1;   /* (the settings are read again on every change: only a change acts) */
+    if (was == (int)objectspace) return;
+    was = objectspace;
+    winlist_ext("cursor-theme", objectspace ? "Objectspace" : "");
+    if (off() || !getenv("OSD_SESSION")) return;
+    if (gnome_ours("cursor-theme", objectspace ? "Objectspace" : NULL, "Adwaita"))
+        fprintf(stderr, "osd-shell: GTK 3 programs' pointers: %s\n", objectspace ? "Objectspace" : "GNOME's own");
+}
+
+/* Started inside GNOME: GNOME's own GTK 3 theme and pointers back if
+ * ours are set. */
 void gtktheme_gnome_back(void)
 {
     if (off() || getenv("OSD_SESSION")) return;
-    char now[200] = "";
-    if (!gnome_get("org.gnome.desktop.interface", "gtk-theme", now, sizeof now) || strncmp(now, "Objectspace-", 12)) return;
-    char kp[4200], was[200] = "Adwaita";
-    kept_path(kp, sizeof kp);
-    FILE *f = fopen(kp, "r");
-    if (f) { if (fgets(was, sizeof was, f)) was[strcspn(was, "\n")] = 0; fclose(f); }
-    if (!was[0]) snprintf(was, sizeof was, "Adwaita");
-    gsettings_set(was);
-    fprintf(stderr, "osd-shell: GNOME's GTK 3 theme back: %s\n", was);
+    if (gnome_ours("gtk-theme", NULL, "Adwaita")) fprintf(stderr, "osd-shell: GNOME's GTK 3 theme back\n");
+    if (gnome_ours("cursor-theme", NULL, "Adwaita")) fprintf(stderr, "osd-shell: GNOME's pointers back\n");
 }

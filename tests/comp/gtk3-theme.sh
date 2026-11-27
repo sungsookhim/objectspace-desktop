@@ -26,15 +26,15 @@ cat > "$S/script" <<EOS
 EOS
 G='gsettings get org.gnome.desktop.interface gtk-theme'
 ENV="OSD_NO_LAUNCHER=1 OSD_WALLPAPER= GSETTINGS_BACKEND=keyfile"
-PRE="gsettings set org.gnome.desktop.interface gtk-theme MyTheme" DESKENV="$ENV OSD_SESSION=1" SECS=18 tests/comp/run.sh "$S/script" \
-    "sleep 4; $G > \"\$T/theme.login\"
+PRE="gsettings set org.gnome.desktop.interface gtk-theme MyTheme; gsettings set org.gnome.desktop.interface cursor-theme MyCursors" DESKENV="$ENV OSD_SESSION=1" SECS=18 tests/comp/run.sh "$S/script" \
+    "sleep 4; $G > \"\$T/theme.login\"; gsettings get org.gnome.desktop.interface cursor-theme > \"\$T/cursor.login\"
      ${gtk3:+GDK_BACKEND=wayland python3 '$PWD/tests/comp/gtk3-client.py' 20 > \"\$T/client.log\" 2>&1 &}
      pal=\$('$W' setup | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['objects']['OsdSchemePalette']['address'])\")
      sleep 6; '$W' set \"\$pal\" 'scheme=dark' > /dev/null; sleep 2; $G > \"\$T/theme.dark\"
      sleep 2; '$W' set \"\$pal\" 'scheme=high contrast' > /dev/null; sleep 1.5; $G > \"\$T/theme.contrast\"" > "$S/out.txt" 2>&1
 T=$(sed -n 's/^T=//p' "$S/out.txt")
 printf '5 quit\n' > "$S/script2"
-KEEP_T="$T" DESKENV="$ENV" SECS=7 tests/comp/run.sh "$S/script2" "sleep 4; $G > \"\$T/theme.gnome\"" > "$S/out2.txt" 2>&1
+KEEP_T="$T" DESKENV="$ENV" SECS=7 tests/comp/run.sh "$S/script2" "sleep 4; $G > \"\$T/theme.gnome\"; gsettings get org.gnome.desktop.interface cursor-theme > \"\$T/cursor.gnome\"" > "$S/out2.txt" 2>&1
 TH="$T/xdg/data/themes"
 echo "  gtk-theme: login $(cat "$T/theme.login") dark $(cat "$T/theme.dark") contrast $(cat "$T/theme.contrast") inside GNOME $(cat "$T/theme.gnome"); themes: $(ls "$TH" | tr '\n' ' ')"
 # the theme's colour for a name (@define-color NAME #rrggbb)
@@ -51,6 +51,7 @@ check "... GNOME's own kept (MyTheme)" "grep -qx MyTheme '$TH/.objectspace-gnome
 check "the scheme Dark: Objectspace-dark (Adwaita's dark underneath)" "grep -q \"'Objectspace-dark'\" '$T/theme.dark' && grep -q 'gtk-contained-dark.css' '$TH/Objectspace-dark/gtk-3.0/gtk.css'"
 check "High contrast: its theme too" "grep -q \"'Objectspace-high-contrast'\" '$T/theme.contrast' && [ -s '$TH/Objectspace-high-contrast/gtk-3.0/gtk.css' ]"
 check "started inside GNOME: GNOME's own back (MyTheme)" "grep -q \"'MyTheme'\" '$T/theme.gnome'"
+check "GTK 3's pointers: Objectspace's in the session, GNOME's own back inside GNOME (MyCursors)" "grep -q \"'Objectspace'\" '$T/cursor.login' && grep -q \"'MyCursors'\" '$T/cursor.gnome'"
 if [ -n "$gtk3" ]; then
     face=$(col Objectspace-classic theme_bg_color); sel=$(col Objectspace-classic theme_selected_bg_color); dface=$(col Objectspace-dark theme_bg_color)
     cf=$(count "$S/classic.png" "$face"); cs=$(count "$S/classic.png" "$sel"); df=$(count "$S/dark.png" "$dface"); dc=$(count "$S/dark.png" "$face")

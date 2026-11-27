@@ -535,6 +535,7 @@ void gtktheme_name(const char *scheme, char *out, size_t n);
 char *gtktheme_css(void);
 void gtktheme_update(void);
 void gtktheme_gnome_back(void);
+void cursors_set(bool objectspace);   /* the System's pointers: Objectspace's or the system's */
 
 /* The Screens object (screens.c, 0.7): the compositor's M lines read;
  * its notebook (inside GNOME: GNOME's Settings, Displays). */

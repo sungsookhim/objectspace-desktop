@@ -82,6 +82,7 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include <wlr/types/wlr_cursor_shape_v1.h>
 #include "comp.h"
 
 struct server server;
@@ -646,6 +647,62 @@ static uint32_t edges_at(struct toplevel *t, double lx, double ly)
     return e;
 }
 
+/* ------------------------------------------------------------ cursor theme
+ * Objectspace's pointers (0.7 step 8): the theme "Objectspace", found
+ * beside the program (build/cursor-themes) or installed (DATADIR/icons),
+ * by XCURSOR_PATH, which the programs started from here inherit too (Qt,
+ * X11, GTK 3's Wayland cursors). The System's choice comes from the
+ * desktop ("cursor-theme" command): Objectspace's, or the system's (the
+ * XCURSOR_THEME the session had, else the default). */
+static char *system_cursor_theme;   /* XCURSOR_THEME at start (NULL: none) */
+static void set_cursor(const char *name);
+
+static void cursor_path(void)
+{
+    char exe[4096], path[16384];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    exe[n > 0 ? n : 0] = 0;
+    char *sl = strrchr(exe, '/');
+    if (sl) *sl = 0;
+    char data[4096];
+    snprintf(data, sizeof data, "%s", OSD_ICONDIR);   /* DATADIR/objectspace/icons -> DATADIR/icons */
+    char *o = strstr(data, "/objectspace/icons");
+    if (o) strcpy(o, "/icons");
+    const char *home = getenv("HOME"), *old = getenv("XCURSOR_PATH");
+    char dflt[4096];
+    snprintf(dflt, sizeof dflt, "%s/.local/share/icons:%s/.icons:/usr/share/icons:/usr/share/pixmaps", home ? home : "", home ? home : "");
+    snprintf(path, sizeof path, "%s/cursor-themes:%s:%s", exe, data, old && *old ? old : dflt);
+    setenv("XCURSOR_PATH", path, 1);
+}
+
+static const char *cursor_size(void)
+{
+    const char *cs = getenv("XCURSOR_SIZE");
+    return cs && atoi(cs) > 0 ? cs : "24";
+}
+
+static void xwayland_default_cursor(void);
+
+/* The pointers from this theme ("": the system's). */
+void comp_cursor_theme(const char *name)
+{
+    const char *theme = name && *name ? name : system_cursor_theme;
+    struct wlr_xcursor_manager *m = wlr_xcursor_manager_create(theme, (uint32_t)atoi(cursor_size()));
+    if (!m) return;
+    if (server.cursor_mgr) wlr_xcursor_manager_destroy(server.cursor_mgr);
+    server.cursor_mgr = m;
+    struct output *o;
+    wl_list_for_each(o, &server.outputs, link) wlr_xcursor_manager_load(m, o->wlr_output->scale);
+    wlr_xcursor_manager_load(m, 1);
+    if (theme) setenv("XCURSOR_THEME", theme, 1);   /* (programs started from now on) */
+    else unsetenv("XCURSOR_THEME");
+    const char *was = server.cursor_image;
+    server.cursor_image = NULL;
+    if (was) set_cursor(was);
+    if (server.xwayland && server.xwayland->server) xwayland_default_cursor();
+    fprintf(stderr, "osd-compositor: pointers: %s\n", theme ? theme : "the default");
+}
+
 static void set_cursor(const char *name)
 {
     if (server.cursor_image && !strcmp(server.cursor_image, name)) return;
@@ -1137,6 +1194,19 @@ static void on_request_cursor(struct wl_listener *l, void *data)
         /* (a script's tests: which shape a program asked for, by its hot spot) */
         if (server.script_kb) fprintf(stderr, "osd-compositor: client cursor: hotspot %d,%d\n", e->hotspot_x, e->hotspot_y);
     }
+}
+
+/* A program asks for a pointer by its name (cursor-shape-v1: GTK 4, Qt 6,
+ * Firefox): the theme's (Objectspace's), drawn by us. */
+static void on_request_shape(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_cursor_shape_manager_v1_request_set_shape_event *e = data;
+    if (e->device_type != WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER) return;
+    if (server.seat->pointer_state.focused_client != e->seat_client) return;
+    server.cursor_image = NULL;   /* (the program's: not ours to keep) */
+    wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, wlr_cursor_shape_v1_name(e->shape));
+    if (server.script_kb) fprintf(stderr, "osd-compositor: client cursor shape: %s\n", wlr_cursor_shape_v1_name(e->shape));
 }
 
 /* A program starts dragging: only from a button it holds down (the
@@ -2458,17 +2528,22 @@ static void on_new_xsurface(struct wl_listener *l, void *data)
     wl_list_insert(server.toplevels.prev, &t->link);
 }
 
-static void on_xwayland_ready(struct wl_listener *l, void *data)
+/* X11 programs' default pointer: the same as ours */
+static void xwayland_default_cursor(void)
 {
-    (void)l; (void)data;
-    wlr_xwayland_set_seat(server.xwayland, server.seat);
-    /* X11 programs' default pointer: the same as ours */
     struct wlr_xcursor *xc = wlr_xcursor_manager_get_xcursor(server.cursor_mgr, "default", 1);
     if (xc && xc->image_count) {
         struct wlr_xcursor_image *im = xc->images[0];
         struct wlr_buffer *b = wlr_xcursor_image_get_buffer(im);
         if (b) wlr_xwayland_set_cursor(server.xwayland, b, (int32_t)im->hotspot_x, (int32_t)im->hotspot_y);
     }
+}
+
+static void on_xwayland_ready(struct wl_listener *l, void *data)
+{
+    (void)l; (void)data;
+    wlr_xwayland_set_seat(server.xwayland, server.seat);
+    xwayland_default_cursor();
     DBG("XWayland ready on %s\n", server.xwayland->display_name);
     xscale_ready();
 }
@@ -3041,8 +3116,14 @@ int main(int argc, char **argv)
 
     s->cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(s->cursor, s->output_layout);
-    const char *cs = getenv("XCURSOR_SIZE");
-    s->cursor_mgr = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), cs && atoi(cs) > 0 ? (uint32_t)atoi(cs) : 24);
+    cursor_path();
+    if (getenv("XCURSOR_THEME") && *getenv("XCURSOR_THEME")) system_cursor_theme = strdup(getenv("XCURSOR_THEME"));
+    {   /* Objectspace's pointers from the start (OSD_CURSOR_THEME: another; "system": the system's) */
+        const char *t = getenv("OSD_CURSOR_THEME");
+        t = !t ? "Objectspace" : !strcmp(t, "system") ? NULL : t;
+        s->cursor_mgr = wlr_xcursor_manager_create(t ? t : system_cursor_theme, (uint32_t)atoi(cursor_size()));
+        if (t) setenv("XCURSOR_THEME", t, 1);
+    }
 #define ON(sig, field, fn) do { s->field.notify = fn; wl_signal_add(&(sig), &s->field); } while (0)
     ON(s->cursor->events.motion, cursor_motion, on_cursor_motion);
     ON(s->cursor->events.motion_absolute, cursor_motion_absolute, on_cursor_motion_absolute);
@@ -3053,6 +3134,8 @@ int main(int argc, char **argv)
     ON(s->backend->events.new_input, new_input, on_new_input);
     s->seat = wlr_seat_create(s->display, "seat0");
     ON(s->seat->events.request_set_cursor, request_cursor, on_request_cursor);
+    s->shape_mgr = wlr_cursor_shape_manager_v1_create(s->display, 1);   /* programs ask for a pointer by name: ours drawn */
+    ON(s->shape_mgr->events.request_set_shape, request_shape, on_request_shape);
     ON(s->seat->events.request_set_selection, request_set_selection, on_request_set_selection);
     ON(s->seat->events.request_set_primary_selection, request_set_primary, on_request_set_primary);
     ON(s->seat->events.request_start_drag, request_start_drag, on_request_start_drag);
@@ -3144,7 +3227,7 @@ int main(int argc, char **argv)
     if (new_kde.link.next) wl_list_remove(&new_kde.link);
     wl_display_destroy_clients(s->display);
     struct wl_listener *ls[] = { &s->cursor_motion, &s->cursor_motion_absolute, &s->cursor_button, &s->cursor_axis,
-                                 &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_set_selection, &s->request_set_primary,
+                                 &s->cursor_frame, &s->new_input, &s->request_cursor, &s->request_shape, &s->request_set_selection, &s->request_set_primary,
                                  &s->request_start_drag, &s->start_drag,
                                  &s->new_output, &s->new_toplevel, &s->new_popup, &s->new_decoration, &s->request_activate };
     for (size_t i = 0; i < sizeof ls / sizeof *ls; i++) wl_list_remove(&ls[i]->link);

@@ -596,9 +596,31 @@ bool ui_window_active(ui_surface *s) { return s->activated; }
 
 /* ----------------------------------------------------------------- cursor */
 
+/* cursor-shape-v1's shapes, by their CSS names (the enum is the index + 1) */
+static const char *const shapes[] = {
+    "default", "context-menu", "help", "pointer", "progress", "wait", "cell", "crosshair", "text", "vertical-text", "alias",
+    "copy", "move", "no-drop", "not-allowed", "grab", "grabbing", "e-resize", "n-resize", "ne-resize", "nw-resize", "s-resize",
+    "se-resize", "sw-resize", "w-resize", "ew-resize", "ns-resize", "nesw-resize", "nwse-resize", "col-resize", "row-resize",
+    "all-scroll", "zoom-in", "zoom-out",
+};
+
+/* The pointer: by its name, drawn by the compositor from its theme when
+ * it can (cursor-shape-v1: Objectspace's own compositor and GNOME's draw
+ * their pointers' theme, and a change of it reaches every window at
+ * once); else from the theme XCURSOR_THEME names, drawn here. */
 void ui_set_cursor(ui_app *a, const char *name)
 {
     if (!a->pointer || !a->enter_serial) return;
+    if (a->shape_mgr) {
+        size_t k = 0;
+        while (k < sizeof shapes / sizeof *shapes && strcmp(shapes[k], name)) k++;
+        if (k < sizeof shapes / sizeof *shapes) {
+            if (!a->shape_dev) a->shape_dev = wp_cursor_shape_manager_v1_get_pointer(a->shape_mgr, a->pointer);
+            wp_cursor_shape_device_v1_set_shape(a->shape_dev, a->enter_serial, (uint32_t)k + 1);
+            a->cursor_name = name;
+            return;
+        }
+    }
     int scale = a->ptr_focus ? a->ptr_focus->scale : 1;
     if (!a->cursor_theme || a->cursor_scale != scale) {
         if (a->cursor_theme) wl_cursor_theme_destroy(a->cursor_theme);
@@ -866,6 +888,8 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     if (!strcmp(iface, wl_compositor_interface.name)) {
         a->comp_version = ver < 6 ? (int)ver : 6;
         a->comp = wl_registry_bind(r, name, &wl_compositor_interface, (uint32_t)a->comp_version);
+    } else if (!strcmp(iface, wp_cursor_shape_manager_v1_interface.name)) {
+        a->shape_mgr = wl_registry_bind(r, name, &wp_cursor_shape_manager_v1_interface, 1);
     } else if (!strcmp(iface, xdg_activation_v1_interface.name)) {
         a->activation = wl_registry_bind(r, name, &xdg_activation_v1_interface, 1);
     } else if (!strcmp(iface, wl_data_device_manager_interface.name)) {

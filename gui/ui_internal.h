@@ -13,6 +13,7 @@
 #include "ui_damage.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "cursor-shape-v1-client-protocol.h"
 #include "text-input-unstable-v3-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -86,6 +87,8 @@ struct ui_app {
     struct wl_shm *shm;
     struct wl_subcompositor *subcomp;
     struct xdg_activation_v1 *activation;
+    struct wp_cursor_shape_manager_v1 *shape_mgr;   /* pointers drawn by the compositor, by name (NULL: none) */
+    struct wp_cursor_shape_device_v1 *shape_dev;
     /* Input methods (ui_textinput.c): text-input-v3. */
     struct zwp_text_input_manager_v3 *ti_manager;
     struct zwp_text_input_v3 *ti;

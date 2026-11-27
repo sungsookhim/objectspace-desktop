@@ -154,6 +154,7 @@ echo "enable osdd.service" > %{buildroot}%{_userpresetdir}/80-objectspace.preset
 %{_datadir}/applications/io.github.sungsookhim.Objectspace.Terminal.desktop
 %{_datadir}/objectspace
 %exclude %{_datadir}/objectspace/sdk
+%{_datadir}/icons/Objectspace
 %config(noreplace) %{_sysconfdir}/pam.d/osd-lock
 %{_mandir}/man1/osdctl.1*
 %{_mandir}/man1/osd-shell.1*

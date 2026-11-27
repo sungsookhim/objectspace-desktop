@@ -42,9 +42,9 @@ check "Title clicked: by name" "[ \"\$(line 3)\" = 'm z a.png b.txt c.md' ]"
 check "the Title column's width kept (dragged wider)" "python3 -c \"
 import json; f = {x['key']: x.get('value') for p in json.load(open('$T/settings.log'))['result'] for x in p['fields']}
 w = [float(v) for v in f['col_widths'].split(',')]; exit(0 if w[0] > 200 else 1)\""
-# (the compositor logs the shapes asked for by their hot spots: the
-# resize arrow's in its middle, 12,12; the arrow's at its tip)
-check "over an edge: the resize pointer; off it: the arrow again" "grep 'client cursor' '$S/out.txt' | grep -A1 -m1 'hotspot 12,12' | tail -1 | grep -qv 'hotspot 12,12'"
+# (the compositor logs the pointers asked for by name: a resize one over
+# the edge, then the arrow, "default", again)
+check "over an edge: the resize pointer; off it: the arrow again" "grep 'client cursor shape' '$S/out.txt' | sed -n '/resize/,\$p' | grep -v resize | head -1 | grep -q 'shape: default'"
 check "Type turned off" "grep -q '\"key\":\"col_type\"[^}]*\"value\":false' '$T/settings.log'"
 check "the sort kept: name (choice 1), ascending" "grep -q '\"key\":\"sort_key\"[^}]*\"value\":1' '$T/settings.log' && grep -q '\"key\":\"sort_desc\"[^}]*\"value\":false' '$T/settings.log'"
 echo "$fails failed (screenshot: $S/end.png, logs: $T)"

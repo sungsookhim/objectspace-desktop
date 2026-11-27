@@ -458,6 +458,7 @@ static void command(char *line)
     }
     if (!strcmp(line, "panel")) { comp_panel_edge(!strcmp(arg, "top")); return; }
     if (!strcmp(line, "x11-scale")) { xscale_set_enabled(strcmp(arg, "off") != 0); return; }   /* the System's "Scale X11 programs themselves" */
+    if (!strcmp(line, "cursor-theme")) { comp_cursor_theme(arg); return; }   /* the System's pointers: "Objectspace", "" the system's */
     if (!strcmp(line, "place")) {   /* "place APP TITLE X Y": the desktop's next such window goes there */
         char app[128], title[256] = "";
         int x, y;

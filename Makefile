@@ -247,6 +247,20 @@ $(G0)/xdg-activation-v1-protocol.c: $(ACTXML)
 	@mkdir -p $(G0)
 	wayland-scanner private-code $< $@
 
+# cursor-shape-v1 (pointers drawn by the compositor, by name; 0.7 step 8) and
+# tablet-v2, whose interfaces it names
+CSXML   := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/staging/cursor-shape/cursor-shape-v1.xml
+TABXML  := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/stable/tablet/tablet-v2.xml
+$(G0)/cursor-shape-v1-client-protocol.h: $(CSXML)
+	@mkdir -p $(G0)
+	wayland-scanner client-header $< $@
+$(G0)/cursor-shape-v1-protocol.c: $(CSXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+$(G0)/tablet-v2-protocol.c: $(TABXML)
+	@mkdir -p $(G0)
+	wayland-scanner private-code $< $@
+
 TIXML   := $(shell pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)/unstable/text-input/text-input-unstable-v3.xml
 
 $(G0)/text-input-unstable-v3-client-protocol.h: $(TIXML)
@@ -277,10 +291,10 @@ g0: $(G0)/folderview $(G0)/soundlat
 
 # The GUI: the widget set (gui/ui_*.c) and osd-shell. Optimised for timing; the
 # -asan build is for finding memory errors.
-UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_menupaint.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_ibus.c gui/ui_a11y.c
+UISRC   := gui/ui_app.c gui/ui_draw.c gui/ui_damage.c gui/ui_frame.c gui/ui_framepaint.c gui/ui_menu.c gui/ui_menupaint.c gui/ui_container.c gui/ui_layer.c gui/ui_entry.c gui/ui_mouse.c gui/ui_notebook.c gui/ui_dnd.c gui/ui_dialog.c gui/ui_textinput.c gui/ui_ibus.c gui/ui_a11y.c $(G0)/cursor-shape-v1-protocol.c $(G0)/tablet-v2-protocol.c
 SHELLSRC := gui/shell/osd-shell.c gui/shell/folderwin.c gui/shell/tree.c gui/shell/iconview.c gui/shell/properties.c gui/shell/menus.c gui/shell/dnd.c gui/shell/jobs.c gui/shell/window.c gui/shell/selftest.c gui/shell/setup.c gui/shell/desktop.c gui/shell/svc.c gui/shell/layout.c gui/shell/wallpaper.c gui/shell/events.c gui/shell/sound.c gui/shell/gnome.c gui/shell/winlist.c gui/shell/launcher.c gui/shell/session.c gui/shell/thebar.c gui/shell/trays.c gui/shell/menubar.c gui/shell/columns.c gui/shell/thumbs.c gui/shell/md5.c gui/shell/gallery.c gui/shell/notify.c gui/shell/messages.c gui/shell/tray.c gui/shell/findwin.c gui/shell/icons.c gui/shell/appicons.c gui/shell/iconpick.c gui/shell/filepick.c gui/shell/apppick.c gui/shell/fontpal.c gui/shell/colorpal.c gui/shell/screens.c gui/shell/gtktheme.c gui/shell/workarea.c gui/shell/objmenu.c gui/shell/tooltip.c gui/shell/mime.c gui/shell/osdicon.c classes/osd_magic.c classes/osd_themes.c service/cbor.c $(G0)/xdg-shell-protocol.c $(G0)/viewporter-protocol.c $(G0)/xdg-activation-v1-protocol.c $(G0)/text-input-unstable-v3-protocol.c
 UIPKG   := cairo harfbuzz freetype2 fontconfig wayland-client wayland-cursor xkbcommon libsystemd
-UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/osd_menu_ids.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
+UIDEPS  := $(UISRC) $(SHELLSRC) $(wildcard gui/*.h gui/shell/*.h) classes/osd_menu_ids.h $(G0)/cursor-shape-v1-client-protocol.h $(G0)/xdg-shell-client-protocol.h $(G0)/viewporter-client-protocol.h $(G0)/xdg-activation-v1-client-protocol.h $(G0)/text-input-unstable-v3-client-protocol.h
 UIFLAGS = -Igui -Igui/shell -Iservice -Iclasses -I$(G0) $(shell pkg-config --cflags $(UIPKG))
 UILIBS  = $(shell pkg-config --libs $(UIPKG)) -lpthread -lm
 # Sounds: PipeWire, and libsndfile when installed (Ogg, FLAC; else WAV only).
@@ -372,7 +386,14 @@ $(TV)/test_osdicon: tests/test_osdicon.c gui/shell/osdicon.c gui/shell/osdicon.h
 # and objectspace-outline), and 0.2's pictures as the classic theme (packed by
 # osdctl icon pack, which adds the standard sizes).
 ICONTHEMES := $(B)/icon-themes
-icons: $(ICONTHEMES)/.stamp
+# The cursor theme (0.7 step 8; the drawings the owner approved): Xcursor
+# files from tools/icons/make_cursors.py, installed as the icon theme
+# "Objectspace" ($(DATADIR)/icons/Objectspace/cursors).
+CURSORTHEME := $(B)/cursor-themes/Objectspace
+icons: $(ICONTHEMES)/.stamp $(CURSORTHEME)/.stamp
+$(CURSORTHEME)/.stamp: tools/icons/make_cursors.py
+	rm -rf $(CURSORTHEME) && $(PYTHON) tools/icons/make_cursors.py --theme $(CURSORTHEME)
+	@touch $@
 $(ICONTHEMES)/.stamp: tools/icons/make_iso.py tools/icons/make_theme.py $(wildcard data/icons/*.png) $(B)/osdctl
 	$(PYTHON) tools/icons/make_theme.py $(ICONTHEMES)
 	@mkdir -p $(ICONTHEMES)/classic
@@ -399,7 +420,7 @@ gui-test: gui
 	$(TV)/test_md5
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command trays menubar columns column-details pictures suspend screens desktop-screens x11-scale screens-object libadwaita gtk3-theme
+COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command trays menubar columns column-details pictures suspend screens desktop-screens x11-scale screens-object libadwaita gtk3-theme cursors
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \
@@ -442,6 +463,9 @@ install: $(INSTALLED) icons install-sdk
 	install -m 644 data/icons/*.png $(DESTDIR)$(DATADIR)/objectspace/icons/
 	for t in $(ICONTHEMES)/*/; do d=$(DESTDIR)$(DATADIR)/objectspace/icon-themes/$$(basename "$$t"); \
 	    install -d "$$d" && install -m 644 "$$t"theme.ini "$$t"*.osdicon "$$d"/ || exit 1; done
+	install -d $(DESTDIR)$(DATADIR)/icons/Objectspace/cursors
+	install -m 644 $(CURSORTHEME)/index.theme $(DESTDIR)$(DATADIR)/icons/Objectspace/
+	cp -P $(CURSORTHEME)/cursors/* $(DESTDIR)$(DATADIR)/icons/Objectspace/cursors/
 	install -d $(DESTDIR)$(EXTDIR)/schemas
 	install -m 644 $(EXT)/metadata.json $(EXT)/extension.js $(DESTDIR)$(EXTDIR)/
 	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/

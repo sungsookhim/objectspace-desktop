@@ -30,6 +30,7 @@ method osdQueryFoldersIconSet() -> string
 method osdSetFoldersIconSet(string set) -> bool
 property icon_set : choice "Small,Default,Large" = "Default" page "Theme" label "Icon size (Small 32/16, Default 64/32/16, Large 96/48/24)" get osdQueryFoldersIconSet set osdSetFoldersIconSet
 property hatch_open : checkbox = "0" page "Theme" label "Hatch open icons too (every object's)" store OsdSetup text
+property cursors : choice "Objectspace,system" = "Objectspace" page "Theme" label "Pointers (Objectspace's, after OS/2's, or the system's)" store OsdSetup text
 method osdQueryFoldersFont() -> string
 method osdSetFoldersFont(string font) -> bool
 property show_hidden : checkbox = "1" page "Folders" label "Show hidden files (names starting with a dot)" get osdQueryFoldersHidden set osdSetFoldersHidden
