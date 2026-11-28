@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# The RPMs for 64-bit ARM (aarch64), experimental (the owner's, 0.7): built
+# on GitHub's ARM machines in Fedora 45, as the x86_64 ones are in mock -
+# the source tarball and spec (make dist), the build dependencies from the
+# spec, rpmbuild with its %check (the unit tests). The RPMs are kept as the
+# run's artifact, to be attached to a release (marked experimental). Run
+# for a release's tag, or by hand (Actions, Run workflow).
+name: RPM aarch64 (experimental)
+
+on:
+  push:
+    tags: ['v*']
+    branches: [user-theme]
+  workflow_dispatch:
+
+jobs:
+  rpm:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Tools
+        run: dnf -y install --setopt=install_weak_deps=False git-core make rpm-build dnf-plugins-core python3 python3-pillow
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # (a development version's release number counts the commits)
+      - name: Source and spec
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          make dist
+      - name: Build dependencies
+        run: dnf -y builddep --setopt=install_weak_deps=False build/objectspace.spec
+      - name: Build (with the spec's %check)
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          su builder -c "make rpm"
+      - name: Which
+        run: ls -l build/rpm/RPMS/*/*.rpm build/rpm/SRPMS/*.rpm
+      - uses: actions/upload-artifact@v5
+        with:
+          name: objectspace-rpms-aarch64-experimental
+          path: build/rpm/RPMS/*/*.rpm
+          if-no-files-found: error

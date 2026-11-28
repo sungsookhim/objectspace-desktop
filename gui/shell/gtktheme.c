@@ -268,6 +268,62 @@ void gtktheme_update(void)
     if (gnome_ours("gtk-theme", name, "Adwaita")) fprintf(stderr, "osd-shell: GTK 3 programs: the theme %s\n", name);
 }
 
+/* The theme "Objectspace" (icons and pointers) where every program finds
+ * it. Installed, it is in DATADIR/icons. Run from a build tree it is only
+ * in build/share/icons, which programs the desktop starts see (the
+ * compositor's XDG_DATA_DIRS) but others do not: GNOME's file dialogs
+ * (the desktop portal's, a service of its own), Flatpaks. So from a build
+ * tree a copy goes into the user's icons ($XDG_DATA_HOME/icons), made
+ * again when the build's is newer; installed, a copy left there from a
+ * build tree is removed (it would hide the installed one). */
+static void user_theme(void)
+{
+    static bool done;
+    if (done) return;
+    done = true;
+    char exe[4096], src[4200], dst[4300], mark[4400];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n <= 0) return;
+    exe[n] = 0;
+    char *sl = strrchr(exe, '/');
+    if (!sl) return;
+    *sl = 0;
+    snprintf(src, sizeof src, "%s/share/icons/Objectspace", exe);
+    const char *dh = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+    if (dh && *dh) snprintf(dst, sizeof dst, "%s/icons/Objectspace", dh);
+    else snprintf(dst, sizeof dst, "%s/.local/share/icons/Objectspace", home ? home : "");
+    snprintf(mark, sizeof mark, "%s/.objectspace-build-copy", dst);
+    struct stat st, mt;
+    char stamp[4300];
+    snprintf(stamp, sizeof stamp, "%s/.stamp", src);
+    bool build = stat(stamp, &st) == 0;
+    bool copied = stat(mark, &mt) == 0;
+    if (!build) {   /* installed: a build tree's copy away */
+        if (copied) {
+            char *argv[] = { "rm", "-rf", dst, NULL };
+            pid_t pid;
+            if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0) waitpid(pid, NULL, 0);
+            fprintf(stderr, "osd-shell: the build tree's copy of the theme Objectspace removed from %s\n", dst);
+        }
+        return;
+    }
+    if (copied && mt.st_mtime >= st.st_mtime) return;   /* (up to date) */
+    if (!copied && access(dst, F_OK) == 0) return;      /* (one of the user's own: left alone) */
+    char parent[4300];
+    snprintf(parent, sizeof parent, "%s", dst);
+    char *p = strrchr(parent, '/');
+    if (p) { *p = 0; mkdirs(parent); }
+    char *rm[] = { "rm", "-rf", dst, NULL }, *cp[] = { "cp", "-RP", src, dst, NULL };
+    pid_t pid;
+    if (posix_spawnp(&pid, rm[0], NULL, NULL, rm, environ) == 0) waitpid(pid, NULL, 0);
+    if (posix_spawnp(&pid, cp[0], NULL, NULL, cp, environ) != 0) return;
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (status) return;
+    write_file(mark, "Copied from a build tree by Objectspace's desktop; made again from it, removed when Objectspace is installed.\n");
+    fprintf(stderr, "osd-shell: the theme Objectspace copied into %s (from the build tree)\n", dst);
+}
+
 /* The System's pointers (0.7 step 8): the compositor told; in the
  * Objectspace session GNOME's cursor-theme too (GTK 3 programs'), GNOME's
  * own kept, and back when the system's are chosen. */
@@ -278,6 +334,7 @@ void cursors_set(bool objectspace)
     was = objectspace;
     winlist_ext("cursor-theme", objectspace ? "Objectspace" : "");
     if (off() || !getenv("OSD_SESSION")) return;
+    user_theme();
     if (gnome_ours("cursor-theme", objectspace ? "Objectspace" : NULL, "Adwaita"))
         fprintf(stderr, "osd-shell: GTK 3 programs' pointers: %s\n", objectspace ? "Objectspace" : "GNOME's own");
 }
@@ -292,6 +349,7 @@ void othericons_set(bool objectspace)
     if (was == (int)objectspace) return;
     was = objectspace;
     if (off() || !getenv("OSD_SESSION")) return;
+    user_theme();
     if (gnome_ours("icon-theme", objectspace ? "Objectspace" : NULL, "Adwaita"))
         fprintf(stderr, "osd-shell: other programs' icons: %s\n", objectspace ? "Objectspace" : "GNOME's own");
 }

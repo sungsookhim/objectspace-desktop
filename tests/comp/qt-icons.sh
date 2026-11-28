@@ -59,6 +59,7 @@ check "qt5ct's: 21 roles" "[ \$(roles '$C/qt5ct/colors/Objectspace-classic.conf'
 check "qt6ct's settings: Classic's scheme (Fusion), then Dark's" "grep -q 'color_scheme_path=.*/Objectspace-classic.conf' '$T/qt6ct.login' && grep -q 'style=Fusion' '$T/qt6ct.login' && grep -q 'color_scheme_path=.*/Objectspace-dark.conf' '$T/qt6ct.dark'"
 check "the user's own qt5ct settings untouched" "grep -q 'color_scheme_path=/my/own.conf' '$C/qt5ct/qt5ct.conf'"
 check "the icon theme Objectspace set as GNOME's icon-theme" "grep -q \"'Objectspace'\" '$T/icons.login'"
+check "... a copy in the user's icons (run from the build tree: for GNOME's file dialogs, Flatpaks)" "[ -f '$T/xdg/data/icons/Objectspace/index.theme' ] && [ -f '$T/xdg/data/icons/Objectspace/.objectspace-build-copy' ] && [ -f '$T/xdg/data/icons/Objectspace/cursors/default' ]"
 check "started inside GNOME: GNOME's own icons back (MyIcons)" "grep -q \"'MyIcons'\" '$T/icons.gnome'"
 if [ -n "$gtk3" ]; then
     y=$(python3 -c "
