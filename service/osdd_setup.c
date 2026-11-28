@@ -208,6 +208,16 @@ void first_start_work(void *arg)
         osd_mkdirs(net, 0700);
         osd_set_folder_class(net, "OsdNetwork");
     }
+    if (j->from < 15) {
+        /* step 15 (0.8): Connect to a share, in Network */
+        char net[PATH_MAX];
+        network_dir(net, sizeof net);
+        osd_loaded nl;
+        osd_load(net, true, &nl);
+        if (nl.err || !nl.id[0] || osd_central_create(nl.vol, nl.id, "OsdNetConnect", "Connect to a share", NULL, j->connector) != 0)
+            j->connector[0] = 0;
+        osd_loaded_free(&nl);
+    }
     if (j->from < 13) {
         /* step 13 (0.6): Find in System; the Trays folder and its first
          * tray (its shadows made in first_start_done) */
@@ -331,6 +341,11 @@ void first_start_done(void *arg)
             if (stat(programs, &pst) == 0) first_start_shadow_as(programs, first, false, place += 10);
             if (j->prompt_id[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->prompt_id); first_start_shadow_as(loc, first, false, place += 10); }
             if (j->finder[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->finder); first_start_shadow_as(loc, first, false, place += 10); }
+        }
+        if (j->connector[0]) {   /* step 15: Connect to a share */
+            char net[PATH_MAX];
+            network_dir(net, sizeof net);
+            on_central_change(net, j->connector, 'c');
         }
         if (j->from < 14) {   /* step 14: Network (seen as a plain folder before) */
             char net[PATH_MAX];

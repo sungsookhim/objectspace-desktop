@@ -359,12 +359,20 @@ void do_open(struct req *r, osdo_object *o)
         reply_view(r, "minimized-windows");
         osdo_unref(orig);
         return;
+    } else if (osdo_is_a(o, OsdNetConnectClass)) {
+        reply_view(r, "connect");   /* the desktop asks for the address (0.8 step 4) */
+        osdo_unref(orig);
+        return;
     } else if (osdo_is_a(o, OsdShareClass)) {
         /* a network share (0.8): its folder, when connected */
         const char *u = OsdDrive_data(o)->uuid;
         osd_volume v;
+        char *addr = NULL;
         if (u && osd_volume_for_uuid(u, &v)) reply_folder(r, v.mnt);
+        else if (osd_state_get_str(o, "OsdShare", "connect", &addr) && addr[0])
+            share_open_connect(r->c, r->id, addr);   /* a connection of the user's: connected first (0.8 step 4) */
         else reply_error(r->c, r->id, "not connected", "the share is not connected");
+        free(addr);
         osdo_unref(orig);
         return;
     } else if (osdo_is_a(o, OsdDriveClass)) {

@@ -64,6 +64,11 @@ Recommends:     %{name}-gnome-shell-extension = %{version}-%{release}
 Suggests:       qt6ct
 # X11 programs' fonts at the screen's scale (Xft.dpi, 0.7)
 Suggests:       xrdb
+# Network (0.8): GNOME's virtual file systems as folders (gvfs-fuse), Windows shares, the keyring's secret-tool
+Recommends:     gvfs-fuse
+Recommends:     gvfs-smb
+Recommends:     libsecret
+Suggests:       gvfs-nfs
 %{?systemd_requires}
 
 %description

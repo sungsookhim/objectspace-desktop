@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# Connect to a share (0.8 step 4): in Network; opening it asks for a
+# share's address (and a password when one is needed) and connects to it
+# through GNOME's virtual file systems; the share is remembered in Network.
+class OsdNetConnect : OsdAbstract
+version 1.0
+classoverride osdclsQueryTitle

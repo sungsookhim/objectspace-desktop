@@ -540,6 +540,11 @@ void othericons_set(bool objectspace);
 char *qtpalette_conf(bool qt6);   /* qt5ct's or qt6ct's colour scheme from the scheme now (caller frees) */
 void qtpalette_update(void);   /* the System's other programs' icons: Objectspace's or the system's */   /* the System's pointers: Objectspace's or the system's */
 
+/* Connect to a share (netconnect.c, 0.8): the address asked for; a
+ * remembered share's password asked for (its object's target). */
+void netconnect_open(void);
+void netconnect_password(const char *target);
+
 /* The Screens object (screens.c, 0.7): the compositor's M lines read;
  * its notebook (inside GNOME: GNOME's Settings, Displays). */
 void screens_line(char **f, int k);

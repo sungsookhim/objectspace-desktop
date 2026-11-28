@@ -50,6 +50,11 @@ def listing(c, folder):
     return {x.get("title") or x["name"]: x for x in r.get("items", [])}
 
 
+def shares(it):
+    """(Network's objects but Connect to a share)"""
+    return {k: v for k, v in it.items() if k != "Connect to a share"}
+
+
 def wait_list(c, folder, cond, secs=6):
     t = time.time()
     while time.time() - t < secs:
@@ -112,20 +117,14 @@ p, c = start(T + "/gvfs2")
 it = wait_list(c, T + "/gvfs2/" + SHARE, lambda it: "The plan" in it)
 check("mounted again at another place: the file's title still there", "The plan" in it, sorted(it))
 it = wait_list(c, NET, lambda it: "projects on fileserver" in it)
-check("... and one share object for it (not a second)", list(it).count("projects on fileserver") == 1 and len(it) == 1, sorted(it))
+check("... and one share object for it (not a second)", list(it).count("projects on fileserver") == 1 and len(shares(it)) == 1, sorted(it))
 
 # the share gone: its object gone from Network; back with its title
 c.request(op="settings_set", target=it["projects on fileserver"]["name"].lstrip("\x01"), values={"title": "Team projects"})
-time.sleep(0.3)   # (its saving and the parking at once: the parking waits for it)
+time.sleep(0.3)   # (its title still being saved as the share goes: it must not come back)
 os.rename(T + "/gvfs2/" + SHARE, T + "/away")
-it = wait_list(c, NET, lambda it: not it)
-if it:
-    import sqlite3
-    print("DBG failing at", time.strftime("%T"))
-    nm = list(it.values())[0]["name"].lstrip("\x01")
-    for r in sqlite3.connect(T + "/state/objects.db").execute("select vol, replace(key, char(31), ' | '), value, rev from state where key like ?", (nm + "%",)):
-        print("DBG row", r)
-check("the share gone (unmounted): its object gone from Network", not it, sorted(it))
+it = wait_list(c, NET, lambda it: not shares(it))
+check("the share gone (unmounted): its object gone from Network", not shares(it), sorted(it))
 os.rename(T + "/away", T + "/gvfs2/" + SHARE)
 it = wait_list(c, NET, lambda it: "Team projects" in it)
 check("... mounted again: back, its own title kept", "Team projects" in it, sorted(it))
@@ -138,8 +137,48 @@ check("its menu: Disconnect (not Delete)", any(x.get("label") == "Disconnect" fo
 r = c.request(op="share", target=sh.get("name", "").lstrip("\x01"), action="disconnect")
 log = open(T + "/gio.log").read() if os.path.exists(T + "/gio.log") else ""
 check("Disconnect: GNOME's unmount (gio mount -u its folder)", r.get("ok") and ("mount -u " + T + "/gvfs2/" + SHARE) in log, (r, log))
-it = wait_list(c, NET, lambda it: not it)
-check("... and it is gone from Network", not it, sorted(it))
+it = wait_list(c, NET, lambda it: not shares(it))
+check("... and it is gone from Network", not shares(it), sorted(it))
+
+# ---- Connect to a share (step 4)
+it = listing(c, NET)
+cs = [x for x in it.values() if x.get("title") == "Connect to a share"]
+check("Connect to a share in Network (step 15), its icon", cs and cs[0].get("icon") in (None, "", "theme:net-connect"), list(it))
+r = c.request(op="open", target=cs[0]["name"].lstrip("\x01")) if cs else {}
+check("... opening it: the desktop asks for the address (view connect)", (r.get("result") or {}).get("view") == "connect", r)
+r = c.request(op="connect", address="smb://filer/public", remember=False)
+check("connect to a share needing no password: its folder", r.get("ok") and r["result"]["folder"].endswith("smb-share:server=filer,share=public"), r)
+it = wait_list(c, NET, lambda it: "public on filer" in it)
+check("... in Network", "public on filer" in it, sorted(it))
+r = c.request(op="connect", address="smb://nohost/x", remember=False)
+check("a server not there: said in words", r.get("error") == "not found" and "not found" in r.get("message", ""), r)
+r = c.request(op="connect", address="smb://filer/secure", remember=False)
+check("a share needing a password, none given: asked for", r.get("error") == "password needed", r)
+r = c.request(op="connect", address="smb://filer/secure", user="alice", password="wrong", remember=True)
+check("... a wrong one: refused, in words", r.get("error") == "refused" and "refused" in r.get("message", ""), r)
+r = c.request(op="connect", address="smb://filer/secure", user="alice", password="secret", remember=True)
+check("... the right one: connected", r.get("ok") and "share=secure" in r["result"]["folder"], r)
+kr = open(T + "/keyring").read() if os.path.exists(T + "/keyring") else ""
+check("Connect and remember: the password in the keyring, as GNOME's Files keeps it", "protocol smb server filer user alice\tsecret" in kr, kr)
+it = wait_list(c, NET, lambda it: "secure on filer" in it)
+sec = it.get("secure on filer", {})
+m = [x.get("label") for x in c.request(op="menu", target=sec.get("name", "").lstrip("\x01")).get("result") or []]
+check("its menu: Disconnect, Forget", "Disconnect" in m and "Forget" in m, m)
+r = c.request(op="share", target=sec.get("name", "").lstrip("\x01"), action="disconnect")
+time.sleep(1.5)
+it = wait_list(c, NET, lambda it: (it.get("secure on filer") or {}).get("icon") == "theme:drive-net-off")
+sec = it.get("secure on filer", {})
+check("disconnected: still in Network (remembered), its icon dark", sec.get("icon") == "theme:drive-net-off", sec)
+m = [x.get("label") for x in c.request(op="menu", target=sec.get("name", "").lstrip("\x01")).get("result") or []]
+check("... its menu: Connect, Forget", "Connect" in m and "Forget" in m and "Disconnect" not in m, m)
+r = c.request(op="open", target=sec.get("name", "").lstrip("\x01"))
+check("opened: connected again (the keyring's password, no asking), its folder", r.get("ok") and "share=secure" in (r.get("result") or {}).get("folder", ""), r)
+r = c.request(op="share", target=sec.get("name", "").lstrip("\x01"), action="forget")
+kr = open(T + "/keyring").read() if os.path.exists(T + "/keyring") else ""
+check("Forget: its password out of the keyring", r.get("ok") and "user alice" not in kr, (r, kr))
+time.sleep(1.5)
+it = listing(c, NET)
+check("... and, still connected, shown as any share (not remembered)", "secure on filer" in it, sorted(it))
 stop(p)
 osdd_log = open(T + "/osdd.log").read()
 check("no sanitizer reports", "Sanitizer" not in osdd_log and "runtime error" not in osdd_log)

@@ -200,6 +200,9 @@ void opened(void *arg, const cv *reply)
          * template): its settings notebook. */
         open_properties(f->pending_open);
         f->error[0] = 0;
+    } else if (!res && reply && cv_text(reply, "error") && !strcmp(cv_text(reply, "error"), "password needed") && f->pending_open[0]) {
+        netconnect_password(f->pending_open);   /* a remembered share: its password, then connected and opened (0.8) */
+        f->error[0] = 0;
     } else if (!res && reply && cv_text(reply, "error") && !strcmp(cv_text(reply, "error"), "locked") && f->pending_open[0]) {
         unlock_ask(f, f->pending_open, true);   /* a locked drive: its passphrase, then open it */
         f->error[0] = 0;

@@ -57,6 +57,7 @@
 #include "OsdDrive.h"
 #include "OsdShare.h"
 #include "OsdNetwork.h"
+#include "OsdNetConnect.h"
 #include "OsdMinWinViewer.h"
 #include "OsdRestoreDesktop.h"
 #include "OsdCommandPrompt.h"
@@ -262,7 +263,7 @@ struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*go
  *      System) and its first tray, Default (My System, Programs, Command
  *      Prompt, Find).
  * After it, the default objects in place are noted (restore_defaults). */
-#define FIRST_START_VERSION 14
+#define FIRST_START_VERSION 15
 
 struct first_start {
     struct client *c;
@@ -275,6 +276,7 @@ struct first_start {
     char restorer[OSD_ID_LEN + 1];  /* Restore Desktop, made (step 8) */
     char prompter[OSD_ID_LEN + 1];  /* Command Prompt, made (step 12) */
     char finder[OSD_ID_LEN + 1];    /* Find, made (step 13) */
+    char connector[OSD_ID_LEN + 1]; /* Connect to a share, made in Network (step 15) */
     char prompt_id[OSD_ID_LEN + 1]; /* step 13: Command Prompt in System (made now or before) */
     char trays[PATH_MAX];           /* step 13: the Trays folder, its first tray made */
     char sys[PATH_MAX], autostart[PATH_MAX];
@@ -528,5 +530,7 @@ void network_changed(void);
 void network_init(void);
 bool share_query(const char *uuid, osd_drive_state *st, bool details);
 bool op_share(struct client *c, int64_t id, const char *op, cv *msg);
+bool op_connect(struct client *c, int64_t id, const char *op, cv *msg);
+void share_open_connect(struct client *c, int64_t id, const char *address);
 
 #endif

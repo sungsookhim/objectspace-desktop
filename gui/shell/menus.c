@@ -120,12 +120,13 @@ void menu_chosen(void *arg, int64_t id)
                                     : id == OSD_MI_POWER_OFF ? "poweroff" : "lock", false);
             break;
         }
-        case OSD_MI_DISCONNECT: {   /* a network share (0.8) */
+        case OSD_MI_DISCONNECT: case OSD_MI_FORGET: {   /* a network share (0.8) */
             char t[PATH_MAX];
             target_of(f, m->item, t, sizeof t);
-            drive_action(f, t, "disconnect", false);
+            drive_action(f, t, id == OSD_MI_FORGET ? "forget" : "disconnect", false);
             break;
         }
+        case OSD_MI_CONNECT: open_item(f, m->item, VIEW_LAST); break;   /* (a remembered share: connected first) */
         case OSD_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
         case OSD_MI_LOCK_POS: if (m->item != SIZE_MAX) lock_items(f, m->item); break;
         case OSD_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
@@ -176,6 +177,7 @@ static void drive_acted(void *arg, const cv *reply)
         else if (!strcmp(x->action, "eject") || !strcmp(x->action, "poweroff")) snprintf(m, sizeof m, "It can be removed now");
         else if (!strcmp(x->action, "unlock")) snprintf(m, sizeof m, "Unlocked");
         else if (!strcmp(x->action, "disconnect")) snprintf(m, sizeof m, "Disconnected");
+        else if (!strcmp(x->action, "forget")) snprintf(m, sizeof m, "Forgotten (and its password)");
         else snprintf(m, sizeof m, "Locked");
         if (f) set_status(f->id, m);
         if (x->reopen && f) {   /* unlocked to open it: open it now */
@@ -196,7 +198,7 @@ static void drive_acted(void *arg, const cv *reply)
             set_status(f->id, "Wrong passphrase?");
         } else {
             const char *b[] = { "OK" };
-            ask(!strcmp(x->action, "disconnect") ? "Network share" : "Drive", m, b, 1, 0, NULL, NULL);
+            ask(!strcmp(x->action, "disconnect") || !strcmp(x->action, "forget") ? "Network share" : "Drive", m, b, 1, 0, NULL, NULL);
         }
     }
     free(x);
@@ -209,7 +211,7 @@ static void drive_action(struct folder *f, const char *target, const char *actio
     x->reopen = reopen;
     snprintf(x->target, sizeof x->target, "%s", target);
     snprintf(x->action, sizeof x->action, "%s", action);
-    if (!strcmp(action, "disconnect")) svc_share(target, action, drive_acted, x);
+    if (!strcmp(action, "disconnect") || !strcmp(action, "forget")) svc_share(target, action, drive_acted, x);
     else svc_drive(target, action, NULL, drive_acted, x);
 }
 

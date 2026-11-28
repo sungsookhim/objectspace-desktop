@@ -12,9 +12,12 @@ REPO=$PWD
 T=$(mktemp -d "${TMPDIR:-/tmp}/osd-network-XXXX")
 RT=$(mktemp -d "$XDG_RUNTIME_DIR/osd-net-XXXX")
 mkdir -p "$T/desk" "$T/gvfs" "$T/gvfs2" "$T/bin"
-# gio: "gio mount -u PATH" logged, the share's folder taken away (as unmounted)
-printf '#!/bin/sh\necho "$@" >> "%s/gio.log"\n[ "$1 $2" = "mount -u" ] && mv "$3" "%s/unmounted"\n' "$T" "$T" > "$T/bin/gio"
-chmod +x "$T/bin/gio"
+# gio and secret-tool of the test's own (tests/network/fake_gio.py): a
+# server "filer" with "public" (no password) and "secure" (alice, secret);
+# the keyring a file
+cp tests/network/fake_gio.py "$T/bin/gio"
+cp tests/network/fake_gio.py "$T/bin/secret-tool"
+chmod +x "$T/bin/gio" "$T/bin/secret-tool"
 export T REPO PATH="$T/bin:$PATH" OSD_CONFIG_DIR="$T/config" OSD_STATE_DIR="$T/state" OSD_RUNTIME_DIR="$RT" OSD_SAVE_DELAY_MS=100
 export XDG_CONFIG_HOME="$T/xdg/config" XDG_DATA_HOME="$T/xdg/data" OSD_TEMPLATES_DIR="$T/templates"
 export OSD_UDISKS_BUS="unix:path=$RT/none" OSD_GVFS_DIR="$T/gvfs" OSD_NET_NO_XATTR=1 OSD_NET_POLL_MS=1000

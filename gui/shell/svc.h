@@ -94,7 +94,9 @@ void svc_first_start(const char *desktop, svc_fn fn, void *arg);
 /* A drive (its object or a shadow): mount, unmount, eject, poweroff, unlock
  * (pass: the passphrase), lock; the result is its mount point. */
 void svc_drive(const char *target, const char *action, const char *pass, svc_fn fn, void *arg);
-void svc_share(const char *target, const char *action, svc_fn fn, void *arg);   /* a network share: "disconnect" (0.8) */
+void svc_share(const char *target, const char *action, svc_fn fn, void *arg);   /* a network share: "disconnect", "forget" (0.8) */
+/* Connect to a share (0.8): by its address, or a remembered share's object; user and password when asked */
+void svc_connect(const char *address, const char *target, const char *user, const char *password, bool remember, svc_fn fn, void *arg);
 void svc_restore(const char *target, svc_fn fn, void *arg);
 void svc_empty_trash(svc_fn fn, void *arg);
 void svc_setup(svc_fn fn, void *arg);

@@ -401,6 +401,19 @@ void svc_share(const char *target, const char *action, svc_fn fn, void *arg)
     send_req(o, id, fn, arg);
 }
 
+void svc_connect(const char *address, const char *target, const char *user, const char *password, bool remember, svc_fn fn, void *arg)
+{
+    int64_t id;
+    size_t n = (address ? 1 : 0) + (target ? 1 : 0) + (user ? 1 : 0) + (password ? 1 : 0) + 1;
+    struct out *o = begin("connect", n, &id);
+    if (address) { cb_text(&o->b, "address"); cb_text(&o->b, address); }
+    if (target) { cb_text(&o->b, "target"); cb_text(&o->b, target[0] == '\x01' ? target + 1 : target); }
+    if (user) { cb_text(&o->b, "user"); cb_text(&o->b, user); }
+    if (password) { cb_text(&o->b, "password"); cb_text(&o->b, password); }
+    cb_text(&o->b, "remember"); cb_bool(&o->b, remember);
+    send_req(o, id, fn, arg);
+}
+
 void svc_restore(const char *target, svc_fn fn, void *arg)
 {
     int64_t id;
