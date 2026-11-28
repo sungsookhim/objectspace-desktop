@@ -51,7 +51,7 @@ The owner's, 2026-11-25: the Column view's details of a file. Its picture (the t
 
 More than one screen (the compositor; one desktop across them; the Screens object writing GNOME's `monitors.xml`), sharp X11 programs on scaled screens, and other programs in Objectspace's look: libadwaita programs following the scheme (light or dark, accent, high contrast), a GTK 3 theme from the scheme, Objectspace's pointers and icons for every program, Qt programs' colours through qt6ct; the ten steps of [v0.7-plan.md](v0.7-plan.md), each checked by the owner, and 0.6.1's Column view details. Tagged `v0.7.0`, the RPMs attached to its GitHub release, with aarch64 RPMs marked experimental (the owner's); what it holds is in the [release notes](release-notes-0.7.md).
 
-**Next, 0.8:** see **Proposed order**.
+**Next, 0.8** (started 2026-11-28): [v0.8-plan.md](v0.8-plan.md).
 
 ## Open and deferred work
 
@@ -103,7 +103,7 @@ Drawings the owner approves before they are wired in, as the icons and the curso
 - **The dotted selection square** (the rubber band, and the dotted outline of a menu's source).
 - **TheBar's icon placement:** how its buttons, icons and parts sit and are spaced.
 
-### Objectspace Terminal: its own settings (the owner's, 2026-11-27; not designed yet)
+### Objectspace Terminal: its own settings (the owner's, 2026-11-27; in 0.8: [v0.8-design.md](v0.8-design.md) 8)
 
 The built-in terminal has only a font (the System's Fonts page, `font_terminal`). Settings to change, as OS/2's command window's (where: the System's or a Terminal settings object; a slot to be chosen):
 
@@ -350,13 +350,14 @@ A to do, after 0.2 (with network file systems below).
    - **libadwaita programs keep their own look and title bars** (the owner's), and follow the scheme where libadwaita lets them: light or dark, the nearest accent colour, high contrast, fonts and text size (the owner's, 2026-11-25; no stylesheet over them).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
    - **Sharp X11 programs on scaled screens.**
-7. **0.8 Network and jobs** (the service and the object core; was 0.7, before that 0.6):
+7. **0.8 Network and jobs** (the service and the object core; was 0.7, before that 0.6; started 2026-11-28, [v0.8-design.md](v0.8-design.md), [v0.8-plan.md](v0.8-plan.md); the owner's: the shares mounted and connecting by address, no discovery; undo with a history of 20; RDP deferred; Objectspace Terminal's settings in 0.8):
    - **The Network object** and network file systems (NFS, SMB).
    - **Undo for jobs;** disk full and quota errors.
    - **Central objects:** deduplication, cleanup, becoming `.osdobj` files.
    - **Find** in titles, classes and settings; an index.
    - **File types from `user.mime_type`** and the Type page (after 0.4, the owner's).
-   - **RDP** (**D**: Mutter's RemoteDesktop/ScreenCast interfaces, or wayvnc).
+   - ~~**RDP**~~: deferred past 0.8 (the owner's, 2026-11-28; Mutter's RemoteDesktop/ScreenCast interfaces, which Objectspace's compositor has not, or wayvnc's VNC: a project of its own, a slot to be chosen).
+   - **Objectspace Terminal's own settings** (the owner's to-do of 2026-11-27, slotted here 2026-11-28).
 8. **0.9 Helper programs** (the owner's, 2026-11-24; a placeholder, to be designed): a few programs of Objectspace's own, as OS/2 came with its own (System Editor, Icon Editor), so a new system has what everyday objects need, drawn in Objectspace's frames, fonts and schemes. Objectspace Terminal (0.4.1) is the first. Next:
    - **Icon Editor** (the easier, first): opened from an object's Icon page (**Edit...**) or on an `.osdicon` file; draws and edits each size of a package (256 to 16), imports PNG and SVG, and saves the object's own icon or a package for a theme.
    - **Text Editor** (OS/2's System Editor): plain text in UTF-8, the default program for text files (set as the type's **Opens with**), with undo, find and replace, line wrap, and the System's fonts.
