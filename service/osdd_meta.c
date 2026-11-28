@@ -193,6 +193,7 @@ static void volume_done(void *arg)
 {
     struct vol_job *j = arg;
     osd_volumes_replace(&j->vs);
+    network_changed();   /* (the Network folder: the shares mounted now) */
     static char last[sizeof j->report];   /* (logged when it changes: mounts rescan often) */
     if (strcmp(last, j->report) != 0) {
         log_msg("volumes: %s", j->report);

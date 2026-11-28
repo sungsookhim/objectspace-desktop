@@ -156,7 +156,7 @@ static void central_details(osd_entry *e)
     t = NULL;
     if (wp && osd_props_str(wp, "makes", &t)) { snprintf(e->makes, sizeof e->makes, "%s", t); e->is_template = true; }
     free(t);
-    if (!e->icon[0] && !strcmp(ld.obj_class, "OsdDrive")) drive_icon(&ld, e->icon, sizeof e->icon);
+    if (!e->icon[0] && (!strcmp(ld.obj_class, "OsdDrive") || !strcmp(ld.obj_class, "OsdShare"))) drive_icon(&ld, e->icon, sizeof e->icon);
     if (!e->icon[0] && !ld.shadow_of[0]) class_icon(ld.obj_class, e->icon, sizeof e->icon);
     if (ld.shadow_of[0]) {
         e->shadow = true;
@@ -188,7 +188,7 @@ static void central_details(osd_entry *e)
             if (!own[0] && tp) { t = NULL; if (osd_props_str(tp, "icon", &t)) snprintf(own, sizeof own, "%s", t); free(t); }
             if (!own[0] && S_ISDIR(tg.st.st_mode) && osd_is_trash_files_dir(tg.path)) osd_trash_icon(tg.path, e->icon, sizeof e->icon);
             else if (!own[0] && S_ISDIR(tg.st.st_mode) && special_icon(tg.path, e->icon, sizeof e->icon)) {}
-            else if (!own[0] && !strcmp(tg.obj_class, "OsdDrive")) drive_icon(&tg, e->icon, sizeof e->icon);
+            else if (!own[0] && (!strcmp(tg.obj_class, "OsdDrive") || !strcmp(tg.obj_class, "OsdShare"))) drive_icon(&tg, e->icon, sizeof e->icon);
             else if (!own[0]) class_icon(tg.obj_class, e->icon, sizeof e->icon);
         }
         osd_loaded_free(&tg);
@@ -256,7 +256,13 @@ static void drive_icon(const osd_loaded *ld, char *out, size_t n)
     char *u = NULL;
     osd_drive_info d;
     char name[64];
-    if (dp && osd_props_str(dp, "uuid", &u) && osd_udisks_find(u, &d))
+    if (dp && osd_props_str(dp, "uuid", &u) && !strncmp(u, "net:", 4)) {   /* a network share (0.8): lit while connected */
+        osd_volume v;
+        snprintf(out, n, "theme:%s", osd_volume_for_uuid(u, &v) ? "drive-net" : "drive-net-off");
+        free(u);
+        return;
+    }
+    if (dp && u && osd_udisks_find(u, &d))
         snprintf(name, sizeof name, "drive-%s%s.png", d.kind, d.mount[0] ? "" : "-off");
     else snprintf(name, sizeof name, "drive-disk-off.png");   /* not present */
     free(u);
@@ -326,6 +332,9 @@ static void detail_work(void *arg)
 {
     struct detail_slice *sl = arg;
     struct detail_job *j = sl->j;
+    /* (no attributes there: titles and icons from the database, through
+     * the object's loading; a FAT drive's files, a network share's) */
+    bool noattr = osd_path_without_xattrs(j->folder);
     for (size_t i = sl->from; i < sl->to; i++) {
         osd_entry *e = &j->page.items[i];
         char p[PATH_MAX + NAME_MAX + 2];
@@ -357,6 +366,18 @@ static void detail_work(void *arg)
             if (osd_props_int(&ps, "open_hatch", &tv) && tv) e->open_hatch = true;
             if (osd_props_int(&ps, "template", &tv) && tv) e->is_template = true;
             osd_props_free(&ps);
+        }
+        if (noattr && !e->id[0] && e->name[0] != '\x01') {
+            osd_loaded ld;
+            osd_load(p, false, &ld);
+            const osd_props *op = ld.err ? NULL : props_of(&ld, "OsdObject");
+            char *t = NULL;
+            if (op && osd_props_str(op, "title", &t)) snprintf(e->title, sizeof e->title, "%s", t);
+            free(t);
+            t = NULL;
+            if (op && osd_props_str(op, "icon", &t)) snprintf(e->icon, sizeof e->icon, "%s", t);
+            free(t);
+            osd_loaded_free(&ld);
         }
         if (e->name[0] != '\x01' && !osd_is_lock_file(e->name) && osd_in_templates(p)) e->is_template = true;
         if (e->name[0] == '\x01') {   /* a central object */

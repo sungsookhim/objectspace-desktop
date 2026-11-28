@@ -629,6 +629,7 @@ static const struct op_def ops[] = {
     { "scan", op_scan },
     { "stats", op_stats },
     { "drive", op_drive },
+    { "share", op_share },   /* (0.8: Disconnect) */
     { "drives", op_drives },
     { "restore", op_restore },
     { "empty_trash", op_empty_trash },

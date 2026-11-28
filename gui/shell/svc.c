@@ -392,6 +392,15 @@ void svc_drive(const char *target, const char *action, const char *pass, svc_fn 
     send_req(o, id, fn, arg);
 }
 
+void svc_share(const char *target, const char *action, svc_fn fn, void *arg)
+{
+    int64_t id;
+    struct out *o = begin("share", 2, &id);
+    cb_text(&o->b, "target"); cb_text(&o->b, target);
+    cb_text(&o->b, "action"); cb_text(&o->b, action);
+    send_req(o, id, fn, arg);
+}
+
 void svc_restore(const char *target, svc_fn fn, void *arg)
 {
     int64_t id;

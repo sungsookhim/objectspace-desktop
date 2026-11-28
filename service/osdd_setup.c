@@ -201,6 +201,13 @@ void first_start_work(void *arg)
             j->prompter[0] = 0;
         osd_loaded_free(&sy);
     }
+    if (j->from < 14) {
+        /* step 14 (0.8): Network in Storages, beside Drives */
+        char net[PATH_MAX];
+        network_dir(net, sizeof net);
+        osd_mkdirs(net, 0700);
+        osd_set_folder_class(net, "OsdNetwork");
+    }
     if (j->from < 13) {
         /* step 13 (0.6): Find in System; the Trays folder and its first
          * tray (its shadows made in first_start_done) */
@@ -324,6 +331,13 @@ void first_start_done(void *arg)
             if (stat(programs, &pst) == 0) first_start_shadow_as(programs, first, false, place += 10);
             if (j->prompt_id[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->prompt_id); first_start_shadow_as(loc, first, false, place += 10); }
             if (j->finder[0]) { snprintf(loc, sizeof loc, "vobj:%s", j->finder); first_start_shadow_as(loc, first, false, place += 10); }
+        }
+        if (j->from < 14) {   /* step 14: Network (seen as a plain folder before) */
+            char net[PATH_MAX];
+            network_dir(net, sizeof net);
+            sobj *old = osd_sobj_by_path(net);
+            if (old) osd_sobj_forget(old);
+            network_changed();
         }
         if (j->from < 10) default_titles(&j->sysld, &j->compld);   /* step 10 */
         if (j->from < 11) protect_pending = true;   /* step 11 (0.4): Prevent delete, once they are noted (defaults_done) */
@@ -777,6 +791,10 @@ static void defaults_work(void *arg)
         if (def_made_dir(drv)) { j->made_computer = true; j->put_back[j->nput++] = "My Storages"; }
         osd_set_folder_class(comp, "OsdComputer");
         osd_set_folder_class(drv, "OsdDrives");
+        char net[PATH_MAX];   /* (0.8) */
+        network_dir(net, sizeof net);
+        osd_mkdirs(net, 0700);
+        osd_set_folder_class(net, "OsdNetwork");
     }
     {   /* (titled in defaults_done, if made anew) */
         char comp[PATH_MAX], drv[PATH_MAX + 8];

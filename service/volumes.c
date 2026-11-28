@@ -25,6 +25,143 @@ static void unescape(char *s)
     *w = 0;
 }
 
+/* ---- network shares (0.8) */
+
+bool osd_volume_is_net(const osd_volume *v) { return !strncmp(v->uuid, "net:", 4); }
+
+static bool net_fstype(const char *t)
+{
+    return !strcmp(t, "nfs") || !strcmp(t, "nfs4") || !strcmp(t, "cifs") || !strcmp(t, "smb3") || !strcmp(t, "fuse.sshfs");
+}
+
+static void lower(char *s) { for (; *s; s++) if (*s >= 'A' && *s <= 'Z') *s = (char)(*s - 'A' + 'a'); }
+
+/* A kernel mount's source as an address: "server:/export" (NFS),
+ * "//server/share" (SMB), "user@host:path" (SSHFS). */
+static bool net_address(const char *fstype, const char *source, char *out, size_t n)
+{
+    char host[256] = "", rest[PATH_MAX] = "";
+    if (!strncmp(fstype, "nfs", 3)) {
+        const char *c = strchr(source, ':');
+        if (!c) return false;
+        snprintf(host, sizeof host, "%.*s", (int)(c - source), source);
+        snprintf(rest, sizeof rest, "%s", c + 1);
+        lower(host);
+        snprintf(out, n, "nfs://%s%s%s", host, rest[0] == '/' ? "" : "/", rest);
+    } else if (!strcmp(fstype, "cifs") || !strcmp(fstype, "smb3")) {
+        if (strncmp(source, "//", 2)) return false;
+        const char *sl = strchr(source + 2, '/');
+        snprintf(host, sizeof host, "%.*s", sl ? (int)(sl - source - 2) : (int)strlen(source + 2), source + 2);
+        lower(host);
+        snprintf(out, n, "smb://%s%s", host, sl ? sl : "");
+    } else {   /* fuse.sshfs */
+        const char *c = strrchr(source, ':');
+        if (!c) return false;
+        snprintf(host, sizeof host, "%.*s", (int)(c - source), source);
+        snprintf(rest, sizeof rest, "%s", c + 1);
+        snprintf(out, n, "sftp://%s%s%s", host, rest[0] == '/' ? "" : "/", rest);
+    }
+    size_t l = strlen(out);   /* (no trailing slash: one address for one share) */
+    while (l > 8 && out[l - 1] == '/') out[--l] = 0;
+    return true;
+}
+
+void osd_gvfs_dir(char *out, size_t n)
+{
+    const char *e = getenv("OSD_GVFS_DIR");
+    if (e && *e) snprintf(out, n, "%s", e);
+    else snprintf(out, n, "/run/user/%u/gvfs", (unsigned)getuid());
+}
+
+/* one key=value of a gvfs name's ("smb-share:server=fs,share=p"), unescaped (%2f) */
+static void gvfs_key(const char *name, const char *key, char *out, size_t n)
+{
+    out[0] = 0;
+    const char *c = strchr(name, ':');
+    size_t kl = strlen(key);
+    for (const char *p = c ? c + 1 : name; p && *p;) {
+        const char *e = strchr(p, ',');
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        if (len > kl && !strncmp(p, key, kl) && p[kl] == '=') {
+            size_t o = 0;
+            for (size_t i = kl + 1; i < len && o + 1 < n; i++) {
+                if (p[i] == '%' && i + 2 < len) {
+                    char hx[3] = { p[i + 1], p[i + 2], 0 };
+                    out[o++] = (char)strtol(hx, NULL, 16);
+                    i += 2;
+                } else out[o++] = p[i];
+            }
+            out[o] = 0;
+            return;
+        }
+        p = e ? e + 1 : NULL;
+    }
+}
+
+bool osd_gvfs_address(const char *name, char *out, size_t n)
+{
+    const char *c = strchr(name, ':');
+    if (!c || name[0] == '.') return false;
+    char scheme[32], host[256], share[PATH_MAX], user[128], prefix[PATH_MAX], port[16], ssl[8];
+    snprintf(scheme, sizeof scheme, "%.*s", (int)(c - name), name);
+    gvfs_key(name, "server", host, sizeof host);
+    if (!host[0]) gvfs_key(name, "host", host, sizeof host);
+    lower(host);
+    gvfs_key(name, "share", share, sizeof share);
+    gvfs_key(name, "user", user, sizeof user);
+    gvfs_key(name, "prefix", prefix, sizeof prefix);
+    gvfs_key(name, "port", port, sizeof port);
+    gvfs_key(name, "ssl", ssl, sizeof ssl);
+    if (!host[0]) return false;
+    char who[200] = "";
+    if (user[0]) snprintf(who, sizeof who, "%s@", user);
+    char at[300];
+    snprintf(at, sizeof at, "%s%s%s%s", who, host, port[0] ? ":" : "", port);
+    if (!strcmp(scheme, "smb-share")) snprintf(out, n, "smb://%s/%s", at, share);
+    else if (!strcmp(scheme, "sftp")) snprintf(out, n, "sftp://%s%s", at, prefix);
+    else if (!strcmp(scheme, "dav")) snprintf(out, n, "%s://%s%s", !strcmp(ssl, "true") ? "davs" : "dav", at, prefix);
+    else if (!strcmp(scheme, "ftp") || !strcmp(scheme, "nfs") || !strcmp(scheme, "afp-volume"))
+        snprintf(out, n, "%s://%s%s%s", !strcmp(scheme, "afp-volume") ? "afp" : scheme, at, share[0] ? "/" : "", share[0] ? share : prefix);
+    else return false;
+    size_t l = strlen(out);
+    while (l > 8 && out[l - 1] == '/') out[--l] = 0;
+    return true;
+}
+
+static osd_volume *add_volume(osd_volumes *out, size_t *cap)
+{
+    if (out->n == *cap) {
+        *cap = *cap ? *cap * 2 : 16;
+        osd_volume *nv = realloc(out->v, *cap * sizeof *nv);
+        if (!nv) return NULL;
+        out->v = nv;
+    }
+    osd_volume *v = &out->v[out->n++];
+    memset(v, 0, sizeof *v);
+    return v;
+}
+
+/* GNOME's virtual file systems' shares: a volume each (their folder). */
+static void gvfs_volumes(osd_volumes *out, size_t *cap)
+{
+    char dir[PATH_MAX];
+    osd_gvfs_dir(dir, sizeof dir);
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *de;
+    while ((de = readdir(d))) {
+        char addr[PATH_MAX];
+        if (!osd_gvfs_address(de->d_name, addr, sizeof addr)) continue;
+        osd_volume *v = add_volume(out, cap);
+        if (!v) break;
+        snprintf(v->mnt, sizeof v->mnt, "%s/%s", dir, de->d_name);
+        snprintf(v->fstype, sizeof v->fstype, "gvfs");
+        snprintf(v->source, sizeof v->source, "%s", addr);
+        snprintf(v->uuid, sizeof v->uuid, "net:%s", addr);
+    }
+    closedir(d);
+}
+
 static void uuid_of(const char *source, unsigned maj, unsigned min, char *out, size_t n)
 {
     char real[PATH_MAX];
@@ -101,6 +238,20 @@ int osd_volumes_scan(osd_volumes *out, const osd_env *env)
          * container, toolbox or CI, "/" is an overlay with no device: without
          * it, nothing outside a block device's mount had a volume). */
         bool blockdev = strncmp(source, "/dev/", 5) == 0;
+        if (net_fstype(fstype)) {   /* a network share (0.8): known by its address */
+            unescape(mnt);
+            unescape(source);
+            char addr[PATH_MAX];
+            if (!net_address(fstype, source, addr, sizeof addr)) continue;
+            osd_volume *v = add_volume(out, &cap);
+            if (!v) break;
+            snprintf(v->mnt, sizeof v->mnt, "%s", mnt);
+            snprintf(v->fstype, sizeof v->fstype, "%s", fstype);
+            snprintf(v->source, sizeof v->source, "%s", source);
+            snprintf(v->uuid, sizeof v->uuid, "net:%s", addr);
+            v->ro = strncmp(opts, "ro,", 3) == 0 || strcmp(opts, "ro") == 0;
+            continue;
+        }
         if (!blockdev && strcmp(mnt, "/") != 0) continue;
         unescape(mnt);
         unescape(source);
@@ -133,6 +284,7 @@ int osd_volumes_scan(osd_volumes *out, const osd_env *env)
                       !listed(env, "not-portable", v->uuid);
     }
     fclose(f);
+    gvfs_volumes(out, &cap);   /* (GNOME's shares: under its one FUSE mount, a folder each) */
     /* Never the volume that holds our own state. */
     const osd_volume *home = osd_volumes_of_path(out, env->state_dir);
     if (home) ((osd_volume *)home)->portable = false;

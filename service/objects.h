@@ -164,5 +164,9 @@ void osd_set_root_session(bool on);
 void osd_volumes_replace(osd_volumes *vs);    /* loop; takes ownership */
 bool osd_volume_for_path(const char *path, osd_volume *out);
 bool osd_volume_for_uuid(const char *uuid, osd_volume *out);
+void osd_volumes_snapshot(osd_volumes *out);
+/* A path on a file system that takes no user attributes (FAT, GNOME's
+ * FUSE shares, most SMB mounts): its objects' state is in the database. */
+bool osd_path_without_xattrs(const char *path);   /* a copy of the volumes now (free with osd_volumes_free) */
 
 #endif

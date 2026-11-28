@@ -818,6 +818,7 @@ int main(int argc, char **argv)
         if (st[0]) osd_listing_folder_icon(st, "startup.png");
     }
     osd_udisks_init(loop, drives_changed);
+    network_init();   /* (0.8: GNOME's shares and windows on shares, every five seconds) */
     {
         char pf[PATH_MAX];
         data_dir("Programs", pf, sizeof pf);

@@ -59,6 +59,24 @@ bool osd_volume_for_path(const char *path, osd_volume *out)
     return v != NULL;
 }
 
+bool osd_path_without_xattrs(const char *path)
+{
+    char probe[1];
+    if (lgetxattr(path, "user.osd.probe", probe, 0) < 0 && errno == ENOTSUP) return true;
+    osd_volume v;   /* (tests: a share stood in for by a plain folder; as in osd_load) */
+    return getenv("OSD_NET_NO_XATTR") && osd_volume_for_path(path, &v) && osd_volume_is_net(&v);
+}
+
+void osd_volumes_snapshot(osd_volumes *out)
+{
+    pthread_mutex_lock(&vol_mu);
+    out->n = vols.n;
+    out->v = vols.n ? malloc(vols.n * sizeof *out->v) : NULL;
+    if (out->v) memcpy(out->v, vols.v, vols.n * sizeof *out->v);
+    else out->n = 0;
+    pthread_mutex_unlock(&vol_mu);
+}
+
 bool osd_volume_for_uuid(const char *uuid, osd_volume *out)
 {
     pthread_mutex_lock(&vol_mu);
@@ -426,6 +444,9 @@ void osd_load(const char *target, bool assign_id, osd_loaded *ld)
     char probe[1];
     ld->xattr_ok = !S_ISLNK(ld->st.st_mode) &&
                    (lgetxattr(ld->path, "user.osd.probe", probe, 0) >= 0 || errno != ENOTSUP);
+    /* (tests: a network share standing in by a plain folder, taken as one
+     * without attributes, as GNOME's FUSE shares and most SMB mounts are) */
+    if (ld->xattr_ok && getenv("OSD_NET_NO_XATTR") && osd_volume_is_net(&v)) ld->xattr_ok = false;
     /* Shared state: every user.osd.<Class> attribute on the file. */
     char names[8192];
     ssize_t nl = ld->xattr_ok ? llistxattr(ld->path, names, sizeof names) : -1;

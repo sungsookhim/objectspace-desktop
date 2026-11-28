@@ -359,6 +359,14 @@ void do_open(struct req *r, osdo_object *o)
         reply_view(r, "minimized-windows");
         osdo_unref(orig);
         return;
+    } else if (osdo_is_a(o, OsdShareClass)) {
+        /* a network share (0.8): its folder, when connected */
+        const char *u = OsdDrive_data(o)->uuid;
+        osd_volume v;
+        if (u && osd_volume_for_uuid(u, &v)) reply_folder(r, v.mnt);
+        else reply_error(r->c, r->id, "not connected", "the share is not connected");
+        osdo_unref(orig);
+        return;
     } else if (osdo_is_a(o, OsdDriveClass)) {
         /* a drive: its top folder, mounted first if need be */
         const char *u = OsdDrive_data(o)->uuid;

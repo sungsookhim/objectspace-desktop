@@ -677,8 +677,32 @@ def e_programs(c):
         c.on_y(y + 22.2, sq(x + 4, x + 18, z + 14, z + 18), WHITE, edge=False)
 
 
+def globe(c, cx, cy, z0, r):
+    """A globe standing at (cx, cy, z0): blue, its lines lighter."""
+    n = 12
+    for k in range(n):   # slices up its height, round as a sphere
+        a0, a1 = math.pi * k / n, math.pi * (k + 1) / n
+        rr = r * math.sin((a0 + a1) / 2)
+        c.prism(ellipse(cx, cy, rr, rr, 28), z0 + r - r * math.cos(a0), r * (math.cos(a0) - math.cos(a1)) + 0.01, BLUE, edges=False)
+    lt = (150, 190, 250)
+    for lat in (-0.5, 0, 0.5):   # parallels, on its near side
+        z = z0 + r + r * lat
+        rr = r * math.sqrt(1 - lat * lat) * 1.02
+        c.line([(cx + rr * math.cos(math.radians(a)), cy + rr * math.sin(math.radians(a)), z) for a in range(-20, 200, 10)], lt, 3)
+    for lon in (45, 90, 135):    # meridians
+        rad = math.radians(lon)
+        c.line([(cx + r * 1.02 * math.sin(math.radians(t)) * math.cos(rad), cy + r * 1.02 * math.sin(math.radians(t)) * math.sin(rad),
+                 z0 + r - r * 1.02 * math.cos(math.radians(t))) for t in range(0, 181, 15)], lt, 3)
+
+
+def e_network(c):
+    """Network: a globe."""
+    globe(c, 30, 24, 0, 26)
+
+
 FOLDERS = [("folder", "Folder", None), ("templates", "Templates", e_templates), ("startup", "Startup", e_startup),
-           ("home", "Home", e_home), ("drives", "Drives", e_drives), ("programs", "Programs", e_programs)]
+           ("home", "Home", e_home), ("drives", "Drives", e_drives), ("programs", "Programs", e_programs),
+           ("network", "Network", e_network)]
 SET_B = [entry for name, title, e in FOLDERS
          for entry in ((name, title, lambda c, e=e: folder(c, False, e)),
                        (name + "-open", title + " (open)", lambda c, e=e: folder(c, True, e)))]
@@ -998,6 +1022,19 @@ def d_disk(c, on, root=False):
     lamp(c, 36.2, 48, 16, on, 6)
 
 
+def d_net(c, on, plus=False):
+    """A network share: a disk with a globe on it (Connect to a share: a
+    green plus beside the globe)."""
+    c.box(-64, 64, -36, 36, 0, 32, (186, 188, 194))
+    for x in range(-52, -12, 9):
+        c.on_y(36.1, sq(x, x + 4, 8, 24), PLASTIC_D, edge=False)
+    lamp(c, 36.2, 48, 16, on, 6)
+    globe(c, -8 if plus else 0, -4, 32, 26 if c.small else 24)
+    if plus:
+        pl = [(-5, -16), (5, -16), (5, -5), (16, -5), (16, 5), (5, 5), (5, 16), (-5, 16), (-5, 5), (-16, 5), (-16, -5), (-5, -5)]
+        c.prism([(x + 44, y + 10) for x, y in pl], 32, 10, GREEN)
+
+
 def d_usb(c, on):
     c.box(-58, 34, -20, 20, 0, 24, BLUE)                                      # the stick
     c.box(34, 70, -14, 14, 4, 20, (200, 204, 214))                            # its plug
@@ -1079,6 +1116,8 @@ for kind, title, fn in (("disk", "Disk", lambda c, on: d_disk(c, on)), ("root", 
                         ("usb", "USB stick", d_usb), ("optical", "CD/DVD", d_optical), ("sd", "SD card", d_sd)):
     SET_E.append((f"drive-{kind}", title, lambda c, fn=fn: fn(c, True)))
     SET_E.append((f"drive-{kind}-off", title + " (not mounted)", lambda c, fn=fn: fn(c, False)))
+SET_E += [("drive-net", "Network share", lambda c: d_net(c, True)), ("drive-net-off", "Network share (not connected)", lambda c: d_net(c, False)),
+          ("net-connect", "Connect to a share", lambda c: d_net(c, True, True))]
 SET_E += [("sys-lockup", "Lockup", sys_lock), ("sys-find", "Find", sys_find), ("sys-shutdown", "Shut down", sys_power),
           ("sys-windows", "Window list", sys_windows), ("sys-logoff", "Log off", sys_logoff)]
 

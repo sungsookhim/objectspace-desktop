@@ -42,6 +42,7 @@
 #define OSD_MI_POWER_OFF      66
 #define OSD_MI_UNLOCK         67
 #define OSD_MI_LOCK           68
+#define OSD_MI_DISCONNECT     74    /* a network share (0.8) */
 /* Added by the GUI to the desktop's own menu (v0.3-design 2). */
 #define OSD_MI_SYSTEM_SETUP   69    /* opens the System Setup folder */
 #define OSD_MI_LOCKUP         70

@@ -99,7 +99,7 @@ $(TV)/test_cbor: tests/test_cbor.c service/cbor.c service/cbor.h
 	@mkdir -p $(TV)
 	$(CC) $(CFLAGS) $(SAN) -Iservice -Itests -o $@ tests/test_cbor.c service/cbor.c
 
-SERVICE := service/osdd.c service/osdd_meta.c service/osdd_events.c service/osdd_settings.c service/osdd_jobs.c service/osdd_open.c service/osdd_layout.c service/osdd_drives.c service/osdd_setup.c service/osdd_ops.c service/osdd_props.c service/osdd_actions.c service/osdd_backing.c service/osdd_workarea.c service/defaults.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/find.c service/launch.c service/trash.c service/jobs.c service/plugins.c service/db.c service/env.c service/volumes.c service/udisks.c service/programs.c service/messages.c service/startup.c service/cbor.c
+SERVICE := service/osdd.c service/osdd_meta.c service/osdd_events.c service/osdd_settings.c service/osdd_jobs.c service/osdd_open.c service/osdd_layout.c service/osdd_drives.c service/osdd_network.c service/osdd_setup.c service/osdd_ops.c service/osdd_props.c service/osdd_actions.c service/osdd_backing.c service/osdd_workarea.c service/defaults.c service/objects.c service/tracker.c service/shadows.c service/listing.c service/find.c service/launch.c service/trash.c service/jobs.c service/plugins.c service/db.c service/env.c service/volumes.c service/udisks.c service/programs.c service/messages.c service/startup.c service/cbor.c
 
 $(B)/osdd: $(SERVICE) $(RUNTIME) $(GEN)/.stamp $(wildcard service/*.h classes/*.c classes/*.h)
 	@mkdir -p $(B)
@@ -181,6 +181,7 @@ test: unit-test
 	tests/messages/run.sh
 	tests/firststart/run.sh
 	tests/openwith/run.sh
+	tests/network/run.sh
 	tests/props/run.sh $(B)/props/last
 	tests/plugins/run.sh
 	tests/plugins/sdk.sh

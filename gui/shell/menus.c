@@ -120,6 +120,12 @@ void menu_chosen(void *arg, int64_t id)
                                     : id == OSD_MI_POWER_OFF ? "poweroff" : "lock", false);
             break;
         }
+        case OSD_MI_DISCONNECT: {   /* a network share (0.8) */
+            char t[PATH_MAX];
+            target_of(f, m->item, t, sizeof t);
+            drive_action(f, t, "disconnect", false);
+            break;
+        }
         case OSD_MI_RESTORE: if (m->item != SIZE_MAX) restore_items(f, m->item); break;
         case OSD_MI_LOCK_POS: if (m->item != SIZE_MAX) lock_items(f, m->item); break;
         case OSD_MI_DELETE_FOREVER: delete_request(f, m->item, true); break;
@@ -169,6 +175,7 @@ static void drive_acted(void *arg, const cv *reply)
         else if (!strcmp(x->action, "unmount")) snprintf(m, sizeof m, "Unmounted");
         else if (!strcmp(x->action, "eject") || !strcmp(x->action, "poweroff")) snprintf(m, sizeof m, "It can be removed now");
         else if (!strcmp(x->action, "unlock")) snprintf(m, sizeof m, "Unlocked");
+        else if (!strcmp(x->action, "disconnect")) snprintf(m, sizeof m, "Disconnected");
         else snprintf(m, sizeof m, "Locked");
         if (f) set_status(f->id, m);
         if (x->reopen && f) {   /* unlocked to open it: open it now */
@@ -189,7 +196,7 @@ static void drive_acted(void *arg, const cv *reply)
             set_status(f->id, "Wrong passphrase?");
         } else {
             const char *b[] = { "OK" };
-            ask("Drive", m, b, 1, 0, NULL, NULL);
+            ask(!strcmp(x->action, "disconnect") ? "Network share" : "Drive", m, b, 1, 0, NULL, NULL);
         }
     }
     free(x);
@@ -202,7 +209,8 @@ static void drive_action(struct folder *f, const char *target, const char *actio
     x->reopen = reopen;
     snprintf(x->target, sizeof x->target, "%s", target);
     snprintf(x->action, sizeof x->action, "%s", action);
-    svc_drive(target, action, NULL, drive_acted, x);
+    if (!strcmp(action, "disconnect")) svc_share(target, action, drive_acted, x);
+    else svc_drive(target, action, NULL, drive_acted, x);
 }
 
 static void unlock_chosen(void *arg, int choice)

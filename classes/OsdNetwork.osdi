@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# Network (0.8 step 3): a live folder of the network shares mounted now
+# (OsdShare objects), as Drives is of the disks; kept in step by osdd.
+class OsdNetwork : OsdFolder
+version 1.0
+override osdModifyPopupMenu
+classoverride osdclsQueryTitle

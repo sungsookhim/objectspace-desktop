@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Sungsoo Khim
+# A network share (0.8 step 3): an NFS, SMB, SSHFS or GNOME virtual file
+# system mount, known by its address ("net:smb://server/share" as its
+# drive's UUID); opening it opens its folder; Disconnect unmounts it. A
+# kind of drive: the Drive page's details are the share's.
+class OsdShare : OsdDrive
+version 1.0
+override osdModifyPopupMenu
+method osdQueryAddress() -> string
+property address : info page Share label Address get osdQueryAddress first
+classoverride osdclsQueryTitle

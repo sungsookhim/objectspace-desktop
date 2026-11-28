@@ -129,7 +129,7 @@ void drive_target_done(void *arg)
 }
 
 /* For OsdDrive's menu and notebook (classes/osd_drive_hook.h). */
-static void human_size(uint64_t v, char *out, size_t n)
+void human_size(uint64_t v, char *out, size_t n)
 {
     const char *u[] = { "bytes", "kB", "MB", "GB", "TB", "PB" };
     double s = (double)v;
@@ -141,6 +141,7 @@ static void human_size(uint64_t v, char *out, size_t n)
 
 bool drive_query(const char *uuid, osd_drive_state *st, bool details)
 {
+    if (!strncmp(uuid, "net:", 4)) return share_query(uuid, st, details);   /* a network share (0.8) */
     osd_drive_info d;
     if (!osd_udisks_find(uuid, &d)) return false;
     st->present = true;
@@ -408,7 +409,7 @@ static void drives_sync_work(void *arg)
     }
 }
 
-static void drives_broadcast(void)
+void drives_broadcast(void)
 {
     for (struct sub *x = subs; x; x = x->next) {
         if (x->c->dead || (!x->nfolders && !x->ntargets)) continue;

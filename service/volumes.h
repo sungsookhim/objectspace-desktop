@@ -43,6 +43,20 @@ void osd_volumes_free(osd_volumes *vs);
 const osd_volume *osd_volumes_of_path(const osd_volumes *vs, const char *path);
 const osd_volume *osd_volumes_by_uuid(const osd_volumes *vs, const char *uuid);
 
+/* Network shares (0.8) are volumes too, known by the share's address,
+ * not where it is mounted nor a device number, so the state kept for
+ * them (by volume and path) comes back wherever and however it is mounted
+ * again: "net:nfs://server/export", "net:smb://server/share",
+ * "net:sftp://user@host/path"; the kernel's NFS, SMB and SSHFS mounts, and
+ * each of GNOME's virtual file systems' (a folder in
+ * /run/user/UID/gvfs; OSD_GVFS_DIR for tests). */
+bool osd_volume_is_net(const osd_volume *v);
+/* The folder GNOME's virtual file systems are mounted in. */
+void osd_gvfs_dir(char *out, size_t n);
+/* A gvfs folder's name ("smb-share:server=fs,share=projects") as an
+ * address ("smb://fs/projects"); false if it is not one we know. */
+bool osd_gvfs_address(const char *name, char *out, size_t n);
+
 /* Path relative to the volume's mount point ("" for the root). */
 const char *osd_volume_relpath(const osd_volume *v, const char *path);
 

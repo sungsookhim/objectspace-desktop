@@ -29,6 +29,8 @@
 #include "OsdCommandPrompt.h"
 #include "OsdFind.h"
 #include "OsdTrashCan.h"
+#include "OsdNetwork.h"
+#include "OsdShare.h"
 #include "OsdComputer.h"
 #include "OsdDrives.h"
 #include "OsdDrive.h"
@@ -58,7 +60,7 @@ osdo_status osd_classes_register(void)
         OsdSetup_register, OsdSystem_register, OsdSound_register, OsdMouse_register, OsdSchemePalette_register, OsdFontPalette_register, OsdColorPalette_register, OsdScreens_register,
         OsdLauncher_register, OsdTheBar_register, OsdMessages_register,
         OsdScheme_register,
-        OsdMinWinViewer_register, OsdRestoreDesktop_register, OsdCommandPrompt_register, OsdFind_register, OsdTrashCan_register, OsdComputer_register, OsdDrives_register, OsdDrive_register, OsdProgramsFolder_register,
+        OsdMinWinViewer_register, OsdRestoreDesktop_register, OsdCommandPrompt_register, OsdFind_register, OsdTrashCan_register, OsdComputer_register, OsdDrives_register, OsdDrive_register, OsdNetwork_register, OsdShare_register, OsdProgramsFolder_register,
     };
     for (size_t i = 0; i < sizeof regs / sizeof regs[0]; i++) {
         osdo_status st = regs[i]();

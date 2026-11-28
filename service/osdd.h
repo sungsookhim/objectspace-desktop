@@ -55,6 +55,8 @@
 #include "OsdFolder.h"
 #include "OsdTrashCan.h"
 #include "OsdDrive.h"
+#include "OsdShare.h"
+#include "OsdNetwork.h"
 #include "OsdMinWinViewer.h"
 #include "OsdRestoreDesktop.h"
 #include "OsdCommandPrompt.h"
@@ -260,7 +262,7 @@ struct empty_job { struct client *c; int64_t id; char files[PATH_MAX]; char (*go
  *      System) and its first tray, Default (My System, Programs, Command
  *      Prompt, Find).
  * After it, the default objects in place are noted (restore_defaults). */
-#define FIRST_START_VERSION 13
+#define FIRST_START_VERSION 14
 
 struct first_start {
     struct client *c;
@@ -518,5 +520,13 @@ int main(int argc, char **argv);
 void computer_dirs(char *comp, size_t cn, char *drives, size_t dn);
 void drive_event(struct drives_sync *j, int where, const char *id, char kind);
 void drives_changed(void);
+void drives_broadcast(void);
+void human_size(uint64_t v, char *out, size_t n);   /* every window: the drives' icons again */
+/* Network (0.8, osdd_network.c) */
+void network_dir(char *out, size_t n);
+void network_changed(void);
+void network_init(void);
+bool share_query(const char *uuid, osd_drive_state *st, bool details);
+bool op_share(struct client *c, int64_t id, const char *op, cv *msg);
 
 #endif

@@ -21,6 +21,7 @@ MAP = {
         "folder": "folder", "folder-open": "folder-open", "folder-drag-accept": "folder-open",
         "user-home": "home", "folder-home": "home", "user-trash": "trash-empty", "user-trash-full": "trash-full",
         "folder-templates": "templates", "user-bookmarks": "startup",
+        "network-workgroup": "network", "folder-remote": "drive-net", "network-server": "drive-net",
     },
     "devices": {
         "computer": "computer", "drive-harddisk": "drive-disk", "drive-harddisk-system": "drive-root",
