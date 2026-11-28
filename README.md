@@ -30,7 +30,7 @@ OS/2 and Workplace Shell are trademarks of IBM. Objectspace is not affiliated wi
 
 ## Status
 
-Version **0.6** is the current version (0.5 was the first public one). It runs on **Fedora 45 (x86_64)**, which is where it is built and tested; other distributions with wlroots 0.20 may work but are not tried. It is young software, used daily by its author, with known gaps listed in [docs/open-issues.md](docs/open-issues.md) and plans in [docs/roadmap.md](docs/roadmap.md).
+Version **0.7** is the current version (0.5 was the first public one). It runs on **Fedora 45 (x86_64)**, which is where it is built and tested (RPMs for 64-bit ARM, aarch64, are offered too, as experimental); other distributions with wlroots 0.20 may work but are not tried. It is young software, used daily by its author, with known gaps listed in [docs/open-issues.md](docs/open-issues.md) and plans in [docs/roadmap.md](docs/roadmap.md).
 
 ## Installing
 
@@ -90,9 +90,11 @@ make visual-baseline && make visual-check   # screenshots in each scheme, compar
 | [docs/cli-design.md](docs/cli-design.md) | Objectspace Terminal and the `osd` command |
 | [docs/roadmap.md](docs/roadmap.md) | What is open, deferred or not yet designed, and the order proposed for it |
 | [docs/open-issues.md](docs/open-issues.md) | Known problems and gaps |
+| [docs/release-notes-0.7.md](docs/release-notes-0.7.md) | What 0.7 brings: more than one screen and the Screens object, sharp X11 programs, other programs in Objectspace's look (GTK 3, libadwaita, Qt, pointers, icons) |
 | [docs/release-notes-0.6.md](docs/release-notes-0.6.md) | What 0.6 brings: TheBar's trays, a folder menu bar, Column and Gallery views, pictures for icons, suspend after idle |
 | [docs/release-notes-0.5.md](docs/release-notes-0.5.md) | What 0.5 brings, and what is called what for those coming from WPS 0.4.1 |
-| [docs/v0.6-design.md](docs/v0.6-design.md), [docs/v0.6-plan.md](docs/v0.6-plan.md) | 0.6's design and plan; the design's drafts for 0.7 (screens and themes) |
+| [docs/v0.6-design.md](docs/v0.6-design.md), [docs/v0.6-plan.md](docs/v0.6-plan.md) | 0.6's design and plan; the design's parts for 0.7 (screens and themes) |
+| [docs/v0.7-plan.md](docs/v0.7-plan.md) | 0.7's plan, step by step |
 | [docs/v0.7-plan.md](docs/v0.7-plan.md) | 0.7 in the works: more than one screen, sharp X11 programs, other programs' look from the scheme |
 | [docs/HISTORY.md](docs/HISTORY.md) | The project's history, its old name, and the old names next to today's |
 | `docs/v0.*-design.md`, `docs/v0.*-plan.md`, `docs/release-notes-*.md` | Each version's design, plan and release notes |

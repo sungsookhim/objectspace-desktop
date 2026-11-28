@@ -62,6 +62,8 @@ Recommends:     ibus
 Recommends:     %{name}-gnome-shell-extension = %{version}-%{release}
 # Qt programs in the scheme's colours (0.7: its colour schemes for qt6ct, used when installed)
 Suggests:       qt6ct
+# X11 programs' fonts at the screen's scale (Xft.dpi, 0.7)
+Suggests:       xrdb
 %{?systemd_requires}
 
 %description

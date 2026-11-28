@@ -43,11 +43,15 @@ The project made public under a name of its own, **Objectspace** (the repository
 
 TheBar's trays (and Find as an object), a menu bar in folder windows, the Column and Gallery views, Show pictures with the shared thumbnail cache, and suspend after idle; the seven steps of [v0.6-plan.md](v0.6-plan.md), each checked by the owner. 0.6.0-alpha.1 was a preview of the first two. Tagged `v0.6.0`, the RPMs attached to its GitHub release; what it holds is in the [release notes](release-notes-0.6.md).
 
-## Version 0.6.1 (in progress)
+## Version 0.6.1 (released within 0.7)
 
 The owner's, 2026-11-25: the Column view's details of a file. Its picture (the thumbnail, for whatever a thumbnailer is installed for) or its icon, as large as the column leaves room for; after its size, type and last write, more chosen on the folder's **Column view** page: owner, group, permissions, created, last access, last change, MIME type, location, link target. **Verified by the owner** (2026-11-25).
 
-**Next, 0.7:** see **Proposed order**.
+## Version 0.7 (released 2026-11-28)
+
+More than one screen (the compositor; one desktop across them; the Screens object writing GNOME's `monitors.xml`), sharp X11 programs on scaled screens, and other programs in Objectspace's look: libadwaita programs following the scheme (light or dark, accent, high contrast), a GTK 3 theme from the scheme, Objectspace's pointers and icons for every program, Qt programs' colours through qt6ct; the ten steps of [v0.7-plan.md](v0.7-plan.md), each checked by the owner, and 0.6.1's Column view details. Tagged `v0.7.0`, the RPMs attached to its GitHub release, with aarch64 RPMs marked experimental (the owner's); what it holds is in the [release notes](release-notes-0.7.md).
+
+**Next, 0.8:** see **Proposed order**.
 
 ## Open and deferred work
 
@@ -341,7 +345,7 @@ A to do, after 0.2 (with network file systems below).
    - **Folder windows: a menu bar** (on or off, shown while Alt is held) and **a Column view** (NeXT's browser).
    - **Later (the owner's, 2026-11-25):** a menu bar's menu chosen by pressing a title, dragging into the menu and releasing on an item (the menu takes the pointer when it opens); TheBar's tray icons dragged off the bar (the shadow moved) and along it (the order).
    - **Suspend after idle.**
-6. **0.7 The look of other programs and more screens** (the compositor and themes; was 0.6, before that 0.5; started 2026-11-25, [v0.7-plan.md](v0.7-plan.md); the owner's: one desktop across all screens, all four looks, X11 programs scaled by themselves by default):
+6. **0.7 The look of other programs and more screens** (released 2026-11-28; the compositor and themes; was 0.6, before that 0.5; started 2026-11-25, [v0.7-plan.md](v0.7-plan.md); the owner's: one desktop across all screens, all four looks, X11 programs scaled by themselves by default):
    - **Themes driven by the scheme objects:** a GTK 3 theme, an icon theme (from 0.4's packages) and cursor theme, a Qt style.
    - **libadwaita programs keep their own look and title bars** (the owner's), and follow the scheme where libadwaita lets them: light or dark, the nearest accent colour, high contrast, fonts and text size (the owner's, 2026-11-25; no stylesheet over them).
    - **More than one monitor** (the desktop on each; the bar on one) (**D** until then).
