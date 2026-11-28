@@ -146,7 +146,7 @@ struct sub {
 
 struct shadow_ids { char ids[32][OSD_ID_LEN + 1]; int n; };
 
-struct field { char key[64], type[16], label[128], value[1024], setter[64], choices[256]; };
+struct field { char key[64], type[16], label[128], value[1024], setter[64], choices[4096]; };   /* (choices: a file's types need about 900) */
 
 /* ---- list: a page of a folder's entries */
 

@@ -22,5 +22,5 @@ method osdQueryTypeShown() -> string
 method osdQueryTypeSet() -> string
 method osdSetTypeSet(string value) -> bool
 method osdQueryTypeChoices() -> string
-property type_shown : info page Type label "Its type" get osdQueryTypeShown first
+property type_shown : info page Type label "Its type" get osdQueryTypeShown
 property type_set : choice page Type label "Set its type" get osdQueryTypeSet set osdSetTypeSet options osdQueryTypeChoices

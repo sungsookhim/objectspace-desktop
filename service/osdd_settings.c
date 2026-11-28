@@ -101,7 +101,7 @@ void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin
 {
     char pages[16][64];
     int page_of[64];
-    struct field fields[64];
+    struct field *fields = calloc(64, sizeof *fields);   /* (on the heap: a field is 5 KB with its choices) */
     size_t np, nf = parse_settings(text, pages, page_of, fields, 64, &np);
     cb_array(b, np);
     for (size_t p = 0; p < np; p++) {
@@ -141,12 +141,13 @@ void put_settings_with(cbuf *b, const char *text, const char *icon_shown, origin
                 for (const char *c = x->choices; *c; c++) nc += *c == ',';
                 cb_text(b, "choices");
                 cb_array(b, nc);
-                char tmp[256];
+                char tmp[sizeof x->choices];   /* (the whole list: as many as counted above) */
                 snprintf(tmp, sizeof tmp, "%s", x->choices);
                 for (char *q = tmp, *t; (t = strsep(&q, ","));) cb_text(b, t);
             }
         }
     }
+    free(fields);
 }
 
 void put_settings(cbuf *b, osdo_object *o, const char *text, const char *icon_shown)
@@ -216,12 +217,14 @@ bool settings_setter_of(osdo_object *o, const char *pages_text, const char *key,
     char *text = pages_text ? settings_text_with(o, strdup(pages_text)) : settings_text(o);
     char pages[16][64];
     int page_of[64];
-    struct field fields[64];
+    struct field *fields = calloc(64, sizeof *fields);
     size_t np, nf = parse_settings(text, pages, page_of, fields, 64, &np);
     free(text);
-    for (size_t i = 0; i < nf; i++)
-        if (!strcmp(fields[i].key, key)) { snprintf(out, n, "%s", fields[i].setter); return true; }
-    return false;
+    bool found = false;
+    for (size_t i = 0; i < nf && !found; i++)
+        if (!strcmp(fields[i].key, key)) { snprintf(out, n, "%s", fields[i].setter); found = true; }
+    free(fields);
+    return found;
 }
 
 /* settings_set: apply {key: value} through each field's setter. */
@@ -230,7 +233,7 @@ const char *apply_settings(osdo_object *o, const cv *values, const char *pages_t
     char *text = pages_text ? settings_text_with(o, strdup(pages_text)) : settings_text(o);
     char pages[16][64];
     int page_of[64];
-    struct field fields[64];
+    struct field *fields = calloc(64, sizeof *fields);
     size_t np, nf = parse_settings(text, pages, page_of, fields, 64, &np);
     free(text);
     const char *err = NULL;
@@ -298,5 +301,6 @@ const char *apply_settings(osdo_object *o, const cv *values, const char *pages_t
         if (!err && (!strcmp(f->key, "sort_key") || !strcmp(f->key, "sort_desc")) && osdo_is_a(o, OsdFileSystemClass))
             osd_listing_invalidate(OsdFileSystem_data(o)->path);
     }
+    free(fields);
     return err;
 }

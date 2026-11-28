@@ -8,10 +8,12 @@
  * opened with.
  */
 #define _GNU_SOURCE
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include "ui.h"
@@ -861,9 +863,64 @@ static void choice_chosen(void *arg, int64_t id)
     free(cc);
 }
 
+/* A long list of "kind/name" choices (a file's types: 0.8) grouped by
+ * kind into cascades, as menus do not scroll and one taller than the
+ * screen was cut off (the owner's): the choices without a kind, and the
+ * one chosen now, first; a cascade per kind after ("Text", "Image", ...).
+ * NULL: not such a list (shown as it is). Frees with ui_menu_items_free's
+ * shape: labels are the fields' (not freed here), so only the arrays. */
+#define CHOICES_GROUPED 16
+static ui_menu_item *grouped_choices(struct field *f, size_t *nout, char ***labels, size_t *nlabels)
+{
+    size_t kinded = 0;
+    for (size_t i = 0; i < f->nchoices; i++) kinded += strchr(f->choices[i], '/') != NULL;
+    if (f->nchoices <= CHOICES_GROUPED || kinded * 5 < f->nchoices * 4) return NULL;
+    ui_menu_item *top = calloc(f->nchoices + 1, sizeof *top);
+    size_t n = 0;
+    *labels = calloc(f->nchoices + 1, sizeof **labels);
+    *nlabels = 0;
+    for (size_t i = 0; i < f->nchoices; i++)   /* no kind, or the one now */
+        if (!strchr(f->choices[i], '/') || (int64_t)i == f->v.number)
+            top[n++] = (ui_menu_item){ (int64_t)i, f->choices[i], true, (int64_t)i == f->v.number, NULL, 0 };
+    for (size_t i = 0; i < f->nchoices; i++) {
+        const char *sl = strchr(f->choices[i], '/');
+        if (!sl) continue;
+        size_t kl = (size_t)(sl - f->choices[i]);
+        size_t g = 0;
+        for (; g < n; g++)
+            if (top[g].items && !strncasecmp(top[g].label, f->choices[i], kl) && strlen(top[g].label) == kl) break;
+        if (g == n) {   /* a new kind: its cascade ("image" -> "Image") */
+            char *lab = strndup(f->choices[i], kl);
+            if (lab[0]) lab[0] = (char)toupper((unsigned char)lab[0]);
+            (*labels)[(*nlabels)++] = lab;
+            top[n++] = (ui_menu_item){ -2 - (int64_t)g, lab, true, false, calloc(f->nchoices, sizeof(ui_menu_item)), 0 };
+        }
+        top[g].items[top[g].nitems++] = (ui_menu_item){ (int64_t)i, f->choices[i], true, (int64_t)i == f->v.number, NULL, 0 };
+        if ((int64_t)i == f->v.number) top[g].checked = true;
+    }
+    *nout = n;
+    return top;
+}
+
 static void open_choices(ui_notebook *nb, size_t k, uint32_t serial)
 {
     struct field *f = &nb->pages[nb->page].f[k];
+    size_t ng = 0, nlab = 0;
+    char **labs = NULL;
+    ui_menu_item *grouped = grouped_choices(f, &ng, &labs, &nlab);
+    if (grouped) {
+        ui_rect r = control_rect(nb, k);
+        struct choice_ctx *cc = malloc(sizeof *cc);
+        cc->nb = nb;
+        cc->page = nb->page;
+        cc->field = k;
+        ui_menu_popup(nb->win, grouped, ng, r.x, r.y + r.h, serial, choice_chosen, cc);   /* (copies them) */
+        for (size_t g = 0; g < ng; g++) free(grouped[g].items);
+        free(grouped);
+        for (size_t i = 0; i < nlab; i++) free(labs[i]);
+        free(labs);
+        return;
+    }
     ui_menu_item *items = calloc(f->nchoices ? f->nchoices : 1, sizeof *items);
     for (size_t i = 0; i < f->nchoices; i++)
         items[i] = (ui_menu_item){ (int64_t)i, f->choices[i], true, (int64_t)i == f->v.number, NULL, 0 };
