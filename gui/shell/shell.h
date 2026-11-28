@@ -535,7 +535,10 @@ void gtktheme_name(const char *scheme, char *out, size_t n);
 char *gtktheme_css(void);
 void gtktheme_update(void);
 void gtktheme_gnome_back(void);
-void cursors_set(bool objectspace);   /* the System's pointers: Objectspace's or the system's */
+void cursors_set(bool objectspace);
+void othericons_set(bool objectspace);
+char *qtpalette_conf(bool qt6);   /* qt5ct's or qt6ct's colour scheme from the scheme now (caller frees) */
+void qtpalette_update(void);   /* the System's other programs' icons: Objectspace's or the system's */   /* the System's pointers: Objectspace's or the system's */
 
 /* The Screens object (screens.c, 0.7): the compositor's M lines read;
  * its notebook (inside GNOME: GNOME's Settings, Displays). */

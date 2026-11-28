@@ -327,8 +327,9 @@ def write_theme(out, sizes):
             if os.path.lexists(link):
                 os.remove(link)
             os.symlink(name, link)
-    with open(os.path.join(out, "index.theme"), "w") as fh:
-        fh.write("[Icon Theme]\nName=Objectspace\nComment=Objectspace's pointers (after OS/2's)\nInherits=Adwaita\n")
+    if not os.path.exists(os.path.join(out, "index.theme")):   # (the icons' has one already: the theme is both)
+        with open(os.path.join(out, "index.theme"), "w") as fh:
+            fh.write("[Icon Theme]\nName=Objectspace\nComment=Objectspace's pointers (after OS/2's)\nInherits=Adwaita\n")
 
 
 def main():

@@ -649,7 +649,7 @@ static uint32_t edges_at(struct toplevel *t, double lx, double ly)
 
 /* ------------------------------------------------------------ cursor theme
  * Objectspace's pointers (0.7 step 8): the theme "Objectspace", found
- * beside the program (build/cursor-themes) or installed (DATADIR/icons),
+ * beside the program (build/share/icons) or installed (DATADIR/icons),
  * by XCURSOR_PATH, which the programs started from here inherit too (Qt,
  * X11, GTK 3's Wayland cursors). The System's choice comes from the
  * desktop ("cursor-theme" command): Objectspace's, or the system's (the
@@ -671,8 +671,16 @@ static void cursor_path(void)
     const char *home = getenv("HOME"), *old = getenv("XCURSOR_PATH");
     char dflt[4096];
     snprintf(dflt, sizeof dflt, "%s/.local/share/icons:%s/.icons:/usr/share/icons:/usr/share/pixmaps", home ? home : "", home ? home : "");
-    snprintf(path, sizeof path, "%s/cursor-themes:%s:%s", exe, data, old && *old ? old : dflt);
+    snprintf(path, sizeof path, "%s/share/icons:%s:%s", exe, data, old && *old ? old : dflt);
     setenv("XCURSOR_PATH", path, 1);
+    /* run from a build tree: its share (the theme's icons) for the programs too */
+    char share[4200];
+    snprintf(share, sizeof share, "%s/share/icons/Objectspace", exe);
+    if (access(share, F_OK) == 0) {
+        const char *dd = getenv("XDG_DATA_DIRS");
+        snprintf(path, sizeof path, "%s/share:%s", exe, dd && *dd ? dd : "/usr/local/share:/usr/share");
+        setenv("XDG_DATA_DIRS", path, 1);
+    }
 }
 
 static const char *cursor_size(void)

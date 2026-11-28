@@ -109,7 +109,9 @@ char *gtktheme_css(void)
         "/* selections */\n"
         "*:selected, .view:selected, treeview.view:selected, row:selected, iconview:selected, selection, flowboxchild:selected,\n"
         "entry selection, entry selection:focus, textview text selection, textview text selection:focus, label selection,\n"
-        "spinbutton:not(.vertical) selection, .view text selection:focus {\n"
+        "spinbutton:not(.vertical) selection, .view text selection:focus,\n"
+        "*:selected:focus, .view:selected:focus, treeview.view:selected:focus, row:selected:focus, iconview:selected:focus,\n"
+        "placessidebar row:selected, placessidebar row:selected:focus {\n"
         "  background-color: %s; color: %s; }\n"
         "\n"
         "/* buttons: raised, square (OS/2) */\n"
@@ -280,11 +282,156 @@ void cursors_set(bool objectspace)
         fprintf(stderr, "osd-shell: GTK 3 programs' pointers: %s\n", objectspace ? "Objectspace" : "GNOME's own");
 }
 
-/* Started inside GNOME: GNOME's own GTK 3 theme and pointers back if
- * ours are set. */
+/* The System's "Other programs' icons" (0.7 step 9): in the Objectspace
+ * session GNOME's icon-theme set to Objectspace's (its folders, places,
+ * drives and file types; the rest Adwaita's), GNOME's own kept, and back
+ * when the system's are chosen. GTK 3 and GTK 4 programs follow at once. */
+void othericons_set(bool objectspace)
+{
+    static int was = -1;
+    if (was == (int)objectspace) return;
+    was = objectspace;
+    if (off() || !getenv("OSD_SESSION")) return;
+    if (gnome_ours("icon-theme", objectspace ? "Objectspace" : NULL, "Adwaita"))
+        fprintf(stderr, "osd-shell: other programs' icons: %s\n", objectspace ? "Objectspace" : "GNOME's own");
+}
+
+/* Started inside GNOME: GNOME's own GTK 3 theme, pointers and icons back
+ * if ours are set. */
 void gtktheme_gnome_back(void)
 {
     if (off() || getenv("OSD_SESSION")) return;
     if (gnome_ours("gtk-theme", NULL, "Adwaita")) fprintf(stderr, "osd-shell: GNOME's GTK 3 theme back\n");
     if (gnome_ours("cursor-theme", NULL, "Adwaita")) fprintf(stderr, "osd-shell: GNOME's pointers back\n");
+    if (gnome_ours("icon-theme", NULL, "Adwaita")) fprintf(stderr, "osd-shell: GNOME's icons back\n");
+}
+
+/* ------------------------------------------------------------ Qt (0.7 step 9) */
+
+/* "#rrggbb" of a mix of two colours */
+static void mixhex(char *out, size_t n, ui_color a, ui_color b)
+{
+    hex(out, n, (ui_color){ (a.r + b.r) / 2, (a.g + b.g) / 2, (a.b + b.b) / 2, 1 });
+}
+
+/* qt5ct's and qt6ct's colour scheme for the scheme now: QPalette's roles
+ * in its order (WindowText, Button, Light, Midlight, Dark, Mid, Text,
+ * BrightText, ButtonText, Base, Window, Shadow, Highlight,
+ * HighlightedText, Link, LinkVisited, AlternateBase, NoRole, ToolTipBase,
+ * ToolTipText, PlaceholderText, and Qt 6's Accent), active, disabled and
+ * inactive. Caller frees. */
+char *qtpalette_conf(bool qt6)
+{
+    const ui_scheme *k = &ui_scheme_now;
+    char c[22][10];
+    hex(c[0], 10, k->text); hex(c[1], 10, k->face); hex(c[2], 10, k->light); mixhex(c[3], 10, k->face, k->light);
+    hex(c[4], 10, k->shadow); mixhex(c[5], 10, k->face, k->shadow); hex(c[6], 10, k->text);
+    snprintf(c[7], 10, "#ffffff"); hex(c[8], 10, k->text); hex(c[9], 10, k->client_bg); hex(c[10], 10, k->face);
+    hex(c[11], 10, k->dark); hex(c[12], 10, k->selection); hex(c[13], 10, k->selection_text);
+    hex(c[14], 10, k->selection); mixhex(c[15], 10, k->selection, k->text); hex(c[16], 10, k->alt_row);
+    snprintf(c[17], 10, "#000000"); hex(c[18], 10, k->tooltip_bg); hex(c[19], 10, k->tooltip_text);
+    hex(c[20], 10, k->disabled_text); hex(c[21], 10, k->selection);
+    int n = qt6 ? 22 : 21;
+    char act[400] = "", dis[400] = "";
+    for (int i = 0; i < n; i++) {
+        bool off_text = i == 0 || i == 6 || i == 8;   /* (disabled: the texts dimmed) */
+        char one[16];
+        snprintf(one, sizeof one, "%s#ff%s", i ? ", " : "", c[i] + 1);
+        strncat(act, one, sizeof act - strlen(act) - 1);
+        snprintf(one, sizeof one, "%s#ff%s", i ? ", " : "", (off_text ? c[20] : c[i]) + 1);
+        strncat(dis, one, sizeof dis - strlen(dis) - 1);
+    }
+    char *out = NULL;
+    if (asprintf(&out, "# Made by Objectspace from the scheme \"%s\" (made again when it changes).\n[ColorScheme]\n"
+                       "active_colors=%s\ndisabled_colors=%s\ninactive_colors=%s\n", k->name ? k->name : "", act, dis, act) < 0)
+        return NULL;
+    return out;
+}
+
+static void config_dir(char *out, size_t n)
+{
+    const char *xc = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xc && *xc) snprintf(out, n, "%s", xc);
+    else snprintf(out, n, "%s/.config", home ? home : "");
+}
+
+/* tool's (qt5ct, qt6ct) settings: its colour scheme ours (with Fusion, the
+ * style a palette shows in), unless the user set one of their own */
+static void qt_conf_point(const char *tool, const char *scheme_path)
+{
+    char cd[4096], path[4300];
+    config_dir(cd, sizeof cd);
+    snprintf(path, sizeof path, "%s/%s/%s.conf", cd, tool, tool);
+    FILE *f = fopen(path, "r");
+    char *text = NULL;
+    size_t len = 0;
+    if (f) {
+        char line[1024];
+        bool ours = false;
+        while (fgets(line, sizeof line, f)) {
+            if (!strncmp(line, "color_scheme_path=", 18)) ours = strstr(line, "/Objectspace-") != NULL;
+            size_t l = strlen(line);
+            text = realloc(text, len + l + 1);
+            memcpy(text + len, line, l + 1);
+            len += l;
+        }
+        fclose(f);
+        bool has = text && strstr(text, "color_scheme_path=");
+        if (has && !ours) { free(text); return; }   /* (the user's own) */
+        if (has) {   /* ours: the path now */
+            char *out = NULL;
+            char *at = strstr(text, "color_scheme_path=");
+            char *eol = strchr(at, '\n');
+            if (asprintf(&out, "%.*scolor_scheme_path=%s\n%s", (int)(at - text), text, scheme_path, eol ? eol + 1 : "") >= 0) write_file(path, out);
+            free(out);
+            free(text);
+            return;
+        }
+        free(text);   /* (settings without a scheme: written anew below, ours) */
+    }
+    char dir[4300], *out = NULL;
+    snprintf(dir, sizeof dir, "%s/%s", cd, tool);
+    mkdirs(dir);
+    if (asprintf(&out, "[Appearance]\ncolor_scheme_path=%s\ncustom_palette=true\nstyle=Fusion\n", scheme_path) >= 0) write_file(path, out);
+    free(out);
+}
+
+static bool qt_tool_installed(const char *qtver, const char *tool)
+{
+    char p[256];
+    static const char *const libs[] = { "/usr/lib64", "/usr/lib", "/usr/lib/x86_64-linux-gnu" };
+    for (size_t i = 0; i < sizeof libs / sizeof *libs; i++) {
+        snprintf(p, sizeof p, "%s/%s/plugins/platformthemes/lib%s.so", libs[i], qtver, tool);
+        if (access(p, F_OK) == 0) return true;
+    }
+    return false;
+}
+
+/* Qt programs in the scheme's colours: qt5ct's and qt6ct's colour scheme
+ * for it written; in the Objectspace session their settings pointed at
+ * it, and QT_QPA_PLATFORMTHEME for the programs started from here when
+ * one of them is installed (qt6ct, else qt5ct). The desktop's. */
+void qtpalette_update(void)
+{
+    const char *e = getenv("OSD_QT_PALETTE");
+    if ((e && !strcmp(e, "0")) || !getenv("OSD_SESSION")) return;
+    char name[160], cd[4096];
+    gtktheme_name(ui_scheme_now.name, name, sizeof name);
+    config_dir(cd, sizeof cd);
+    for (int v = 5; v <= 6; v++) {
+        char tool[8], dir[4300], path[4500];
+        snprintf(tool, sizeof tool, "qt%dct", v);
+        snprintf(dir, sizeof dir, "%s/%s/colors", cd, tool);
+        if (!mkdirs(dir)) continue;
+        snprintf(path, sizeof path, "%s/%s.conf", dir, name);
+        char *conf = qtpalette_conf(v == 6);
+        if (conf && write_file(path, conf)) qt_conf_point(tool, path);
+        free(conf);
+    }
+    const char *want = qt_tool_installed("qt6", "qt6ct") ? "qt6ct" : qt_tool_installed("qt5", "qt5ct") ? "qt5ct" : NULL;
+    const char *was = getenv("QT_QPA_PLATFORMTHEME");
+    if (want && (!was || strcmp(was, want))) {
+        setenv("QT_QPA_PLATFORMTHEME", want, 1);
+        fprintf(stderr, "osd-shell: Qt programs from here: %s (the scheme's colours)\n", want);
+    }
 }

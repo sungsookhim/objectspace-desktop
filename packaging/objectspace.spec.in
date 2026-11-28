@@ -60,6 +60,8 @@ Requires:       shared-mime-info
 Requires:       adwaita-icon-theme
 Recommends:     ibus
 Recommends:     %{name}-gnome-shell-extension = %{version}-%{release}
+# Qt programs in the scheme's colours (0.7: its colour schemes for qt6ct, used when installed)
+Suggests:       qt6ct
 %{?systemd_requires}
 
 %description

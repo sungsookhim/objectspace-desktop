@@ -11,7 +11,7 @@
 cd "$(dirname "$0")/../.."
 S=$(mktemp -d "${TMPDIR:-/tmp}/osd-cursors-XXXX")
 W="$PWD/build/osdctl"
-TH=build/cursor-themes/Objectspace
+TH=build/share/icons/Objectspace
 fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 # every name: each an Xcursor file (or a link to one) with every size

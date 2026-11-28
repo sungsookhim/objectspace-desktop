@@ -177,6 +177,7 @@ static void apply_setup_object(const char *cls, const cv *settings)
             else if (!strcmp(key, "restore_windows")) restore_windows = !strcmp(val, "1");
             else if (!strcmp(key, "x11_scale")) winlist_ext("x11-scale", strcmp(val, "0") ? "on" : "off");   /* (the compositor's; xscale.c) */
             else if (!strcmp(key, "cursors") && shell_desktop) cursors_set(strcmp(val, "system") != 0);   /* (the compositor's, GTK 3's) */
+            else if (!strcmp(key, "other_icons") && shell_desktop) othericons_set(strcmp(val, "system") != 0);   /* (GTK's file dialogs...) */
             else if (!strcmp(key, "hatch_open") && hatch_open_all != !strcmp(val, "1")) {
                 hatch_open_all = !strcmp(val, "1");   /* every open icon hatched too: every window again */
                 for (struct folder *f = folders; f; f = f->next)
@@ -413,6 +414,7 @@ static void apply_scheme(void)
     }
     wallpaper_scheme_changed();   /* the desktop's colour */
     if (shell_desktop) gtktheme_update();   /* GTK 3 programs in the scheme's colours (0.7) */
+    if (shell_desktop) qtpalette_update();   /* Qt programs too, through qt5ct and qt6ct */
     for (struct folder *f = folders; f; f = f->next) {
         if (f->closing) continue;
         layout(f);   /* border and title sizes may have changed */

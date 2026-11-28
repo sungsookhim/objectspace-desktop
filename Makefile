@@ -386,13 +386,17 @@ $(TV)/test_osdicon: tests/test_osdicon.c gui/shell/osdicon.c gui/shell/osdicon.h
 # and objectspace-outline), and 0.2's pictures as the classic theme (packed by
 # osdctl icon pack, which adds the standard sizes).
 ICONTHEMES := $(B)/icon-themes
-# The cursor theme (0.7 step 8; the drawings the owner approved): Xcursor
-# files from tools/icons/make_cursors.py, installed as the icon theme
-# "Objectspace" ($(DATADIR)/icons/Objectspace/cursors).
-CURSORTHEME := $(B)/cursor-themes/Objectspace
+# The theme "Objectspace" for other programs (0.7 steps 8 and 9): its
+# pointers (Xcursor files from tools/icons/make_cursors.py, the drawings
+# the owner approved) and its icons (folders, places, drives and file
+# types from the flat icon theme: tools/icons/make_xdg_icons.py); in the
+# build tree's share/icons (found from there by a session run from it),
+# installed in $(DATADIR)/icons/Objectspace.
+CURSORTHEME := $(B)/share/icons/Objectspace
 icons: $(ICONTHEMES)/.stamp $(CURSORTHEME)/.stamp
-$(CURSORTHEME)/.stamp: tools/icons/make_cursors.py
-	rm -rf $(CURSORTHEME) && $(PYTHON) tools/icons/make_cursors.py --theme $(CURSORTHEME)
+$(CURSORTHEME)/.stamp: tools/icons/make_cursors.py tools/icons/make_xdg_icons.py $(ICONTHEMES)/.stamp
+	rm -rf $(CURSORTHEME) && $(PYTHON) tools/icons/make_xdg_icons.py $(ICONTHEMES)/objectspace-flat $(CURSORTHEME)
+	$(PYTHON) tools/icons/make_cursors.py --theme $(CURSORTHEME)
 	@touch $@
 $(ICONTHEMES)/.stamp: tools/icons/make_iso.py tools/icons/make_theme.py $(wildcard data/icons/*.png) $(B)/osdctl
 	$(PYTHON) tools/icons/make_theme.py $(ICONTHEMES)
@@ -420,7 +424,7 @@ gui-test: gui
 	$(TV)/test_md5
 
 # The headless compositor tests (tests/comp), one after another.
-COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command trays menubar columns column-details pictures suspend screens desktop-screens x11-scale screens-object libadwaita gtk3-theme cursors
+COMP_TESTS := background clipboard colour-palette desktop-menu details hatching icon-sizes icons launcher launcher-close menu-emphasis folder-window search-place desktop-status arrange-offer rename-ext activation notify pointer restore schemes search session sounds system-menu themes terminal terminal-programs tray work-area osd-command trays menubar columns column-details pictures suspend screens desktop-screens x11-scale screens-object libadwaita gtk3-theme cursors qt-icons
 comp-test: session gui compositor
 	@fails=; for t in $(COMP_TESTS); do echo "== $$t"; tests/comp/$$t.sh > $(TV)/comp-$$t.log 2>&1 || fails="$$fails $$t"; \
 	  grep -E "^(ok|FAIL)" $(TV)/comp-$$t.log; done; \
@@ -463,9 +467,9 @@ install: $(INSTALLED) icons install-sdk
 	install -m 644 data/icons/*.png $(DESTDIR)$(DATADIR)/objectspace/icons/
 	for t in $(ICONTHEMES)/*/; do d=$(DESTDIR)$(DATADIR)/objectspace/icon-themes/$$(basename "$$t"); \
 	    install -d "$$d" && install -m 644 "$$t"theme.ini "$$t"*.osdicon "$$d"/ || exit 1; done
-	install -d $(DESTDIR)$(DATADIR)/icons/Objectspace/cursors
-	install -m 644 $(CURSORTHEME)/index.theme $(DESTDIR)$(DATADIR)/icons/Objectspace/
-	cp -P $(CURSORTHEME)/cursors/* $(DESTDIR)$(DATADIR)/icons/Objectspace/cursors/
+	install -d $(DESTDIR)$(DATADIR)/icons
+	rm -rf $(DESTDIR)$(DATADIR)/icons/Objectspace && cp -RP $(CURSORTHEME) $(DESTDIR)$(DATADIR)/icons/Objectspace
+	rm -f $(DESTDIR)$(DATADIR)/icons/Objectspace/.stamp
 	install -d $(DESTDIR)$(EXTDIR)/schemas
 	install -m 644 $(EXT)/metadata.json $(EXT)/extension.js $(DESTDIR)$(EXTDIR)/
 	install -m 644 $(EXT)/schemas/*.gschema.xml $(DESTDIR)$(EXTDIR)/schemas/
