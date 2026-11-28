@@ -687,9 +687,7 @@ bool osd_desktop_wants_terminal(const char *desktop);
 
 int osd_handler_argv(const char *file, char *buf, size_t n, char **argv, int max)
 {
-    const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
-    const char *mime = osd_mime_for_name(base);
-    if (!mime) mime = osd_mime_sniff(file);   /* the name says nothing: its contents (classes/osd_magic.c) */
+    const char *mime = osd_file_mime(file, NULL);   /* set on it, else its name's, else its contents' */
     char desktop[PATH_MAX], exec[4096];
     if (!mime || !default_app(mime, desktop, sizeof desktop)) return 0;
     if (!ini_get(desktop, "[Desktop Entry]", "Exec", exec, sizeof exec)) return 0;
@@ -782,10 +780,7 @@ static bool mime_parent(const char *mime, char *out, size_t n)
 
 static const char *file_mime(const char *file)
 {
-    const char *base = strrchr(file, '/') ? strrchr(file, '/') + 1 : file;
-    const char *mime = osd_mime_for_name(base);
-    if (!mime) mime = osd_mime_sniff(file);   /* the name says nothing: its contents (classes/osd_magic.c) */
-    return mime;
+    return osd_file_mime(file, NULL);   /* set on it, else its name's, else its contents' */
 }
 
 int osd_apps_for_file(const char *file, char *mime_out, size_t mn, osd_app *out, int max)

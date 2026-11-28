@@ -41,8 +41,8 @@ void list_reply(void *arg, const osd_page *pg)
                 bool link = e->detailed && !e->shadow && e->type == DT_LNK;
                 bool tpl = e->detailed && e->is_template, makes = e->detailed && e->makes[0], icon = e->detailed && e->icon[0];
                 bool iopen = e->detailed && e->icon_open[0], hatch = e->detailed && e->open_hatch;
-                bool ex = e->detailed && e->exec;
-                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon + iopen + hatch + ex : 2);
+                bool ex = e->detailed && e->exec, mt = e->detailed && e->mime[0];
+                cb_map(&b, e->detailed ? (e->shadow ? 9 : link ? 8 : 6) + iu + tpl + makes + icon + iopen + hatch + ex + mt : 2);
                 cb_text(&b, "name"); cb_text(&b, e->name);
                 cb_text(&b, "type"); cb_text(&b, t);
                 if (e->detailed) {
@@ -67,6 +67,7 @@ void list_reply(void *arg, const osd_page *pg)
                     if (icon) { cb_text(&b, "icon"); cb_text(&b, e->icon); }       /* its own icon (a PNG) */
                     if (iopen) { cb_text(&b, "icon_open"); cb_text(&b, e->icon_open); }   /* its own open icon */
                     if (hatch) { cb_text(&b, "open_hatch"); cb_bool(&b, true); }   /* hatched over it too */
+                    if (mt) { cb_text(&b, "mime"); cb_text(&b, e->mime); }   /* a type set on it (0.8): its type's icon */
                 }
             }
             send_frame(r->c, &b);

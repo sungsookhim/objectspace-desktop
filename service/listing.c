@@ -341,6 +341,7 @@ static void detail_work(void *arg)
                 e->exec = osd_program_needs_terminal(p) ? 2 : 1;
         }
         if (!osd_attr_get_id(p, e->id)) e->id[0] = 0;
+        if (e->type == DT_REG && !osd_file_mime_set(p, e->mime, sizeof e->mime)) e->mime[0] = 0;   /* (a type set on it: its icon) */
         osd_props ps;
         char *t = NULL;
         if (e->id[0] && osd_attr_read(p, "OsdObject", &ps) == OSD_A_OK) {

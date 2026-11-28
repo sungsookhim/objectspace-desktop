@@ -146,5 +146,33 @@ r = c.request(op="open", target=ED)
 check("a window program: no terminal, in its working directory", r.get("ok") and wait_ran("@" + T + "/work")
       and not os.path.exists(T + "/term.log"), (r, ran()))
 
+
+# ---- a type set on the file (0.8; OS/2's .TYPE): user.mime_type
+F = T + "/f/data.bin"
+with open(F, "w") as f:
+    f.write("x,y\n1,2\n")
+os.setxattr(F, "user.mime_type", b"image/png")
+m = cascade("data.bin")
+check("a type set on a file (user.mime_type): Open offers that type's programs", m and m[0] == ("Other", True), m)
+r = c.request(op="open", target=F)
+check("... a double-click opens it with that type's program", r.get("ok") and wait_ran("other " + F), (r, ran()))
+st = c.request(op="settings", target=F).get("result") or []
+tp = [p for p in st if p["title"] == "Type"]
+fields = {f["key"]: f for f in (tp[0]["fields"] if tp else [])}
+check("the Type page: the type and where it comes from", fields.get("type_shown", {}).get("value") == "image/png (set on it)", fields)
+ch = fields.get("type_set", {}).get("choices") or []
+check("... its choices: none set first, the one set, then the common types", ch[:2] == ["by its name and contents", "image/png"]
+      and "text/csv" in ch, ch)
+r = c.request(op="settings_set", target=F, values={"type_set": ch.index("text/csv") if "text/csv" in ch else 0})
+check("set from the Type page: the attribute written (text/csv)", r.get("ok") and os.getxattr(F, "user.mime_type") == b"text/csv", r)
+r = c.request(op="settings_set", target=F, values={"type_set": 0})
+try:
+    gone = os.getxattr(F, "user.mime_type") is None
+except OSError:
+    gone = True
+st = c.request(op="settings", target=F).get("result") or []
+shown = [f.get("value") for p in st if p["title"] == "Type" for f in p["fields"] if f["key"] == "type_shown"]
+check("... none set: the attribute gone, the type by the contents again", r.get("ok") and gone and shown and "(from its contents)" in shown[0], (r, shown))
+
 print("%d failed" % fails)
 sys.exit(1 if fails else 0)

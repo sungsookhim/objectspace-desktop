@@ -43,6 +43,7 @@ typedef struct {
     char icon_open[PATH_MAX];   /* its own open icon, or its shadow's target's; "": none */
     bool open_hatch;         /* hatched while open, over its open icon too */
     unsigned char exec;      /* (0.4.1) a program file (+x, ELF or #!): 1 a window one, 2 text mode */
+    char mime[128];          /* (0.8) the type set on it (user.mime_type); "": none, its name's */
 } osd_entry;
 
 typedef struct {

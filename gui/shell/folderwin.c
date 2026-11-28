@@ -508,6 +508,12 @@ static bool store(struct model *m, const cv *res, size_t *off_out, size_t *n_out
                 dst->kind = UI_KIND_PROGRAM;
                 if (!dst->icon) dst->icon = strdup(!strcmp(ex, "text") ? "theme:program-text" : "theme:program");
             }
+            const char *mt = cv_text(it, "mime");   /* a type set on it (0.8): that type's icon, unless its own */
+            if (mt && *mt && !dst->icon && dst->kind == UI_KIND_FILE) {
+                char ti[160];
+                snprintf(ti, sizeof ti, "theme:%s", icons_name_for_type(mt));
+                dst->icon = strdup(ti);
+            }
             const char *mk = cv_text(it, "makes");   /* a built-in template: looks like what it makes */
             if (mk) dst->kind = !strcmp(mk, "OsdFolder") ? UI_KIND_FOLDER : !strcmp(mk, "OsdProgram") ? UI_KIND_PROGRAM : UI_KIND_FILE;
             const char *tt = cv_text(it, "target"), *tp = cv_text(it, "target_path");

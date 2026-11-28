@@ -19,6 +19,13 @@ const char *osd_mime_for_name(const char *name)
     const char *dot = strrchr(name, '.');
     return dot && !strcmp(dot, ".txt") ? "text/plain" : dot && !strcmp(dot, ".png") ? "image/png" : NULL;
 }
+const char *osd_mime_sniff(const char *path);
+const char *osd_file_mime(const char *path, const char **source)   /* (classes/OsdDataFile.c's, without the set type) */
+{
+    const char *b = strrchr(path, '/') ? strrchr(path, '/') + 1 : path, *t = osd_mime_for_name(b);
+    if (source) *source = t ? "name" : "contents";
+    return t ? t : osd_mime_sniff(path);
+}
 int osdo_loop_watch_fd(osdo_loop *l, int fd, short ev, osdo_fd_fn fn, void *arg) { (void)l; (void)fd; (void)ev; (void)fn; (void)arg; return 0; }
 void osdo_loop_unwatch_fd(osdo_loop *l, int fd) { (void)l; (void)fd; }
 

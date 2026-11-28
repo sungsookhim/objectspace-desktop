@@ -487,9 +487,7 @@ static osdo_class *class_for_type(const char *path)
     bool any = false;
     for (size_t i = 0; i < n && !any; i++) any = osdo_class_at(i)->ntypes > 0 && !osdo_class_at(i)->is_meta;
     if (!any) return OsdDataFileClass;   /* (no file read: no class wants a type) */
-    const char *base = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
-    const char *mime = osd_mime_for_name(base);
-    if (!mime) mime = osd_mime_sniff(path);
+    const char *mime = osd_file_mime(path, NULL);   /* (set on it, else its name's, else its contents') */
     if (!mime) return OsdDataFileClass;
     const char *sl = strchr(mime, '/');
     osdo_class *kind = NULL;

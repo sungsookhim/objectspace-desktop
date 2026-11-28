@@ -16,3 +16,11 @@ classoverride osdclsQueryTitle
 # GNOME (object-properties-design.md 2.6); for all files of its type through
 # Class... (type:MIME).
 property open_with : choice page Association label "Opens with" backing mimeapps
+# Its type (0.8; OS/2's .TYPE): shown with where it comes from; set on the
+# file (user.mime_type, which other programs read too), or taken off.
+method osdQueryTypeShown() -> string
+method osdQueryTypeSet() -> string
+method osdSetTypeSet(string value) -> bool
+method osdQueryTypeChoices() -> string
+property type_shown : info page Type label "Its type" get osdQueryTypeShown first
+property type_set : choice page Type label "Set its type" get osdQueryTypeSet set osdSetTypeSet options osdQueryTypeChoices

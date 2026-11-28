@@ -133,8 +133,53 @@ static char *backing_options(osdo_object *o, const osdo_property_def *p)
     return v;
 }
 
+/* ---- a file's type kept in the database (0.8), where its file system
+ * takes no attributes (a FAT drive): by its volume and its path there */
+
+static bool mime_key(const char *path, char *vol, size_t vn, char *key, size_t kn)
+{
+    osd_volume v;
+    if (!osd_volume_for_path(path, &v)) return false;
+    snprintf(vol, vn, "%s", v.uuid);
+    char loc[PATH_MAX + 16];
+    snprintf(loc, sizeof loc, "mime:%s", osd_volume_relpath(&v, path));
+    osd_db_key(key, kn, loc, "OsdDataFile", "mime_type");
+    return true;
+}
+
+struct mime_find { char *out; size_t n; bool found; };
+
+static void mime_prop(const char *cls, const char *prop, char type, const void *val, uint32_t len, void *user)
+{
+    struct mime_find *m = user;
+    if (strcmp(cls, "OsdDataFile") || strcmp(prop, "mime_type") || type != 's') return;
+    snprintf(m->out, m->n, "%.*s", (int)len, (const char *)val);
+    m->found = true;
+}
+
+static const char *mime_overlay_get(const char *path, char *out, size_t n)
+{
+    char vol[OSD_VOLID_MAX], key[PATH_MAX + 128];
+    if (!mime_key(path, vol, sizeof vol, key, sizeof key)) return NULL;
+    char *sep = strchr(key, '\x1f');   /* (the locator: the key up to its first separator) */
+    if (sep) *sep = 0;
+    struct mime_find m = { out, n, false };
+    osd_db_get_locator(db, vol, key, mime_prop, &m);
+    return m.found ? out : NULL;
+}
+
+static bool mime_overlay_set(const char *path, const char *mime)
+{
+    char vol[OSD_VOLID_MAX], key[PATH_MAX + 128];
+    if (!mime_key(path, vol, sizeof vol, key, sizeof key)) return false;
+    if (!mime) return osd_db_delete(db, vol, key) == 0 || true;
+    return osd_db_put(db, vol, key, 's', mime, (uint32_t)strlen(mime)) == 0;
+}
+
 void backing_init(void)
 {
+    osd_mime_overlay_get = mime_overlay_get;
+    osd_mime_overlay_set = mime_overlay_set;
     osd_backing_get = backing_get;
     osd_backing_set = backing_set;
     osd_backing_options = backing_options;
